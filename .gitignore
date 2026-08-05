@@ -25,3 +25,4 @@ resume_*.pdf
 # Test caches
 .pytest_cache/
 backend/.pytest_cache/
+docs/superpowers/
