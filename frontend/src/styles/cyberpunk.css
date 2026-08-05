@@ -1,0 +1,18 @@
+/* Cyberpunk animations */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 5px #00f0f0, 0 0 20px #00f0f055; }
+  50% { opacity: 0.8; box-shadow: 0 0 20px #00f0f0, 0 0 60px #00f0f088; }
+}
+
+@keyframes float-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes typing-cursor {
+  0%, 100% { border-color: #00f0f0; }
+  50% { border-color: transparent; }
+}
+
+.glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.float-up { animation: float-up 0.4s ease-out; }

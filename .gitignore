@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+node_modules/
+dist/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+backend/logs/
+frontend/dist/
+
+# Personal files — not project code
+*.pdf
+generate_resume.py
+resume_*.pdf
+
+# Claude / Superpowers internals
+.claude/
+.superpowers/
+
+# Test caches
+.pytest_cache/
+backend/.pytest_cache/
