@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("/memory/{session_id}")
 async def get_memory_summary(session_id: str):
-    summary = get_summary(session_id)
+    summary = await get_summary(session_id)
     facts = await get_facts(session_id, limit=10)
     profile = await get_user_profile()
     stats = await get_stats()
@@ -29,7 +29,7 @@ async def get_profile(session_id: str):
 
 @router.post("/memory/{session_id}/extract")
 async def trigger_extraction(session_id: str):
-    history = get_history(session_id, last_n=20)
+    history = await get_history(session_id, last_n=20)
     if len(history) < 2:
         return {"extracted": 0, "message": "Not enough messages"}
     raw_facts = await extract_facts(history)
@@ -48,7 +48,7 @@ async def trigger_archive(session_id: str):
 
 @router.delete("/memory/{session_id}")
 async def clear_memory(session_id: str):
-    clear_session(session_id)
+    await clear_session(session_id)
     await clear_facts(session_id)
     return {"status": "ok", "cleared": session_id}
 

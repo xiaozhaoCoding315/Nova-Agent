@@ -9,16 +9,16 @@ from app.core.memory.graph_memory import integrate_fact_to_graph, build_learning
 
 async def archive_session(session_id: str) -> dict:
     """Extract, dedup, persist facts from a session. Returns extraction summary."""
-    history = get_history(session_id, last_n=20)
+    history = await get_history(session_id, last_n=20)
 
     if len(history) < 2:
-        clear_session(session_id)
+        await clear_session(session_id)
         return {"archived": 0, "message": "Not enough messages to archive"}
 
     # Extract facts
     raw_facts = await extract_facts(history)
     if not raw_facts:
-        clear_session(session_id)
+        await clear_session(session_id)
         return {"archived": 0, "message": "No facts extracted"}
 
     # Deduplicate
@@ -44,7 +44,7 @@ async def archive_session(session_id: str) -> dict:
     await build_learning_trajectory(session_id)
 
     # Clear from memory
-    clear_session(session_id)
+    await clear_session(session_id)
 
     return {
         "archived": saved_count,

@@ -5,10 +5,6 @@ from app.main import app
 
 
 def test_chat_returns_sse_stream():
-    mock_chunks = [
-        {"id": "1", "content": "FastAPI中间件", "source": "doc.md",
-         "score_type": "dense", "score": 0.9, "metadata": {}},
-    ]
     mock_token = "FastAPI中间件通过@app.middleware装饰器实现"
 
     async def fake_retrieve(q, top_k=5):
@@ -17,8 +13,14 @@ def test_chat_returns_sse_stream():
     async def fake_stream(messages):
         yield mock_token
 
+    async def fake_memory(*args, **kwargs):
+        return ""
+
     with patch("app.api.v1.chat.retrieve", new=fake_retrieve), \
-         patch("app.api.v1.chat.get_llm") as mock_llm:
+         patch("app.api.v1.chat.get_llm") as mock_llm, \
+         patch("app.api.v1.chat.add_message", new=AsyncMock()), \
+         patch("app.api.v1.chat.assemble_context", new=fake_memory), \
+         patch("app.api.v1.chat.check_should_archive", new=AsyncMock(return_value=False)):
         mock_llm.return_value.astream = fake_stream
         with TestClient(app).stream(
             "POST", "/api/v1/chat/message",

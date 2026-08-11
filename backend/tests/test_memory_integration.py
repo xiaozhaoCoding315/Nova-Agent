@@ -13,7 +13,7 @@ async def test_assemble_includes_long_term_facts():
 @pytest.mark.asyncio
 async def test_assemble_includes_session_history():
     sid = "ctx-test-2"
-    add_message(sid, "user", "我喜欢异步编程")
-    add_message(sid, "assistant", "FastAPI支持异步")
+    await add_message(sid, "user", "我喜欢异步编程")
+    await add_message(sid, "assistant", "FastAPI支持异步")
     ctx = await assemble_context("异步框架推荐", sid)
     assert len(ctx) > 0

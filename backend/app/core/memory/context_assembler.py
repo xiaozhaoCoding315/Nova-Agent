@@ -10,7 +10,7 @@ async def assemble_context(query: str, session_id: str) -> str:
     parts = []
     # Layer 1: Session history (short-term)
     from app.core.memory.session import get_history
-    history = get_history(session_id, last_n=10)
+    history = await get_history(session_id, last_n=10)
     if history:
         hist_text = "\n".join(f"{m['role']}: {m['content']}" for m in history)
         parts.append(f"## 近期对话\n{hist_text}")
@@ -32,8 +32,8 @@ async def assemble_context(query: str, session_id: str) -> str:
     return "\n\n".join(parts) if parts else "（无历史记忆）"
 
 
-def check_should_archive(session_id: str, msg_count: int = 10) -> bool:
-    """Check if session should be auto-archived based on message count."""
-    from app.core.memory.session import get_or_create_session
-    session = get_or_create_session(session_id)
-    return len(session.get("messages", [])) >= msg_count
+async def check_should_archive(session_id: str, msg_count: int = 10) -> bool:
+    """Check if a session should be auto-archived based on message count."""
+    from app.core.memory.session import get_summary
+    summary = await get_summary(session_id)
+    return summary["message_count"] >= msg_count
