@@ -22,3 +22,24 @@ async def test_execute_race_streaming_completes():
 async def test_race_mode_attribute():
     wf = DAGWorkflow("race-attr-test")
     assert hasattr(wf, "execute_race_streaming")
+
+@pytest.mark.asyncio
+async def test_race_streaming_slow_sibling_not_cancelled():
+    """Sibling nodes with different speeds must BOTH complete (no mutual cancel)."""
+    async def fast():
+        await asyncio.sleep(0.01)
+        return "fast_done"
+
+    async def slow():
+        await asyncio.sleep(0.15)
+        return "slow_done"
+
+    wf = DAGWorkflow("race-fix")
+    wf.add_node(DAGNode(id="a", name="A", func=fast))
+    wf.add_node(DAGNode(id="b", name="B", func=slow))
+    events = []
+    async for event in wf.execute_race_streaming():
+        events.append(event)
+    completed = [e for e in events if e["type"] == "node_completed"]
+    failed = [e for e in events if e["type"] == "node_failed"]
+    assert len(completed) == 2, f"expected both siblings to complete, got {completed} {failed}"
