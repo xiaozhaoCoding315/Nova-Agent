@@ -32,7 +32,11 @@ async def event_stream(question: str, session_id: str):
              score_type=c.score_type, score=c.score) for c in chunks]
     yield f"data: {json.dumps({'type': 'retrieval', 'data': [i.model_dump() for i in items]}, ensure_ascii=False)}\n\n"
 
-    await add_message(session_id, "user", question)
+    # 用户消息写入是尽力而为——失败不打断对话
+    try:
+        await add_message(session_id, "user", question)
+    except Exception:
+        pass
 
     # Assemble context from memory
     memory_context = await assemble_context(question, session_id)
@@ -63,7 +67,10 @@ async def event_stream(question: str, session_id: str):
         yield f"data: {json.dumps({'type': 'token', 'content': error_msg}, ensure_ascii=False)}\n\n"
         token_count = 0
 
-    await add_message(session_id, "assistant", full_response)
+    try:
+        await add_message(session_id, "assistant", full_response)
+    except Exception:
+        pass
 
     try:
         from app.core.security.audit import log_audit, AuditAction
