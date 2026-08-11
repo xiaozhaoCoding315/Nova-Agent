@@ -213,5 +213,25 @@ class TaskStateManager:
         })
 
     def _persist(self, task: TaskState) -> None:
-        """Hook for persistence. Override to save to Redis/DB."""
-        pass
+        """Persist task snapshot to PostgreSQL (Layer 4). Best-effort.
+
+        Requires a running event loop; in pure sync contexts (unit tests,
+        scripts) persistence is skipped so the in-memory manager stays usable.
+        """
+        try:
+            from app.core.agent.task_store import TaskStore
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+
+            async def _safe_save():
+                try:
+                    await TaskStore.save(task)
+                except Exception:
+                    pass  # persistence is best-effort
+
+            loop.create_task(_safe_save())
+        except Exception:
+            pass

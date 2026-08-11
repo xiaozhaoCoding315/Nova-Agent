@@ -130,3 +130,21 @@ def test_get_root_tasks():
     assert root1.id in root_ids
     assert root2.id in root_ids
     assert child.id not in root_ids
+
+
+@pytest.mark.asyncio
+async def test_persist_writes_to_store():
+    import uuid
+    from app.core.agent.task_store import TaskStore
+    mgr = TaskStateManager()
+    tid = f"persist-{uuid.uuid4().hex[:8]}"
+    task = mgr.create_task(name="persist-me", task_id=tid)
+    mgr.start_task(tid)
+    mgr.complete_task(tid, result="ok")
+    # _persist fires via running loop; give it a tick
+    import asyncio
+    await asyncio.sleep(0.05)
+    saved = await TaskStore.get(tid)
+    assert saved is not None
+    assert saved["status"] == "completed"
+    assert saved["result"] == "ok"
