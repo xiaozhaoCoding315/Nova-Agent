@@ -127,3 +127,35 @@ async def get_stats() -> dict:
 
 async def clear_facts(session_id: str):
     await execute("DELETE FROM agent_facts WHERE session_id = %s", (session_id,))
+
+
+async def run_session_cleanup(ttl_days: int = 30) -> int:
+    """Delete session messages older than ttl_days and orphaned sessions.
+
+    Returns total rows deleted.
+    """
+    total = 0
+    cnt = await query(
+        "SELECT COUNT(*) FROM chat_messages "
+        "WHERE created_at < now() - MAKE_INTERVAL(days => %s)",
+        (ttl_days,),
+    )
+    total += cnt[0][0] if cnt else 0
+    await execute(
+        "DELETE FROM chat_messages WHERE created_at < now() - MAKE_INTERVAL(days => %s)",
+        (ttl_days,),
+    )
+    cnt2 = await query(
+        "SELECT COUNT(*) FROM chat_sessions s WHERE NOT EXISTS "
+        "(SELECT 1 FROM chat_messages m WHERE m.session_id = s.id) "
+        "AND s.created_at < now() - MAKE_INTERVAL(days => %s)",
+        (ttl_days,),
+    )
+    total += cnt2[0][0] if cnt2 else 0
+    await execute(
+        "DELETE FROM chat_sessions s WHERE NOT EXISTS "
+        "(SELECT 1 FROM chat_messages m WHERE m.session_id = s.id) "
+        "AND s.created_at < now() - MAKE_INTERVAL(days => %s)",
+        (ttl_days,),
+    )
+    return total

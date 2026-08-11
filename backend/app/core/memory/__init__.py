@@ -1,5 +1,5 @@
 from app.core.memory.session import get_or_create_session, add_message, get_history, get_summary, clear_session
-from app.core.memory.store import save_fact, get_facts, clear_facts, run_ttl_cleanup, get_stats, boost_importance, decay_importance
+from app.core.memory.store import save_fact, get_facts, clear_facts, run_ttl_cleanup, run_session_cleanup, get_stats, boost_importance, decay_importance
 from app.core.memory.extractor import extract_facts
 from app.core.memory.dedup import is_duplicate, dedup_facts
 from app.core.memory.profile import get_user_profile, get_profile_summary, get_graph_memory_summary
