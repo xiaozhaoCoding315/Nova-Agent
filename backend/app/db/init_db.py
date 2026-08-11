@@ -104,6 +104,23 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_documents_search ON documents USING GIN (search_vector)",
     "CREATE INDEX IF NOT EXISTS idx_agent_facts_ttl ON agent_facts (created_at)",
     "CREATE INDEX IF NOT EXISTS idx_agent_facts_session ON agent_facts (session_id)",
+    """
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id VARCHAR(64),
+        role VARCHAR(20),
+        content TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages (session_id, created_at)",
 ]
 
 
