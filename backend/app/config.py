@@ -49,8 +49,11 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
+        # connect_timeout so calls fail fast instead of blocking for the
+        # OS-level TCP timeout when PG is down.
         return (f"postgresql://{self.postgres_user}:{self.postgres_password}"
-                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}")
+                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+                f"?connect_timeout=3")
 
     @property
     def cors_origins_list(self) -> list[str]:

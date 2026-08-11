@@ -1,10 +1,12 @@
 import asyncio
 import time
+from pathlib import Path
 
 import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.api.v1.router import api_router
 from app.core.logging_setup import setup_logging
@@ -68,9 +70,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
-
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 

@@ -40,7 +40,7 @@ async def get_history(session_id: str, last_n: int = 10) -> list[dict]:
     """Return the last `last_n` messages in chronological order."""
     rows = await query(
         "SELECT role, content FROM chat_messages "
-        "WHERE session_id = %s ORDER BY created_at DESC LIMIT %s",
+        "WHERE session_id = %s ORDER BY created_at DESC, id DESC LIMIT %s",
         (session_id, last_n),
     )
     messages = [{"role": r[0], "content": r[1]} for r in rows]

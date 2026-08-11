@@ -21,10 +21,14 @@ def test_connection_urls():
 
 
 def test_app_env_default():
-    from app.config import settings
-    assert settings.app_env == "dev"
+    # Fresh instance, not the module singleton, so a .env with a
+    # non-default APP_ENV cannot break this test.
+    s = Settings(_env_file=None, app_env="dev", log_dir="logs")
+    assert s.app_env == "dev"
 
 
 def test_log_dir_default():
-    from app.config import settings
-    assert settings.log_dir == "logs"
+    # Fresh instance, not the module singleton, so a .env with a
+    # non-default LOG_DIR cannot break this test.
+    s = Settings(_env_file=None, app_env="dev", log_dir="logs")
+    assert s.log_dir == "logs"
