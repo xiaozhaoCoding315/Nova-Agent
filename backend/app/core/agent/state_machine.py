@@ -9,6 +9,12 @@ independent nodes, TaskStateMachine adds:
 - Parent-child task hierarchies with dependency-aware scheduling
 - Progress tracking and serialization for API/visualization
 - Support for WAITING (external input) and PAUSED states
+
+#
+# Boundary: TaskStateMachine is the validated in-memory task lifecycle state
+# machine (legal transitions + history). Durable persistence across restarts
+# is TaskStateManager / TaskStore (Layer 4); per-run DAG node state is
+# DAGNode.status.
 """
 import time
 import uuid

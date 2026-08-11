@@ -49,7 +49,7 @@ nova-agent/
 │   │   │   ├── tasks.py     # DAG 任务
 │   │   │   └── ...
 │   │   ├── core/
-│   │   │   ├── agent/       # DAG 引擎 · 任务分解 · 竞速调度
+│   │   │   ├── agent/       # DAG 引擎 · 任务分解 · 竞速调度（状态三件套：DAGNode.status 节点态 / TaskStateMachine 校验状态机 / TaskStateManager 持久化存储 Layer 4）
 │   │   │   ├── rag/         # 稠密/关键词/图谱检索 · RRF 融合
 │   │   │   ├── memory/      # 四层记忆 · 去重 · 衰减 · 上下文组装
 │   │   │   ├── harness/     # 超时 · 重试 · 熔断

@@ -24,6 +24,13 @@ class NodeStatus(str, Enum):
 
 @dataclass
 class DAGNode:
+    """A node in a DAG workflow execution.
+
+    Its `status` tracks the node lifecycle within a single in-memory DAG run;
+    it is ephemeral (dies with the run). For durable, validated task lifecycle
+    tracking use TaskStateMachine (in-memory, validated) and TaskStateManager
+    (durable store, Layer 4).
+    """
     id: str
     name: str
     func: Callable  # async callable

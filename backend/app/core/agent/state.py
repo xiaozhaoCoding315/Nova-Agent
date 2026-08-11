@@ -5,6 +5,11 @@ Provides persistent state tracking for tasks, including:
 - State persistence (in-memory store, swappable for Redis/DB)
 - Task history and audit trail
 - Result caching
+
+#
+# Boundary: TaskStateManager is the durable task store facade (Layer 4). It
+# snapshots task lifecycle to PostgreSQL via TaskStore. For validated state
+# transitions use TaskStateMachine; DAGNode.status covers per-run node state.
 """
 import time
 import uuid
