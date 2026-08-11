@@ -18,3 +18,13 @@ def test_connection_urls():
     assert s.qdrant_url == "http://192.168.150.128:6333"
     assert "postgresql://" in s.postgres_dsn
     assert s.neo4j_uri == "bolt://192.168.150.128:7687"
+
+
+def test_app_env_default():
+    from app.config import settings
+    assert settings.app_env == "dev"
+
+
+def test_log_dir_default():
+    from app.config import settings
+    assert settings.log_dir == "logs"

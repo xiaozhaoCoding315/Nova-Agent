@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     secret_key: str = "change-me"
     cors_origins: str = "http://localhost:5173"
+    app_env: str = "dev"
+    log_dir: str = "logs"
 
     @property
     def llm_priority_list(self) -> list[str]:
