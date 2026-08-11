@@ -1,9 +1,6 @@
 """Dynamic context assembly: build personalized prompt context from memory."""
 
 
-# Note: Layer 4 (runtime state memory — DAG node state, task resumption) is
-# intentionally deferred. It requires persistent state machine storage and
-# is out of scope for this iteration. Layers 1-3 cover the core use case.
 async def assemble_context(query: str, session_id: str) -> str:
     """Assemble multi-layer context; never raise — degrade to empty on failure."""
     try:
@@ -27,6 +24,15 @@ async def assemble_context(query: str, session_id: str) -> str:
             if graph_results:
                 graph_text = "\n".join(f"- {r.get('content', r.get('id', ''))[:100]}" for r in graph_results)
                 parts.append(f"## 知识关联\n{graph_text}")
+        # Layer 4: DAG runtime state (recent task executions)
+        from app.core.agent.task_store import TaskStore
+        recent_tasks = await TaskStore.list(limit=5)
+        if recent_tasks:
+            task_text = "\n".join(
+                f"- {t['name']} ({t['status']}, {(t['created_at'] or '')[:19]})"
+                for t in recent_tasks
+            )
+            parts.append(f"## 近期任务运行\n{task_text}")
         return "\n\n".join(parts) if parts else "（无历史记忆）"
     except Exception:
         return "（无历史记忆）"
