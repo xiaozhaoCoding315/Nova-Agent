@@ -18,7 +18,10 @@ async def execute_task(request: dict):
         return {"error": "No task provided"}
 
     mgr = TaskStateManager()
-    run = mgr.create_task(name=task_description[:50], metadata={"type": "dag_run"})
+    # max_retries=0：DAG 运行本身不重试（节点级已有重试），一次失败即持久化为 FAILED
+    run = mgr.create_task(
+        name=task_description[:50], metadata={"type": "dag_run"}, max_retries=0
+    )
     mgr.start_task(run.id)
 
     async def event_stream():
