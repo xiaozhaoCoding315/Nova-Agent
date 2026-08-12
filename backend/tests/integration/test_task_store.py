@@ -1,6 +1,5 @@
 import uuid
 import pytest
-from app.db import execute
 from app.core.agent.task_store import TaskStore
 
 

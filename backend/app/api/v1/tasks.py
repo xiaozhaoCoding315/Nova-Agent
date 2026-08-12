@@ -32,7 +32,7 @@ async def execute_task(request: dict):
             dag_def = await decompose_task(task_description)
         except Exception as e:
             mgr.fail_task(run.id, error=f"decompose failed: {e}")
-            yield f"data: {json.dumps({'type': 'node_failed', 'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'node_failed', 'task_id': run.id, 'error': str(e)}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'task': task_description, 'task_id': run.id}, ensure_ascii=False)}\n\n"
             return
 

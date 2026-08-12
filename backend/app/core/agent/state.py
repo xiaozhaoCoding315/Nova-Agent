@@ -13,10 +13,13 @@ Provides persistent state tracking for tasks, including:
 """
 import time
 import uuid
+import structlog
 from enum import Enum
 from typing import Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+
+logger = structlog.get_logger()
 
 
 class TaskStatus(str, Enum):
@@ -229,8 +232,8 @@ class TaskStateManager:
             async def _safe_save():
                 try:
                     await TaskStore.save(task)
-                except Exception:
-                    pass  # persistence is best-effort
+                except Exception as e:
+                    logger.warning("task_persist_failed", task_id=task.id, error=str(e))
 
             loop.create_task(_safe_save())
         except Exception:

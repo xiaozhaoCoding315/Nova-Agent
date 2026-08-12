@@ -267,7 +267,11 @@ class DAGWorkflow:
         propagate to dependents (children of a failed node are SKIPPED).
         True provider-level racing (multiple LLMs for one request, take the
         fastest) lives in app.core.agent.race.RaceStrategy.
+
+        The `race_enabled` parameter is retained for API compatibility only;
+        sibling nodes always run in parallel.
         """
+        self._validate()  # raises ValueError on missing deps or cycles
         executed: set[str] = set()
         failed: set[str] = set()
         in_progress: set[str] = set()

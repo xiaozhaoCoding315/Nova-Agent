@@ -135,16 +135,20 @@ def test_get_root_tasks():
 @pytest.mark.asyncio
 async def test_persist_writes_to_store():
     import uuid
+    import asyncio
     from app.core.agent.task_store import TaskStore
     mgr = TaskStateManager()
     tid = f"persist-{uuid.uuid4().hex[:8]}"
     task = mgr.create_task(name="persist-me", task_id=tid)
     mgr.start_task(tid)
     mgr.complete_task(tid, result="ok")
-    # _persist fires via running loop; give it a tick
-    import asyncio
-    await asyncio.sleep(0.05)
-    saved = await TaskStore.get(tid)
+    # _persist fires via running loop; poll until the background save lands.
+    saved = None
+    for _ in range(30):
+        saved = await TaskStore.get(tid)
+        if saved is not None and saved["status"] == "completed":
+            break
+        await asyncio.sleep(0.1)
     assert saved is not None
     assert saved["status"] == "completed"
     assert saved["result"] == "ok"

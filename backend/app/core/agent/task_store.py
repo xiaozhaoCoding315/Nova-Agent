@@ -1,17 +1,7 @@
 """Durable task state storage — Layer 4: DAG runtime breakpoint memory."""
-import json
 from typing import Any, Optional
+import psycopg
 from app.db import query, execute
-
-
-def _serialize(value: Any) -> Any:
-    if value is None:
-        return None
-    return json.dumps(value, ensure_ascii=False, default=str)
-
-
-def _parse(value: Any) -> Any:
-    return json.loads(value) if value is not None else None
 
 
 class TaskStore:
@@ -44,12 +34,12 @@ class TaskStore:
             """,
             (
                 data["id"], data["name"], data["status"],
-                _serialize(data.get("result")), data.get("error"),
+                psycopg.types.json.Json(data.get("result")), data.get("error"),
                 data.get("created_at"), data.get("started_at"), data.get("completed_at"),
                 data.get("retries", 0), data.get("max_retries", 2), data.get("parent_id"),
-                _serialize(data.get("children_ids", [])),
-                _serialize(data.get("metadata", {})),
-                _serialize(data.get("history", [])),
+                psycopg.types.json.Json(data.get("children_ids", [])),
+                psycopg.types.json.Json(data.get("metadata", {})),
+                psycopg.types.json.Json(data.get("history", [])),
             ),
         )
 
@@ -66,13 +56,13 @@ class TaskStore:
         r = rows[0]
         return {
             "id": r[0], "name": r[1], "status": r[2],
-            "result": _parse(r[3]), "error": r[4],
+            "result": r[3] if r[3] is not None else None, "error": r[4],
             "created_at": str(r[5]) if r[5] else None,
             "started_at": str(r[6]) if r[6] else None,
             "completed_at": str(r[7]) if r[7] else None,
             "retries": r[8] or 0, "max_retries": r[9] or 2, "parent_id": r[10],
-            "children_ids": _parse(r[11]) or [], "metadata": _parse(r[12]) or {},
-            "history": _parse(r[13]) or [],
+            "children_ids": r[11] or [], "metadata": r[12] or {},
+            "history": r[13] or [],
         }
 
     @staticmethod

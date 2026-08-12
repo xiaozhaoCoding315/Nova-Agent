@@ -46,14 +46,16 @@ def test_execute_persists_task_run():
     assert tid
 
     # 验证持久化：_persist 是 fire-and-forget 后台写库，轮询等待其完成（约 2s 上限）。
+    # 只在 run 到达终态 completed 时返回，避免拿到中间态 running 快照。
     async def _poll():
         for _ in range(20):
             saved = await TaskStore.get(tid)
-            if saved is not None:
+            if saved is not None and saved["status"] == "completed":
                 return saved
             await asyncio.sleep(0.1)
         return None
 
     saved = asyncio.run(_poll())
     assert saved is not None, "task run was not persisted"
+    assert saved["status"] == "completed"
     assert saved["name"] == "测试任务"
