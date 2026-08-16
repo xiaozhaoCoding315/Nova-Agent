@@ -43,3 +43,15 @@ async def test_race_streaming_slow_sibling_not_cancelled():
     completed = [e for e in events if e["type"] == "node_completed"]
     failed = [e for e in events if e["type"] == "node_failed"]
     assert len(completed) == 2, f"expected both siblings to complete, got {completed} {failed}"
+
+@pytest.mark.asyncio
+async def test_dag_completed_includes_results():
+    async def work():
+        return {"answer": 42}
+
+    wf = DAGWorkflow("r")
+    wf.add_node(DAGNode(id="a", name="A", func=work))
+    events = [e async for e in wf.execute_race_streaming()]
+    done = events[-1]
+    assert done["type"] == "dag_completed"
+    assert done["results"] == {"a": {"answer": 42}}

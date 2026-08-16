@@ -244,7 +244,15 @@ class DAGWorkflow:
                         "result": result,
                     }
 
-        yield {"type": "dag_completed", "total_nodes": len(self.nodes)}
+        yield {
+            "type": "dag_completed",
+            "total_nodes": len(self.nodes),
+            "results": {
+                nid: node.result
+                for nid, node in self.nodes.items()
+                if node.status == NodeStatus.COMPLETED
+            },
+        }
 
     async def _execute_node(self, node):
         """Execute a single node's function."""
@@ -317,7 +325,15 @@ class DAGWorkflow:
                     node.result = result
                     yield {"type": "node_completed", "node_id": nid, "result": result}
 
-        yield {"type": "dag_completed", "total_nodes": len(self.nodes)}
+        yield {
+            "type": "dag_completed",
+            "total_nodes": len(self.nodes),
+            "results": {
+                nid: node.result
+                for nid, node in self.nodes.items()
+                if node.status == NodeStatus.COMPLETED
+            },
+        }
 
     async def _safe_execute(self, node):
         """Execute a node's function, supporting both sync and async callables."""
