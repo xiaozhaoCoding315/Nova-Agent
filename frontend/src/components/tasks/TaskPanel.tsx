@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Play, RotateCcw, CheckCircle, XCircle, Loader, GitBranch, FileText } from "lucide-react"
 import { useTaskStore } from "../../stores/taskStore"
@@ -22,6 +22,14 @@ export default function TaskPanel() {
   } = useTaskStore()
 
   const abortRef = useRef<(() => void) | null>(null)
+  const safetyRef = useRef<number | null>(null)
+
+  const clearSafety = useCallback(() => {
+    if (safetyRef.current !== null) {
+      window.clearTimeout(safetyRef.current)
+      safetyRef.current = null
+    }
+  }, [])
 
   const handleExecute = useCallback(() => {
     if (!taskDescription.trim() || running) return
@@ -48,32 +56,49 @@ export default function TaskPanel() {
         case "node_failed":
           updateNodeStatus(event.node_id, "failed")
           break
-        case "dag_completed":
+        case "dag_completed": {
           setRunning(false)
+          clearSafety()
+          const doneCount = event.results ? Object.keys(event.results).length : 0
+          setResult(`全部 ${event.total_nodes ?? nodes.length} 个节点中 ${doneCount} 个执行完成`)
+          break
+        }
+        case "done":
+          setRunning(false)
+          clearSafety()
           break
       }
     })
 
-    const safety = window.setTimeout(() => {
+    safetyRef.current = window.setTimeout(() => {
       setRunning(false)
       abortRef.current?.()
+      safetyRef.current = null
     }, 120000)
-    return () => window.clearTimeout(safety)
-  }, [taskDescription, running])
+  }, [taskDescription, running, nodes, setNodes, setResult, setRunning, updateNodeStatus, addNodeResult, clearSafety])
 
   const handleReset = useCallback(() => {
     abortRef.current?.()
     setRunning(false)
+    clearSafety()
     setNodes((prev: DAGNode[]) => prev.map((n: DAGNode) => ({ ...n, status: "pending" as const })))
-  }, [setRunning, setNodes])
+  }, [setRunning, setNodes, clearSafety])
 
   const handleClear = useCallback(() => {
     abortRef.current?.()
     setRunning(false)
+    clearSafety()
     setNodes([])
     setTaskDescription("")
     setResult(null)
-  }, [setRunning, setNodes, setTaskDescription, setResult])
+  }, [setRunning, setNodes, setTaskDescription, setResult, clearSafety])
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.()
+      if (safetyRef.current !== null) window.clearTimeout(safetyRef.current)
+    }
+  }, [])
 
   const completedCount = nodes.filter((n: DAGNode) => n.status === "completed").length
   const failedCount = nodes.filter((n: DAGNode) => n.status === "failed").length
