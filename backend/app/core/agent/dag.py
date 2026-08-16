@@ -232,12 +232,17 @@ class DAGWorkflow:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for nid, result in zip(batch, results):
+                node = self.nodes[nid]
                 executed.add(nid)
                 in_progress.discard(nid)
 
                 if isinstance(result, Exception):
+                    node.status = NodeStatus.FAILED
+                    node.error = str(result)
                     yield {"type": "node_failed", "node_id": nid, "error": str(result)}
                 else:
+                    node.status = NodeStatus.COMPLETED
+                    node.result = result
                     yield {
                         "type": "node_completed",
                         "node_id": nid,

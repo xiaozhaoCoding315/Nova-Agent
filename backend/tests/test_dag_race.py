@@ -55,3 +55,15 @@ async def test_dag_completed_includes_results():
     done = events[-1]
     assert done["type"] == "dag_completed"
     assert done["results"] == {"a": {"answer": 42}}
+
+@pytest.mark.asyncio
+async def test_streaming_dag_completed_includes_results():
+    async def work():
+        return {"answer": 42}
+
+    wf = DAGWorkflow("s")
+    wf.add_node(DAGNode(id="a", name="A", func=work))
+    events = [e async for e in wf.execute_streaming()]
+    done = events[-1]
+    assert done["type"] == "dag_completed"
+    assert done["results"] == {"a": {"answer": 42}}
