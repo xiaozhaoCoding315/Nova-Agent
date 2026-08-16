@@ -54,16 +54,16 @@ export async function archiveSession(sessionId: string) {
 }
 
 // === Evaluation ===
-export async function evalSingle(query: string) {
-  const { data } = await http.post("/eval/single", { query, relevant_ids: null })
+export async function evalSingle(query: string, relevantIds: string[] | null = null) {
+  const { data } = await http.post("/eval/single", { query, relevant_ids: relevantIds })
   return data
 }
 
-export async function evalSuite(queries: string[], mode = "all") {
-  const { data } = await http.post("/eval/suite", {
-    queries: queries.map(q => ({ query: q, relevant_ids: null })),
-    mode,
-  })
+export async function evalSuite(
+  items: { query: string; relevant_ids: string[] | null }[],
+  mode = "all"
+) {
+  const { data } = await http.post("/eval/suite", { queries: items, mode })
   return data
 }
 
@@ -104,7 +104,10 @@ export async function getSandboxStatus() {
 }
 
 export async function getAuditLog(action: string = "", limit: number = 100) {
-  const { data } = await http.get(`/audit/log${action ? "?action=" + action : ""}&limit=${limit}`)
+  const params = new URLSearchParams()
+  if (action) params.set("action", action)
+  params.set("limit", String(limit))
+  const { data } = await http.get(`/audit/log?${params.toString()}`)
   return data
 }
 

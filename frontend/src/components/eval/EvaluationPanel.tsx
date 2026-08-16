@@ -26,7 +26,7 @@ export default function EvaluationPanel() {
   }
 
   const handleRunSuite = () => {
-    const queries = datasetQueries.map(q => q.query)
+    const queries = datasetQueries.map(q => ({ query: q.query, relevant_ids: q.relevant_ids ?? null }))
     if (queries.length > 0) runSuite(queries)
   }
 
@@ -83,7 +83,7 @@ export default function EvaluationPanel() {
           </button>
           {datasetStats && (
             <div className="p-3 rounded-lg border border-cyber-border bg-cyber-surface/30 text-xs text-cyber-textDim">
-              数据集: {datasetStats.golden_queries} 条查询, {datasetStats.corpora} 个语料库
+              数据集: {datasetStats.golden_queries} 条查询, {datasetStats.eval_runs ?? 0} 次评测
             </div>
           )}
         </div>

@@ -13,10 +13,10 @@ interface EvalResult {
 interface EvalState {
   results: EvalResult[]
   running: boolean
-  datasetQueries: { id: number; query: string; category: string; notes: string }[]
+  datasetQueries: { id: number; query: string; category: string; notes: string; relevant_ids?: string[] | null }[]
   datasetStats: any
-  runSingle: (query: string) => Promise<void>
-  runSuite: (queries: string[]) => Promise<void>
+  runSingle: (query: string, relevantIds?: string[] | null) => Promise<void>
+  runSuite: (queries: { query: string; relevant_ids: string[] | null }[]) => Promise<void>
   loadDataset: () => Promise<void>
   seedData: () => Promise<void>
   loadStats: () => Promise<void>
@@ -30,17 +30,17 @@ export const useEvalStore = create<EvalState>((set, get) => ({
   datasetQueries: [],
   datasetStats: null,
 
-  runSingle: async (query: string) => {
+  runSingle: async (query: string, relevantIds: string[] | null = null) => {
     set({ running: true })
     try {
-      const result = await evalSingle(query)
+      const result = await evalSingle(query, relevantIds)
       set((s) => ({ results: [result, ...s.results].slice(0, 50) }))
     } finally {
       set({ running: false })
     }
   },
 
-  runSuite: async (queries: string[]) => {
+  runSuite: async (queries: { query: string; relevant_ids: string[] | null }[]) => {
     set({ running: true })
     try {
       const result = await evalSuite(queries)
