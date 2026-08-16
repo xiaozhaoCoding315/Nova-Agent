@@ -398,14 +398,14 @@ export default function MemoryPanel() {
             </div>
 
             {/* Stats */}
-            {statsData?.by_category && Object.keys(statsData.by_category).length > 0 && (
+            {statsData?.by_category && statsData.by_category.length > 0 && (
               <div className="p-3 rounded-lg border border-cyber-border bg-cyber-surface/30">
                 <p className="text-cyber-cyan text-xs font-bold mb-2">事实分类</p>
                 <div className="space-y-1.5">
-                  {Object.entries(statsData.by_category).map(([cat, cnt]) => (
-                    <div key={cat} className="flex items-center justify-between text-xs">
-                      <span className="text-cyber-textDim">{cat}</span>
-                      <span className="text-cyber-text">{cnt as number}</span>
+                  {statsData.by_category.map((c: { category: string; count: number; avg_importance: number }) => (
+                    <div key={c.category} className="flex items-center justify-between text-xs">
+                      <span className="text-cyber-textDim">{c.category}</span>
+                      <span className="text-cyber-text">{c.count}</span>
                     </div>
                   ))}
                 </div>
