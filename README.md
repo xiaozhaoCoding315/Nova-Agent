@@ -5,7 +5,7 @@
 ## 功能亮点
 
 ### 混合图增强 RAG 检索管线
-三路并行召回——**Qdrant 稠密向量** + **PostgreSQL BM25**（自研 jieba 中文分词）+ **Neo4j 知识图谱**多跳扩展；RRF (k=60) 融合多路结果，ILIKE 兜底解决中文分词边界问题。多路检索互相补充，单路故障不中断整体请求。
+三路并行召回——**Qdrant 稠密向量** + **PostgreSQL BM25**（自研 jieba 中文分词）+ **Neo4j 知识图谱**多跳扩展；RRF (k=10) 融合多路结果，ILIKE 兜底解决中文分词边界问题。多路检索互相补充，单路故障不中断整体请求。
 
 ### 四层分层记忆架构
 短期会话记忆 → 长期语义记忆（PostgreSQL，TTL 30~365 天）→ 图谱记忆（Neo4j 实体关系）→ DAG 运行时断点记忆。MD5 + Embedding 双重去重，记忆权重动态衰减模拟遗忘曲线，跨会话持久存储用户历史与偏好。
@@ -49,7 +49,7 @@ nova-agent/
 │   │   │   ├── tasks.py     # DAG 任务
 │   │   │   └── ...
 │   │   ├── core/
-│   │   │   ├── agent/       # DAG 引擎 · 任务分解 · 竞速调度
+│   │   │   ├── agent/       # DAG 引擎 · 任务分解 · 竞速调度（状态三件套：DAGNode.status 节点态 / TaskStateMachine 校验状态机 / TaskStateManager 持久化存储 Layer 4）
 │   │   │   ├── rag/         # 稠密/关键词/图谱检索 · RRF 融合
 │   │   │   ├── memory/      # 四层记忆 · 去重 · 衰减 · 上下文组装
 │   │   │   ├── harness/     # 超时 · 重试 · 熔断

@@ -24,6 +24,13 @@ class NodeStatus(str, Enum):
 
 @dataclass
 class DAGNode:
+    """A node in a DAG workflow execution.
+
+    Its `status` tracks the node lifecycle within a single in-memory DAG run;
+    it is ephemeral (dies with the run). For durable, validated task lifecycle
+    tracking use TaskStateMachine (in-memory, validated) and TaskStateManager
+    (durable store, Layer 4).
+    """
     id: str
     name: str
     func: Callable  # async callable
@@ -73,19 +80,13 @@ class DAGWorkflow:
 
     def _topological_sort(self) -> list[str]:
         """Return node IDs in topological order using Kahn's algorithm."""
-        in_degree = {nid: 0 for nid in self.nodes}
-        for node in self.nodes.values():
-            for dep in node.dependencies:
-                in_degree[node.id] += 1  # dep must finish before node
+        in_degree = {nid: len(self.nodes[nid].dependencies) for nid in self.nodes}
 
         # Build adjacency: dep -> list of dependents
         dependents: dict[str, list[str]] = {nid: [] for nid in self.nodes}
         for nid, node in self.nodes.items():
             for dep in node.dependencies:
                 dependents[dep].append(nid)
-
-        # Recompute in_degree properly: number of prerequisites per node
-        in_degree = {nid: len(self.nodes[nid].dependencies) for nid in self.nodes}
 
         queue = [nid for nid, deg in in_degree.items() if deg == 0]
         order: list[str] = []
@@ -258,71 +259,63 @@ class DAGWorkflow:
         return {"status": "no_op"}
 
     async def execute_race_streaming(self, race_enabled: bool = True):
-        """Execute DAG with Race strategy for parallel independent nodes.
+        """Execute the DAG, streaming node events; sibling nodes run in parallel.
 
-        When multiple nodes are ready simultaneously, race them and use
-        the first successful result (cancelling the rest).
+        NOTE: the historical "race" semantics — where ready sibling nodes raced
+        and the first to finish cancelled the rest — were a bug and are removed.
+        Every ready node now runs to completion independently and failures
+        propagate to dependents (children of a failed node are SKIPPED).
+        True provider-level racing (multiple LLMs for one request, take the
+        fastest) lives in app.core.agent.race.RaceStrategy.
+
+        The `race_enabled` parameter is retained for API compatibility only;
+        sibling nodes always run in parallel.
         """
-        executed = set()
-        in_progress = set()
+        self._validate()  # raises ValueError on missing deps or cycles
+        executed: set[str] = set()
+        failed: set[str] = set()
+        in_progress: set[str] = set()
 
         while len(executed) < len(self.nodes):
-            batch = []
+            batch: list[str] = []
             for nid, node in self.nodes.items():
                 if nid in executed or nid in in_progress:
+                    continue
+                if any(dep in failed for dep in node.dependencies):
+                    # Dependency failed: skip this node
+                    node.status = NodeStatus.SKIPPED
+                    node.error = f"Dependency {next(dep for dep in node.dependencies if dep in failed)} failed"
+                    executed.add(nid)
+                    failed.add(nid)
+                    yield {"type": "node_failed", "node_id": nid, "error": node.error}
                     continue
                 if all(dep in executed for dep in node.dependencies):
                     batch.append(nid)
             if not batch:
                 break
+
             for nid in batch:
                 in_progress.add(nid)
                 yield {"type": "node_started", "node_id": nid, "node_name": self.nodes[nid].name}
 
-            if race_enabled and len(batch) > 1:
-                # Race mode: run all, take first success
-                async def _run_node(nid):
-                    result = await self._safe_execute(self.nodes[nid])
-                    return nid, result
-                tasks = {nid: asyncio.create_task(_run_node(nid)) for nid in batch}
-                done, pending = await asyncio.wait(tasks.values(), return_when=asyncio.FIRST_COMPLETED)
-                # Cancel pending (losers)
-                for t in pending:
-                    t.cancel()
-                # Process results
-                completed_nids = set()
-                for task in done:
-                    try:
-                        nid, result = task.result()
-                        executed.add(nid)
-                        in_progress.discard(nid)
-                        completed_nids.add(nid)
-                        yield {"type": "node_completed", "node_id": nid, "result": result}
-                    except Exception as e:
-                        for n, t in tasks.items():
-                            if t == task:
-                                executed.add(n)
-                                in_progress.discard(n)
-                                yield {"type": "node_failed", "node_id": n, "error": str(e)}
-                                break
-                # Mark remaining pending as cancelled
-                for nid, task in tasks.items():
-                    if nid not in completed_nids and nid in in_progress:
-                        executed.add(nid)
-                        in_progress.discard(nid)
-                        yield {"type": "node_failed", "node_id": nid, "error": "race_lost"}
-            else:
-                # Sequential for single node
-                for nid in batch:
-                    try:
-                        result = await self._safe_execute(self.nodes[nid])
-                        executed.add(nid)
-                        in_progress.discard(nid)
-                        yield {"type": "node_completed", "node_id": nid, "result": result}
-                    except Exception as e:
-                        executed.add(nid)
-                        in_progress.discard(nid)
-                        yield {"type": "node_failed", "node_id": nid, "error": str(e)}
+            results = await asyncio.gather(
+                *[self._safe_execute(self.nodes[nid]) for nid in batch],
+                return_exceptions=True,
+            )
+
+            for nid, result in zip(batch, results):
+                node = self.nodes[nid]
+                executed.add(nid)
+                in_progress.discard(nid)
+                if isinstance(result, BaseException):
+                    node.status = NodeStatus.FAILED
+                    node.error = str(result)
+                    failed.add(nid)
+                    yield {"type": "node_failed", "node_id": nid, "error": str(result)}
+                else:
+                    node.status = NodeStatus.COMPLETED
+                    node.result = result
+                    yield {"type": "node_completed", "node_id": nid, "result": result}
 
         yield {"type": "dag_completed", "total_nodes": len(self.nodes)}
 

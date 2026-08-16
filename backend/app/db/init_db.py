@@ -121,6 +121,25 @@ _DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages (session_id, created_at)",
+    """
+    CREATE TABLE IF NOT EXISTS task_states (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(500),
+        status VARCHAR(30),
+        result JSONB,
+        error TEXT,
+        created_at TIMESTAMPTZ,
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        retries INT DEFAULT 0,
+        max_retries INT DEFAULT 2,
+        parent_id VARCHAR(64),
+        children_ids JSONB DEFAULT '[]',
+        metadata JSONB DEFAULT '{}',
+        history JSONB DEFAULT '[]'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_task_states_status ON task_states (status, created_at)",
 ]
 
 

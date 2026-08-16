@@ -6,7 +6,6 @@ from app.core.memory import (
     dedup_facts, get_user_profile, get_profile_summary,
     archive_session,
 )
-from app.core.memory.session import get_or_create_session
 
 router = APIRouter()
 
