@@ -23,3 +23,17 @@ def test_docker_detection_runs():
     """Should not crash regardless of Docker availability."""
     result = is_docker_available()
     assert isinstance(result, bool)
+
+
+from fastapi.testclient import TestClient
+from app.main import app
+
+
+def test_sandbox_status_includes_security_fields():
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/sandbox/status")
+    assert resp.status_code == 200
+    cfg = resp.json()["config"]
+    assert "no_new_privileges" in cfg
+    assert cfg["no_new_privileges"] is True
+    assert "drop_all_capabilities" in cfg

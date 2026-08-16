@@ -43,6 +43,8 @@ async def sandbox_status():
         "config": {
             "network_disabled": SANDBOX_CONFIG.network_disabled,
             "read_only": SANDBOX_CONFIG.read_only_root,
+            "drop_all_capabilities": SANDBOX_CONFIG.drop_all_capabilities,
+            "no_new_privileges": SANDBOX_CONFIG.no_new_privileges,
             "cpu_limit": SANDBOX_CONFIG.cpu_limit,
             "memory_limit": SANDBOX_CONFIG.memory_limit,
             "timeout": SANDBOX_CONFIG.timeout_seconds,
