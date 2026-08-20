@@ -12,9 +12,9 @@
 
 ## 待办（阻塞项）
 
-1. **LLM Key 额度耗尽**：唯一配置的 LongCat 返回 402（Token 额度不足），DeepSeek/DashScope key 为空 → 当前 chat 不可用。建议配置 DASHSCOPE_API_KEY（阿里云百炼：LLM 用 qwen 系列 + embedding 用 text-embedding-v3，一个 key 全解决）或 DEEPSEEK_API_KEY。配好后：更新 VM 上 /opt/nova-agent/.env → `docker compose -f docker-compose.vm.yml up -d` 重建容器。
-2. **Embedding 依赖 DASHSCOPE_API_KEY**：key 为空期间 dense 向量检索一直降级（BM25+graph 两路可用）、知识库上传不可用。配 key 后恢复三路召回。
-3. 次要：token 统计仍是 chunk 计数；git 提交与 GitHub 推送待用户确认。
+1. ~~LLM Key 额度耗尽~~ **已解决（2026-08-20）**：已配置 DASHSCOPE_API_KEY（阿里云 qwen 优先）+ DEEPSEEK_API_KEY 双通道，本机与 VM 均已更新。VM 端到端验证通过：qwen 自主调用 calculator + doc_parser（关键词 AND 匹配命中 NovaTech_Agent_面试题.md），流式回答正常。
+2. ~~Embedding 依赖 DASHSCOPE_API_KEY~~ **已解决**：embedding 连通验证 1024 维正常，dense 向量检索与知识库上传恢复，三路召回完整可用。
+3. 次要：token 统计仍是 chunk 计数。
 
 ---
 
