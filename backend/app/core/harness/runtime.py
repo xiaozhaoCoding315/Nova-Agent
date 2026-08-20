@@ -17,6 +17,7 @@ async def execute_with_harness(
     use_retry: bool = True,
     use_circuit: bool = True,
     fallback: Callable = None,
+    propagate: tuple = (),
     **kwargs
 ) -> Any:
     """
@@ -25,6 +26,10 @@ async def execute_with_harness(
     2. Retry with exponential backoff
     3. Circuit breaker protection
     4. Fallback on total failure
+
+    ``propagate`` lists exception types that must surface to the caller with
+    their original message (e.g. business validation errors) instead of being
+    swallowed by the fallback.
     """
     breaker_name = context.replace(" ", "_")
 
@@ -44,6 +49,8 @@ async def execute_with_harness(
             return await with_timeout(_with_retry(), timeout=timeout, context=context)
         return await _with_retry()
     except Exception as e:
+        if propagate and isinstance(e, propagate):
+            raise
         logger.error(f"{context} failed completely", error=str(e))
         if fallback:
             logger.info(f"Using fallback for {context}")

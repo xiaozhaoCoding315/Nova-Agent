@@ -19,6 +19,47 @@ class OpenAICompatibleLLM(LLMProvider):
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
+    async def astream_with_tools(self, messages: list[dict], tools: list[dict]):
+        """Streamed OpenAI-compatible function calling.
+
+        tool_calls deltas arrive fragmented across chunks; we accumulate them
+        by index and emit one aggregated event before finish, keeping the
+        downstream chat loop simple.
+        """
+        stream = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            stream=True,
+        )
+        acc: dict[int, dict] = {}
+        finish_reason = "stop"
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if delta and delta.content:
+                yield {"type": "content", "content": delta.content}
+            if delta and delta.tool_calls:
+                for tc in delta.tool_calls:
+                    slot = acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            slot["name"] = tc.function.name
+                        if tc.function.arguments:
+                            slot["arguments"] += tc.function.arguments
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+
+        if acc:
+            ordered = [acc[i] for i in sorted(acc)]
+            yield {"type": "tool_calls", "tool_calls": ordered}
+        yield {"type": "finish", "finish_reason": finish_reason}
+
 
 def get_llm() -> LLMProvider:
     providers = []

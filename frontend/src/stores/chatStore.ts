@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Message, RetrievedChunk } from "../types"
+import type { Message, RetrievedChunk, ToolCallEvent } from "../types"
 
 const SESSION_STORAGE_KEY = "nova_session_id"
 
@@ -26,6 +26,8 @@ interface ChatState {
   retrievalResults: RetrievedChunk[]
   addMessage: (msg: Message) => void
   updateLastMessage: (content: string, streaming?: boolean) => void
+  appendToolCall: (tc: ToolCallEvent) => void
+  completeToolCall: (id: string, result: unknown, durationMs: number) => void
   setSessionId: (id: string) => void
   setIsStreaming: (v: boolean) => void
   setRetrievalResults: (results: RetrievedChunk[]) => void
@@ -42,6 +44,27 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({
       messages: s.messages.map((m, i) =>
         i === s.messages.length - 1 ? { ...m, content, streaming } : m
+      ),
+    })),
+  appendToolCall: (tc) =>
+    set((s) => ({
+      messages: s.messages.map((m, i) =>
+        i === s.messages.length - 1
+          ? { ...m, toolCalls: [...(m.toolCalls || []), tc] }
+          : m
+      ),
+    })),
+  completeToolCall: (id, result, durationMs) =>
+    set((s) => ({
+      messages: s.messages.map((m, i) =>
+        i === s.messages.length - 1
+          ? {
+              ...m,
+              toolCalls: (m.toolCalls || []).map((t) =>
+                t.id === id ? { ...t, result, duration_ms: durationMs, done: true } : t
+              ),
+            }
+          : m
       ),
     })),
   setSessionId: (id) => {

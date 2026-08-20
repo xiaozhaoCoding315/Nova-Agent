@@ -42,6 +42,16 @@ export function useSSE() {
             const s = useChatStore.getState()
             const last = s.messages.at(-1)
             if (last) s.updateLastMessage(last.content + data.content, true)
+          } else if (data.type === "tool_call") {
+            useChatStore.getState().appendToolCall({
+              id: data.id,
+              name: data.name,
+              arguments: data.arguments,
+            })
+          } else if (data.type === "tool_result") {
+            useChatStore
+              .getState()
+              .completeToolCall(data.id, data.result, data.duration_ms)
           } else if (data.type === "done") {
             useChatStore.getState().setSessionId(data.session_id)
             const s = useChatStore.getState()

@@ -10,18 +10,19 @@ def test_chat_returns_sse_stream():
     async def fake_retrieve(q, top_k=5):
         return []
 
-    async def fake_stream(messages):
-        yield mock_token
+    class FakePlainLLM:
+        async def astream_with_tools(self, messages, tools):
+            yield {"type": "content", "content": mock_token}
+            yield {"type": "finish", "finish_reason": "stop"}
 
     async def fake_memory(*args, **kwargs):
         return ""
 
     with patch("app.api.v1.chat.retrieve", new=fake_retrieve), \
-         patch("app.api.v1.chat.get_llm") as mock_llm, \
+         patch("app.api.v1.chat.get_llm", return_value=FakePlainLLM()), \
          patch("app.api.v1.chat.add_message", new=AsyncMock()), \
          patch("app.api.v1.chat.assemble_context", new=fake_memory), \
          patch("app.api.v1.chat.check_should_archive", new=AsyncMock(return_value=False)):
-        mock_llm.return_value.astream = fake_stream
         with TestClient(app).stream(
             "POST", "/api/v1/chat/message",
             json={"message": "FastAPI中间件"},

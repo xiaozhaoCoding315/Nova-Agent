@@ -32,6 +32,21 @@ def _execute_many(queries: list[tuple]) -> None:
         conn.commit()
 
 
+def _execute_with_columns(sql: str, params: tuple = None) -> tuple[list, list]:
+    """Execute a read-only query, returning (column_names, rows)."""
+    with psycopg.connect(settings.postgres_dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            columns = [d.name for d in cur.description] if cur.description else []
+            rows = cur.fetchall()
+    return columns, rows
+
+
+async def query_with_columns(sql: str, params: tuple = None) -> tuple[list, list]:
+    """Async wrapper: read-only SQL returning column names + rows."""
+    return await asyncio.to_thread(_execute_with_columns, sql, params)
+
+
 async def query(sql: str, params: tuple = None) -> list:
     """Async wrapper: run read-only SQL query in thread pool."""
     return await asyncio.to_thread(_execute, sql, params)

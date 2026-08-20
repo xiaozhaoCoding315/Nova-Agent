@@ -24,8 +24,10 @@ def test_chat_stream_survives_memory_write_failure():
     async def fake_retrieve(q, top_k=5):
         return []
 
-    async def fake_stream(messages):
-        yield "hi"
+    class FakePlainLLM:
+        async def astream_with_tools(self, messages, tools):
+            yield {"type": "content", "content": "hi"}
+            yield {"type": "finish", "finish_reason": "stop"}
 
     async def fake_memory(*args, **kwargs):
         return ""
@@ -34,11 +36,10 @@ def test_chat_stream_survives_memory_write_failure():
         raise RuntimeError("PG down")
 
     with patch("app.api.v1.chat.retrieve", new=fake_retrieve), \
-         patch("app.api.v1.chat.get_llm") as mock_llm, \
+         patch("app.api.v1.chat.get_llm", return_value=FakePlainLLM()), \
          patch("app.api.v1.chat.add_message", new=failing_write), \
          patch("app.api.v1.chat.assemble_context", new=fake_memory), \
          patch("app.api.v1.chat.check_should_archive", new=AsyncMock(return_value=False)):
-        mock_llm.return_value.astream = fake_stream
         with TestClient(app).stream(
             "POST", "/api/v1/chat/message",
             json={"message": "hi", "session_id": "deg-test-1"},
