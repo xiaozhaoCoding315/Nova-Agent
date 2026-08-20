@@ -1,0 +1,39 @@
+# VM 常驻部署专用：只跑 backend 容器，数据库复用宿主机原生服务
+# （PostgreSQL / Qdrant / Neo4j 已直接运行在虚拟机上，保留既有数据）
+# 用法: docker compose -f docker-compose.vm.yml up -d --build
+name: nova-agent-vm
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_ENV: prod
+      AUTO_INIT_DB: "true"
+      LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-deepseek,dashscope,longcat}
+      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
+      LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.longcat.chat/openai/v1}
+      LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-dashscope}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v3}
+      QDRANT_HOST: host.docker.internal
+      QDRANT_PORT: "6333"
+      POSTGRES_HOST: host.docker.internal
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-novatech}
+      NEO4J_HOST: host.docker.internal
+      NEO4J_PORT: "7687"
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped

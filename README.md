@@ -10,6 +10,9 @@
 ### 四层分层记忆架构
 短期会话记忆 → 长期语义记忆（PostgreSQL，TTL 30~365 天）→ 图谱记忆（Neo4j 实体关系）→ DAG 运行时断点记忆。MD5 + Embedding 双重去重，记忆权重动态衰减模拟遗忘曲线，跨会话持久存储用户历史与偏好。
 
+### Agent Skill 工具集（Function-Calling）
+可扩展 Skill 插件机制：`ToolRegistry` 统一注册与参数校验（JSON Schema），LLM 基于 Function-Calling 自主选择工具，SSE 实时推送 `tool_call` / `tool_result` 事件，前端展示工具调用卡片（工具名 / 入参 / 结果 / 耗时）。内置三个工具——**计算器**（AST 白名单安全求值，杜绝 eval 注入）、**数据库查询**（只读 SELECT、表白名单、强制 LIMIT）、**文档解析**（按名称/关键词定位知识库文档并返回分块预览）。工具执行全程纳入 Harness 容错（30s 超时、指数退避重试、熔断降级），单工具故障不影响对话主链路；Agent 循环最多 4 轮防失控，工具调用全量写入审计日志。
+
 ### 自研 DAG ReAct 执行引擎
 零第三方框架依赖，自研 DAGWorkflow 调度核心。支持 Kahn 拓扑排序、循环检测、异步并行执行、节点重试与异常传递。内置多 LLM 厂商竞速调度与任务自动分解器，状态机完整追踪节点生命周期。
 
@@ -87,54 +90,43 @@ nova-agent/
 
 ### 前置条件
 
-- Python 3.12+
-- Node.js 18+
-- Docker（沙箱功能需要）
-- PostgreSQL + pgvector 扩展
-- Qdrant
-- Neo4j
+- Docker + Docker Compose（一键部署，推荐）
+- 开发模式另需：Python 3.12+、Node.js 18+、PostgreSQL/pgvector、Qdrant、Neo4j 实例
 
-### 后端
+### Docker Compose 一键部署（推荐）
+
+全套服务（PostgreSQL+pgvector / Qdrant / Neo4j / backend+前端）一条命令拉起：
+
+```bash
+cp .env.docker.example .env   # 填入你的 LLM API Key（DeepSeek/DashScope 至少一个）
+docker compose up -d --build  # 构建并启动全部服务
+# 访问 http://localhost:8000
+```
+
+首次启动自动完成幂等初始化：建表、创建 Qdrant collection、Neo4j 约束。数据库已有独立实例时，可改用 `docker-compose.vm.yml`（只跑 backend，`host.docker.internal` 直连宿主机数据库）。
+
+> 说明：Docker 沙箱代码执行功能需要容器内访问 Docker 运行时，compose 部署下该功能自动降级并在 `/sandbox/status` 如实上报，其余功能不受影响。
+
+### 开发模式（本机调试）
+
+后端：
 
 ```bash
 cd backend
-
-# 创建虚拟环境
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# 安装依赖
+.venv\Scripts\activate        # Windows
 pip install -r requirements.txt
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入你的 API Key 和数据库连接信息
-
-# 启动
-python run.py
+cp .env.example .env          # 编辑 .env 填入 API Key 与数据库连接
+python run.py                 # 默认 dev 模式，访问 http://localhost:8000/docs
 ```
 
-### 前端
+前端：
 
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 开发模式启动
-npm run dev
-
-# 生产构建
-npm run build
-```
-
-### Docker
-
-```bash
-cd backend
-docker build -t nova-agent .
-docker run -p 8000:8000 --env-file .env nova-agent
+npm run dev                   # Vite 开发服务器 http://localhost:5173
+npm run build                 # 生产构建到 dist/
 ```
 
 ## API 概览

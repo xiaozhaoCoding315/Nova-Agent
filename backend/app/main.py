@@ -32,6 +32,16 @@ async def _cleanup_loop() -> None:
 async def lifespan(_: FastAPI):
     setup_logging()
     logger.info("NovaTech starting", version="0.1.0")
+    if settings.auto_init_db:
+        # Idempotent schema bootstrap (tables / Qdrant collection / Neo4j
+        # constraints). Failure is logged but never blocks startup — the
+        # harness layer degrades individual features instead.
+        try:
+            from app.db.init_db import init_all
+            result = await init_all()
+            logger.info("db_init_done", **{k: str(v)[:100] for k, v in result.items()})
+        except Exception:
+            logger.exception("db_init_failed_continuing_startup")
     task = asyncio.create_task(_cleanup_loop())
     yield
     task.cancel()

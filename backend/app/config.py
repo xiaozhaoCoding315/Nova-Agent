@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     app_env: str = "dev"
     log_dir: str = "logs"
+    auto_init_db: bool = False  # compose deployments set AUTO_INIT_DB=true
 
     @property
     def llm_priority_list(self) -> list[str]:
