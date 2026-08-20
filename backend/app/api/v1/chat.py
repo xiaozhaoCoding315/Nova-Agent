@@ -63,7 +63,7 @@ async def event_stream(question: str, session_id: str):
         ]
 
     full_response = ""
-    token_count = 0
+    token_count = 0  # 回答字符数（中文字符≈1 token 的近似统计）
     tool_events: list[dict] = []
     tools_spec = tool_registry.to_openai_tools()
 
@@ -75,11 +75,12 @@ async def event_stream(question: str, session_id: str):
 
             async for event in llm.astream_with_tools(msgs, tools_spec):
                 if event["type"] == "content":
-                    token_count += 1
                     round_content += event["content"]
                     yield _sse({"type": "token", "content": event["content"]})
                 elif event["type"] == "tool_calls":
                     pending_calls = event["tool_calls"]
+
+            token_count += len(round_content)
 
             full_response += round_content
 

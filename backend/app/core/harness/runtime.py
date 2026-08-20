@@ -36,7 +36,9 @@ async def execute_with_harness(
     async def _wrapped():
         if use_circuit:
             breaker = get_breaker(breaker_name)
-            return await breaker.call(func, *args, **kwargs)
+            return await breaker.call(
+                func, *args, ignore_exceptions=propagate, **kwargs
+            )
         return await func(*args, **kwargs)
 
     async def _with_retry():

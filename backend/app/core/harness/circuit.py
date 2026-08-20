@@ -20,7 +20,7 @@ class CircuitBreaker:
         self.last_failure_time = 0
         self._lock = asyncio.Lock()
 
-    async def call(self, func, *args, **kwargs):
+    async def call(self, func, *args, ignore_exceptions: tuple = (), **kwargs):
         async with self._lock:
             if self.state == CircuitState.OPEN:
                 if time.time() - self.last_failure_time > self.config.recovery_timeout:
@@ -35,6 +35,11 @@ class CircuitBreaker:
                 self.state = CircuitState.CLOSED
             return result
         except Exception as e:
+            # Business validation errors are not service failures: they must
+            # not count toward tripping the breaker (e.g. an LLM repeatedly
+            # sending invalid tool arguments is normal, not an outage).
+            if ignore_exceptions and isinstance(e, ignore_exceptions):
+                raise
             async with self._lock:
                 self.failure_count += 1
                 self.last_failure_time = time.time()

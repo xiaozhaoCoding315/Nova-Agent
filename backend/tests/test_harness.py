@@ -98,3 +98,31 @@ async def test_execute_with_harness_fallback():
         use_retry=False, fallback=lambda: "fallback_value"
     )
     assert result == "fallback_value"
+
+
+@pytest.mark.asyncio
+async def test_propagated_errors_do_not_trip_breaker():
+    """Business validation errors (propagate) must not count as failures."""
+    import app.core.harness.circuit as circuit_mod
+    circuit_mod._breakers.pop("ut/nobreak", None)
+    calls = 0
+
+    async def rejecting():
+        nonlocal calls
+        calls += 1
+        raise ValueError("invalid arguments")
+
+    # more calls than the failure threshold (5)
+    for _ in range(8):
+        with pytest.raises(ValueError):
+            await execute_with_harness(
+                rejecting, context="ut/nobreak",
+                propagate=(ValueError,), use_retry=False, fallback=None,
+            )
+
+    breaker = circuit_mod.get_breaker("ut/nobreak")
+    assert breaker.state == CircuitState.CLOSED
+    assert breaker.failure_count == 0
+    assert calls == 8  # every call reached the handler
+
+    circuit_mod._breakers.pop("ut/nobreak", None)

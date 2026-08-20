@@ -51,10 +51,10 @@ async def execute_in_sandbox(
         # Write code to file
         filename = "main.py" if language == "python" else f"main.{language}"
         code_path = f"{tmp_dir}/{filename}"
-        with open(code_path, "w") as f:
+        with open(code_path, "w", encoding="utf-8") as f:
             f.write(code)
         if inputs:
-            with open(f"{tmp_dir}/input.txt", "w") as f:
+            with open(f"{tmp_dir}/input.txt", "w", encoding="utf-8") as f:
                 f.write(inputs)
 
         # Build Docker command with security flags
@@ -128,7 +128,7 @@ async def _execute_direct(code: str, language: str, inputs: str, timeout: int) -
     try:
         filename = "main.py" if language == "python" else f"main.{language}"
         filepath = os.path.join(tmp_dir, filename)
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(code)
 
         proc = subprocess.run(
