@@ -9,12 +9,14 @@
 - **Phase 2.1 完成**：docker-compose.yml 全家桶、多阶段 Dockerfile（pip 走清华镜像）、.env.docker.example、AUTO_INIT_DB 幂等初始化。
 - **Phase 2.2 完成**：虚拟机 192.168.150.128 常驻部署（docker-compose.vm.yml，backend 容器经 host.docker.internal 连宿主机原生数据库，保留既有 174 文档数据），局域网可访问 http://192.168.150.128:8000（health OK、前端页面挂载、容器 healthy）。
 - **Phase 3 部分完成**：README 已重写部署章节并补「Agent Skill 工具集」亮点。
+- **Phase 4 完成（开发智能体定位校正）**：code_executor 工具把安全沙箱接进 Agent 循环（LLM 自主写代码→沙箱执行→自我纠错，本机端到端实测：模型遇编码错误自动加 coding header 重试成功）；知识库支持代码文件上传（20+ 扩展名，按函数/类边界分块+语言标识）；新增 error_diagnosis（Python/JVM 堆栈解析+知识库交叉检索）与 json_tool（校验/格式化/路径取值）两个开发型工具；熔断器语义修复（业务校验拒绝不计入失败）、沙箱 UTF-8 编码修复、token 统计真实化。232 测试全过，VM 线上端到端验证通过（一次对话完成素数统计代码执行 + psycopg 报错诊断）。
 
 ## 待办（阻塞项）
 
 1. ~~LLM Key 额度耗尽~~ **已解决（2026-08-20）**：已配置 DASHSCOPE_API_KEY（阿里云 qwen 优先）+ DEEPSEEK_API_KEY 双通道，本机与 VM 均已更新。VM 端到端验证通过：qwen 自主调用 calculator + doc_parser（关键词 AND 匹配命中 NovaTech_Agent_面试题.md），流式回答正常。
 2. ~~Embedding 依赖 DASHSCOPE_API_KEY~~ **已解决**：embedding 连通验证 1024 维正常，dense 向量检索与知识库上传恢复，三路召回完整可用。
-3. 次要：token 统计仍是 chunk 计数。
+3. ~~token 统计仍是 chunk 计数~~ **已解决**（Phase 4）。
+4. 剩余可选：会话历史前端恢复（后端接口已有）、流式取消按钮、GitHub Actions CI、演示 GIF。
 
 ---
 
