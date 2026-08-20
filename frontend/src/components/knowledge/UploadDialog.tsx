@@ -73,8 +73,12 @@ export default function UploadDialog({ open, onClose }: Props) {
               >
                 <FileText size={40} className="mx-auto mb-3 text-cyber-cyan" />
                 <p className="text-cyber-text text-sm">拖拽文件到这里,或点击选择</p>
-                <p className="text-cyber-textDim text-xs mt-2">支持 .md / .txt,最大 5MB</p>
-                <input ref={inputRef} type="file" accept=".md,.markdown,.txt" className="hidden"
+                <p className="text-cyber-textDim text-xs mt-2">
+                  文档 .md / .txt,代码 .py / .java / .ts / .go 等,最大 5MB
+                </p>
+                <input ref={inputRef} type="file"
+                  accept=".md,.markdown,.txt,.py,.java,.ts,.tsx,.js,.jsx,.go,.rs,.cpp,.cc,.c,.h,.hpp,.cs,.rb,.php,.kt,.swift,.sql,.sh,.yaml,.yml,.json,.toml"
+                  className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
               </div>
             )}
@@ -83,6 +87,7 @@ export default function UploadDialog({ open, onClose }: Props) {
               <div className="py-10 text-center">
                 <div className="w-10 h-10 border-2 border-cyber-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                 <p className="text-cyber-textDim text-sm">正在处理:切片 → 向量化 → 索引...</p>
+                <p className="text-cyber-textDim/60 text-xs mt-1">代码文件按函数/类边界智能分块</p>
               </div>
             )}
 

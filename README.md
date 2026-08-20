@@ -11,7 +11,7 @@
 短期会话记忆 → 长期语义记忆（PostgreSQL，TTL 30~365 天）→ 图谱记忆（Neo4j 实体关系）→ DAG 运行时断点记忆。MD5 + Embedding 双重去重，记忆权重动态衰减模拟遗忘曲线，跨会话持久存储用户历史与偏好。
 
 ### Agent Skill 工具集（Function-Calling）
-可扩展 Skill 插件机制：`ToolRegistry` 统一注册与参数校验（JSON Schema），LLM 基于 Function-Calling 自主选择工具，SSE 实时推送 `tool_call` / `tool_result` 事件，前端展示工具调用卡片（工具名 / 入参 / 结果 / 耗时）。内置三个工具——**计算器**（AST 白名单安全求值，杜绝 eval 注入）、**数据库查询**（只读 SELECT、表白名单、强制 LIMIT）、**文档解析**（按名称/关键词定位知识库文档并返回分块预览）。工具执行全程纳入 Harness 容错（30s 超时、指数退避重试、熔断降级），单工具故障不影响对话主链路；Agent 循环最多 4 轮防失控，工具调用全量写入审计日志。
+可扩展 Skill 插件机制：`ToolRegistry` 统一注册与参数校验（JSON Schema），LLM 基于 Function-Calling 自主选择工具，SSE 实时推送 `tool_call` / `tool_result` 事件，前端展示工具调用卡片（工具名 / 入参 / 结果 / 耗时）。内置六个工具——**代码沙箱执行**（LLM 自主编写 Python 在禁网只读容器中运行验证，接通 Agent 循环与安全沙箱两大子系统）、**计算器**（AST 白名单求值，杜绝 eval 注入）、**数据库查询**（只读 SELECT、表白名单、强制 LIMIT）、**文档解析**（关键词 AND 匹配定位知识库文档）、**报错诊断**（解析 Python/JVM 堆栈，提取错误类型与位置并交叉检索知识库）、**JSON 处理**（校验/格式化/路径取值）。工具执行全程纳入 Harness 容错（30s 超时、指数退避重试、熔断降级，业务校验拒绝不计入熔断统计），单工具故障不影响对话主链路；Agent 循环最多 4 轮防失控，工具调用全量写入审计日志。知识库支持代码文件上传（.py/.java/.ts/.go 等 20+ 扩展名），按函数/类边界智能分块并保留语言标识。
 
 ### 自研 DAG ReAct 执行引擎
 零第三方框架依赖，自研 DAGWorkflow 调度核心。支持 Kahn 拓扑排序、循环检测、异步并行执行、节点重试与异常传递。内置多 LLM 厂商竞速调度与任务自动分解器，状态机完整追踪节点生命周期。
@@ -33,7 +33,7 @@
 | **LLM 接入** | OpenAI 兼容接口 · 多厂商竞速调度 |
 | **容器化** | Docker |
 | **状态管理** | Zustand |
-| **3D 可视化** | Three.js · React Three Fiber |
+| **粒子背景** | Three.js · React Three Fiber |
 
 ## 项目结构
 

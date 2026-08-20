@@ -18,13 +18,21 @@ async def list_knowledge():
     return {"documents": await _list_docs()}
 
 
+_ALLOWED_EXTS = (
+    '.md', '.markdown', '.txt',
+    '.py', '.java', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs',
+    '.cpp', '.cc', '.c', '.h', '.hpp', '.cs', '.rb', '.php', '.kt', '.swift',
+    '.sql', '.sh', '.yaml', '.yml', '.json', '.toml',
+)
+
+
 @router.post("/knowledge/upload")
 async def upload_knowledge(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
-    if not file.filename.endswith(('.md', '.markdown', '.txt')):
-        raise HTTPException(status_code=400, detail="Only .md/.txt supported")
-    raw = (await file.read()).decode("utf-8")
+    if not file.filename.lower().endswith(_ALLOWED_EXTS):
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    raw = (await file.read()).decode("utf-8", errors="replace")
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 5MB)")
     try:

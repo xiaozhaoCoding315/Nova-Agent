@@ -4,7 +4,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 from app.config import settings
 from app.core.embedding.embedder import get_embedder
-from app.utils.text_splitter import clean_markdown, chunk_text
+from app.utils.text_splitter import clean_markdown, chunk_document
 from app.utils.entity_extractor import extract_entities, extract_relationships
 from app.db.neo4j import upsert_entity, upsert_relationship, init_graph
 from app.db import transaction
@@ -14,12 +14,17 @@ _embedder = get_embedder()
 
 
 async def process_and_index(filename: str, raw_text: str) -> dict:
-    """Full pipeline: clean → chunk → embed → index to Qdrant, PG, Neo4j."""
-    # 1. Clean
+    """Full pipeline: clean → chunk → embed → index to Qdrant, PG, Neo4j.
+
+    Code files (by extension) go through the declaration-aware chunker and
+    keep their language tag in metadata; prose stays on the markdown chunker.
+    """
+    # 1. Clean (markdown cleaning is a no-op for code semantics, but
+    # normalises excessive blank lines)
     clean = clean_markdown(raw_text)
 
-    # 2. Chunk
-    chunks = chunk_text(clean, source=filename)
+    # 2. Chunk — language-aware dispatch
+    chunks = chunk_document(clean, source=filename)
 
     # 3. Embed all chunk contents
     texts = [c.content for c in chunks]
@@ -33,14 +38,14 @@ async def process_and_index(filename: str, raw_text: str) -> dict:
             payload={
                 "content": chunk.content,
                 "source": chunk.source,
-                "chunk_index": chunk.metadata["chunk_index"],
+                "chunk_index": chunk.metadata.get("chunk_index", i),
             }
         )
         for i, chunk in enumerate(chunks)
     ]
     _qdrant.upsert(collection_name="novatech_docs", points=points)
 
-    # 5. Store text in PostgreSQL
+    # 5. Store text in PostgreSQL (metadata carries language for code files)
     queries = [
         (
             "INSERT INTO documents (id, content, source, metadata) VALUES (%s, %s, %s, %s)",

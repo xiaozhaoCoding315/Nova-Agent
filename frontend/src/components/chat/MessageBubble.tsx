@@ -3,8 +3,11 @@ import type { Message, ToolCallEvent } from "../../types"
 
 const TOOL_LABELS: Record<string, string> = {
   calculator: "计算器",
+  code_executor: "代码沙箱执行",
   db_query: "数据库查询",
   doc_parser: "文档解析",
+  error_diagnosis: "报错诊断",
+  json_tool: "JSON 处理",
 }
 
 function ToolCallCard({ tc }: { tc: ToolCallEvent }) {
