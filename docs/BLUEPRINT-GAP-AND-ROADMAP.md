@@ -28,6 +28,8 @@
 
 > **P4.1 进展更新（2026-10-23）**：预览部署扩展到 Node 与 fullstack（`nova.yaml preview.runtime/command/port/health` 覆盖），新增 `PREVIEW_TTL_MINUTES` 自动回收；Python `todo-api`、Node `samples/node-app`、fullstack-contract 均真实部署健康检查 200。域名反代/HTTPS 与 Node 依赖自动安装仍待后续。
 
+> **P4.2 进展更新（2026-10-23）**：契约驱动 Builder 完成。`stack_mode` 支持 Python/fullstack；全栈先生成 OpenAPI 契约，再确定性生成 TypeScript API Explorer 与契约测试，未落盘运行 Python+Node+契约双栈 Gate（失败回喂修复 1 次），Gate 未通过禁止写入。真实模型生成任务清单项目 23 文件、7 步 Gate 全绿，磁盘复验通过；后端 **238 passed**。React/Vite 模板与字段级契约校验仍待后续。
+
 ---
 
 ## 0. 先给结论

@@ -298,6 +298,28 @@ export function BuilderPanel({
               {proposal.notes}
             </p>
           )}
+          {proposal.gate && (
+            <div className={`mt-2 rounded-lg border px-2.5 py-2 ${proposal.gate.status === 'passed' ? 'border-ok/30 bg-ok/5' : 'border-err/30 bg-err/5'}`}>
+              <div className="flex items-center gap-2">
+                <Badge tone={proposal.gate.status === 'passed' ? 'ok' : 'err'}>
+                  双栈 Gate {proposal.gate.status}
+                </Badge>
+                <span className="text-[10.5px] text-dim">
+                  exit {proposal.gate.exit_code} · {proposal.gate.stack || '—'}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {(proposal.gate.steps || []).map((step) => (
+                  <span key={step.name} className="rounded bg-raised px-1.5 py-0.5 text-[10.5px] text-dim">
+                    {step.name}: {step.status}
+                  </span>
+                ))}
+              </div>
+              {proposal.gate.status !== 'passed' && (
+                <p className="mt-1 text-[11px] text-err">Gate 未通过时不能写入项目；请退回重做。</p>
+              )}
+            </div>
+          )}
           <div className="mt-2 space-y-1">
             {proposal.files.map((file) => {
               const open = openFiles[file.path]

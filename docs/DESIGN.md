@@ -1019,3 +1019,34 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - TTL 清理依赖小时级维护循环，最坏延迟约 1 小时。
 - 预览使用 bridge 网络以支持端口映射；未做网络域名 allowlist。
 - 临时工作区在正常 teardown/TTL 清理时删除；进程崩溃仍可能残留。
+
+---
+
+## 35. v4.1 增量：P4.2 契约驱动 Builder（全栈）
+
+### 35.1 模式与数据
+- `repos.stack_mode`（迁移 7）：`python`（原行为）或 `fullstack`。
+- `POST /repos/builder` 接受 `stack`；前端「新建项目」增加模板选择。
+- 全栈计划要求单一契约源 `contracts/openapi.json`，后端 FastAPI 与前端类型都由它派生。
+
+### 35.2 生成流程
+1. Planner 生成全栈方案（契约、后端、双栈里程碑）。
+2. 文件生成只要求 LLM 输出 OpenAPI 契约 + FastAPI 后端 + pytest + 文档，不生成前端。
+3. 服务端校验契约（OpenAPI 3.x + paths），用 `nova-node` 的 `openapi-typescript` 生成 `frontend/src/lib/api-schema.d.ts`。
+4. 确定性生成 TypeScript API Explorer：根 `package.json`/`tsconfig.json`、`frontend/src/endpoints.ts`（`satisfies keyof paths`）、`app.ts`、契约一致性测试、lint/build 脚本。
+5. 追加确定性 `tests/test_contract.py`：校验契约中的 path/method 都在 FastAPI OpenAPI 中存在。
+6. 在**未落盘**的 overrides 上运行 Python + Node + 契约 Gate；失败时把失败摘要与当前契约/后端回喂，最多修复 1 次。
+7. 提案保存 Gate 证据与修复次数；Gate 未通过的提案禁止写入，需要退回重做。
+
+### 35.3 验证记录（2026-10-23）
+- 真实模型生成「任务清单 API」全栈项目：23 个文件；双栈 Gate **7 步全部 passed**（Python 语法/单测 + Node lint/tsc/test/build + 契约检查）。
+- 将提案写入磁盘后再次运行验证：仍为 **passed**，stack=fullstack，image=mixed。
+- 修复循环验证：一次 Gate 失败后自动回喂，最多 1 次；若仍失败则提案保持 review 且 apply 被阻止。
+- 后端 `pytest`：**238 passed**；ruff 通过；前端构建与契约检查通过。
+
+### 35.4 已知边界
+- 全栈前端是**无框架 TypeScript API Explorer**（可离线构建），不是 React/Vite 脚手架；React/Vite 模板待后续。
+- 生成质量受模型影响；Gate 失败后需要退回重做，当前只自动修复 1 次。
+- 契约一致性测试只校验 path/method 存在，不校验字段级 schema；前端类型由契约生成，后端 Pydantic 字段由 Gate 测试间接保障。
+- 全栈 Builder 依赖 `nova-builder` / `nova-node` 镜像；依赖安装不在生成阶段自动执行。
+- 仍为“提案 → 批准 → 写入”，不会自动部署；预览需管理员手动触发。

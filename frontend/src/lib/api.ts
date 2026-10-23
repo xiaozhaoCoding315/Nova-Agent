@@ -76,8 +76,8 @@ export const api = {
       return request<Repo>('/repos/upload', { method: 'POST', body: form })
     },
     importGit: (gitUrl: string, name?: string) => request<Repo>('/repos/git', json({ git_url: gitUrl, name })),
-    createBuilder: (name: string, requirements: string, rules?: string) =>
-      request<Repo>('/repos/builder', json({ name, requirements, rules })),
+    createBuilder: (name: string, requirements: string, rules?: string, stack: 'python' | 'fullstack' = 'python') =>
+      request<Repo>('/repos/builder', json({ name, requirements, rules, stack })),
     getPlan: (id: string) => request<BuilderPlanResponse>(`/repos/${id}/plan`),
     regeneratePlan: (id: string) =>
       request<{ ok: boolean }>(`/repos/${id}/plan/generate`, { method: 'POST' }),

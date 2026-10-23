@@ -74,6 +74,7 @@ _DDL = [
         status VARCHAR(20) DEFAULT 'pending',
         error TEXT,
         stats JSONB DEFAULT '{}',
+        stack_mode VARCHAR(20) DEFAULT 'python',
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
     )
@@ -81,6 +82,7 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_repos_user ON repos (user_id, created_at DESC)",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS brain JSONB DEFAULT '{}'::jsonb",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS kind VARCHAR(16) DEFAULT 'import'",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS stack_mode VARCHAR(20) DEFAULT 'python'",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS brief TEXT",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS rules TEXT",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS plan JSONB",
@@ -535,6 +537,9 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         """,
         "CREATE INDEX IF NOT EXISTS idx_deployments_user ON deployments (user_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_deployments_repo ON deployments (repo_id, created_at DESC)",
+    ]),
+    (7, [
+        "ALTER TABLE repos ADD COLUMN IF NOT EXISTS stack_mode VARCHAR(20) DEFAULT 'python'",
     ]),
 ]
 

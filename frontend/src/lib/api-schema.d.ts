@@ -1351,6 +1351,12 @@ export interface components {
             requirements: string;
             /** Rules */
             rules?: string | null;
+            /**
+             * Stack
+             * @default python
+             * @enum {string}
+             */
+            stack: "python" | "fullstack";
         };
         /** BuilderFeedback */
         BuilderFeedback: {

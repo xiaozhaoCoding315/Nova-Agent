@@ -62,6 +62,7 @@ class BuilderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     requirements: str = Field(min_length=10, max_length=8000)
     rules: Optional[str] = Field(default=None, max_length=4000)
+    stack: Literal["python", "fullstack"] = "python"
 
 
 class BuilderFeedback(BaseModel):

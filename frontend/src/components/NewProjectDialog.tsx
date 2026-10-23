@@ -16,6 +16,7 @@ export function NewProjectDialog({
   const [name, setName] = useState('')
   const [requirements, setRequirements] = useState('')
   const [rules, setRules] = useState('')
+  const [stack, setStack] = useState<'python' | 'fullstack'>('python')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { createBuilder } = useRepos()
@@ -24,6 +25,7 @@ export function NewProjectDialog({
     setName('')
     setRequirements('')
     setRules('')
+    setStack('python')
     setBusy(false)
     setError(null)
   }
@@ -33,7 +35,7 @@ export function NewProjectDialog({
     setBusy(true)
     setError(null)
     try {
-      const repo = await createBuilder(name.trim(), requirements.trim(), rules.trim() || undefined)
+      const repo = await createBuilder(name.trim(), requirements.trim(), rules.trim() || undefined, stack)
       reset()
       onClose()
       onCreated(repo.id)
@@ -48,8 +50,27 @@ export function NewProjectDialog({
       <div className="space-y-3">
         <p className="text-[12px] leading-relaxed text-dim">
           Nova 会先给出结构化方案（技术栈 / 目录 / 数据模型 / API / 里程碑），你确认后生成完整项目文件；代码以提案形式展示，批准后才会写入工作区并建立索引。
-          当前 MVP 支持 Python 后端（FastAPI + SQLite + pytest）。
+          Python 模板生成 FastAPI 后端；全栈模板先生成 OpenAPI 契约，再生成 FastAPI 后端与 TypeScript 前端，并通过双栈 Gate。
         </p>
+        <div>
+          <label className="mb-1 block text-[12px] text-dim">项目模板</label>
+          <div className="flex gap-2">
+            {([
+              ['python', 'Python 后端', 'FastAPI + SQLite + pytest'],
+              ['fullstack', '全栈契约', 'OpenAPI + FastAPI + TS 前端'],
+            ] as const).map(([key, label, hint]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStack(key)}
+                className={`flex-1 rounded-lg border px-3 py-2 text-left ${stack === key ? 'border-accent bg-accentSoft/25' : 'border-edge hover:border-accentSoft'}`}
+              >
+                <p className="text-[12.5px] font-medium">{label}</p>
+                <p className="mt-0.5 text-[10.5px] text-dim">{hint}</p>
+              </button>
+            ))}
+          </div>
+        </div>
         <div>
           <label className="mb-1 block text-[12px] text-dim">项目名称</label>
           <input

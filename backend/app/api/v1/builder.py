@@ -48,10 +48,10 @@ async def create_builder_project(body: BuilderCreate, user: dict = Depends(get_c
     root = Path(settings.repos_dir) / repo_id
     root.mkdir(parents=True, exist_ok=True)
     await execute(
-        "INSERT INTO repos (id, user_id, name, source, root_path, status, kind, brief, rules) "
-        "VALUES (%s, %s, %s, %s, %s, 'planning', 'builder', %s, %s)",
+        "INSERT INTO repos (id, user_id, name, source, root_path, status, kind, stack_mode, brief, rules) "
+        "VALUES (%s, %s, %s, %s, %s, 'planning', 'builder', %s, %s, %s)",
         (repo_id, user["id"], body.name.strip(), f"builder:{body.name.strip()}",
-         str(root), body.requirements, body.rules or ""),
+         str(root), body.stack, body.requirements, body.rules or ""),
     )
     await enqueue_builder_plan(repo_id, user_id=user["id"])
     return {

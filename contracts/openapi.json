@@ -278,6 +278,15 @@
               }
             ],
             "title": "Rules"
+          },
+          "stack": {
+            "default": "python",
+            "enum": [
+              "python",
+              "fullstack"
+            ],
+            "title": "Stack",
+            "type": "string"
           }
         },
         "required": [

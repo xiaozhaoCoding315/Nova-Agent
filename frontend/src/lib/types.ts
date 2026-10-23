@@ -229,6 +229,7 @@ export type BuilderProposal = {
   files: { path: string; content: string }[]
   notes?: string
   feedback?: string
+  gate?: VerifyResult | null
 }
 
 export type VerifyStep = {

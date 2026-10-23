@@ -9,7 +9,7 @@ type RepoState = {
   refresh: () => Promise<void>
   uploadZip: (file: File) => Promise<void>
   importGit: (url: string) => Promise<void>
-  createBuilder: (name: string, requirements: string, rules?: string) => Promise<Repo>
+  createBuilder: (name: string, requirements: string, rules?: string, stack?: 'python' | 'fullstack') => Promise<Repo>
   remove: (id: string) => Promise<void>
   reindex: (id: string) => Promise<void>
   clearError: () => void
@@ -55,10 +55,10 @@ export const useRepos = create<RepoState>((set, get) => ({
     }
   },
 
-  createBuilder: async (name, requirements, rules) => {
+  createBuilder: async (name, requirements, rules, stack = 'python') => {
     set({ error: null })
     try {
-      const repo = await api.repos.createBuilder(name, requirements, rules)
+      const repo = await api.repos.createBuilder(name, requirements, rules, stack)
       set((s) => ({ repos: [repo, ...s.repos] }))
       return repo
     } catch (err) {
