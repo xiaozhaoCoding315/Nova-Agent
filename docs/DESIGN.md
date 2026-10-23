@@ -729,7 +729,7 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 ### 25.4 已知边界
 - 前端尚未全面改为引用 `components["schemas"]`，当前保留手写类型别名；逐域迁移在 P2.2/P2.3。
 - OpenAPI 中的 `dict` 字段仍会生成较宽松的 TS 类型（如 change proposal 的 `tasks`）。
-- 契约 Gate（目标仓库）尚未接入；Node 沙箱已在 v3.3 完成。
+- 契约 Gate 已在 v3.4 接入；Node 沙箱在 v3.3 完成。
 
 ---
 
@@ -775,6 +775,37 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 
 ### 27.4 已知边界
 - Node 依赖安装只支持仓库根目录 `package.json`；monorepo 子包、workspace 多包待扩展。
-- `nova-node` 当前预装 `tsc`，未预装 `openapi-typescript` / diffutils；目标仓库契约 Gate 在 P2.3 接入时补齐。
-- `/repos/{id}/verify` 仍是同步请求；改 Job 在 P2.3。
-- 变更执行器已自动复用 Node Gate，但尚未用真实混合仓库跑完整变更。
+- `nova-node` 已预装 `tsc` 与 `openapi-typescript`；契约比较用 Node 脚本，不依赖 diffutils。
+- `/repos/{id}/verify` 已改为后台 Job；长步骤之间的取消生效，单个 Docker 步骤内取消依赖容器清理。
+- 变更执行器已自动复用 Node Gate 与契约步骤，但尚未用真实混合仓库跑完整变更。
+
+---
+
+## 28. v3.4 增量：P2.3 verify Job + 目标仓库契约 Gate
+
+### 28.1 验证后台化
+- 新增 `verify` Job handler：加载仓库与用户、运行 `run_verification`、写入 `repos.last_check`；验证失败时 Job 失败但证据仍落库。
+- `POST /repos/{id}/verify` 改为入队并返回 `{ok, job_id}`；`GET /repos/{id}/verify` 返回上次结果。
+- 工作区验证按钮轮询 `/jobs/{id}`，显示进度、步骤与取消；完成后自动刷新结果与契约面板。
+
+### 28.2 契约 Gate
+- 新增 `core/contracts/service.py`：
+  - 自动发现 `contracts/openapi.yaml|yml|json`、根目录 `openapi.*`；
+  - 支持 `nova.yaml` 覆盖 `contract.source` / `contract.target`；
+  - 默认 target：`frontend/src/lib/api-schema.d.ts`、`web/src/lib/api-schema.d.ts`、`src/lib/api-schema.d.ts`。
+- Node 镜像内执行 `openapi-typescript <source> -o /tmp/nova-contract.d.ts`，再用 Node 脚本与 committed target 逐字节比较；漂移输出 `contract drift` 并退出 1。
+- 契约步骤作为 Profile 的必需步骤加入；没有契约源时明确跳过，不伪装通过。
+- `GET /repos/{id}/contract` 返回 source/target、文件存在性与最近检查结果；工作区新增「契约」页签。
+
+### 28.3 验证记录（2026-10-23）
+- 后端 `pytest`：**200 passed**；前端构建通过；`contract:check` 通过。
+- 真实契约样例：`contracts/openapi.json` + committed `frontend/src/lib/api-schema.d.ts` → 契约检查 passed。
+- 手动追加一行 target 漂移 → 契约检查 failed（exit 1，输出含 `contract drift`）；恢复后重新 passed。
+- verify Job 端到端：入队 → `succeeded` → `repos.last_check` 写入 `contracts/openapi.json → api-schema.d.ts` 的 passed 步骤。
+- 浏览器验证工作区「契约」页签：source/target、最近检查与 `contract ok` 输出均正常；验证按钮显示进度并最终「验证通过」。
+
+### 28.4 已知边界
+- Gate 只读取已提交的契约与 target，不自动从运行中的 FastAPI 导出；契约刷新属于开发者/CI 动作。
+- 契约源与 target 必须在仓库内；monorepo 子包仍按根目录处理。
+- 前端契约面板是只读状态展示；从面板生成 target 的写操作尚未提供。
+- 真实混合 Python + Node 变更任务尚未端到端回归。

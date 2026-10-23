@@ -140,6 +140,47 @@ async def _change_execute(ctx: JobContext) -> dict:
     return result
 
 
+async def _verify(ctx: JobContext) -> dict:
+    import json
+
+    from app.core.indexing.pipeline import get_repo
+    from app.core.jobs.models import JobCanceled
+    from app.core.verify.service import run_verification
+    from app.db import execute, query
+
+    repo_id = str(ctx.payload["repo_id"])
+    user_id = int(ctx.job.user_id or ctx.payload.get("user_id") or 0)
+    await ctx.check_cancel()
+    await ctx.update(progress=0.05, step="运行验证")
+    repo = await get_repo(repo_id)
+    if not repo:
+        raise JobFailed("仓库不存在")
+    rows = await query("SELECT id, username, role FROM users WHERE id = %s", (user_id,))
+    if not rows:
+        raise JobFailed("验证归属账号不存在")
+    user = {"id": rows[0][0], "username": rows[0][1], "role": rows[0][2]}
+    try:
+        result = await run_verification(repo, user)
+    except JobCanceled:
+        raise
+    await execute(
+        "UPDATE repos SET last_check = %s, updated_at = now() WHERE id = %s",
+        (json.dumps(result, ensure_ascii=False), repo_id),
+    )
+    if result.get("status") == "failed":
+        raise JobFailed("验证未通过，请查看步骤输出")
+    await ctx.update(progress=0.98, step="验证完成")
+    return {
+        "repo_id": repo_id,
+        "status": result.get("status"),
+        "stack": result.get("stack"),
+        "steps": [
+            {"name": step.get("name"), "status": step.get("status"), "exit_code": step.get("exit_code")}
+            for step in result.get("steps", [])
+        ],
+    }
+
+
 def register_all(runner) -> None:
     """Idempotently register the built-in handlers."""
     if not runner.has("index"):
@@ -152,6 +193,8 @@ def register_all(runner) -> None:
         runner.register("builder_files", _builder_files, concurrency=1)
     if not runner.has("session_summary"):
         runner.register("session_summary", _session_summary, concurrency=2)
+    if not runner.has("verify"):
+        runner.register("verify", _verify, concurrency=1)
     if not runner.has("change_spec"):
         runner.register("change_spec", _change_spec, concurrency=1)
     if not runner.has("change_plan"):

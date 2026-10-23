@@ -16,6 +16,7 @@
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。MVP 支持 Python 后端（FastAPI + SQLite + pytest）。 |
+| **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
 | **变更工作流（SPEC → 计划 → Gate → 审查 → 应用）** | 用自然语言提功能/重构需求：起草 SPEC（目标/In-Out/接口/验收）→ 人工冻结 → 拆成带依赖和可判定验收的任务 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
 
 ## 解决什么问题
@@ -148,7 +149,8 @@ npm run dev                   # http://localhost:5173
 | `POST /api/v1/changes` · `GET /changes` `/{id}` · `PATCH /changes/{id}` | 创建变更（自动起草 SPEC）/ 列表 / 详情 / 编辑 SPEC |
 | `POST /changes/{id}/approve` · `/plan` · `/plan/approve` · `/execute` | 冻结 SPEC / 生成计划 / 批准计划 / 执行计划 |
 | `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
-| `POST /api/v1/repos/{id}/verify` · `GET .../verify` | 栈感知真实验证（语法 / pytest / 可选 lint / 类型检查，逐项结果）/ 查看上次结果 |
+| `POST /api/v1/repos/{id}/verify` · `GET .../verify` | **异步入队**多栈验证（Python/Node/契约，逐项结果）/ 查看上次结果 |
+| `GET /api/v1/repos/{id}/contract` | 契约源/目标、文件存在性与最近一次契约检查结果 |
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
@@ -247,7 +249,7 @@ cd frontend && npm run contract:check
 - 沙箱执行支持 **Python 与 Node**：`nova-sandbox` 用于片段，`nova-builder` 预装 fastapi/pytest 等，`nova-node` 提供 Node 20 + tsc；Java/Go 仍只做静态分析
 - 联网装依赖默认关闭（`SANDBOX_ALLOW_NETWORK=false`），开启后仅管理员可用；Python 依赖在 `nova-deps-<repo>` 卷，Node 依赖在 `nova-node-deps-<repo>` 卷
 - 影响分析是**静态分析**（导入图 + 符号引用），不是编译器级调用图
-- 验证 profile 覆盖 **Python 与 Node**（Python: compileall/pytest/可选 ruff/mypy；Node: lint/tsc/test/build）；目标仓库的契约 Gate 尚未接入（P2.3）
+- 验证 profile 覆盖 **Python 与 Node**（Python: compileall/pytest/可选 ruff/mypy；Node: lint/tsc/test/build）；目标仓库的契约 Gate 已接入，但要求仓库提交 `contracts/openapi.*` 与生成的前端类型，不自动从运行中的 FastAPI 导出
 - Node 依赖安装目前只支持仓库根目录 `package.json`，monorepo 子包与锁文件多包场景后续扩展
 - 红-绿任务面向 **Python/pytest** 仓库效果最好；绿阶段跑全量测试，补丁需人工批准
 - Reviewer 是一次结构化只读审查，不是多智能体辩论；它的结论作为证据补充，不替代人工审批
@@ -255,8 +257,8 @@ cd frontend && npm run contract:check
 - 账号体系为 admin/demo 两级，不开放自助注册
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；未初始化 Git 的仓库不会自动提交
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
-- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node，但契约步骤与每任务独立分支/worktree 尚未接入
-- 契约生成已接入（OpenAPI → TS），但前端仍保留手写 UI 类型别名；逐域迁移与契约 Gate 属于 P2 后续
+- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查，但每任务独立分支/worktree 尚未接入
+- 契约生成已接入（OpenAPI → TS），契约 Gate 已能拦截目标仓库漂移；前端仍保留手写 UI 类型别名，逐域迁移仍在进行
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 接入属于 P2 后续
 
 ## License

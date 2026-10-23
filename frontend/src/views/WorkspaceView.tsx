@@ -1,11 +1,13 @@
 import clsx from 'clsx'
 import {
-  CheckCircle2, FilePlus2, FlaskConical, GitBranch, Radar, RefreshCw, Sparkles, Trash2, Waypoints, XCircle,
+  CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw,
+  Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
 import { BuilderPanel } from '../components/BuilderPanel'
 import { CodeViewer } from '../components/CodeViewer'
+import { ContractPanel } from '../components/ContractPanel'
 import { FileTree } from '../components/FileTree'
 import { GitPanel } from '../components/GitPanel'
 import { ImpactPanel } from '../components/ImpactPanel'
@@ -13,7 +15,7 @@ import { ImportDialog } from '../components/ImportDialog'
 import { NewProjectDialog } from '../components/NewProjectDialog'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { FileNode, Repo, RepoStatus, VerifyResult } from '../lib/types'
+import type { FileNode, Job, Repo, RepoStatus, VerifyResult } from '../lib/types'
 import { useRepos } from '../stores/repos'
 
 const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
@@ -113,11 +115,13 @@ export function WorkspaceView() {
   const [treeLoading, setTreeLoading] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [treeError, setTreeError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'git'>('code')
+  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'git'>('code')
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [verifyOpen, setVerifyOpen] = useState(false)
+  const [verifyJobId, setVerifyJobId] = useState<string | null>(null)
+  const [verifyJob, setVerifyJob] = useState<Job | null>(null)
 
   useEffect(() => {
     void refresh()
@@ -163,13 +167,16 @@ export function WorkspaceView() {
   useEffect(() => {
     if (!selected || selected.status !== 'ready') {
       setVerifyResult(null)
+      setVerifyJob(null)
+      setVerifyJobId(null)
+      setVerifyBusy(false)
       return
     }
     let cancelled = false
     api.repos
       .lastVerify(selected.id)
       .then((result) => {
-        if (!cancelled && result && result.status) setVerifyResult(result as VerifyResult)
+        if (!cancelled) setVerifyResult(result && result.status ? result : null)
       })
       .catch(() => {
         /* no previous verification */
@@ -179,19 +186,61 @@ export function WorkspaceView() {
     }
   }, [selected])
 
+  useEffect(() => {
+    if (!verifyJobId || !selected) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const job = await api.jobs.get(verifyJobId)
+        if (cancelled) return
+        setVerifyJob(job)
+        if (!['succeeded', 'failed', 'canceled'].includes(job.status)) return
+        setVerifyBusy(false)
+        setVerifyJobId(null)
+        if (job.status === 'failed') setVerifyError(job.error || '验证未通过')
+        if (job.status === 'canceled') setVerifyError('验证已取消')
+        const result = await api.repos.lastVerify(selected.id)
+        if (!cancelled && result && result.status) {
+          setVerifyResult(result)
+          setVerifyOpen(job.status !== 'succeeded' || result.status !== 'passed')
+        }
+        void refresh()
+      } catch (err) {
+        if (cancelled) return
+        setVerifyError(err instanceof ApiError ? err.message : '验证状态获取失败')
+        setVerifyBusy(false)
+        setVerifyJobId(null)
+      }
+    }
+    void tick()
+    const timer = setInterval(tick, 1500)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifyJobId, selected?.id])
+
   const runVerify = async () => {
-    if (!selected) return
+    if (!selected || verifyBusy) return
     setVerifyBusy(true)
     setVerifyError(null)
+    setVerifyJob(null)
     try {
-      const result = await api.repos.verify(selected.id)
-      setVerifyResult(result)
-      setVerifyOpen(result.status !== 'passed')
-      void refresh()
+      const queued = await api.repos.verify(selected.id)
+      setVerifyJobId(queued.job_id)
     } catch (err) {
       setVerifyError(err instanceof ApiError ? err.message : '验证失败')
-    } finally {
       setVerifyBusy(false)
+    }
+  }
+
+  const cancelVerify = async () => {
+    if (!verifyJobId) return
+    try {
+      await api.jobs.cancel(verifyJobId)
+    } catch (err) {
+      setVerifyError(err instanceof ApiError ? err.message : '取消失败')
     }
   }
 
@@ -300,6 +349,7 @@ export function WorkspaceView() {
                   ['code', '代码'],
                   ['brain', '项目地图'],
                   ['impact', '影响分析'],
+                  ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
                   ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
                 ] as const
               ).map(([key, label]) => (
@@ -314,13 +364,21 @@ export function WorkspaceView() {
                   {key === 'builder' && <Sparkles size={12} />}
                   {key === 'brain' && <Waypoints size={12} />}
                   {key === 'impact' && <Radar size={12} />}
+                  {key === 'contract' && <GitCompare size={12} />}
                   {key === 'git' && <GitBranch size={12} />}
                   {label}
                 </button>
               ))}
               {selected.status === 'ready' && (
                 <div className="ml-auto flex items-center gap-2">
-                  {verifyResult && (
+                  {verifyBusy && verifyJob && (
+                    <span className="flex items-center gap-1 text-[11px] text-dim">
+                      <Spinner />
+                      验证中 {Math.round((verifyJob.progress || 0) * 100)}%
+                      {verifyJob.step ? ` · ${verifyJob.step}` : ''}
+                    </span>
+                  )}
+                  {verifyResult && !verifyBusy && (
                     <span
                       className={clsx(
                         'flex items-center gap-1 text-[11px]',
@@ -333,6 +391,11 @@ export function WorkspaceView() {
                       验证{verifyResult.status === 'passed' ? '通过' : verifyResult.status === 'unsupported' ? '不支持' : '失败'}
                       <span className="text-dim">exit {verifyResult.exit_code}</span>
                     </span>
+                  )}
+                  {verifyBusy && (
+                    <Button size="sm" variant="danger" onClick={() => void cancelVerify()}>
+                      取消
+                    </Button>
                   )}
                   <Button size="sm" onClick={() => void runVerify()} disabled={verifyBusy}>
                     {verifyBusy ? <Spinner /> : <FlaskConical size={12} />} 验证
@@ -417,6 +480,13 @@ export function WorkspaceView() {
                     setSelectedPath(path)
                     setTab('code')
                   }}
+                />
+              )}
+              {tab === 'contract' && (
+                <ContractPanel
+                  repoId={selected.id}
+                  refreshToken={verifyResult?.at ?? ''}
+                  onRunVerify={() => void runVerify()}
                 />
               )}
               {tab === 'git' && (

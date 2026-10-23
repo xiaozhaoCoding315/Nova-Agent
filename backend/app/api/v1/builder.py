@@ -1,5 +1,4 @@
 """Builder endpoints: greenfield plan + file proposal with approval gates."""
-import json
 import uuid
 from pathlib import Path
 
@@ -9,12 +8,15 @@ from app.config import settings
 from app.core.builder import engine
 from app.core.conflicts import ConflictError
 from app.core.indexing.pipeline import get_repo
-from app.core.jobs.service import enqueue_builder_files, enqueue_builder_plan, enqueue_index
+from app.core.jobs.service import (
+    enqueue_builder_files,
+    enqueue_builder_plan,
+    enqueue_index,
+    enqueue_verify,
+)
 from app.core.sandbox.runtime import sandbox_status
-from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, check_sandbox_quota, ensure_token_budget
-from app.core.verify.service import run_verification
 from app.db import execute, query
 from app.models.schemas import (
     BuilderActionOut,
@@ -24,6 +26,7 @@ from app.models.schemas import (
     BuilderPlanOut,
     BuilderProposalOut,
     RepoOut,
+    VerifyActionOut,
     VerifyResultOut,
 )
 
@@ -137,9 +140,9 @@ async def reject_proposal(repo_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "status": "approved"}
 
 
-@router.post("/repos/{repo_id}/verify", response_model=VerifyResultOut)
+@router.post("/repos/{repo_id}/verify", response_model=VerifyActionOut)
 async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
-    """Run the repo's test suite in the verification sandbox (builder image)."""
+    """Queue a stack-aware verification job (Python / Node / fullstack)."""
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
@@ -147,26 +150,13 @@ async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="仓库尚未完成索引，无法验证")
 
     status = await sandbox_status()
-    if not status["available"]:
+    if not status.get("available") and not status.get("node_available"):
         raise HTTPException(status_code=400, detail=f"沙箱不可用：{status['reason']}")
     check_job_quota(user, "verify")
     await check_sandbox_quota(user)
 
-    check = await run_verification(repo, user)
-    await execute(
-        "UPDATE repos SET last_check = %s, updated_at = now() WHERE id = %s",
-        (json.dumps(check, ensure_ascii=False), repo_id),
-    )
-    await log_audit(
-        AuditAction.SANDBOX_RUN,
-        user_id=str(user["id"]),
-        details={
-            "action": "verify_repo", "repo_id": repo_id,
-            "status": check.get("status"), "exit_code": check.get("exit_code"),
-            "steps": [s.get("name") for s in check.get("steps", [])],
-        },
-    )
-    return check
+    job_id = await enqueue_verify(repo_id, user["id"])
+    return {"ok": True, "job_id": job_id}
 
 
 @router.get("/repos/{repo_id}/verify", response_model=VerifyResultOut | None)

@@ -257,6 +257,18 @@ export type VerifyResult = {
   at: string
 }
 
+export type ContractStatus = {
+  configured: boolean
+  source?: string | null
+  target?: string | null
+  source_exists: boolean
+  target_exists: boolean
+  from_config: boolean
+  last_status?: string | null
+  last_detail?: string | null
+  checked_at?: string | null
+}
+
 export type GitCommit = { hash: string; message: string; date: string }
 
 export type GitInfo = {

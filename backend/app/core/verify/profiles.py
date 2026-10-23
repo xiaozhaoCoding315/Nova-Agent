@@ -7,6 +7,7 @@ be verified in one pass without pretending one runtime covers both.
 import json
 from dataclasses import dataclass, field
 
+from app.core.contracts.service import contract_step
 from app.core.security.test_guard import is_test_path
 
 
@@ -136,7 +137,8 @@ def detect_profile(files: dict[str, str]) -> VerifyProfile:
     paths = list(files)
     has_node = any(path.lower().endswith("package.json") for path in paths)
     has_python = _has_python(paths)
-    if not has_python and not has_node:
+    contract = contract_step(files)
+    if not has_python and not has_node and not contract:
         return VerifyProfile(
             stack="unknown",
             unsupported_reason="未检测到可验证的 Python 或 Node 项目",
@@ -175,6 +177,17 @@ def detect_profile(files: dict[str, str]) -> VerifyProfile:
         if has_python:
             notes.append("同时检测到 Python 与 Node：Python 步骤使用 builder 镜像，Node 步骤使用 node 镜像")
 
+    if contract:
+        steps.append(VerifyStep(
+            contract["name"], contract["command"], required=True,
+            timeout=contract["timeout"], image="node", deps_kind="node",
+        ))
+        notes.append(f"契约检查：{contract['source']} → {contract['target']}")
+        if not contract["target_exists"]:
+            notes.append("契约目标文件缺失；契约检查会失败，请先生成并提交前端类型")
+    elif has_python or has_node:
+        notes.append("未发现 OpenAPI 契约源（contracts/openapi.*），已跳过契约检查")
+
     if not steps:
         return VerifyProfile(
             stack="fullstack" if has_python and has_node else "node" if has_node else "python",
@@ -182,5 +195,9 @@ def detect_profile(files: dict[str, str]) -> VerifyProfile:
             unsupported_reason="项目未配置可验证的脚本",
         )
 
-    stack = "fullstack" if has_python and has_node else "python" if has_python else "node"
+    stack = (
+        "fullstack" if has_python and (has_node or contract)
+        else "node" if (has_node or contract)
+        else "python"
+    )
     return VerifyProfile(stack=stack, steps=steps, notes=notes)

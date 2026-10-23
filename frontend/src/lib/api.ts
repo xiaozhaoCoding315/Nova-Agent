@@ -1,7 +1,7 @@
 import type {
-  Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, EditRecord,
-  FileNode, GitInfo, Health, Impact, Job, Message, Repo, Review, Session, Task, TaskListItem,
-  TraceEvent, Usage, User, VerifyResult,
+  Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, ContractStatus,
+  EditRecord, FileNode, GitInfo, Health, Impact, Job, Message, Repo, Review, Session, Task,
+  TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -91,8 +91,9 @@ export const api = {
     rejectProposal: (id: string) =>
       request<{ ok: boolean }>(`/repos/${id}/proposal/reject`, { method: 'POST' }),
     verify: (id: string) =>
-      request<VerifyResult>(`/repos/${id}/verify`, { method: 'POST' }),
-    lastVerify: (id: string) => request<Partial<VerifyResult>>(`/repos/${id}/verify`),
+      request<{ ok: boolean; job_id: string }>(`/repos/${id}/verify`, { method: 'POST' }),
+    lastVerify: (id: string) => request<VerifyResult | null>(`/repos/${id}/verify`),
+    contract: (id: string) => request<ContractStatus>(`/repos/${id}/contract`),
     exportUrl: (id: string) => `/api/v1/repos/${id}/export`,
   },
 

@@ -19,6 +19,7 @@ def test_builtin_handlers_include_summary_and_index():
     assert runner.has("builder_plan")
     assert runner.has("builder_files")
     assert runner.has("session_summary")
+    assert runner.has("verify")
 
 
 def test_jobs_router_exposes_lifecycle_endpoints():

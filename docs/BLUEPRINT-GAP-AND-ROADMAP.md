@@ -14,6 +14,8 @@
 
 > **P2.2 进展更新（2026-10-23）**：桌面 Agent 风格侧栏与会话管理重构完成（搜索/分组/重命名/删除确认）；`nova-node` 镜像、Node 多栈 Profile、按步骤镜像/依赖卷、`run_code env=node`、`install_deps kind=node` 已完成。真实 Node 样例 lint/tsc/test/build 全部 passed，失败测试能如实上报；后端 **192 passed**。目标仓库契约 Gate、verify Job 仍属 P2.3。
 
+> **P2.3 进展更新（2026-10-23）**：`verify` 已改为持久 Job（进度/取消/证据落库）；目标仓库契约 Gate（OpenAPI → TS 漂移检查）与工作区「契约」页签完成；`nova-node` 增加 `openapi-typescript`。真实契约样例通过、手动漂移失败、verify Job 成功写入 last_check；后端 **200 passed**。前端契约类型逐域迁移、真实混合仓库变更回归仍待后续。
+
 ---
 
 ## 0. 先给结论

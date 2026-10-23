@@ -35,6 +35,10 @@ async def enqueue_task(
     )
 
 
+async def enqueue_verify(repo_id: str, user_id: int) -> str:
+    return await runner.enqueue("verify", {"repo_id": repo_id}, user_id=user_id)
+
+
 async def enqueue_builder_plan(
     repo_id: str,
     *,

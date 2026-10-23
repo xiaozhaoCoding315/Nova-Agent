@@ -587,6 +587,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/{repo_id}/contract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Contract Status */
+        get: operations["contract_status_api_v1_repos__repo_id__contract_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/{repo_id}/export": {
         parameters: {
             query?: never;
@@ -905,7 +922,7 @@ export interface paths {
         put?: never;
         /**
          * Verify Repo
-         * @description Run the repo's test suite in the verification sandbox (builder image).
+         * @description Queue a stack-aware verification job (Python / Node / fullstack).
          */
         post: operations["verify_repo_api_v1_repos__repo_id__verify_post"];
         delete?: never;
@@ -1480,6 +1497,39 @@ export interface components {
             repo_ids?: string[] | null;
             /** Session Id */
             session_id?: string | null;
+        };
+        /** ContractStatusOut */
+        ContractStatusOut: {
+            /** Checked At */
+            checked_at?: string | null;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * From Config
+             * @default false
+             */
+            from_config: boolean;
+            /** Last Detail */
+            last_detail?: string | null;
+            /** Last Status */
+            last_status?: string | null;
+            /** Source */
+            source?: string | null;
+            /**
+             * Source Exists
+             * @default false
+             */
+            source_exists: boolean;
+            /** Target */
+            target?: string | null;
+            /**
+             * Target Exists
+             * @default false
+             */
+            target_exists: boolean;
         };
         /** EditApproveOut */
         EditApproveOut: {
@@ -2135,6 +2185,16 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerifyActionOut */
+        VerifyActionOut: {
+            /** Job Id */
+            job_id: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
         };
         /** VerifyResultOut */
         VerifyResultOut: {
@@ -3410,6 +3470,37 @@ export interface operations {
             };
         };
     };
+    contract_status_api_v1_repos__repo_id__contract_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContractStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_repo_api_v1_repos__repo_id__export_get: {
         parameters: {
             query?: never;
@@ -4035,7 +4126,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerifyResultOut"];
+                    "application/json": components["schemas"]["VerifyActionOut"];
                 };
             };
             /** @description Validation Error */

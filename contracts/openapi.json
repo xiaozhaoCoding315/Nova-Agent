@@ -1181,6 +1181,87 @@
         "title": "ChatRequest",
         "type": "object"
       },
+      "ContractStatusOut": {
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "configured": {
+            "default": false,
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "from_config": {
+            "default": false,
+            "title": "From Config",
+            "type": "boolean"
+          },
+          "last_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Detail"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "source_exists": {
+            "default": false,
+            "title": "Source Exists",
+            "type": "boolean"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_exists": {
+            "default": false,
+            "title": "Target Exists",
+            "type": "boolean"
+          }
+        },
+        "title": "ContractStatusOut",
+        "type": "object"
+      },
       "EditApproveOut": {
         "properties": {
           "applied": {
@@ -2760,6 +2841,24 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyActionOut": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "VerifyActionOut",
         "type": "object"
       },
       "VerifyResultOut": {
@@ -4498,6 +4597,48 @@
         ]
       }
     },
+    "/api/v1/repos/{repo_id}/contract": {
+      "get": {
+        "operationId": "contract_status_api_v1_repos__repo_id__contract_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contract Status",
+        "tags": [
+          "contracts"
+        ]
+      }
+    },
     "/api/v1/repos/{repo_id}/export": {
       "get": {
         "operationId": "export_repo_api_v1_repos__repo_id__export_get",
@@ -5391,7 +5532,7 @@
         ]
       },
       "post": {
-        "description": "Run the repo's test suite in the verification sandbox (builder image).",
+        "description": "Queue a stack-aware verification job (Python / Node / fullstack).",
         "operationId": "verify_repo_api_v1_repos__repo_id__verify_post",
         "parameters": [
           {
@@ -5409,7 +5550,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VerifyResultOut"
+                  "$ref": "#/components/schemas/VerifyActionOut"
                 }
               }
             },

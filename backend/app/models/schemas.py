@@ -243,6 +243,23 @@ class VerifyResultOut(BaseModel):
     elapsed_ms: Optional[int] = None
 
 
+class VerifyActionOut(BaseModel):
+    ok: bool = True
+    job_id: str
+
+
+class ContractStatusOut(BaseModel):
+    configured: bool = False
+    source: Optional[str] = None
+    target: Optional[str] = None
+    source_exists: bool = False
+    target_exists: bool = False
+    from_config: bool = False
+    last_status: Optional[str] = None
+    last_detail: Optional[str] = None
+    checked_at: Optional[str] = None
+
+
 # ---------- Git ----------
 
 class GitCommitOut(BaseModel):

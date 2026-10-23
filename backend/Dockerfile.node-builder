@@ -1,9 +1,9 @@
-# Node/TS verification image: Node 20 + tsc.
+# Node/TS verification image: Node 20 + tsc + openapi-typescript.
 # Project dependencies are installed into a per-repo volume at /workspace/node_modules.
 FROM node:20-bookworm-slim
 
 RUN npm config set registry https://registry.npmmirror.com \
- && npm install -g typescript@5.6.3 \
+ && npm install -g typescript@5.6.3 openapi-typescript@7.13.0 \
  && corepack enable
 
 WORKDIR /workspace
