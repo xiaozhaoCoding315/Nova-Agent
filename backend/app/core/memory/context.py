@@ -13,8 +13,22 @@ MAX_SNIPPET_CHARS = 600
 MAX_SNIPPET_BUDGET = 4000
 
 
-def build_system_prompt(hits: list, fact_list: list[str], repo_selected: bool = False) -> str:
+def build_system_prompt(
+    hits: list,
+    fact_list: list[str],
+    repo_selected: bool = False,
+    repos: list[dict] | None = None,
+) -> str:
     parts = [IDENTITY]
+
+    if repos:
+        parts.append("\n## 当前关联仓库（工具参数 repo_id 可直接使用下面的 id）")
+        for repo in repos:
+            parts.append(f"- {repo['name']}（repo_id: {repo['id']}）")
+        parts.append(
+            "需要把仓库带进沙箱跑测试时，调用 run_code 并传 repo_id；"
+            "只检索代码时通常无需传，默认就在关联仓库内检索。"
+        )
 
     if hits:
         parts.append("\n## 本次检索到的相关代码/资料（引用时使用这些路径与行号）")

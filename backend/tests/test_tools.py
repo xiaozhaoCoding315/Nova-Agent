@@ -189,6 +189,12 @@ async def test_search_code_merges_symbols_and_snippets(monkeypatch):
 # ---------- run_code ----------
 
 @pytest.mark.asyncio
+async def test_run_code_requires_some_files():
+    r = await build_registry().execute("run_code", {}, CTX)
+    assert r["ok"] is False and r["business"] is True
+
+
+@pytest.mark.asyncio
 async def test_run_code_blocks_risky_code():
     r = await build_registry().execute(
         "run_code", {"files": {"main.py": "import os; os.system('rm -rf /')"}}, CTX

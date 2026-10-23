@@ -1,21 +1,78 @@
 """run_code tool: execute code and tests in the locked-down Docker sandbox."""
+import os
+import uuid
+from pathlib import Path
+
 from fastapi import HTTPException
 
+from app.core.indexing.languages import SKIP_DIRS, is_supported
 from app.core.sandbox.runtime import execute as sandbox_execute, sandbox_status
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import check_sandbox_quota
 from app.core.security.risk import RiskLevel, grade_risk
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
+REPO_COPY_MAX_FILES = 300
+REPO_COPY_MAX_BYTES = 2_000_000
+REPO_COPY_MAX_FILE_BYTES = 200_000
+
+
+async def _collect_repo_files(repo_id: str, user: dict) -> dict[str, str]:
+    """Copy the indexed repo workspace into the sandbox (bounded), so the
+    model can run tests without pasting every source file."""
+    from app.core.indexing.pipeline import get_repo
+
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise ToolBusinessError("repo_id 不存在或无权访问")
+    root = Path(repo["root_path"])
+    if not root.is_dir():
+        raise ToolBusinessError("仓库文件已不存在，请重新导入")
+
+    files: dict[str, str] = {}
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            path = Path(dirpath) / name
+            rel = str(path.relative_to(root)).replace("\\", "/")
+            if not is_supported(rel):
+                continue
+            try:
+                size = path.stat().st_size
+                if size == 0 or size > REPO_COPY_MAX_FILE_BYTES:
+                    continue
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            total += len(content)
+            if len(files) >= REPO_COPY_MAX_FILES or total > REPO_COPY_MAX_BYTES:
+                return files
+            files[rel] = content
+    return files
+
 
 async def run_code(args: dict, ctx: ToolContext) -> dict:
-    files = args.get("files") or {}
-    if not isinstance(files, dict) or not files:
+    provided = args.get("files") or {}
+    if not isinstance(provided, dict):
+        raise ToolBusinessError("files 必须是对象：{相对路径: 文件内容}")
+
+    files: dict[str, str] = {}
+    repo_id = args.get("repo_id")
+    if repo_id:
+        try:
+            uuid.UUID(str(repo_id))
+        except ValueError:
+            raise ToolBusinessError("repo_id 必须是 UUID")
+        files.update(await _collect_repo_files(str(repo_id), ctx.user))
+    files.update({str(k): str(v) for k, v in provided.items()})
+
+    if not files:
         raise ToolBusinessError(
             "files 必须是非空对象：{相对路径: 文件内容}，例如 {\"main.py\": \"print('hi')\"}"
         )
 
-    code_blob = "\n".join(str(v) for v in files.values())
+    code_blob = "\n".join(files.values())
     level, reasons = grade_risk(code_blob)
     if level == RiskLevel.BLOCK:
         await log_audit(
@@ -74,7 +131,11 @@ TOOL = ToolDefinition(
         "properties": {
             "files": {
                 "type": "object",
-                "description": "写入沙箱的文件：{相对路径: 完整文件内容}，例如 {\"main.py\": \"...\", \"test_main.py\": \"...\"}",
+                "description": "额外写入沙箱的文件：{相对路径: 完整文件内容}；与 repo_id 同时使用时会覆盖同名仓库文件",
+            },
+            "repo_id": {
+                "type": "string",
+                "description": "可选：把该仓库文件整体复制进沙箱（便于直接运行仓库自带的测试）",
             },
             "command": {
                 "type": "string",
@@ -82,7 +143,7 @@ TOOL = ToolDefinition(
             },
             "stdin": {"type": "string", "description": "标准输入内容（可选）"},
         },
-        "required": ["files"],
+        "required": [],
     },
     func=run_code,
     timeout=45,

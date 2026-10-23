@@ -104,8 +104,17 @@ async def run_chat(user: dict, session: dict, user_message: str, repo_ids: list[
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history = await session_mod.recent_messages(session["id"])
+    repo_meta: list[dict] = []
+    for rid in repo_ids or []:
+        try:
+            from app.core.indexing.pipeline import get_repo
+            repo = await get_repo(rid, user["id"])
+            if repo:
+                repo_meta.append({"id": repo["id"], "name": repo["name"]})
+        except Exception:  # noqa: BLE001
+            continue
     messages: list[dict] = [
-        {"role": "system", "content": build_system_prompt(hits, fact_list, repo_selected=bool(repo_ids))},
+        {"role": "system", "content": build_system_prompt(hits, fact_list, repo_selected=bool(repo_ids), repos=repo_meta)},
         *history,
     ]
 

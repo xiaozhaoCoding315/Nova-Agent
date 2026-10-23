@@ -10,7 +10,9 @@ Security invariants (do not weaken):
 import asyncio
 import re
 import shutil
+import subprocess
 import tempfile
+import time
 import uuid
 
 import structlog
@@ -20,23 +22,33 @@ from app.config import settings
 logger = structlog.get_logger()
 
 _docker_checked: bool | None = None
+_docker_checked_at: float = 0.0
+_DOCKER_NEGATIVE_TTL_S = 30
 
 _SAFE_PATH = re.compile(r"^[\w./\-]+$")
 
 
 def is_docker_available() -> bool:
-    global _docker_checked
-    if _docker_checked is None:
-        if shutil.which("docker") is None:
-            _docker_checked = False
-        else:
-            import subprocess
-            try:
-                result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
-                _docker_checked = result.returncode == 0
-            except Exception:  # noqa: BLE001
-                _docker_checked = False
-    return _docker_checked
+    """Docker probe. Positive results are cached; negatives expire after 30s
+    so starting Docker Desktop does not require a server restart."""
+    global _docker_checked, _docker_checked_at
+    now = time.time()
+    if _docker_checked and _docker_checked_at:
+        return True
+    if _docker_checked is False and now - _docker_checked_at < _DOCKER_NEGATIVE_TTL_S:
+        return False
+
+    if shutil.which("docker") is None:
+        _docker_checked, _docker_checked_at = False, now
+        return False
+    import subprocess
+    try:
+        result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+        _docker_checked = result.returncode == 0
+    except Exception:  # noqa: BLE001
+        _docker_checked = False
+    _docker_checked_at = now
+    return bool(_docker_checked)
 
 
 async def sandbox_status() -> dict:
@@ -106,9 +118,9 @@ async def execute(
             "stdout": "", "stderr": "no files provided", "exit_code": -1,
             "timed_out": False, "sandboxed": False, "command": "",
         }
-    if len(files) > 20 or any(len(v) > 200_000 for v in files.values()):
+    if len(files) > 400 or any(len(v) > 200_000 for v in files.values()):
         return {
-            "stdout": "", "stderr": "too many files or file too large (max 20 files / 200KB each)",
+            "stdout": "", "stderr": "too many files or file too large (max 400 files / 200KB each)",
             "exit_code": -1, "timed_out": False, "sandboxed": False, "command": "",
         }
 
@@ -147,52 +159,55 @@ async def execute(
             "sh", "-c", inner,
         ]
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE if stdin else asyncio.subprocess.DEVNULL,
+        proc_result = await asyncio.to_thread(
+            _run_docker, cmd, stdin.encode("utf-8") if stdin else None, timeout + 10
         )
-
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=stdin.encode() if stdin else None),
-                timeout=timeout + 10,  # docker startup overhead buffer
-            )
-            return {
-                "stdout": stdout.decode("utf-8", errors="replace")[:100_000],
-                "stderr": stderr.decode("utf-8", errors="replace")[:10_000],
-                "exit_code": proc.returncode,
-                "timed_out": False,
-                "sandboxed": True,
-                "command": command,
-            }
-        except asyncio.TimeoutError:
-            # Kill by the exact container name — the name is real this time.
-            for kill_cmd in (["docker", "kill", container_name],
-                             ["docker", "rm", "-f", container_name]):
-                try:
-                    killer = await asyncio.create_subprocess_exec(
-                        *kill_cmd,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(killer.wait(), timeout=10)
-                except Exception:  # noqa: BLE001
-                    pass
-            return {
-                "stdout": "", "stderr": f"execution timed out after {timeout}s",
-                "exit_code": -1, "timed_out": True, "sandboxed": True, "command": command,
-            }
-    except Exception as exc:  # noqa: BLE001
-        logger.error("sandbox_execution_failed", error=str(exc))
         return {
-            "stdout": "", "stderr": f"sandbox error: {exc}", "exit_code": -1,
+            "stdout": proc_result.stdout.decode("utf-8", errors="replace")[:100_000],
+            "stderr": proc_result.stderr.decode("utf-8", errors="replace")[:10_000],
+            "exit_code": proc_result.returncode,
+            "timed_out": False,
+            "sandboxed": True,
+            "command": command,
+        }
+    except (subprocess.TimeoutExpired, TimeoutError):
+        # `subprocess.run` timeout kills the docker CLI; the container itself
+        # is stopped by its exact --name (the name is real this time).
+        for kill_cmd in (["docker", "kill", container_name],
+                         ["docker", "rm", "-f", container_name]):
+            try:
+                await asyncio.to_thread(
+                    subprocess.run, kill_cmd, capture_output=True, timeout=15
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return {
+            "stdout": "", "stderr": f"execution timed out after {timeout}s",
+            "exit_code": -1, "timed_out": True, "sandboxed": True, "command": command,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sandbox_execution_failed", error=str(exc), error_type=type(exc).__name__)
+        return {
+            "stdout": "", "stderr": f"sandbox error: {type(exc).__name__}: {exc}", "exit_code": -1,
             "timed_out": False, "sandboxed": True, "command": command,
         }
     finally:
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _run_docker(cmd: list[str], stdin_bytes: bytes | None, timeout: int) -> "subprocess.CompletedProcess":
+    """Blocking docker invocation, executed in a worker thread.
+
+    Deliberately not asyncio.create_subprocess_exec: on Windows the app uses
+    SelectorEventLoop (psycopg), which does not support subprocesses.
+    """
+    return subprocess.run(
+        cmd,
+        input=stdin_bytes,
+        capture_output=True,
+        timeout=timeout,
+    )
 
 
 def _shell_quote(s: str) -> str:
