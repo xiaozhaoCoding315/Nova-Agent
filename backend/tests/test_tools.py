@@ -183,10 +183,60 @@ async def test_search_code_merges_symbols_and_snippets(monkeypatch):
     monkeypatch.setattr("app.core.tools.search_code.search_symbols", fake_symbols)
     monkeypatch.setattr("app.core.tools.search_code.retrieve", fake_retrieve)
 
-    r = await build_registry().execute("search_code", {"query": "login"}, CTX)
+    ctx = ToolContext(user=USER, repo_ids=["11111111-1111-1111-1111-111111111111"])
+    r = await build_registry().execute("search_code", {"query": "login"}, ctx)
     assert r["ok"]
     assert r["output"]["symbols"][0]["path"] == "auth.py"
     assert r["output"]["snippets"][0]["line_start"] == 10
+
+
+@pytest.mark.asyncio
+async def test_search_code_requires_repo_context_or_owned_repo(monkeypatch):
+    r = await build_registry().execute("search_code", {"query": "login"}, CTX)
+    assert r["ok"] is False and r["business"] is True
+
+    async def no_repo(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", no_repo)
+    r = await build_registry().execute(
+        "search_code",
+        {"query": "login", "repo_id": "11111111-1111-1111-1111-111111111111"},
+        CTX,
+    )
+    assert r["ok"] is False and r["business"] is True
+    assert "无权访问" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_impact_analysis_rejects_foreign_repo(monkeypatch):
+    async def no_repo(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", no_repo)
+    r = await build_registry().execute(
+        "impact_analysis",
+        {"query": "login", "repo_id": "11111111-1111-1111-1111-111111111111"},
+        CTX,
+    )
+    assert r["ok"] is False and r["business"] is True
+    assert "无权访问" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_diagnose_without_repo_does_not_search_global(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("retrieval must not run without an authorized repo")
+
+    monkeypatch.setattr("app.core.tools.diagnose.retrieve", fail_if_called)
+    r = await build_registry().execute(
+        "diagnose_error",
+        {"stack": 'Traceback (most recent call last):\n  File "app.py", line 3, in <module>\nValueError: boom'},
+        CTX,
+    )
+    assert r["ok"]
+    assert r["output"]["repo_locations"] == []
+    assert r["output"]["related_code"] == []
 
 
 # ---------- run_code ----------

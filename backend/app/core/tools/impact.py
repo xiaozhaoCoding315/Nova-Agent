@@ -16,6 +16,9 @@ async def impact_analysis(args: dict, ctx: ToolContext) -> dict:
             uuid.UUID(str(repo_id))
         except ValueError:
             raise ToolBusinessError("repo_id 必须是 UUID（会话已关联仓库时通常可省略）")
+        from app.core.indexing.pipeline import get_repo
+        if not await get_repo(str(repo_id), ctx.user["id"]):
+            raise ToolBusinessError("仓库不存在或无权访问")
     elif ctx.repo_ids:
         repo_id = ctx.repo_ids[0]
     else:

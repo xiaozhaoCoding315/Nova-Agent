@@ -15,6 +15,8 @@ async def dense_search(
     top_k: int = 10,
     repo_ids: list[str] | None = None,
 ) -> list[RetrievedChunk]:
+    if not repo_ids:
+        return []
     from app.db.qdrant import get_client, repo_filter
 
     vector = (await get_embedder().embed([query]))[0]

@@ -10,6 +10,7 @@ type LlmState = {
   save: (input: LlmSettingsInput) => Promise<LlmSettings>
   clear: () => Promise<void>
   test: (input: LlmSettingsInput) => Promise<LlmTestResult>
+  reset: () => void
   clearError: () => void
 }
 
@@ -40,6 +41,8 @@ export const useLlm = create<LlmState>((set) => ({
   },
 
   test: (input) => api.llm.test(input),
+
+  reset: () => set({ settings: null, loading: false, error: null }),
 
   clearError: () => set({ error: null }),
 }))

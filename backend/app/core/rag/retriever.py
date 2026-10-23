@@ -22,6 +22,9 @@ async def retrieve(
     top_k: int = 10,
     repo_ids: list[str] | None = None,
 ) -> list[RetrievedChunk]:
+    # Fail closed: retrieval is always scoped to explicitly authorized repos.
+    if not repo_ids:
+        return []
     legs = [
         ("dense", dense_search),
         ("keyword", keyword_search),

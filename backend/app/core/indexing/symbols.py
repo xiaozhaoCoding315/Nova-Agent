@@ -136,6 +136,8 @@ def _extract_generic(content: str, lang: str, max_symbols: int) -> list[dict]:
 
 async def search_symbols(query: str, repo_ids: list[str] | None = None, limit: int = 8) -> list[dict]:
     """Ordered symbol lookup: exact name > prefix > substring, shortest first."""
+    if not repo_ids:
+        return []
     from app.db import query as db_query
 
     sql = """

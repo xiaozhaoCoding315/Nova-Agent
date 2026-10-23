@@ -75,6 +75,8 @@ def parse_trace(text: str) -> dict:
 
 
 async def _locate_frames(frames: list[dict], repo_ids: list[str] | None) -> list[dict]:
+    if not repo_ids:
+        return []
     from app.db import query as db_query
 
     located: list[dict] = []
@@ -111,7 +113,7 @@ async def diagnose_error(args: dict, ctx: ToolContext) -> dict:
         raise ToolBusinessError("stack 不能为空：请粘贴完整报错堆栈或日志")
 
     parsed = parse_trace(stack)
-    repo_ids = ctx.repo_ids or None
+    repo_ids = list(ctx.repo_ids or [])
     located = await _locate_frames(parsed["frames"], repo_ids)
 
     query = " ".join(x for x in (parsed["error_type"], parsed["message"]) if x) or stack[:200]

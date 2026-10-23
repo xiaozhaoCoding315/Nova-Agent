@@ -54,6 +54,8 @@ async def keyword_search(
     top_k: int = 10,
     repo_ids: list[str] | None = None,
 ) -> list[RetrievedChunk]:
+    if not repo_ids:
+        return []
     tsquery = make_tsquery(query)
     rows = await asyncio.to_thread(
         _search_sync, settings.postgres_dsn, tsquery, query, top_k, repo_ids

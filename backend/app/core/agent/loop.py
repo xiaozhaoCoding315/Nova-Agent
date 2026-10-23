@@ -93,7 +93,7 @@ async def run_chat(
     retrieval_started = time.perf_counter()
     try:
         hits = await asyncio.wait_for(
-            retrieve(user_message, top_k=8, repo_ids=repo_ids or None),
+            retrieve(user_message, top_k=8, repo_ids=repo_ids),
             timeout=TIMEOUTS.retrieval_timeout + 5,
         )
     except Exception as exc:  # noqa: BLE001

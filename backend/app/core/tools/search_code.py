@@ -19,8 +19,14 @@ async def search_code(args: dict, ctx: ToolContext) -> dict:
             raise ToolBusinessError(
                 "repo_id 必须是 UUID。通常无需传它：关联了仓库的会话默认就在该仓库检索。"
             )
-
-    repo_ids = [repo_id] if repo_id else (ctx.repo_ids or None)
+        from app.core.indexing.pipeline import get_repo
+        if not await get_repo(str(repo_id), ctx.user["id"]):
+            raise ToolBusinessError("仓库不存在或无权访问")
+        repo_ids = [str(repo_id)]
+    elif ctx.repo_ids:
+        repo_ids = list(ctx.repo_ids)
+    else:
+        raise ToolBusinessError("请先在会话中关联至少一个仓库，或显式传入 repo_id")
 
     symbols = await search_symbols(query, repo_ids, limit=6)
 

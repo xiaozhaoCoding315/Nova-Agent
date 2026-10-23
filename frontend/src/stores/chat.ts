@@ -29,6 +29,7 @@ type ChatState = {
   renameSession: (id: string, title: string) => Promise<void>
   send: (content: string, repoIds: string[]) => Promise<void>
   stop: () => void
+  reset: () => void
   clearError: () => void
 }
 
@@ -112,6 +113,16 @@ export const useChat = create<ChatState>((set, get) => ({
 
   stop: () => {
     abortController?.abort()
+  },
+
+  reset: () => {
+    abortController?.abort()
+    abortController = null
+    set({
+      sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
+      toolCards: [], streamEdits: [], permissionMode: 'ask', model: null, refs: [],
+      evidence: null, report: null, error: null,
+    })
   },
 
   send: async (content, repoIds) => {

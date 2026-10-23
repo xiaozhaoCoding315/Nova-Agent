@@ -12,6 +12,7 @@ type RepoState = {
   createBuilder: (name: string, requirements: string, rules?: string, stack?: 'python' | 'fullstack') => Promise<Repo>
   remove: (id: string) => Promise<void>
   reindex: (id: string) => Promise<void>
+  reset: () => void
   clearError: () => void
 }
 
@@ -19,6 +20,8 @@ export const useRepos = create<RepoState>((set, get) => ({
   repos: [],
   loading: false,
   error: null,
+
+  reset: () => set({ repos: [], loading: false, error: null }),
 
   clearError: () => set({ error: null }),
 
