@@ -71,3 +71,23 @@ async def enqueue_session_summary(session_id: str, user_id: int) -> str | None:
         {"session_id": session_id, "user_id": user_id},
         user_id=user_id,
     )
+
+
+async def enqueue_change_spec(change_id: str, user_id: int, idempotency_key: str | None = None) -> str:
+    return await runner.enqueue(
+        "change_spec", {"change_id": change_id}, user_id=user_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+async def enqueue_change_plan(change_id: str, user_id: int) -> str:
+    return await runner.enqueue(
+        "change_plan", {"change_id": change_id}, user_id=user_id
+    )
+
+
+async def enqueue_change_execute(change_id: str, user_id: int) -> str:
+    return await runner.enqueue(
+        "change_execute", {"change_id": change_id, "user_id": user_id},
+        user_id=user_id,
+    )

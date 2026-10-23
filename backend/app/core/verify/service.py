@@ -16,9 +16,14 @@ def _tail(text: str | None, limit: int) -> str:
     return (text or "")[-limit:]
 
 
-async def run_verification(repo: dict, user: dict) -> dict:
+async def run_verification(
+    repo: dict, user: dict, overrides: dict[str, str] | None = None
+) -> dict:
     started = time.perf_counter()
     files = await _collect_repo_files(str(repo["id"]), user)
+    if overrides:
+        # Gate runs before the proposal is written to disk.
+        files.update({str(k): str(v) for k, v in overrides.items()})
     profile = detect_profile(files)
     now = datetime.now(timezone.utc).isoformat()
 

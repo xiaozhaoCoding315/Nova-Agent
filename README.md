@@ -16,6 +16,7 @@
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。MVP 支持 Python 后端（FastAPI + SQLite + pytest）。 |
+| **变更工作流（SPEC → 计划 → Gate → 审查 → 应用）** | 用自然语言提功能/重构需求：起草 SPEC（目标/In-Out/接口/验收）→ 人工冻结 → 拆成带依赖和可判定验收的任务 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
 
 ## 解决什么问题
 
@@ -141,7 +142,10 @@ npm run dev                   # http://localhost:5173
 | `POST /api/v1/repos/{id}/proposal/approve` · `/reject` | 批准写入并索引 / 退回重做 |
 | `GET /api/v1/edits/{id}` · `POST .../approve` `.../reject` `.../revert` `.../review` | 对话内修改：查看提案 / 批准 / 拒绝 / 快照撤销 / 只读审查 |
 | `POST /api/v1/tasks/{id}/review` | 对红绿任务 diff 做只读审查（pass / warn / block + 依据） |
-| `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、会话摘要） |
+| `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、变更、会话摘要） |
+| `POST /api/v1/changes` · `GET /changes` `/{id}` · `PATCH /changes/{id}` | 创建变更（自动起草 SPEC）/ 列表 / 详情 / 编辑 SPEC |
+| `POST /changes/{id}/approve` · `/plan` · `/plan/approve` · `/execute` | 冻结 SPEC / 生成计划 / 批准计划 / 执行计划 |
+| `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
 | `POST /api/v1/repos/{id}/verify` · `GET .../verify` | 栈感知真实验证（语法 / pytest / 可选 lint / 类型检查，逐项结果）/ 查看上次结果 |
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
@@ -152,7 +156,7 @@ npm run dev                   # http://localhost:5173
 
 ```
 backend/app/
-├── api/v1/            auth · chat · repos · tasks · builder · git · jobs · status
+├── api/v1/            auth · chat · repos · tasks · builder · changes · git · jobs · status
 ├── core/
 │   ├── agent/loop.py  Agent 主循环（检索→工具轮次→证据校验→持久化）
 │   ├── agent/evidence.py  引用校验（文件/行号/越界）
@@ -160,6 +164,7 @@ backend/app/
 │   ├── indexing/      仓库索引：walker / symbols / chunker / imports / brain / pipeline
 │   ├── impact/        变更影响分析（依赖图 + 符号引用）
 │   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
+│   ├── changes/       SPEC / Planner / 串行执行器 / Gate / 任务模板
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
 │   ├── verify/        栈感知验证 profile（语法/pytest/可选 lint/类型检查）
 │   ├── review/        只读 Reviewer（pass/warn/block + 依据）
@@ -176,7 +181,7 @@ backend/app/
 ├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
 └── models/            Pydantic 模型
 frontend/src/
-├── views/             登录 · 对话 · 工作区 · 任务 · 设置
+├── views/             登录 · 对话 · 工作区 · 变更中心 · 任务 · 设置
 ├── components/        消息/工具卡片/证据条/项目地图/影响分析/文件树/代码查看器…
 ├── stores/            auth · chat · repos（Zustand）
 └── lib/               API 客户端 · SSE 解析（含中断与错误处理）
@@ -227,6 +232,7 @@ cd backend && python -m pytest tests/ -q
 - 账号体系为 admin/demo 两级，不开放自助注册
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；未初始化 Git 的仓库不会自动提交
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
+- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 仍只支持 **Python**（compileall + pytest + 可选 ruff/mypy），Node/前端项目会标记 `unsupported` 并明确写入未验证项；尚未引入每任务独立分支/worktree
 
 ## License
 

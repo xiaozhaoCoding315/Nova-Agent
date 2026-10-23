@@ -250,6 +250,55 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks (user_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_tasks_job ON tasks (job_id)",
     """
+    CREATE TABLE IF NOT EXISTS change_requests (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        title VARCHAR(200) NOT NULL DEFAULT '变更',
+        requirements TEXT NOT NULL DEFAULT '',
+        goal TEXT NOT NULL DEFAULT '',
+        in_scope JSONB DEFAULT '[]'::jsonb,
+        out_scope JSONB DEFAULT '[]'::jsonb,
+        interfaces JSONB DEFAULT '[]'::jsonb,
+        acceptance_cases JSONB DEFAULT '[]'::jsonb,
+        nfr JSONB DEFAULT '[]'::jsonb,
+        open_questions JSONB DEFAULT '[]'::jsonb,
+        status VARCHAR(24) DEFAULT 'drafting',
+        version INT DEFAULT 1,
+        plan_notes TEXT,
+        proposal JSONB,
+        evidence JSONB,
+        error TEXT,
+        job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+        approved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_changes_user ON change_requests (user_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_changes_repo ON change_requests (repo_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_changes_job ON change_requests (job_id)",
+    """
+    CREATE TABLE IF NOT EXISTS change_tasks (
+        id UUID PRIMARY KEY,
+        request_id UUID REFERENCES change_requests(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        seq INT NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        kind VARCHAR(20) NOT NULL,
+        in_scope JSONB DEFAULT '[]'::jsonb,
+        out_scope JSONB DEFAULT '[]'::jsonb,
+        acceptance TEXT NOT NULL,
+        depends_on JSONB DEFAULT '[]'::jsonb,
+        status VARCHAR(20) DEFAULT 'pending',
+        attempts INT DEFAULT 0,
+        result JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_change_tasks_request ON change_tasks (request_id, seq)",
+    """
     CREATE TABLE IF NOT EXISTS audit_log (
         id VARCHAR(20) PRIMARY KEY,
         action VARCHAR(50),
@@ -310,6 +359,57 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "WHERE idempotency_key IS NOT NULL",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS idx_tasks_job ON tasks (job_id)",
+    ]),
+    (4, [
+        """
+        CREATE TABLE IF NOT EXISTS change_requests (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            title VARCHAR(200) NOT NULL DEFAULT '变更',
+            requirements TEXT NOT NULL DEFAULT '',
+            goal TEXT NOT NULL DEFAULT '',
+            in_scope JSONB DEFAULT '[]'::jsonb,
+            out_scope JSONB DEFAULT '[]'::jsonb,
+            interfaces JSONB DEFAULT '[]'::jsonb,
+            acceptance_cases JSONB DEFAULT '[]'::jsonb,
+            nfr JSONB DEFAULT '[]'::jsonb,
+            open_questions JSONB DEFAULT '[]'::jsonb,
+            status VARCHAR(24) DEFAULT 'drafting',
+            version INT DEFAULT 1,
+            plan_notes TEXT,
+            proposal JSONB,
+            evidence JSONB,
+            error TEXT,
+            job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+            approved_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_changes_user ON change_requests (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_changes_repo ON change_requests (repo_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_changes_job ON change_requests (job_id)",
+        """
+        CREATE TABLE IF NOT EXISTS change_tasks (
+            id UUID PRIMARY KEY,
+            request_id UUID REFERENCES change_requests(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            seq INT NOT NULL,
+            title VARCHAR(200) NOT NULL,
+            kind VARCHAR(20) NOT NULL,
+            in_scope JSONB DEFAULT '[]'::jsonb,
+            out_scope JSONB DEFAULT '[]'::jsonb,
+            acceptance TEXT NOT NULL,
+            depends_on JSONB DEFAULT '[]'::jsonb,
+            status VARCHAR(20) DEFAULT 'pending',
+            attempts INT DEFAULT 0,
+            result JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_change_tasks_request ON change_tasks (request_id, seq)",
     ]),
 ]
 

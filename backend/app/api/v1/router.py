@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, builder, chat, git_ops, jobs, repos, status, tasks
+from app.api.v1 import auth, builder, changes, chat, git_ops, jobs, repos, status, tasks
 
 api_router = APIRouter()
 api_router.include_router(auth.router, tags=["auth"])
+api_router.include_router(builder.router, tags=["builder"])
+api_router.include_router(changes.router, tags=["changes"])
 api_router.include_router(chat.router, tags=["chat"])
 api_router.include_router(builder.router, tags=["builder"])
 api_router.include_router(git_ops.router, tags=["git"])

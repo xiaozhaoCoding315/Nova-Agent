@@ -528,7 +528,7 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - **顶栏**：当前视图、命令面板入口、真实健康状态
 - **底部状态栏**：当前模型（qwen3.8-max）、权限模式、沙箱可用性、今日 token、版本
 - **命令面板**：Ctrl/⌘ + K，支持搜索并执行「切换视图 / 新建对话 / 切换权限模式 / 退出」
-- **快捷键**：Ctrl/⌘ + 1..4 切换视图；Esc 关闭面板
+- **快捷键**：Ctrl/⌘ + 1..5 切换视图（对话/工作区/变更/任务/设置）；Esc 关闭面板
 - 工作区顶栏新增「验证」按钮与结果条（通过/失败、exit code、镜像、时间，可展开输出）
 
 ---
@@ -661,3 +661,45 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 ### 23.4 已知边界
 - `/jobs` 尚未接入前端任务中心；当前任务页仍按 3s 轮询 `/tasks`（P1）。
 - SPEC、ChangePlan、契约对齐、Node 验证仍未实现（P1/P2）。
+
+---
+
+## 24. v3.0 增量：P1 变更工作流（SPEC → 计划 → Gate → 审查 → 应用）
+
+### 24.1 数据模型
+- `change_requests`：`title / requirements / goal / in_scope / out_scope / interfaces / acceptance_cases / nfr / open_questions / status / version / proposal / evidence / job_id`。
+- `change_tasks`：`seq / title / kind / in_scope / out_scope / acceptance / depends_on / status / attempts / result`。
+- 状态机：`drafting → draft → approved → planning → plan_ready → plan_approved → executing → review → applied`，异常分支 `failed / canceled / rejected`。
+- `docs` 迁移版本 4，空库与老库都能幂等升级。
+
+### 24.2 SPEC 与 Planner
+- `POST /changes`：异步 `change_spec` job 起草 SPEC；草稿可编辑；冻结前校验「目标 + 至少一条验收 + open_questions 清空」。
+- `POST /changes/{id}/plan`：`change_plan` job 产出 2-8 个任务；服务端校验任务类型、验收长度、依赖只能指向更早任务（等价于无环），并保存 In/Out 范围。
+- 任务模板：`feature / bugfix / refactor / test / docs / contract`，定义提示词与测试要求。
+
+### 24.3 执行器与 Gate
+- `change_execute` job 串行执行任务；每个任务的提示词包含 SPEC、任务 In/Out、模板提示、项目规则与相关文件完整内容。
+- 生成文件必须通过路径安全、密钥拒绝、In/Out 范围、测试完整性守卫；越界或删测试会进入修复循环。
+- Gate 在**未落盘**的 overrides 上运行：`run_verification(repo, user, overrides=...)`，因此验证的是最终提案而不是旧磁盘内容。
+- Gate 失败只回喂失败摘要，单任务最多 3 次；`test` 类型任务允许“只跑回归、不改文件”。
+- 全部任务通过后，汇总为**一个 `edits` 提案**（diff / 快照 / 冲突检测复用现有编辑服务），再做只读审查；审查 `block` 默认禁止应用。
+- 应用后自动提交 Git、记录证据并触发重新索引。
+
+### 24.4 前端
+- 新增「变更中心」视图（Ctrl/⌘+5）：创建变更、编辑/冻结 SPEC、查看计划与验收、Job 进度/取消、Gate/审查/diff、批准应用/拒绝。
+- SPEC 编辑只在草稿/失败状态启用；运行中轮询详情，草稿状态不做自动轮询，避免覆盖用户输入。
+
+### 24.5 验证记录（2026-10-23）
+- 真实模型在 `todo-api` 上执行「新增 GET /todos/stats + 测试」：
+  - SPEC 自动起草，验收用例 4 条，open_questions 为空；
+  - Planner 产出 5 个任务（Schema → 路由 → 测试 → 回归验证 → 文档），依赖串行；
+  - 5 个任务全部 Gate passed，耗时 101.7 秒；
+  - 只读审查 `pass`，统一提案 4 个文件、78 行 diff；
+  - 应用后磁盘验证 passed（语法 + 单元测试），撤销后再次验证 passed。
+- 后端 `pytest`：**183 passed**；前端 `npm run build`：通过（526.88 KB，chunk 警告仍在）。
+
+### 24.6 已知边界
+- 执行器生成完整文件而非 patch，超大文件/大改动可能受单任务 120KB、最终 300KB 限制。
+- 变更 Gate 仍只支持 Python；Node/前端会标记 `unsupported` 并进入未验证项。
+- 任务串行执行，未引入每任务分支/worktree；失败重试会重置任务状态并重新执行整条计划。
+- 契约对齐与 Node 执行仍属于 P2。

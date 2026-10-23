@@ -14,6 +14,8 @@ class AuditAction:
     RISK_BLOCKED = "risk_blocked"
     REPO_IMPORT = "repo_import"
     REPO_DELETE = "repo_delete"
+    CHANGE_CREATED = "change_created"
+    CHANGE_APPLIED = "change_applied"
 
 # In-memory buffer for fast access
 _audit_buffer = []

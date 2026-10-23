@@ -127,6 +127,29 @@ class TaskCreate(BaseModel):
     title: Optional[str] = Field(default=None, max_length=120)
 
 
+# ---------- Changes (SPEC + plan) ----------
+
+class ChangeCreate(BaseModel):
+    repo_id: str
+    title: Optional[str] = Field(default=None, max_length=120)
+    requirements: str = Field(min_length=10, max_length=8000)
+
+
+class ChangeSpecUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=120)
+    goal: Optional[str] = Field(default=None, max_length=4000)
+    in_scope: Optional[list[str]] = None
+    out_scope: Optional[list[str]] = None
+    interfaces: Optional[list[str]] = None
+    acceptance_cases: Optional[list[str]] = None
+    nfr: Optional[list[str]] = None
+    open_questions: Optional[list[str]] = None
+
+
+class ChangeApplyRequest(BaseModel):
+    force: bool = False
+
+
 # ---------- Status ----------
 
 class HealthOut(BaseModel):

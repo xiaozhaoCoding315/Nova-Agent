@@ -21,6 +21,9 @@ _PROMPT = """你是一名只读代码审查员。你不能修改文件，也不�
 项目：{repo_name}
 审查对象：{title}
 
+SPEC / 验收标准：
+{spec}
+
 项目约定（AGENTS.md / 项目规则）：
 {rules}
 
@@ -102,6 +105,7 @@ async def review_diff(
     files: dict[str, str],
     title: str = "",
     evidence: dict | None = None,
+    spec: str = "",
 ) -> dict:
     await ensure_token_budget(user_id=user_id)
     rules = load_repo_rules([repo])
@@ -118,6 +122,7 @@ async def review_diff(
     prompt = _PROMPT.format(
         repo_name=repo.get("name") or "仓库",
         title=title or "代码改动",
+        spec=(spec or "（未提供）")[:6000],
         rules=rules_text,
         diff=(diff or "")[:MAX_DIFF_CHARS],
         file_count=len(selected),

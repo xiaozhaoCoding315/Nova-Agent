@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Bot, Command, FlaskConical, FolderGit2, LogOut, MessagesSquare, Settings,
+  Bot, Command, FlaskConical, FolderGit2, GitPullRequest, LogOut, MessagesSquare, Settings,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
@@ -10,16 +10,18 @@ import type { Health, Usage } from './lib/types'
 import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { ChatView } from './views/ChatView'
+import { ChangesView } from './views/ChangesView'
 import { LoginView } from './views/LoginView'
 import { SettingsView } from './views/SettingsView'
 import { TasksView } from './views/TasksView'
 import { WorkspaceView } from './views/WorkspaceView'
 
-type ViewKey = 'chat' | 'workspace' | 'tasks' | 'settings'
+type ViewKey = 'chat' | 'workspace' | 'changes' | 'tasks' | 'settings'
 
 const NAV: { key: ViewKey; label: string; icon: typeof Bot }[] = [
   { key: 'chat', label: '对话', icon: MessagesSquare },
   { key: 'workspace', label: '工作区', icon: FolderGit2 },
+  { key: 'changes', label: '变更', icon: GitPullRequest },
   { key: 'tasks', label: '任务', icon: FlaskConical },
   { key: 'settings', label: '设置', icon: Settings },
 ]
@@ -27,6 +29,7 @@ const NAV: { key: ViewKey; label: string; icon: typeof Bot }[] = [
 const VIEW_TITLE: Record<ViewKey, string> = {
   chat: '对话',
   workspace: '工作区',
+  changes: '变更中心',
   tasks: '修复任务',
   settings: '设置',
 }
@@ -82,7 +85,7 @@ export default function App() {
       if (mod && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen((v) => !v)
-      } else if (mod && ['1', '2', '3', '4'].includes(event.key)) {
+      } else if (mod && ['1', '2', '3', '4', '5'].includes(event.key)) {
         event.preventDefault()
         setView(NAV[Number(event.key) - 1].key)
       }
@@ -203,6 +206,7 @@ export default function App() {
         <div className="min-h-0 flex-1">
           {view === 'chat' && <ChatView />}
           {view === 'workspace' && <WorkspaceView />}
+          {view === 'changes' && <ChangesView />}
           {view === 'tasks' && <TasksView />}
           {view === 'settings' && <SettingsView />}
         </div>

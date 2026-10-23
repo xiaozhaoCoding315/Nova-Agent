@@ -1,6 +1,7 @@
 import type {
-  Brain, BuilderPlanResponse, BuilderProposalResponse, EditRecord, FileNode, GitInfo, Health,
-  Impact, Message, Repo, Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, EditRecord,
+  FileNode, GitInfo, Health, Impact, Job, Message, Repo, Review, Session, Task, TaskListItem,
+  TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -109,6 +110,33 @@ export const api = {
       }),
     reject: (id: string) => request<{ ok: boolean }>(`/tasks/${id}/reject`, { method: 'POST' }),
     review: (id: string) => request<Review>(`/tasks/${id}/review`, { method: 'POST' }),
+  },
+
+  changes: {
+    list: () => request<ChangeListItem[]>('/changes'),
+    get: (id: string) => request<Change>(`/changes/${id}`),
+    create: (repoId: string, requirements: string, title?: string) =>
+      request<Change>('/changes', json({ repo_id: repoId, requirements, title })),
+    update: (id: string, patch: Record<string, unknown>) =>
+      request<Change>(`/changes/${id}`, { ...json(patch), method: 'PATCH' }),
+    draft: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/draft`, { method: 'POST' }),
+    approve: (id: string) => request<Change>(`/changes/${id}/approve`, { method: 'POST' }),
+    plan: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/plan`, { method: 'POST' }),
+    approvePlan: (id: string) => request<Change>(`/changes/${id}/plan/approve`, { method: 'POST' }),
+    execute: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/execute`, { method: 'POST' }),
+    apply: (id: string, force = false) =>
+      request<{ ok: boolean; applied: string[]; commit?: string | null }>(
+        `/changes/${id}/apply`, json({ force }),
+      ),
+    reject: (id: string) => request<{ ok: boolean }>(`/changes/${id}/reject`, { method: 'POST' }),
+    cancel: (id: string) => request<{ ok: boolean }>(`/changes/${id}/cancel`, { method: 'POST' }),
+  },
+
+  jobs: {
+    list: () => request<Job[]>('/jobs'),
+    get: (id: string) => request<Job>(`/jobs/${id}`),
+    cancel: (id: string) => request<Job>(`/jobs/${id}/cancel`, { method: 'POST' }),
+    retry: (id: string) => request<Job>(`/jobs/${id}/retry`, { method: 'POST' }),
   },
 
   edits: {

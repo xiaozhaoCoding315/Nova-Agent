@@ -8,6 +8,8 @@
 
 > **P0 进展更新（2026-10-23）**：`jobs` 表 + JobRunner 已接入 FastAPI lifespan，`/jobs` 列表/详情/取消/重试已上线，8 处裸 `asyncio.create_task` 已替换；facts 改为 `(user_id, hash)` 用户隔离；`core/memory/summary.py` 与摘要注入已实现。后端 **173 passed**，真实队列取消 261ms、崩溃恢复实测通过。本文 A1/A2/B2 的原始描述保留为历史基线，实施状态以本节为准。
 
+> **P1 进展更新（2026-10-23）**：`change_requests` / `change_tasks`（迁移 4）、SPEC 起草与冻结、Planner 计划校验、任务模板、串行执行器、未落盘 Gate、统一 edit 提案、只读审查、`/changes` API 与前端「变更中心」已实现。真实 `todo-api` 变更 5 任务全部 Gate passed、审查 pass，应用/撤销均通过；后端 **183 passed**。本文 A3/A4/B1/B6 的部分能力已被该工作流覆盖，完整统一提案服务与 patch 编辑仍待后续。
+
 ---
 
 ## 0. 先给结论

@@ -291,6 +291,121 @@ export type BuilderProposalResponse = {
   error?: string | null
 }
 
+// ---------- Change workflow (SPEC + plan) ----------
+
+export type ChangeStatus =
+  | 'drafting'
+  | 'draft'
+  | 'approved'
+  | 'planning'
+  | 'plan_ready'
+  | 'plan_approved'
+  | 'executing'
+  | 'review'
+  | 'applied'
+  | 'rejected'
+  | 'failed'
+  | 'canceled'
+
+export type ChangeTask = {
+  id: string
+  seq: number
+  title: string
+  kind: string
+  in_scope: string[]
+  out_scope: string[]
+  acceptance: string
+  depends_on: number[]
+  status: string
+  attempts: number
+  result: {
+    notes?: string
+    files?: string[]
+    gate?: VerifyResult
+    attempts?: number
+    tests?: string[]
+    error?: string
+  }
+}
+
+export type ChangeProposal = {
+  edit_id?: string
+  diff?: string
+  files?: string[]
+  gate?: VerifyResult
+  review?: Review
+  tasks?: { seq: number; title: string; kind: string; files: string[]; acceptance: string; gate: string; attempts: number }[]
+}
+
+export type ChangeEvidence = {
+  summary?: string
+  spec?: string
+  tasks?: unknown[]
+  gate?: VerifyResult
+  unverified?: string[]
+  elapsed_ms?: number
+  applied?: boolean
+  applied_at?: string
+  commit?: string | null
+  applied_files?: string[]
+}
+
+export type Change = {
+  id: string
+  user_id: number
+  repo_id: string
+  repo_name: string
+  title: string
+  requirements: string
+  goal: string
+  in_scope: string[]
+  out_scope: string[]
+  interfaces: string[]
+  acceptance_cases: string[]
+  nfr: string[]
+  open_questions: string[]
+  status: ChangeStatus
+  version: number
+  plan_notes: string
+  proposal: ChangeProposal
+  evidence: ChangeEvidence
+  error?: string | null
+  job_id?: string | null
+  approved_at?: string | null
+  created_at?: string
+  updated_at?: string
+  tasks: ChangeTask[]
+}
+
+export type ChangeListItem = {
+  id: string
+  title: string
+  status: ChangeStatus
+  version: number
+  repo_id: string
+  repo_name: string
+  error?: string | null
+  created_at?: string
+  updated_at?: string
+  task_count: number
+}
+
+export type Job = {
+  id: string
+  kind: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  progress: number
+  step?: string | null
+  result?: Record<string, unknown>
+  error?: string | null
+  attempts: number
+  max_attempts: number
+  cancel_requested: boolean
+  created_at?: string
+  started_at?: string
+  finished_at?: string
+}
+
 export type FileNode = {
   path: string
   name: string
