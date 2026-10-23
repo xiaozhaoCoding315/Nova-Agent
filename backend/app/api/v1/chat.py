@@ -16,7 +16,17 @@ from app.core.security.auth import get_current_user
 from app.core.security.limits import check_chat_quota, check_job_quota
 from app.core.trace import list_events, record as trace_record
 from app.db import execute
-from app.models.schemas import ChatRequest, MessageOut, SessionOut
+from app.models.schemas import (
+    ChatRequest,
+    EditApproveOut,
+    EditOut,
+    EditRevertOut,
+    MessageOut,
+    OkOut,
+    ReviewOut,
+    SessionOut,
+    TraceEventOut,
+)
 
 router = APIRouter()
 
@@ -40,7 +50,7 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
     return await session_mod.get_messages(session_id)
 
 
-@router.delete("/chat/sessions/{session_id}")
+@router.delete("/chat/sessions/{session_id}", response_model=OkOut)
 async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
     if not await session_mod.delete_session(session_id, user["id"]):
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -118,7 +128,7 @@ async def chat_message(
     )
 
 
-@router.get("/chat/sessions/{session_id}/trajectory")
+@router.get("/chat/sessions/{session_id}/trajectory", response_model=list[TraceEventOut])
 async def session_trajectory(
     session_id: str,
     limit: int = 500,
@@ -132,7 +142,7 @@ async def session_trajectory(
 
 # ---------- Edit proposals (in-chat file changes) ----------
 
-@router.get("/edits/{edit_id}")
+@router.get("/edits/{edit_id}", response_model=EditOut)
 async def get_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)):
     edit = await get_edit(edit_id, user["id"])
     if not edit:
@@ -140,7 +150,7 @@ async def get_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)
     return edit
 
 
-@router.post("/edits/{edit_id}/approve")
+@router.post("/edits/{edit_id}/approve", response_model=EditApproveOut)
 async def approve_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)):
     check_job_quota(user, "reindex")
     try:
@@ -159,7 +169,7 @@ async def approve_edit_endpoint(edit_id: str, user: dict = Depends(get_current_u
             "commit": result.get("commit"), "reindex_started": True}
 
 
-@router.post("/edits/{edit_id}/review")
+@router.post("/edits/{edit_id}/review", response_model=ReviewOut)
 async def review_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)):
     if not await get_edit(edit_id, user["id"]):
         raise HTTPException(status_code=404, detail="修改不存在")
@@ -174,7 +184,7 @@ async def review_edit_endpoint(edit_id: str, user: dict = Depends(get_current_us
         raise HTTPException(status_code=502, detail=f"审查失败：{exc}")
 
 
-@router.post("/edits/{edit_id}/reject")
+@router.post("/edits/{edit_id}/reject", response_model=OkOut)
 async def reject_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)):
     try:
         info = await reject_edit(edit_id, user["id"])
@@ -187,7 +197,7 @@ async def reject_edit_endpoint(edit_id: str, user: dict = Depends(get_current_us
     return {"ok": True}
 
 
-@router.post("/edits/{edit_id}/revert")
+@router.post("/edits/{edit_id}/revert", response_model=EditRevertOut)
 async def revert_edit_endpoint(edit_id: str, user: dict = Depends(get_current_user)):
     check_job_quota(user, "reindex")
     try:

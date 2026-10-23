@@ -13,7 +13,7 @@ from app.core.review.service import review_task
 from app.core.security.limits import check_job_quota, ensure_token_budget
 from app.core.tasks.engine import apply_task_result
 from app.db import execute, query
-from app.models.schemas import TaskCreate
+from app.models.schemas import OkOut, ReviewOut, TaskApplyOut, TaskCreate, TaskListItemOut, TaskOut
 
 router = APIRouter()
 
@@ -40,7 +40,7 @@ async def _task_or_404(task_id: str, user_id: int) -> dict:
     }
 
 
-@router.post("/tasks")
+@router.post("/tasks", response_model=TaskOut)
 async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
     repo = await get_repo(body.repo_id, user["id"])
     if not repo:
@@ -69,7 +69,7 @@ async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
     return await _task_or_404(task_id, user["id"])
 
 
-@router.get("/tasks")
+@router.get("/tasks", response_model=list[TaskListItemOut])
 async def list_tasks(user: dict = Depends(get_current_user)):
     rows = await query(
         """
@@ -87,12 +87,12 @@ async def list_tasks(user: dict = Depends(get_current_user)):
     ]
 
 
-@router.get("/tasks/{task_id}")
+@router.get("/tasks/{task_id}", response_model=TaskOut)
 async def get_task(task_id: str, user: dict = Depends(get_current_user)):
     return await _task_or_404(task_id, user["id"])
 
 
-@router.post("/tasks/{task_id}/review")
+@router.post("/tasks/{task_id}/review", response_model=ReviewOut)
 async def review_task_endpoint(task_id: str, user: dict = Depends(get_current_user)):
     task = await _task_or_404(task_id, user["id"])
     if task["status"] not in ("ready", "failed"):
@@ -108,7 +108,7 @@ async def review_task_endpoint(task_id: str, user: dict = Depends(get_current_us
         raise HTTPException(status_code=502, detail=f"审查失败：{exc}")
 
 
-@router.post("/tasks/{task_id}/apply")
+@router.post("/tasks/{task_id}/apply", response_model=TaskApplyOut)
 async def apply_task(task_id: str, user: dict = Depends(get_current_user)):
     task = await _task_or_404(task_id, user["id"])
     if task["status"] != "ready":
@@ -127,7 +127,7 @@ async def apply_task(task_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "applied": applied, "reindex_started": True}
 
 
-@router.post("/tasks/{task_id}/reject")
+@router.post("/tasks/{task_id}/reject", response_model=OkOut)
 async def reject_task(task_id: str, user: dict = Depends(get_current_user)):
     task = await _task_or_404(task_id, user["id"])
     if task["status"] != "ready":

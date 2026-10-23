@@ -25,7 +25,18 @@ from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, check_search_quota
 from app.core.security.paths import UnsafePathError, normalize_relpath, resolve_repo_path
 from app.db import query as db_query
-from app.models.schemas import FileContentOut, FileNodeOut, RepoImportGit, RepoOut, SearchHitOut
+from app.models.schemas import (
+    BrainOut,
+    FileContentOut,
+    FileNodeOut,
+    ImpactOut,
+    OkOut,
+    RepoImportGit,
+    RepoOut,
+    SearchHitOut,
+    SearchResponseOut,
+    StatusActionOut,
+)
 
 router = APIRouter()
 
@@ -110,7 +121,7 @@ async def get_repo_detail(repo_id: str, user: dict = Depends(get_current_user)):
     return repo
 
 
-@router.delete("/repos/{repo_id}")
+@router.delete("/repos/{repo_id}", response_model=OkOut)
 async def delete_repo_endpoint(repo_id: str, user: dict = Depends(get_current_user)):
     if not await delete_repo(repo_id, user["id"]):
         raise HTTPException(status_code=404, detail="仓库不存在")
@@ -118,7 +129,7 @@ async def delete_repo_endpoint(repo_id: str, user: dict = Depends(get_current_us
     return {"ok": True}
 
 
-@router.post("/repos/{repo_id}/reindex")
+@router.post("/repos/{repo_id}/reindex", response_model=StatusActionOut)
 async def reindex(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await get_repo(repo_id, user["id"])
     if not repo:
@@ -194,7 +205,7 @@ async def get_file(repo_id: str, path: str = Query(...), user: dict = Depends(ge
     return {"path": rel, "language": language or "", "line_count": line_count or 0, "content": content}
 
 
-@router.get("/repos/{repo_id}/search")
+@router.get("/repos/{repo_id}/search", response_model=SearchResponseOut)
 async def search_in_repo(
     repo_id: str,
     q: str = Query(..., min_length=1),
@@ -219,7 +230,7 @@ async def search_in_repo(
     }
 
 
-@router.get("/repos/{repo_id}/impact")
+@router.get("/repos/{repo_id}/impact", response_model=ImpactOut)
 async def impact_in_repo(
     repo_id: str,
     q: str = Query(..., min_length=1),
@@ -233,7 +244,7 @@ async def impact_in_repo(
     return await analyze_impact(repo_id, q, depth=depth)
 
 
-@router.get("/repos/{repo_id}/brain")
+@router.get("/repos/{repo_id}/brain", response_model=BrainOut)
 async def repo_brain(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await get_repo(repo_id, user["id"])
     if not repo:

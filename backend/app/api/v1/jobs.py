@@ -3,11 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.jobs.runner import runner
 from app.core.security.auth import get_current_user
+from app.models.schemas import JobOut
 
 router = APIRouter()
 
 
-@router.get("/jobs")
+@router.get("/jobs", response_model=list[JobOut])
 async def list_jobs(
     limit: int = Query(30, ge=1, le=100),
     user: dict = Depends(get_current_user),
@@ -15,7 +16,7 @@ async def list_jobs(
     return await runner.list(user["id"], limit)
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", response_model=JobOut)
 async def get_job(job_id: str, user: dict = Depends(get_current_user)):
     job = await runner.get(job_id, user["id"])
     if not job:
@@ -23,7 +24,7 @@ async def get_job(job_id: str, user: dict = Depends(get_current_user)):
     return job
 
 
-@router.post("/jobs/{job_id}/cancel")
+@router.post("/jobs/{job_id}/cancel", response_model=JobOut)
 async def cancel_job(job_id: str, user: dict = Depends(get_current_user)):
     job = await runner.cancel(job_id, user["id"])
     if not job:
@@ -31,7 +32,7 @@ async def cancel_job(job_id: str, user: dict = Depends(get_current_user)):
     return job
 
 
-@router.post("/jobs/{job_id}/retry")
+@router.post("/jobs/{job_id}/retry", response_model=JobOut)
 async def retry_job(job_id: str, user: dict = Depends(get_current_user)):
     job = await runner.get(job_id, user["id"])
     if not job:

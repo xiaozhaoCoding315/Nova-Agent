@@ -9,7 +9,7 @@ from app.core.security.auth import (
     create_token,
     get_current_user,
 )
-from app.models.schemas import LoginRequest, UserOut
+from app.models.schemas import LoginRequest, OkOut, UserOut
 
 router = APIRouter()
 
@@ -39,7 +39,7 @@ async def login(body: LoginRequest, response: Response):
     return user
 
 
-@router.post("/auth/logout")
+@router.post("/auth/logout", response_model=OkOut)
 async def logout(response: Response):
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"ok": True}

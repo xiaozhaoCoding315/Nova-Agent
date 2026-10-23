@@ -10,6 +10,8 @@
 
 > **P1 进展更新（2026-10-23）**：`change_requests` / `change_tasks`（迁移 4）、SPEC 起草与冻结、Planner 计划校验、任务模板、串行执行器、未落盘 Gate、统一 edit 提案、只读审查、`/changes` API 与前端「变更中心」已实现。真实 `todo-api` 变更 5 任务全部 Gate passed、审查 pass，应用/撤销均通过；后端 **183 passed**。本文 A3/A4/B1/B6 的部分能力已被该工作流覆盖，完整统一提案服务与 patch 编辑仍待后续。
 
+> **P2.1 进展更新（2026-10-23）**：关键 API 响应模型、OpenAPI 快照（60 paths / 65 schemas）、`contracts/openapi.json`、`api-schema.d.ts`、`contract:generate/check` 与契约快照测试已完成；重复 operation ID 已修复。后端 **186 passed**，契约漂移检查实测会失败并在恢复后通过。Node 沙箱与目标仓库契约 Gate 仍属 P2.2/P2.3。
+
 ---
 
 ## 0. 先给结论

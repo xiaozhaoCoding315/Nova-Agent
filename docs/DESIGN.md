@@ -703,3 +703,30 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 变更 Gate 仍只支持 Python；Node/前端会标记 `unsupported` 并进入未验证项。
 - 任务串行执行，未引入每任务分支/worktree；失败重试会重置任务状态并重新执行整条计划。
 - 契约对齐与 Node 执行仍属于 P2。
+
+---
+
+## 25. v3.1 增量：P2.1 契约基础设施
+
+### 25.1 关键 API 响应模型
+- 为 changes / jobs / tasks / builder / git / edits / verify / trajectory / search / impact / brain 增加 Pydantic 响应模型与 `response_model`。
+- OpenAPI schema 从 **22 个**增至 **65 个**；60 条路径全部保留。
+- 修复 `builder.router` 被 include 两次导致的重复 operation ID，生成 OpenAPI 时 **0 警告**。
+- `last_verify` 在无历史结果时返回 `null`，前端仍按“无结果”处理。
+
+### 25.2 契约源与生成
+- `backend/scripts/export_openapi.py`：从 `app.openapi()` 稳定导出 `contracts/openapi.json`；`--check` 比较快照。
+- `frontend/scripts/contract-check.mjs`：先检查后端契约快照，再用 `openapi-typescript` 生成临时 TS 并与 `src/lib/api-schema.d.ts` 比较。
+- npm 脚本：`contract:generate` / `contract:check`。
+- `tests/test_contract.py`：快照一致 + 关键端点必须存在 JSON response schema。
+
+### 25.3 验证记录（2026-10-23）
+- 后端 `pytest`：**186 passed**。
+- 前端 `npm run build`：通过（527.10 KB，chunk 警告仍在）。
+- `npm run contract:check`：通过；手动注入一行漂移后退出码 1，恢复后通过。
+- 使用 TestClient + 真实库验证 changes/jobs/tasks/git/verify/search/impact/brain/edits/trajectory 均返回 200，`ChangeOut` 的 proposal/review/tasks 字段完整。
+
+### 25.4 已知边界
+- 前端尚未全面改为引用 `components["schemas"]`，当前保留手写类型别名；逐域迁移在 P2.2/P2.3。
+- OpenAPI 中的 `dict` 字段仍会生成较宽松的 TS 类型（如 change proposal 的 `tasks`）。
+- 契约 Gate（目标仓库）+ Node 沙箱尚未接入，属于 P2.2/P2.3。

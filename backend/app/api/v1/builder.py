@@ -16,7 +16,16 @@ from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, check_sandbox_quota, ensure_token_budget
 from app.core.verify.service import run_verification
 from app.db import execute, query
-from app.models.schemas import BuilderCreate, BuilderFeedback, RepoOut
+from app.models.schemas import (
+    BuilderActionOut,
+    BuilderApplyOut,
+    BuilderCreate,
+    BuilderFeedback,
+    BuilderPlanOut,
+    BuilderProposalOut,
+    RepoOut,
+    VerifyResultOut,
+)
 
 router = APIRouter()
 
@@ -48,7 +57,7 @@ async def create_builder_project(body: BuilderCreate, user: dict = Depends(get_c
     }
 
 
-@router.get("/repos/{repo_id}/plan")
+@router.get("/repos/{repo_id}/plan", response_model=BuilderPlanOut)
 async def get_plan(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await _own_repo(repo_id, user["id"])
     return {
@@ -60,7 +69,7 @@ async def get_plan(repo_id: str, user: dict = Depends(get_current_user)):
     }
 
 
-@router.post("/repos/{repo_id}/plan/generate")
+@router.post("/repos/{repo_id}/plan/generate", response_model=BuilderActionOut)
 async def regenerate_plan(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await _own_repo(repo_id, user["id"])
     if repo["status"] in ("planning", "generating"):
@@ -70,7 +79,7 @@ async def regenerate_plan(repo_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "status": "planning"}
 
 
-@router.post("/repos/{repo_id}/plan/approve")
+@router.post("/repos/{repo_id}/plan/approve", response_model=BuilderActionOut)
 async def approve_plan(repo_id: str, user: dict = Depends(get_current_user)):
     await _own_repo(repo_id, user["id"])
     try:
@@ -80,7 +89,7 @@ async def approve_plan(repo_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "status": "approved"}
 
 
-@router.post("/repos/{repo_id}/generate")
+@router.post("/repos/{repo_id}/generate", response_model=BuilderActionOut)
 async def generate_files(
     repo_id: str,
     body: BuilderFeedback | None = None,
@@ -96,13 +105,13 @@ async def generate_files(
     return {"ok": True, "status": "generating"}
 
 
-@router.get("/repos/{repo_id}/proposal")
+@router.get("/repos/{repo_id}/proposal", response_model=BuilderProposalOut)
 async def get_proposal(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await _own_repo(repo_id, user["id"])
     return {"status": repo["status"], "proposal": repo["proposal"], "error": repo["error"]}
 
 
-@router.post("/repos/{repo_id}/proposal/approve")
+@router.post("/repos/{repo_id}/proposal/approve", response_model=BuilderApplyOut)
 async def approve_proposal(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await _own_repo(repo_id, user["id"])
     if repo["status"] != "review":
@@ -118,7 +127,7 @@ async def approve_proposal(repo_id: str, user: dict = Depends(get_current_user))
     return {"ok": True, "applied": applied, "status": "indexing"}
 
 
-@router.post("/repos/{repo_id}/proposal/reject")
+@router.post("/repos/{repo_id}/proposal/reject", response_model=BuilderActionOut)
 async def reject_proposal(repo_id: str, user: dict = Depends(get_current_user)):
     await _own_repo(repo_id, user["id"])
     try:
@@ -128,7 +137,7 @@ async def reject_proposal(repo_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "status": "approved"}
 
 
-@router.post("/repos/{repo_id}/verify")
+@router.post("/repos/{repo_id}/verify", response_model=VerifyResultOut)
 async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
     """Run the repo's test suite in the verification sandbox (builder image)."""
     repo = await get_repo(repo_id, user["id"])
@@ -160,10 +169,10 @@ async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
     return check
 
 
-@router.get("/repos/{repo_id}/verify")
+@router.get("/repos/{repo_id}/verify", response_model=VerifyResultOut | None)
 async def last_verify(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
     rows = await query("SELECT last_check FROM repos WHERE id = %s", (repo_id,))
-    return (rows[0][0] if rows else None) or {}
+    return (rows[0][0] if rows else None) or None

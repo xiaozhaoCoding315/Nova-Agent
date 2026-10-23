@@ -16,7 +16,17 @@ from app.core.jobs.service import (
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, ensure_token_budget
-from app.models.schemas import ChangeApplyRequest, ChangeCreate, ChangeSpecUpdate
+from app.models.schemas import (
+    ChangeActionOut,
+    ChangeApplyOut,
+    ChangeApplyRequest,
+    ChangeCreate,
+    ChangeListItemOut,
+    ChangeOut,
+    ChangeReportOut,
+    ChangeSpecUpdate,
+    OkOut,
+)
 
 router = APIRouter()
 
@@ -28,7 +38,7 @@ async def _change_or_404(change_id: str, user: dict) -> dict:
     return change
 
 
-@router.post("/changes")
+@router.post("/changes", response_model=ChangeOut)
 async def create_change(body: ChangeCreate, user: dict = Depends(get_current_user)):
     repo = await get_repo(body.repo_id, user["id"])
     if not repo:
@@ -51,7 +61,7 @@ async def create_change(body: ChangeCreate, user: dict = Depends(get_current_use
     return change
 
 
-@router.get("/changes")
+@router.get("/changes", response_model=list[ChangeListItemOut])
 async def list_changes(
     limit: int = Query(50, ge=1, le=100),
     user: dict = Depends(get_current_user),
@@ -59,12 +69,12 @@ async def list_changes(
     return await service.list_changes(user["id"], limit)
 
 
-@router.get("/changes/{change_id}")
+@router.get("/changes/{change_id}", response_model=ChangeOut)
 async def get_change(change_id: str, user: dict = Depends(get_current_user)):
     return await _change_or_404(change_id, user)
 
 
-@router.patch("/changes/{change_id}")
+@router.patch("/changes/{change_id}", response_model=ChangeOut)
 async def update_change(
     change_id: str,
     body: ChangeSpecUpdate,
@@ -78,7 +88,7 @@ async def update_change(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/changes/{change_id}/draft")
+@router.post("/changes/{change_id}/draft", response_model=ChangeActionOut)
 async def redraft_change(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     if change["status"] not in ("draft", "failed"):
@@ -90,7 +100,7 @@ async def redraft_change(change_id: str, user: dict = Depends(get_current_user))
     return {"ok": True, "job_id": job_id}
 
 
-@router.post("/changes/{change_id}/approve")
+@router.post("/changes/{change_id}/approve", response_model=ChangeOut)
 async def approve_change(change_id: str, user: dict = Depends(get_current_user)):
     try:
         return await service.approve_spec(change_id, user["id"])
@@ -98,7 +108,7 @@ async def approve_change(change_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/changes/{change_id}/plan")
+@router.post("/changes/{change_id}/plan", response_model=ChangeActionOut)
 async def plan_change(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     if change["status"] not in ("approved", "failed"):
@@ -110,7 +120,7 @@ async def plan_change(change_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True, "job_id": job_id}
 
 
-@router.post("/changes/{change_id}/plan/approve")
+@router.post("/changes/{change_id}/plan/approve", response_model=ChangeOut)
 async def approve_change_plan(change_id: str, user: dict = Depends(get_current_user)):
     try:
         return await service.approve_plan(change_id, user["id"])
@@ -118,7 +128,7 @@ async def approve_change_plan(change_id: str, user: dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/changes/{change_id}/execute")
+@router.post("/changes/{change_id}/execute", response_model=ChangeActionOut)
 async def execute_change(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     if change["status"] not in ("plan_approved", "failed"):
@@ -130,7 +140,7 @@ async def execute_change(change_id: str, user: dict = Depends(get_current_user))
     return {"ok": True, "job_id": job_id}
 
 
-@router.post("/changes/{change_id}/apply")
+@router.post("/changes/{change_id}/apply", response_model=ChangeApplyOut)
 async def apply_change(
     change_id: str,
     body: ChangeApplyRequest | None = None,
@@ -171,7 +181,7 @@ async def apply_change(
     return {"ok": True, "applied": applied.get("applied") or [], "commit": applied.get("commit")}
 
 
-@router.post("/changes/{change_id}/reject")
+@router.post("/changes/{change_id}/reject", response_model=OkOut)
 async def reject_change(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     if change["status"] not in ("review", "plan_ready", "plan_approved"):
@@ -186,7 +196,7 @@ async def reject_change(change_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-@router.post("/changes/{change_id}/cancel")
+@router.post("/changes/{change_id}/cancel", response_model=OkOut)
 async def cancel_change(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     if change["status"] not in ("drafting", "planning", "executing"):
@@ -197,7 +207,7 @@ async def cancel_change(change_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-@router.get("/changes/{change_id}/report")
+@router.get("/changes/{change_id}/report", response_model=ChangeReportOut)
 async def change_report(change_id: str, user: dict = Depends(get_current_user)):
     change = await _change_or_404(change_id, user)
     return {

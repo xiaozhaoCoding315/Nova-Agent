@@ -186,6 +186,10 @@ frontend/src/
 ├── stores/            auth · chat · repos（Zustand）
 └── lib/               API 客户端 · SSE 解析（含中断与错误处理）
 docs/DESIGN.md         架构设计文档（数据模型/API/安全/部署）
+contracts/openapi.json FastAPI 导出的单一契约源（提交）
+frontend/src/lib/api-schema.d.ts  由契约生成的 TS 类型（提交）
+backend/scripts/export_openapi.py 契约导出/--check 脚本
+frontend/scripts/contract-check.mjs 前端契约类型漂移检查
 ```
 
 ## Headless CLI（CI 友好）
@@ -206,10 +210,26 @@ python nova.py export --repo todo-api --out todo-api.zip
 
 ```bash
 cd backend && python -m pytest tests/ -q
+cd frontend && npm run build
+cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、7 个工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、记忆摘要
+- 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
+
+### 契约生成与漂移检查
+
+```bash
+# 后端：从 FastAPI 导出唯一契约源
+cd backend && python -m scripts.export_openapi
+
+# 前端：由契约生成 TS 类型并校验是否过期
+cd frontend && npm run contract:generate
+cd frontend && npm run contract:check
+```
+
+`contracts/openapi.json` 是提交到仓库的契约快照；`frontend/src/lib/api-schema.d.ts` 由 `openapi-typescript` 生成。修改后端响应模型后必须重新导出/生成，否则 `contract:check` 退出码 1。
 
 ## 安全说明
 
@@ -233,6 +253,8 @@ cd backend && python -m pytest tests/ -q
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；未初始化 Git 的仓库不会自动提交
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 仍只支持 **Python**（compileall + pytest + 可选 ruff/mypy），Node/前端项目会标记 `unsupported` 并明确写入未验证项；尚未引入每任务独立分支/worktree
+- 契约生成已接入（OpenAPI → TS），但前端仍保留手写 UI 类型别名；逐域迁移与契约 Gate 属于 P2 后续
+- `contract:check` 需要本机 Python 与 Node 依赖；CI 接入属于 P2 后续
 
 ## License
 
