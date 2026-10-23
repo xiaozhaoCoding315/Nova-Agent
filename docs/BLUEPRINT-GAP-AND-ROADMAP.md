@@ -24,6 +24,8 @@
 
 > **P3.3 进展更新（2026-10-23）**：预览部署与幂等账本完成。`external_actions` + `deployments`（迁移 6）记录外部动作与预览；管理员可一键部署 Python/FastAPI、健康检查、返回本地 URL、下线清理。真实 `todo-api` 部署健康检查 200，重复部署幂等复用，teardown 清理容器；后端 **227 passed**。Node/全栈预览、TTL 回收、域名反代仍待后续。
 
+> **P3.4 进展更新（2026-10-23）**：MCP stdio 客户端、server allowlist、工具能力映射与审计完成；工具名 `mcp__server__tool`，默认仅管理员，走统一 policy。fake MCP server 验证 initialize/list/call、allowlist 过滤与 demo 拒绝；后端 **230 passed**。HTTP/SSE transport、OAuth、MCP 进程沙箱仍待后续。
+
 ---
 
 ## 0. 先给结论

@@ -30,3 +30,6 @@ docs/superpowers/
 # Runtime data
 backend/data/
 resume.html
+
+# Operator-local MCP server config
+backend/mcp_servers.json

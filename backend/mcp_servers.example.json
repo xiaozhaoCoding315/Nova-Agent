@@ -1,0 +1,24 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/absolute/path/to/allowed/workspace"
+      ],
+      "enabled": false,
+      "allow_tools": [
+        "read_file",
+        "list_directory",
+        "search_files"
+      ],
+      "capabilities": {
+        "read_file": ["fs.read"],
+        "list_directory": ["fs.read"],
+        "search_files": ["fs.read"]
+      }
+    }
+  ]
+}

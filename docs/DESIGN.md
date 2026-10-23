@@ -958,3 +958,34 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 预览使用 bridge 网络以支持本地端口映射；未做域名反代/TTL 自动回收。
 - 临时工作区在正常 teardown 时清理；进程崩溃后可能残留，需后续启动清理任务。
 - 预览运行的是仓库代码，仍应只对可信仓库/管理员开放。
+
+---
+
+## 33. v3.9 增量：P3.4 MCP 外接工具
+
+### 33.1 传输与生命周期
+- `core/mcp/client.py` 实现最小 MCP stdio 客户端：JSON-RPC 2.0、换行分帧、initialize / notifications/initialized / tools/list / tools/call。
+- Windows 的 SelectorEventLoop 不支持 asyncio 子进程，因此使用 `Popen + 读线程 + call_soon_threadsafe`，与现有 psycopg 事件循环兼容。
+- 客户端支持请求超时、进程退出错误映射与关闭清理；stderr 写入日志。
+- MCP server 在 FastAPI lifespan 启动时连接、关闭时终止；任一 server 失败不阻塞应用启动。
+
+### 33.2 Allowlist 与能力
+- `mcp_servers.json` / `MCP_SERVERS_JSON` 配置 server：command、args、enabled、allow_tools、capabilities、admin_only、timeout。
+- 只有 `allow_tools` 与 `capabilities` 同时声明的工具才注册；工具名 `mcp__<server>__<tool>`。
+- 每个 MCP 工具携带显式 capability（fs.read/fs.write/proc.exec/net.fetch/git.write/deploy/secrets.read），进入统一 policy；默认 `MCP_ADMIN_ONLY=true`。
+- 工具 wrapper 再做一次管理员校验（纵深防御）；参数摘要与结果写入既有审计。
+
+### 33.3 验证记录（2026-10-23）
+- 后端 `pytest`：**230 passed**；`ruff check app` 通过；前端构建与契约检查通过。
+- 使用 fake MCP server（真实 stdio JSON-RPC）验证：
+  - initialize / tools/list / tools/call 成功；
+  - allowlist 只暴露 `echo`，未声明的 `write_secret` 不注册；
+  - 管理员调用返回 `echo: hello`；
+  - demo 账号被能力策略拒绝。
+- MCP client 在 Windows SelectorEventLoop 线程模型下运行通过。
+
+### 33.4 已知边界
+- 仅支持 stdio transport；HTTP/SSE、OAuth、资源订阅等 MCP 能力未接入。
+- server 进程是运维可信代码；当前没有额外进程沙箱、签名或资源限制。
+- 工具参数只经过通用路径/能力校验，未按 MCP server 语义做细粒度参数过滤。
+- 工具发现发生在启动时；配置变更需重启应用。

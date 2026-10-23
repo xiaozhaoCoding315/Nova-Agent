@@ -57,7 +57,26 @@ async def lifespan(_: FastAPI):
             job_runner = runner
         except Exception:
             logger.exception("job_runner_start_failed_continuing_startup")
+    mcp_service = None
+    if settings.mcp_enabled:
+        from app.core.mcp.manager import manager as mcp_service
+        try:
+            await mcp_service.start()
+            from app.core.tools import get_registry
+            registry = get_registry()
+            for tool in mcp_service.tool_definitions():
+                if registry.get(tool.name) is None:
+                    registry.register(tool)
+            logger.info("mcp_tools_registered", tools=mcp_service.tool_names())
+        except Exception:
+            logger.exception("mcp_start_failed_continuing_startup")
+            mcp_service = None
     yield
+    if mcp_service is not None:
+        try:
+            await mcp_service.stop()
+        except Exception:
+            logger.exception("mcp_stop_failed")
     if job_runner is not None:
         try:
             await job_runner.stop()

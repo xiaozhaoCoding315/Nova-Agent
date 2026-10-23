@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks
     tool_post_hook: str = ""      # best-effort post-tool audit hook
 
+    # ---------- MCP ----------
+    mcp_enabled: bool = True
+    mcp_config_path: str = "mcp_servers.json"
+    mcp_servers_json: str = ""    # inline JSON config (overrides path)
+    mcp_admin_only: bool = True
+    mcp_timeout: int = 30
+
     # ---------- Background jobs ----------
     job_stale_seconds: int = 120        # requeue running jobs whose heartbeat is older
     job_runner_enabled: bool = True
