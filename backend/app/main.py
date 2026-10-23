@@ -49,7 +49,20 @@ async def lifespan(_: FastAPI):
         except Exception:
             logger.exception("db_init_failed_continuing_startup")
     task = asyncio.create_task(_cleanup_loop())
+    job_runner = None
+    if settings.job_runner_enabled:
+        from app.core.jobs.runner import runner
+        try:
+            await runner.start()
+            job_runner = runner
+        except Exception:
+            logger.exception("job_runner_start_failed_continuing_startup")
     yield
+    if job_runner is not None:
+        try:
+            await job_runner.stop()
+        except Exception:
+            logger.exception("job_runner_stop_failed")
     task.cancel()
     try:
         await task

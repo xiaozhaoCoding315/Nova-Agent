@@ -634,3 +634,30 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 验证 profile 目前只执行 Python；Node/前端项目标记 `unsupported`（P2）
 - Reviewer 是单次结构化审查，不是多智能体辩论，结论作为证据补充
 - 冲突检测基于完整文件内容快照，适合当前整文件写入模型；后续若引入 patch，需要改为 hunk 级基线
+
+---
+
+## 23. v2.9 增量：P0 可靠性加固（2026-10-23）
+
+### 23.1 持久任务队列
+- `jobs` 表 + `JobRunner` 在 FastAPI lifespan 启停；使用 `FOR UPDATE SKIP LOCKED` 领取，支持心跳、取消、重试、优雅停机与崩溃恢复。
+- 导入 / 重建索引 / 红-绿 / Builder 方案与文件生成 / 应用后重建索引全部改为入队，替换裸 `asyncio.create_task`。
+- 新增 `/api/v1/jobs` 列表、详情、取消、重试接口。
+- 取消请求立即返回；沙箱容器按 `nova.job_id` 标签在后台清理。
+- 会话摘要作为 `session_summary` job 异步执行。
+
+### 23.2 记忆修复
+- facts 查重与写入改为 `(user_id, hash)`，修复跨用户碰撞与 `ON CONFLICT (hash)` 失效导致的静默写入失败。
+- 新增 `core/memory/summary.py`：按 `summary_upto_id` 增量压缩，保留最近 8 条原文，摘要 ≤40 行 / 2000 字。
+- Agent 系统提示词注入「早期会话摘要」，历史消息只取摘要点之后的增量。
+
+### 23.3 验证记录
+- 后端 `python -m pytest tests -q`：**173 passed**（新增 jobs/facts/summary 测试）。
+- 前端 `npm run build`：通过。
+- 真实队列冒烟：claim → cancel 接口 105ms、任务状态 261ms 内变为 `canceled`。
+- 崩溃恢复冒烟：心跳过期的 `running` 任务在 Runner 启动后自动回队列并执行成功。
+- 本地库迁移版本 1–3 已生效；`facts` 的 `(user_id, hash)` 唯一索引与 `ON CONFLICT` 已实测。
+
+### 23.4 已知边界
+- `/jobs` 尚未接入前端任务中心；当前任务页仍按 3s 轮询 `/tasks`（P1）。
+- SPEC、ChangePlan、契约对齐、Node 验证仍未实现（P1/P2）。

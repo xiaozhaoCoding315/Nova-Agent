@@ -13,13 +13,12 @@ from app.core.indexing.pipeline import (
     create_repo_row,
     delete_repo,
     get_repo,
-    index_repo,
     list_repos,
-    reindex_repo,
     set_status,
 )
 from app.core.indexing.symbols import search_symbols
 from app.core.indexing.walker import clone_git, safe_extract_zip
+from app.core.jobs.service import enqueue_index
 from app.core.rag.retriever import retrieve
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
@@ -71,7 +70,7 @@ async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_cur
 
     repo = await create_repo_row(user["id"], _display_name(file.filename or "upload"),
                                  f"zip:{file.filename}", repo_id)
-    asyncio.create_task(index_repo(repo_id))
+    await enqueue_index(repo_id, user_id=user["id"])
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "zip", "name": repo["name"]})
     return repo
@@ -92,7 +91,7 @@ async def import_git_repo(body: RepoImportGit, user: dict = Depends(get_current_
 
     name = body.name or body.git_url.rstrip("/").split("/")[-1].removesuffix(".git")
     repo = await create_repo_row(user["id"], name, f"git:{body.git_url}", repo_id)
-    asyncio.create_task(index_repo(repo_id))
+    await enqueue_index(repo_id, user_id=user["id"])
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "git", "url": body.git_url})
     return repo
@@ -126,7 +125,7 @@ async def reindex(repo_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="仓库不存在")
     check_job_quota(user, "reindex")
     await set_status(repo_id, "pending")
-    asyncio.create_task(reindex_repo(repo_id))
+    await enqueue_index(repo_id, reindex=True, user_id=user["id"])
     return {"ok": True, "status": "pending"}
 
 

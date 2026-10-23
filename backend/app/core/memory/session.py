@@ -27,8 +27,8 @@ async def create_session(user_id: int, title: str = DEFAULT_TITLE) -> dict:
 
 async def get_session(session_id: str, user_id: int) -> dict | None:
     rows = await query(
-        "SELECT id, title, summary, permission_mode, created_at, updated_at, repo_ids "
-        "FROM sessions WHERE id = %s AND user_id = %s",
+        "SELECT id, title, summary, permission_mode, created_at, updated_at, repo_ids, "
+        "summary_upto_id FROM sessions WHERE id = %s AND user_id = %s",
         (session_id, user_id),
     )
     if not rows:
@@ -38,6 +38,7 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
         "id": str(r[0]), "title": r[1], "summary": r[2],
         "permission_mode": r[3] or "ask", "created_at": r[4], "updated_at": r[5],
         "repo_ids": [str(x) for x in (r[6] or [])],
+        "summary_upto_id": int(r[7] or 0),
     }
 
 
@@ -85,13 +86,40 @@ async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
     ]
 
 
-async def recent_messages(session_id: str, limit: int = HISTORY_LIMIT) -> list[dict]:
-    rows = await query(
+async def recent_messages(
+    session_id: str, limit: int = HISTORY_LIMIT, after_id: int = 0
+) -> list[dict]:
+    sql = (
         "SELECT role, content FROM messages WHERE session_id = %s "
-        "AND role IN ('user','assistant') ORDER BY id DESC LIMIT %s",
-        (session_id, limit),
+        "AND role IN ('user','assistant')"
     )
+    params: list = [session_id]
+    if after_id > 0:
+        sql += " AND id > %s"
+        params.append(after_id)
+    sql += " ORDER BY id DESC LIMIT %s"
+    params.append(limit)
+    rows = await query(sql, tuple(params))
     return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+
+
+async def messages_after(session_id: str, after_id: int = 0) -> list[dict]:
+    rows = await query(
+        "SELECT id, role, content FROM messages WHERE session_id = %s AND id > %s "
+        "AND role IN ('user','assistant') ORDER BY id ASC",
+        (session_id, after_id),
+    )
+    return [{"id": int(r[0]), "role": r[1], "content": r[2]} for r in rows]
+
+
+async def summary_state(session_id: str, user_id: int) -> tuple[str, int] | None:
+    rows = await query(
+        "SELECT summary, summary_upto_id FROM sessions WHERE id = %s AND user_id = %s",
+        (session_id, user_id),
+    )
+    if not rows:
+        return None
+    return (rows[0][0] or "", int(rows[0][1] or 0))
 
 
 async def add_message(
@@ -141,5 +169,17 @@ async def count_messages(session_id: str) -> int:
     return int(rows[0][0]) if rows else 0
 
 
-async def set_summary(session_id: str, summary: str) -> None:
-    await execute("UPDATE sessions SET summary = %s WHERE id = %s", (summary, session_id))
+async def count_messages_since(session_id: str, after_id: int = 0) -> int:
+    rows = await query(
+        "SELECT COUNT(*) FROM messages WHERE session_id = %s AND id > %s "
+        "AND role IN ('user','assistant')",
+        (session_id, after_id),
+    )
+    return int(rows[0][0]) if rows else 0
+
+
+async def set_summary(session_id: str, summary: str, upto_id: int) -> None:
+    await execute(
+        "UPDATE sessions SET summary = %s, summary_upto_id = %s WHERE id = %s",
+        (summary, upto_id, session_id),
+    )

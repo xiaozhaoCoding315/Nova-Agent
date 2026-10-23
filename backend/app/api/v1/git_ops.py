@@ -13,7 +13,8 @@ from app.core.git_ops.service import (
     rollback,
     status,
 )
-from app.core.indexing.pipeline import get_repo, reindex_repo
+from app.core.indexing.pipeline import get_repo
+from app.core.jobs.service import enqueue_index
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota
 from app.models.schemas import GitCommitRequest, GitRollbackRequest
@@ -75,7 +76,7 @@ async def git_rollback(
         info = await rollback(Path(repo["root_path"]), body.commit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    asyncio.create_task(reindex_repo(repo_id))
+    await enqueue_index(repo_id, reindex=True, user_id=user["id"])
     return {**info, "reindex_started": True}
 
 

@@ -1,5 +1,4 @@
 """Builder endpoints: greenfield plan + file proposal with approval gates."""
-import asyncio
 import json
 import uuid
 from pathlib import Path
@@ -9,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.config import settings
 from app.core.builder import engine
 from app.core.conflicts import ConflictError
-from app.core.indexing.pipeline import get_repo, reindex_repo
+from app.core.indexing.pipeline import get_repo
+from app.core.jobs.service import enqueue_builder_files, enqueue_builder_plan, enqueue_index
 from app.core.sandbox.runtime import sandbox_status
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
@@ -41,7 +41,7 @@ async def create_builder_project(body: BuilderCreate, user: dict = Depends(get_c
         (repo_id, user["id"], body.name.strip(), f"builder:{body.name.strip()}",
          str(root), body.requirements, body.rules or ""),
     )
-    asyncio.create_task(engine.generate_plan(repo_id))
+    await enqueue_builder_plan(repo_id, user_id=user["id"])
     return {
         "id": repo_id, "name": body.name.strip(), "source": f"builder:{body.name.strip()}",
         "status": "planning", "kind": "builder", "stats": {},
@@ -66,7 +66,7 @@ async def regenerate_plan(repo_id: str, user: dict = Depends(get_current_user)):
     if repo["status"] in ("planning", "generating"):
         raise HTTPException(status_code=400, detail="方案正在生成中")
     await ensure_token_budget(user)
-    asyncio.create_task(engine.generate_plan(repo_id))
+    await enqueue_builder_plan(repo_id, user_id=user["id"])
     return {"ok": True, "status": "planning"}
 
 
@@ -90,7 +90,9 @@ async def generate_files(
     if repo["status"] not in ("approved", "review"):
         raise HTTPException(status_code=400, detail="请先确认方案，再生成代码")
     await ensure_token_budget(user)
-    asyncio.create_task(engine.generate_files(repo_id, (body.feedback if body else "") or ""))
+    await enqueue_builder_files(
+        repo_id, (body.feedback if body else "") or "", user_id=user["id"]
+    )
     return {"ok": True, "status": "generating"}
 
 
@@ -112,7 +114,7 @@ async def approve_proposal(repo_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=409, detail=str(exc))
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    asyncio.create_task(reindex_repo(repo_id))
+    await enqueue_index(repo_id, reindex=True, user_id=user["id"])
     return {"ok": True, "applied": applied, "status": "indexing"}
 
 

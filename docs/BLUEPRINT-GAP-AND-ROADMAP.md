@@ -6,6 +6,8 @@
 > 本次验证：后端 `python -m pytest tests -q` → **161 passed**；前端 `npm run build` → **通过**（约 510 KB JS，存在 chunk 体积警告）  
 > 结论：**不重写**。Nova 已经越过蓝图 M1，处在 M2 中后段；优势是“证据化交付”，最大缺口是“任务编排 + 全栈契约 + 多栈执行”。
 
+> **P0 进展更新（2026-10-23）**：`jobs` 表 + JobRunner 已接入 FastAPI lifespan，`/jobs` 列表/详情/取消/重试已上线，8 处裸 `asyncio.create_task` 已替换；facts 改为 `(user_id, hash)` 用户隔离；`core/memory/summary.py` 与摘要注入已实现。后端 **173 passed**，真实队列取消 261ms、崩溃恢复实测通过。本文 A1/A2/B2 的原始描述保留为历史基线，实施状态以本节为准。
+
 ---
 
 ## 0. 先给结论

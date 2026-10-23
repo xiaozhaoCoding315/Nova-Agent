@@ -61,11 +61,14 @@ async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS,
         return False
 
     content_hash = _content_hash(content)
-    existing = await query("SELECT 1 FROM facts WHERE hash = %s", (content_hash,))
+    existing = await query(
+        "SELECT 1 FROM facts WHERE user_id = %s AND hash = %s", (user_id, content_hash)
+    )
     if existing:
         await execute(
-            "UPDATE facts SET last_used_at = now(), importance = LEAST(importance + 0.1, 2.0) WHERE hash = %s",
-            (content_hash,),
+            "UPDATE facts SET last_used_at = now(), importance = LEAST(importance + 0.1, 2.0) "
+            "WHERE user_id = %s AND hash = %s",
+            (user_id, content_hash),
         )
         return False
 
@@ -88,7 +91,7 @@ async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS,
         """
         INSERT INTO facts (user_id, content, hash, embedding, importance, ttl_days)
         VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (hash) DO NOTHING
+        ON CONFLICT (user_id, hash) DO NOTHING
         """,
         (user_id, content, content_hash, json.dumps(embedding) if embedding else None, importance, ttl_days),
     )

@@ -120,7 +120,9 @@ async def run_chat(
         fact_list = await facts_mod.get_relevant_facts(user["id"])
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
-    history = await session_mod.recent_messages(session["id"])
+    history = await session_mod.recent_messages(
+        session["id"], after_id=int(session.get("summary_upto_id") or 0)
+    )
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
         try:
@@ -140,6 +142,7 @@ async def run_chat(
             "content": build_system_prompt(
                 hits, fact_list, repo_selected=bool(repo_ids),
                 repos=repo_meta, rules=repo_rules,
+                summary=session.get("summary") or "",
             ),
         },
         *history,
@@ -217,6 +220,17 @@ async def run_chat(
             asyncio.create_task(
                 facts_mod.extract_facts_from_turn(user["id"], user_message, final_text)
             )
+        try:
+            from app.core.jobs.service import enqueue_session_summary, is_running
+            from app.core.memory.summary import SUMMARY_BATCH
+
+            if is_running():
+                upto_id = int(session.get("summary_upto_id") or 0)
+                pending = await session_mod.count_messages_since(session["id"], upto_id)
+                if pending >= SUMMARY_BATCH:
+                    await enqueue_session_summary(session["id"], user["id"])
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("summary_enqueue_failed", error=str(exc))
         logger.info("chat_done", session=session["id"], tools=tools_used, rounds=rounds)
         return message_id
 

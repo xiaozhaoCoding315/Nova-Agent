@@ -23,8 +23,15 @@ def build_system_prompt(
     repo_selected: bool = False,
     repos: list[dict] | None = None,
     rules: list[dict] | None = None,
+    summary: str = "",
 ) -> str:
     parts = [IDENTITY]
+
+    if summary:
+        parts.append(
+            "\n## 早期会话摘要（更早的对话已压缩；后续回答必须与此处的决策和约束保持一致）\n"
+            + summary
+        )
 
     if repos:
         parts.append("\n## 当前关联仓库（工具参数 repo_id 可直接使用下面的 id）")

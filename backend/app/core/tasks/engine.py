@@ -284,6 +284,11 @@ async def run_task(task_id: str, ctx=None) -> None:
     if not rows:
         return
     _, user_id, repo_id, bug_report, root_path, repo_name, repo_status = rows[0]
+    await execute(
+        "UPDATE tasks SET status = 'running', steps = '[]'::jsonb, result = '{}'::jsonb, "
+        "updated_at = now() WHERE id = %s",
+        (task_id,),
+    )
 
     result: dict = {}
     try:

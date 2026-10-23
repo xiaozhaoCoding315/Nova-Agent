@@ -1,17 +1,17 @@
 """Task endpoints: red-green bug reproduction and fix."""
-import asyncio
 import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.conflicts import ConflictError
-from app.core.indexing.pipeline import get_repo, reindex_repo
+from app.core.indexing.pipeline import get_repo
+from app.core.jobs.service import enqueue_index, enqueue_task
 from app.core.sandbox.runtime import sandbox_status
 from app.core.security.auth import get_current_user
 from app.core.review.service import review_task
 from app.core.security.limits import check_job_quota, ensure_token_budget
-from app.core.tasks.engine import apply_task_result, run_task
+from app.core.tasks.engine import apply_task_result
 from app.db import execute, query
 from app.models.schemas import TaskCreate
 
@@ -22,7 +22,7 @@ async def _task_or_404(task_id: str, user_id: int) -> dict:
     rows = await query(
         """
         SELECT t.id, t.title, t.bug_report, t.status, t.steps, t.result,
-               t.created_at, t.updated_at, t.repo_id, r.name, t.user_id
+               t.created_at, t.updated_at, t.repo_id, r.name, t.user_id, t.job_id
         FROM tasks t JOIN repos r ON r.id = t.repo_id
         WHERE t.id = %s AND t.user_id = %s
         """,
@@ -36,6 +36,7 @@ async def _task_or_404(task_id: str, user_id: int) -> dict:
         "steps": r[4] or [], "result": r[5] or {},
         "created_at": r[6], "updated_at": r[7],
         "repo_id": str(r[8]), "repo_name": r[9], "user_id": r[10],
+        "job_id": str(r[11]) if r[11] else None,
     }
 
 
@@ -61,7 +62,10 @@ async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
         "VALUES (%s, %s, %s, %s, %s, 'running')",
         (task_id, user["id"], body.repo_id, title, body.bug_report),
     )
-    asyncio.create_task(run_task(task_id))
+    job_id = await enqueue_task(
+        task_id, user_id=user["id"], idempotency_key=f"task:{task_id}"
+    )
+    await execute("UPDATE tasks SET job_id = %s WHERE id = %s", (job_id, task_id))
     return await _task_or_404(task_id, user["id"])
 
 
@@ -119,7 +123,7 @@ async def apply_task(task_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    asyncio.create_task(reindex_repo(task["repo_id"]))
+    await enqueue_index(task["repo_id"], reindex=True, user_id=user["id"])
     return {"ok": True, "applied": applied, "reindex_started": True}
 
 

@@ -55,10 +55,11 @@
 - **会话持久化**：历史会话、消息与关联仓库落库，刷新不丢；支持停止生成（断流后已生成内容仍会保存）
 - **真实健康检查**：PG / Qdrant / LLM / Embedding / 沙箱逐项探活，降级可见
 - **审计与配额**：登录、对话、工具调用、仓库导入/删除全量审计；对话/红绿任务/Builder/记忆抽取统一 LLM 记账，导入/重建索引/验证/搜索均有独立配额
+- **持久后台队列**：索引 / 红-绿 / Builder / 会话摘要写入 PostgreSQL `jobs` 表，支持重启恢复、取消与重试；后台入口不再直接 `create_task`
 
 ### 两层记忆
-- 会话记忆：持久化消息 + 标题自动生成
-- 长期记忆：对话中抽取用户偏好/事实，MD5 + 向量相似度去重（阈值 0.92），重要性访问加权、闲置衰减、TTL 过期清理（小时级维护循环）
+- 会话记忆：持久化消息 + 滚动摘要（每 20 条增量压缩并注入后续轮次）+ 标题自动生成
+- 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重（MD5 + 向量相似度 0.92），重要性访问加权、闲置衰减、TTL 过期清理（小时级维护循环）
 
 ## 技术栈
 
@@ -140,6 +141,7 @@ npm run dev                   # http://localhost:5173
 | `POST /api/v1/repos/{id}/proposal/approve` · `/reject` | 批准写入并索引 / 退回重做 |
 | `GET /api/v1/edits/{id}` · `POST .../approve` `.../reject` `.../revert` `.../review` | 对话内修改：查看提案 / 批准 / 拒绝 / 快照撤销 / 只读审查 |
 | `POST /api/v1/tasks/{id}/review` | 对红绿任务 diff 做只读审查（pass / warn / block + 依据） |
+| `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、会话摘要） |
 | `POST /api/v1/repos/{id}/verify` · `GET .../verify` | 栈感知真实验证（语法 / pytest / 可选 lint / 类型检查，逐项结果）/ 查看上次结果 |
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
@@ -150,13 +152,14 @@ npm run dev                   # http://localhost:5173
 
 ```
 backend/app/
-├── api/v1/            auth · chat · repos · tasks · status
+├── api/v1/            auth · chat · repos · tasks · builder · git · jobs · status
 ├── core/
 │   ├── agent/loop.py  Agent 主循环（检索→工具轮次→证据校验→持久化）
 │   ├── agent/evidence.py  引用校验（文件/行号/越界）
 │   ├── rag/           双路召回 + RRF（dense / keyword）
 │   ├── indexing/      仓库索引：walker / symbols / chunker / imports / brain / pipeline
 │   ├── impact/        变更影响分析（依赖图 + 符号引用）
+│   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
 │   ├── verify/        栈感知验证 profile（语法/pytest/可选 lint/类型检查）
 │   ├── review/        只读 Reviewer（pass/warn/block + 依据）
@@ -164,8 +167,8 @@ backend/app/
 │   ├── editing/       对话内编辑：diff / 审批 / 快照撤销 / 冲突检测
 │   ├── git_ops/       Git 交付：初始化/提交/diff/回滚/导出
 │   ├── trace.py       轨迹事件记录（回放 / CI 审计）
-│   ├── memory/        会话 + 长期事实（去重/衰减/清理）
-│   ├── tools/         7 个工具 + 注册表（校验/容错/审计）
+│   ├── memory/        会话摘要 + 长期事实（去重/衰减/清理）
+│   ├── tools/         11 个工具 + 注册表（校验/容错/审计）
 │   ├── sandbox/       Docker 一次性容器执行器
 │   ├── harness/       超时 / 重试 / 熔断
 │   ├── security/      认证 / 限流配额 / 风险规则 / 审计

@@ -104,7 +104,7 @@ class JobRunner:
                 await execute(
                     "UPDATE jobs SET status = 'queued', started_at = NULL, "
                     "heartbeat_at = NULL, error = 'server shutdown; job requeued' "
-                    "WHERE id = ANY(%s) AND status = 'running'",
+                    "WHERE id = ANY(%s::uuid[]) AND status = 'running'",
                     (active_ids,),
                 )
             except Exception as exc:  # noqa: BLE001
@@ -196,13 +196,31 @@ class JobRunner:
             return await self.get(job_id, user_id)
         status = rows[0][0]
         if status == "running":
-            # Stop Docker containers that belong to this job.  Handlers also
-            # check the flag between steps.
+            # Stop Docker containers that belong to this job in the background:
+            # the API must return immediately, while the handler observes the
+            # cancel flag at its next checkpoint.
             try:
                 from app.core.sandbox.runtime import kill_job_containers
-                await kill_job_containers(job_id)
+                asyncio.create_task(kill_job_containers(job_id))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("job_container_kill_failed", job_id=job_id, error=str(exc))
+        self._wake.set()
+        return await self.get(job_id, user_id)
+
+    async def retry(self, job_id: str, user_id: int | None = None) -> dict | None:
+        """Requeue a failed or canceled job with a fresh attempt budget."""
+        owner_sql = " AND user_id = %s" if user_id is not None else ""
+        params: tuple = (job_id, user_id) if user_id is not None else (job_id,)
+        rows = await execute(
+            "UPDATE jobs SET status = 'queued', attempts = 0, progress = 0, step = NULL, "
+            "result = NULL, error = NULL, cancel_requested = FALSE, started_at = NULL, "
+            "finished_at = NULL, heartbeat_at = NULL "
+            f"WHERE id = %s AND status IN ('failed', 'canceled'){owner_sql} "
+            "RETURNING id",
+            params,
+        )
+        if not rows:
+            return await self.get(job_id, user_id)
         self._wake.set()
         return await self.get(job_id, user_id)
 
@@ -362,7 +380,7 @@ class JobRunner:
             try:
                 await execute(
                     "UPDATE jobs SET heartbeat_at = now() "
-                    "WHERE id = ANY(%s) AND status = 'running'",
+                    "WHERE id = ANY(%s::uuid[]) AND status = 'running'",
                     (ids,),
                 )
             except Exception as exc:  # noqa: BLE001

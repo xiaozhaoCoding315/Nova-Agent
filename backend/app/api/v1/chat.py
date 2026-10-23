@@ -1,5 +1,4 @@
 """Chat endpoints: session CRUD + SSE message stream + edit approvals."""
-import asyncio
 import json
 import uuid
 
@@ -9,7 +8,8 @@ from fastapi.responses import StreamingResponse
 from app.core.agent.loop import run_chat
 from app.core.conflicts import ConflictError
 from app.core.editing.service import apply_edit, get_edit, reject_edit, revert_edit
-from app.core.indexing.pipeline import get_repo, reindex_repo
+from app.core.indexing.pipeline import get_repo
+from app.core.jobs.service import enqueue_index
 from app.core.memory import session as session_mod
 from app.core.review.service import review_edit as review_edit_service
 from app.core.security.auth import get_current_user
@@ -154,7 +154,7 @@ async def approve_edit_endpoint(edit_id: str, user: dict = Depends(get_current_u
             "edit_id": edit_id, "repo_id": result["repo_id"], "files": result["applied"],
             "commit": result.get("commit"),
         })
-    asyncio.create_task(reindex_repo(result["repo_id"]))
+    await enqueue_index(result["repo_id"], reindex=True, user_id=user["id"])
     return {"ok": True, "applied": result["applied"],
             "commit": result.get("commit"), "reindex_started": True}
 
@@ -202,5 +202,5 @@ async def revert_edit_endpoint(edit_id: str, user: dict = Depends(get_current_us
             "restored": result.get("restored"), "removed": result.get("removed"),
             "commit": result.get("commit"),
         })
-    asyncio.create_task(reindex_repo(result["repo_id"]))
+    await enqueue_index(result["repo_id"], reindex=True, user_id=user["id"])
     return {"ok": True, **result, "reindex_started": True}
