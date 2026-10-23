@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw, Rocket,
-  Sparkles, Trash2, Waypoints, XCircle,
+  ArrowLeft, CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw,
+  Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
@@ -107,14 +107,22 @@ function RepoCard({
   )
 }
 
-export function WorkspaceView() {
+export function WorkspaceView({
+  initialRepoId = null,
+  initialPath = null,
+  onClose,
+}: {
+  initialRepoId?: string | null
+  initialPath?: string | null
+  onClose?: () => void
+} = {}) {
   const { repos, refresh, remove, reindex } = useRepos()
   const [importOpen, setImportOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialRepoId)
   const [tree, setTree] = useState<FileNode[]>([])
   const [treeLoading, setTreeLoading] = useState(false)
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   const [treeError, setTreeError] = useState<string | null>(null)
   const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git'>('code')
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
@@ -249,7 +257,19 @@ export function WorkspaceView() {
     <div className="flex h-full min-h-0">
       <aside className="hidden w-80 shrink-0 flex-col border-r border-edge bg-panel lg:flex">
         <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-[12px] font-medium uppercase tracking-wide text-dim">工作区</span>
+          <div className="flex items-center gap-1.5">
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors hover:bg-raised hover:text-ink"
+                title="返回对话"
+                aria-label="返回对话"
+              >
+                <ArrowLeft size={14} />
+              </button>
+            )}
+            <span className="text-[12px] font-medium uppercase tracking-wide text-dim">工作区</span>
+          </div>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" onClick={() => setNewProjectOpen(true)}>
               <Sparkles size={12} /> 新建项目
@@ -343,37 +363,39 @@ export function WorkspaceView() {
             </div>
           </aside>
           <main className="flex min-w-0 flex-1 flex-col bg-base">
-            <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1.5">
-              {(
-                [
-                  ...(selected.kind === 'builder' ? ([['builder', '项目构建']] as const) : []),
-                  ['code', '代码'],
-                  ['brain', '项目地图'],
-                  ['impact', '影响分析'],
-                  ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
-                  ...(selected.status === 'ready' ? ([['deploy', '预览']] as const) : []),
-                  ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setTab(key)}
-                  className={clsx(
-                    'flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] transition-colors',
-                    tab === key ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
-                  )}
-                >
-                  {key === 'builder' && <Sparkles size={12} />}
-                  {key === 'brain' && <Waypoints size={12} />}
-                  {key === 'impact' && <Radar size={12} />}
-                  {key === 'contract' && <GitCompare size={12} />}
-                  {key === 'deploy' && <Rocket size={12} />}
-                  {key === 'git' && <GitBranch size={12} />}
-                  {label}
-                </button>
-              ))}
+            <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {(
+                  [
+                    ...(selected.kind === 'builder' ? ([['builder', '项目构建']] as const) : []),
+                    ['code', '代码'],
+                    ['brain', '项目地图'],
+                    ['impact', '影响分析'],
+                    ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
+                    ...(selected.status === 'ready' ? ([['deploy', '预览']] as const) : []),
+                    ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setTab(key)}
+                    className={clsx(
+                      'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                      tab === key ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
+                    )}
+                  >
+                    {key === 'builder' && <Sparkles size={12} />}
+                    {key === 'brain' && <Waypoints size={12} />}
+                    {key === 'impact' && <Radar size={12} />}
+                    {key === 'contract' && <GitCompare size={12} />}
+                    {key === 'deploy' && <Rocket size={12} />}
+                    {key === 'git' && <GitBranch size={12} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
               {selected.status === 'ready' && (
-                <div className="ml-auto flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {verifyBusy && verifyJob && (
                     <span className="flex items-center gap-1 text-[11px] text-dim">
                       <Spinner />

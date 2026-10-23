@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  Bot, Command, Cpu, FlaskConical, FolderGit2, GitPullRequest, LogOut, MessageSquarePlus,
-  MessagesSquare, PanelLeft, Plus, Settings, X,
+  ArrowLeft, Bot, Command, Cpu, GitPullRequest, LogOut, MessageSquarePlus, MessagesSquare,
+  PanelLeft, Plus, Settings, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
@@ -12,37 +12,32 @@ import type { Health, Usage } from './lib/types'
 import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { useLlm } from './stores/llm'
-import { ChangesView } from './views/ChangesView'
 import { ChatView } from './views/ChatView'
 import { LoginView } from './views/LoginView'
 import { SettingsView } from './views/SettingsView'
-import { TasksView } from './views/TasksView'
 import { WorkspaceView } from './views/WorkspaceView'
+import { WorkflowsView, type WorkflowTab } from './views/WorkflowsView'
 
-type ViewKey = 'chat' | 'workspace' | 'changes' | 'tasks' | 'settings'
+type ViewKey = 'chat' | 'workflows' | 'workspace' | 'settings'
 
 const NAV: { key: ViewKey; label: string; icon: typeof Bot }[] = [
   { key: 'chat', label: '对话', icon: MessagesSquare },
-  { key: 'workspace', label: '工作区', icon: FolderGit2 },
-  { key: 'changes', label: '变更', icon: GitPullRequest },
-  { key: 'tasks', label: '任务', icon: FlaskConical },
+  { key: 'workflows', label: '工作流', icon: GitPullRequest },
   { key: 'settings', label: '设置', icon: Settings },
 ]
 
 const VIEW_TITLE: Record<ViewKey, string> = {
   chat: '对话',
+  workflows: '工作流',
   workspace: '工作区',
-  changes: '变更中心',
-  tasks: '修复任务',
   settings: '设置',
 }
 
 const VIEW_SUBTITLE: Record<ViewKey, string> = {
   chat: '带着证据与仓库上下文对话',
-  workspace: '导入、索引、项目地图与交付',
-  changes: 'SPEC → 计划 → Gate → 审查',
-  tasks: '复现、修复并验证',
-  settings: '服务健康、用量与账号',
+  workflows: '变更与修复任务，按需使用',
+  workspace: '浏览代码、项目地图与交付工具',
+  settings: '模型、用量与账号',
 }
 
 const PERMISSION_LABEL: Record<string, string> = {
@@ -68,6 +63,10 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
   const [healthState, setHealthState] = useState<'ok' | 'warn' | 'err'>('warn')
+  const [workspaceTarget, setWorkspaceTarget] = useState<{ repoId?: string; path?: string }>({})
+  const [workflowTarget, setWorkflowTarget] = useState<{ tab: WorkflowTab; repoId?: string }>({
+    tab: 'changes',
+  })
 
   useEffect(() => {
     void check()
@@ -123,7 +122,7 @@ export default function App() {
         event.preventDefault()
         newSession()
         setView('chat')
-      } else if (mod && ['1', '2', '3', '4', '5'].includes(event.key)) {
+      } else if (mod && ['1', '2', '3'].includes(event.key)) {
         event.preventDefault()
         setView(NAV[Number(event.key) - 1].key)
       } else if (event.key === 'Escape') {
@@ -154,12 +153,26 @@ export default function App() {
     ? (messages.length > 0 ? `${messages.length} 条消息` : VIEW_SUBTITLE.chat)
     : VIEW_SUBTITLE[view]
 
+  const activeNav = view === 'workspace' ? 'chat' : view
+
   const toggleSidebar = () => {
     if (window.matchMedia('(min-width: 768px)').matches) {
       setSidebarCollapsed((value) => !value)
     } else {
       setSidebarOpen((value) => !value)
     }
+  }
+
+  const openWorkspace = (repoId?: string, path?: string) => {
+    setWorkspaceTarget({ repoId, path })
+    setView('workspace')
+    setSidebarOpen(false)
+  }
+
+  const openWorkflow = (tab: WorkflowTab, repoId?: string) => {
+    setWorkflowTarget({ tab, repoId })
+    setView('workflows')
+    setSidebarOpen(false)
   }
 
   const startNewChat = () => {
@@ -186,6 +199,24 @@ export default function App() {
       label: '新建对话',
       hint: 'Ctrl N',
       run: startNewChat,
+    })
+    items.push({
+      id: 'open-workspace',
+      label: '打开工作区',
+      hint: '浏览代码',
+      run: () => openWorkspace(),
+    })
+    items.push({
+      id: 'workflow-changes',
+      label: '变更工作流',
+      hint: '跨文件功能',
+      run: () => openWorkflow('changes'),
+    })
+    items.push({
+      id: 'workflow-tasks',
+      label: '修复任务',
+      hint: '单个 Bug',
+      run: () => openWorkflow('tasks'),
     })
     items.push({
       id: 'llm-settings',
@@ -253,6 +284,7 @@ export default function App() {
             <button
               key={key}
               onClick={() => {
+                if (key === 'workflows') setWorkflowTarget({ tab: 'changes' })
                 setView(key)
                 setSidebarOpen(false)
               }}
@@ -260,12 +292,12 @@ export default function App() {
               className={clsx(
                 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-colors',
                 sidebarCollapsed && 'md:justify-center md:px-0',
-                view === key
+                activeNav === key
                   ? 'bg-accentSoft/35 text-ink'
                   : 'text-dim hover:bg-raised hover:text-ink',
               )}
             >
-              <Icon size={15} className={view === key ? 'text-accent' : ''} />
+              <Icon size={15} className={activeNav === key ? 'text-accent' : ''} />
               <span className={clsx('flex-1 text-left', sidebarCollapsed && 'md:hidden')}>{label}</span>
               <span className={clsx('font-mono text-[9.5px] text-dim/50', sidebarCollapsed && 'md:hidden')}>{index + 1}</span>
             </button>
@@ -329,6 +361,16 @@ export default function App() {
           >
             <PanelLeft size={16} />
           </button>
+          {view === 'workspace' && (
+            <button
+              onClick={() => setView('chat')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-dim transition-colors hover:bg-raised hover:text-ink"
+              title="返回对话"
+              aria-label="返回对话"
+            >
+              <ArrowLeft size={15} />
+            </button>
+          )}
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[12.5px] font-medium">{pageTitle}</span>
             <span className="hidden truncate text-[11px] text-dim sm:inline">{pageSubtitle}</span>
@@ -368,10 +410,29 @@ export default function App() {
         </header>
 
         <div className="min-h-0 flex-1">
-          {view === 'chat' && <ChatView onOpenSettings={() => setView('settings')} />}
-          {view === 'workspace' && <WorkspaceView />}
-          {view === 'changes' && <ChangesView />}
-          {view === 'tasks' && <TasksView />}
+          {view === 'chat' && (
+            <ChatView
+              onOpenSettings={() => setView('settings')}
+              onOpenWorkspace={openWorkspace}
+              onOpenWorkflow={openWorkflow}
+            />
+          )}
+          {view === 'workflows' && (
+            <WorkflowsView
+              key={`${workflowTarget.tab}-${workflowTarget.repoId ?? 'any'}`}
+              initialTab={workflowTarget.tab}
+              initialRepoId={workflowTarget.repoId}
+              onBackToChat={() => setView('chat')}
+            />
+          )}
+          {view === 'workspace' && (
+            <WorkspaceView
+              key={`${workspaceTarget.repoId ?? 'all'}-${workspaceTarget.path ?? ''}`}
+              initialRepoId={workspaceTarget.repoId}
+              initialPath={workspaceTarget.path}
+              onClose={() => setView('chat')}
+            />
+          )}
           {view === 'settings' && <SettingsView />}
         </div>
 

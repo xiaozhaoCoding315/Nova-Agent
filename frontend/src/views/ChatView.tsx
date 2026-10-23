@@ -1,8 +1,9 @@
 import clsx from 'clsx'
-import { Activity, AlertCircle, PanelRight, Sparkles, X } from 'lucide-react'
+import { Activity, AlertCircle, FolderTree, PanelRight, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Composer } from '../components/Composer'
 import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
+import { ProjectDock } from '../components/ProjectDock'
 import { RefPanel } from '../components/RefPanel'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { useChat } from '../stores/chat'
@@ -24,7 +25,15 @@ const EXAMPLES = [
   },
 ]
 
-export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function ChatView({
+  onOpenSettings,
+  onOpenWorkspace,
+  onOpenWorkflow,
+}: {
+  onOpenSettings: () => void
+  onOpenWorkspace: (repoId?: string, path?: string) => void
+  onOpenWorkflow: (tab: 'changes' | 'tasks', repoId?: string) => void
+}) {
   const {
     sessions, sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
     permissionMode, setPermissionMode, model, setModel, send, stop, clearError,
@@ -33,7 +42,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { settings: llmSettings } = useLlm()
   const [selectedRepos, setSelectedRepos] = useState<string[]>([])
   const [trajectoryOpen, setTrajectoryOpen] = useState(false)
-  const [refsOpen, setRefsOpen] = useState(true)
+  const [dockOpen, setDockOpen] = useState(true)
+  const [dockTab, setDockTab] = useState<'project' | 'refs'>('project')
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
@@ -115,15 +125,23 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             <Activity size={12} /> 轨迹
           </button>
           <button
-            onClick={() => setRefsOpen((value) => !value)}
+            onClick={() => onOpenWorkspace(selectedRepos[0])}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-edge/80 text-dim transition-colors hover:text-ink"
+            title="打开完整工作区"
+            aria-label="打开完整工作区"
+          >
+            <FolderTree size={13} />
+          </button>
+          <button
+            onClick={() => setDockOpen((value) => !value)}
             className={clsx(
               'hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex',
-              refsOpen
+              dockOpen
                 ? 'border-accent/50 bg-accentSoft/25 text-accent'
                 : 'border-edge/80 text-dim hover:text-ink',
             )}
-            title={refsOpen ? '收起引用面板' : '展开引用面板'}
-            aria-label="切换引用面板"
+            title={dockOpen ? '收起右侧面板' : '展开项目与引用面板'}
+            aria-label="切换右侧面板"
           >
             <PanelRight size={13} />
           </button>
@@ -152,8 +170,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
                     </button>
                   ))}
                 </div>
-                <p className="mt-5 text-[10.5px] text-dim/60">
-                  提示：左侧会话可重命名或删除；Ctrl/⌘ + B 收起侧栏
+                <p className="mt-5 text-[10.5px] leading-relaxed text-dim/60">
+                  右侧「项目」面板可直接切换仓库、浏览文件并打开完整工作区；跨文件功能用「工作流 → 变更」，单 Bug 用「工作流 → 修复任务」。
                 </p>
               </div>
             )}
@@ -193,10 +211,50 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         />
       </main>
 
-      {refsOpen && (
-        <aside className="hidden w-72 shrink-0 border-l border-edge bg-panel/40 lg:flex lg:flex-col">
+      {dockOpen && (
+        <aside className="hidden w-[380px] shrink-0 flex-col border-l border-edge/80 bg-panel/25 lg:flex">
+          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-edge/70 px-2">
+            <button
+              onClick={() => setDockTab('project')}
+              className={clsx(
+                'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] transition-colors',
+                dockTab === 'project' ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:text-ink',
+              )}
+            >
+              <FolderTree size={12} /> 项目
+            </button>
+            <button
+              onClick={() => setDockTab('refs')}
+              className={clsx(
+                'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] transition-colors',
+                dockTab === 'refs' ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:text-ink',
+              )}
+            >
+              <Sparkles size={12} /> 引用
+              {refs.length > 0 && (
+                <span className="rounded bg-raised px-1 text-[9.5px] text-dim">{refs.length}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setDockOpen(false)}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-dim/60 transition-colors hover:bg-raised hover:text-ink"
+              title="收起右侧面板"
+              aria-label="收起右侧面板"
+            >
+              <X size={13} />
+            </button>
+          </div>
           <div className="min-h-0 flex-1">
-            <RefPanel refs={refs} />
+            {dockTab === 'project' ? (
+              <ProjectDock
+                selectedRepos={selectedRepos}
+                onToggleRepo={toggleRepo}
+                onOpenWorkspace={onOpenWorkspace}
+                onOpenWorkflow={onOpenWorkflow}
+              />
+            ) : (
+              <RefPanel refs={refs} />
+            )}
           </div>
         </aside>
       )}

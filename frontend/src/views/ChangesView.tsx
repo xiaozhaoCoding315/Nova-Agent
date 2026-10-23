@@ -169,7 +169,7 @@ function SpecEditor({
   )
 }
 
-export function ChangesView() {
+export function ChangesView({ initialRepoId }: { initialRepoId?: string } = {}) {
   const { repos, refresh: refreshRepos } = useRepos()
   const [items, setItems] = useState<ChangeListItem[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -177,7 +177,7 @@ export function ChangesView() {
   const [job, setJob] = useState<Job | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [repoId, setRepoId] = useState('')
+  const [repoId, setRepoId] = useState(initialRepoId ?? '')
   const [title, setTitle] = useState('')
   const [requirements, setRequirements] = useState('')
 

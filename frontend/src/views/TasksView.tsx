@@ -3,6 +3,7 @@ import {
   CheckCircle2, ClipboardList, FlaskConical, Plus, RefreshCw, ShieldCheck, XCircle, XOctagon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { DiffView } from '../components/DiffView'
 import { Badge, Button, Spinner } from '../components/common'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { api, ApiError } from '../lib/api'
@@ -28,26 +29,6 @@ const STEP_LABEL: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] ?? { label: status, tone: 'dim' as const }
   return <Badge tone={meta.tone}>{meta.label}</Badge>
-}
-
-function DiffView({ diff }: { diff: string }) {
-  return (
-    <pre className="max-h-96 overflow-auto rounded-lg border border-edge bg-[#0d1117] p-3 font-mono text-[11.5px] leading-relaxed">
-      {diff.split('\n').map((line, i) => (
-        <div
-          key={i}
-          className={clsx(
-            line.startsWith('+') && !line.startsWith('+++') && 'text-ok',
-            line.startsWith('-') && !line.startsWith('---') && 'text-err',
-            line.startsWith('@@') && 'text-accent',
-            !line.startsWith('+') && !line.startsWith('-') && !line.startsWith('@@') && 'text-dim',
-          )}
-        >
-          {line || ' '}
-        </div>
-      ))}
-    </pre>
-  )
 }
 
 function StepRow({ step }: { step: TaskStep }) {
@@ -96,13 +77,13 @@ function StepRow({ step }: { step: TaskStep }) {
   )
 }
 
-export function TasksView() {
+export function TasksView({ initialRepoId }: { initialRepoId?: string } = {}) {
   const { repos, refresh: refreshRepos } = useRepos()
   const [tasks, setTasks] = useState<TaskListItem[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<Task | null>(null)
   const [creating, setCreating] = useState(false)
-  const [repoId, setRepoId] = useState('')
+  const [repoId, setRepoId] = useState(initialRepoId ?? '')
   const [bug, setBug] = useState('')
   const [busy, setBusy] = useState(false)
   const [reviewing, setReviewing] = useState(false)
