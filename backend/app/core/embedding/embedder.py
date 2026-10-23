@@ -27,5 +27,13 @@ class OpenAIEmbedder(Embedder):
         return all_embeddings
 
 
-def get_embedder() -> Embedder:
-    return OpenAIEmbedder()
+_embedder: "OpenAIEmbedder | None" = None
+
+
+def get_embedder() -> "Embedder":
+    global _embedder
+    if not settings.dashscope_api_key:
+        raise RuntimeError("DASHSCOPE_API_KEY not configured — dense retrieval unavailable")
+    if _embedder is None:
+        _embedder = OpenAIEmbedder()
+    return _embedder

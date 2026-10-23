@@ -7,22 +7,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
 from app.api.v1.router import api_router
 from app.core.logging_setup import setup_logging
 
 logger = structlog.get_logger()
 
-_CLEANUP_INTERVAL_S = 3600  # 每小时
+VERSION = "2.0.0"
+_CLEANUP_INTERVAL_S = 3600
 
 
 async def _cleanup_loop() -> None:
+    """Hourly maintenance: long-term memory decay + TTL expiry."""
     while True:
         try:
-            from app.core.memory.store import run_ttl_cleanup, run_session_cleanup
-            await run_session_cleanup()
-            await run_ttl_cleanup()
-            logger.info("cleanup_done")
+            from app.core.memory.cleanup import run_cleanup
+            summary = await run_cleanup()
+            logger.info("cleanup_done", **summary)
+        except ImportError:
+            pass
         except Exception:
             logger.exception("cleanup_failed")
         await asyncio.sleep(_CLEANUP_INTERVAL_S)
@@ -31,15 +35,17 @@ async def _cleanup_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     setup_logging()
-    logger.info("NovaTech starting", version="0.1.0")
+    logger.info("nova_agent_starting", version=VERSION, env=settings.app_env)
+    if settings.app_env == "prod":
+        if len(settings.secret_key) < 32:
+            logger.warning("weak_secret_key", hint="set SECRET_KEY to a random 32+ char string")
+        if settings.admin_password in ("", "admin123") or settings.demo_password in ("", "demo123"):
+            logger.warning("default_passwords_in_use", hint="set ADMIN_PASSWORD / DEMO_PASSWORD in .env")
     if settings.auto_init_db:
-        # Idempotent schema bootstrap (tables / Qdrant collection / Neo4j
-        # constraints). Failure is logged but never blocks startup — the
-        # harness layer degrades individual features instead.
         try:
             from app.db.init_db import init_all
             result = await init_all()
-            logger.info("db_init_done", **{k: str(v)[:100] for k, v in result.items()})
+            logger.info("db_init_done", **{k: str(v)[:120] for k, v in result.items()})
         except Exception:
             logger.exception("db_init_failed_continuing_startup")
     task = asyncio.create_task(_cleanup_loop())
@@ -49,10 +55,10 @@ async def lifespan(_: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
-    logger.info("NovaTech shutting down")
+    logger.info("nova_agent_shutting_down")
 
 
-app = FastAPI(title="NovaTech Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Nova Agent", version=VERSION, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -81,7 +87,11 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
-_FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+_FRONTEND_DIST = (
+    Path(settings.frontend_dist)
+    if settings.frontend_dist
+    else Path(__file__).resolve().parents[2] / "frontend" / "dist"
+)
 
 if settings.app_env == "prod" and _FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")

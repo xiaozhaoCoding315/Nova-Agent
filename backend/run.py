@@ -1,4 +1,4 @@
-"""启动 NovaTech Agent 后端服务"""
+"""启动 Nova Agent 后端服务"""
 import os
 import sys
 
@@ -14,13 +14,14 @@ import uvicorn
 
 APP_ENV = os.getenv("APP_ENV", "dev")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+PORT = int(os.getenv("PORT", "8000"))
 
 if __name__ == "__main__":
     if APP_ENV == "prod":
         uvicorn.run(
             "app.main:app",
             host="0.0.0.0",
-            port=8000,
+            port=PORT,
             reload=False,
             workers=1,  # Windows 下多 worker 不稳定，个人自用单 worker 足够
             log_level="info",
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         uvicorn.run(
             "app.main:app",
             host="0.0.0.0",
-            port=8000,
+            port=PORT,
             reload=True,
             log_level="info",
             reload_dirs=[APP_DIR],

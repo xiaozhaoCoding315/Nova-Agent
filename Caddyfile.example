@@ -1,0 +1,11 @@
+# 用法：
+#   1. 把域名 A 记录解析到本机公网 IP
+#   2. cp Caddyfile.example Caddyfile 并改成你的域名
+#   3. docker compose --profile https up -d
+#   4. 在 .env 中设置 COOKIE_SECURE=true，并把 BACKEND_PORT 映射改为 127.0.0.1:8000:8000 更安全
+#
+# Caddy 会自动申请并续期 Let's Encrypt 证书。
+
+your-domain.example.com {
+    reverse_proxy app:8000
+}

@@ -26,3 +26,7 @@ resume_*.pdf
 .pytest_cache/
 backend/.pytest_cache/
 docs/superpowers/
+
+# Runtime data
+backend/data/
+resume.html

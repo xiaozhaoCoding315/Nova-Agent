@@ -5,30 +5,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        cyber: {
-          bg: '#0a0a0f',
-          surface: '#12121a',
-          border: '#1e1e2e',
-          cyan: '#00f0f0',
-          pink: '#ff006e',
-          purple: '#8b5cf6',
-          text: '#e0e0e0',
-          textDim: '#9ca3af',
-        },
+        base: '#0b0e14',
+        panel: '#11161f',
+        raised: '#161d29',
+        edge: '#232b3b',
+        accent: '#6c8cff',
+        accentSoft: '#27345e',
+        ink: '#e7eaf3',
+        dim: '#8a93a8',
+        ok: '#3fb950',
+        warn: '#d29922',
+        err: '#f85149',
       },
-      animation: {
-        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-        'float': 'float 6s ease-in-out infinite',
-      },
-      keyframes: {
-        'pulse-glow': {
-          '0%, 100%': { boxShadow: '0 0 5px #00f0f0, 0 0 20px #00f0f055' },
-          '50%': { boxShadow: '0 0 20px #00f0f0, 0 0 60px #00f0f088' },
-        },
-        'float': {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'JetBrains Mono', 'Menlo', 'Consolas', 'monospace'],
       },
     },
   },

@@ -1,7 +1,7 @@
 {
-  "name": "novatech-frontend",
+  "name": "nova-agent-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,20 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@react-three/fiber": "^8.17.0",
-    "@react-three/drei": "^9.114.0",
-    "axios": "^1.7.7",
-    "framer-motion": "^11.11.0",
+    "clsx": "^2.1.1",
+    "highlight.js": "^11.10.0",
     "lucide-react": "^0.453.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "three": "^0.169.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",

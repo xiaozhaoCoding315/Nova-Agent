@@ -1,16 +1,20 @@
 name: nova-agent
 
+# 一键部署：cp .env.docker.example .env → 填 Key/密码 → docker compose up -d --build
+# 组件：app(FastAPI+前端静态) + postgres + qdrant + sandbox 镜像构建
+# 可选 HTTPS：准备域名后 cp Caddyfile.example Caddyfile，改域名，再 `docker compose --profile https up -d`
+
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novatech}
-      POSTGRES_DB: ${POSTGRES_DB:-novatech}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-nova_agent}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-novatech}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-nova_agent}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -20,29 +24,18 @@ services:
     image: qdrant/qdrant:v1.11.3
     volumes:
       - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
     restart: unless-stopped
 
-  neo4j:
-    image: neo4j:5.24-community
-    environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-novatech123}
-      NEO4J_server_memory_heap_max__size: 1G
-      NEO4J_server_memory_pagecache_size: 512M
-    volumes:
-      - neo4j_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 12
-    restart: unless-stopped
+  # 构建沙箱镜像后立即退出；app 通过挂载的 docker.sock 启动一次性沙箱容器
+  sandbox-image:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.sandbox
+    image: nova-sandbox:latest
+    entrypoint: ["true"]
+    restart: "no"
 
-  backend:
+  app:
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -51,40 +44,75 @@ services:
     environment:
       APP_ENV: prod
       AUTO_INIT_DB: "true"
-      LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-deepseek,dashscope,longcat}
-      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
-      LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.longcat.chat/openai/v1}
-      LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-dashscope}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v3}
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: "6333"
+
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novatech}
-      POSTGRES_DB: ${POSTGRES_DB:-novatech}
-      NEO4J_HOST: neo4j
-      NEO4J_PORT: "7687"
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-novatech123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-nova_agent}
+
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+
+      LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-deepseek,dashscope,longcat}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
+      LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.longcat.chat/openai/v1}
+      LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v3}
+
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      DEMO_USERNAME: ${DEMO_USERNAME:-demo}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo123}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+
+      ADMIN_HOURLY_MESSAGES: ${ADMIN_HOURLY_MESSAGES:-60}
+      DEMO_HOURLY_MESSAGES: ${DEMO_HOURLY_MESSAGES:-10}
+      ADMIN_DAILY_TOKENS: ${ADMIN_DAILY_TOKENS:-0}
+      DEMO_DAILY_TOKENS: ${DEMO_DAILY_TOKENS:-100000}
+      ADMIN_SANDBOX_DAILY: ${ADMIN_SANDBOX_DAILY:-0}
+      DEMO_SANDBOX_DAILY: ${DEMO_SANDBOX_DAILY:-20}
+
+      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-true}
+      SANDBOX_IMAGE: nova-sandbox:latest
+      ENABLE_FETCH_URL: ${ENABLE_FETCH_URL:-true}
+
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # 沙箱依赖宿主 docker：app 只创建受限的一次性容器（无网络/只读/丢权限）
+      - /var/run/docker.sock:/var/run/docker.sock
+      - repos_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
+        condition: service_started
+      sandbox-image:
+        condition: service_completed_successfully
     restart: unless-stopped
-    # Note: the Docker sandbox feature (sandbox/execute) requires a container
-    # runtime inside the backend container and is disabled in this deployment;
-    # /sandbox/status reports the degraded state honestly.
+
+  # 可选：自动 HTTPS（需要域名解析到本机）
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
 
 volumes:
   pgdata:
   qdrant_data:
-  neo4j_data:
+  repos_data:
+  caddy_data:
+  caddy_config:

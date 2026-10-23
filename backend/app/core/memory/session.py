@@ -1,72 +1,127 @@
-"""Session persistence backed by PostgreSQL (chat_sessions / chat_messages).
-
-Previously in-memory dict; now survives restarts. All functions are async
-and best-effort: callers may wrap them in try/except for graceful degradation.
-"""
+"""Session + message persistence (short-term memory, survives refresh)."""
 import uuid
-from datetime import datetime
-from app.db import query, execute
+
+import structlog
+
+from app.db import execute, query
+
+logger = structlog.get_logger()
+
+DEFAULT_TITLE = "新对话"
+TITLE_MAX = 30
+HISTORY_LIMIT = 12          # messages injected into the prompt
+ARCHIVE_THRESHOLD = 30      # summarize once a session grows beyond this
 
 
-async def get_or_create_session(session_id: str | None = None) -> dict:
-    """Ensure a session row exists; return its summary dict."""
-    sid = session_id or str(uuid.uuid4())
-    try:
-        await execute(
-            "INSERT INTO chat_sessions (id) VALUES (%s) ON CONFLICT (id) DO NOTHING",
-            (sid,),
-        )
-        rows = await query(
-            "SELECT id, created_at FROM chat_sessions WHERE id = %s", (sid,)
-        )
-        if rows:
-            return {"id": str(rows[0][0]), "messages": [], "created_at": str(rows[0][1])}
-    except Exception:
-        pass
-    # Fallback: virtual session without persistence (DB down)
-    return {"id": sid, "messages": [], "created_at": datetime.now().isoformat()}
-
-
-async def add_message(session_id: str, role: str, content: str) -> None:
-    """Append a message to a session (content truncated to 2000 chars)."""
-    await get_or_create_session(session_id)
+async def create_session(user_id: int, title: str = DEFAULT_TITLE) -> dict:
+    session_id = str(uuid.uuid4())
     await execute(
-        "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, %s, %s)",
-        (session_id, role, content[:2000]),
+        "INSERT INTO sessions (id, user_id, title) VALUES (%s, %s, %s)",
+        (session_id, user_id, title),
     )
+    return {"id": session_id, "user_id": user_id, "title": title}
 
 
-async def get_history(session_id: str, last_n: int = 10) -> list[dict]:
-    """Return the last `last_n` messages in chronological order."""
+async def get_session(session_id: str, user_id: int) -> dict | None:
     rows = await query(
-        "SELECT role, content FROM chat_messages "
-        "WHERE session_id = %s ORDER BY created_at DESC, id DESC LIMIT %s",
-        (session_id, last_n),
+        "SELECT id, title, summary, created_at, updated_at FROM sessions "
+        "WHERE id = %s AND user_id = %s",
+        (session_id, user_id),
     )
-    messages = [{"role": r[0], "content": r[1]} for r in rows]
-    messages.reverse()
-    return messages
+    if not rows:
+        return None
+    r = rows[0]
+    return {"id": str(r[0]), "title": r[1], "summary": r[2], "created_at": r[3], "updated_at": r[4]}
 
 
-async def get_summary(session_id: str) -> dict:
-    """Return session metadata + message count."""
-    created_at = datetime.now().isoformat()
-    try:
-        rows = await query(
-            "SELECT COUNT(*) FROM chat_messages WHERE session_id = %s", (session_id,)
-        )
-        count = rows[0][0] if rows else 0
-        srow = await query(
-            "SELECT created_at FROM chat_sessions WHERE id = %s", (session_id,)
-        )
-        if srow:
-            created_at = str(srow[0][0])
-    except Exception:
-        count = 0
-    return {"session_id": session_id, "message_count": count, "created_at": created_at}
+async def list_sessions(user_id: int, limit: int = 50) -> list[dict]:
+    rows = await query(
+        """
+        SELECT s.id, s.title, s.created_at, s.updated_at,
+               (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id)
+        FROM sessions s
+        WHERE s.user_id = %s
+        ORDER BY s.updated_at DESC
+        LIMIT %s
+        """,
+        (user_id, limit),
+    )
+    return [
+        {
+            "id": str(r[0]), "title": r[1], "created_at": r[2],
+            "updated_at": r[3], "message_count": int(r[4]),
+        }
+        for r in rows
+    ]
 
 
-async def clear_session(session_id: str) -> bool:
-    """Remove all messages for a session (session row is kept)."""
-    await execute("DELETE FROM chat_messages WHERE session_id = %s", (session_id,))
-    return True
+async def delete_session(session_id: str, user_id: int) -> bool:
+    rows = await execute(
+        "DELETE FROM sessions WHERE id = %s AND user_id = %s RETURNING id",
+        (session_id, user_id),
+    )
+    return bool(rows)
+
+
+async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
+    rows = await query(
+        "SELECT id, role, content, tool_json, created_at FROM messages "
+        "WHERE session_id = %s ORDER BY id ASC LIMIT %s",
+        (session_id, limit),
+    )
+    return [
+        {"id": r[0], "role": r[1], "content": r[2], "tool_json": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+
+
+async def recent_messages(session_id: str, limit: int = HISTORY_LIMIT) -> list[dict]:
+    rows = await query(
+        "SELECT role, content FROM messages WHERE session_id = %s "
+        "AND role IN ('user','assistant') ORDER BY id DESC LIMIT %s",
+        (session_id, limit),
+    )
+    return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+
+
+async def add_message(
+    session_id: str,
+    role: str,
+    content: str,
+    tool_json: dict | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+) -> int:
+    import json
+    rows = await execute(
+        """
+        INSERT INTO messages (session_id, role, content, tool_json, prompt_tokens, completion_tokens)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        """,
+        (
+            session_id, role, content,
+            json.dumps(tool_json, ensure_ascii=False) if tool_json else None,
+            prompt_tokens, completion_tokens,
+        ),
+    )
+    await execute("UPDATE sessions SET updated_at = now() WHERE id = %s", (session_id,))
+    return rows[0][0] if rows else 0
+
+
+async def maybe_set_title(session_id: str, first_user_content: str) -> str:
+    """Set a readable title from the first user message if still default."""
+    title = first_user_content.strip().replace("\n", " ")[:TITLE_MAX] or DEFAULT_TITLE
+    await execute(
+        "UPDATE sessions SET title = %s WHERE id = %s AND (title = %s OR title IS NULL)",
+        (title, session_id, DEFAULT_TITLE),
+    )
+    return title
+
+
+async def count_messages(session_id: str) -> int:
+    rows = await query("SELECT COUNT(*) FROM messages WHERE session_id = %s", (session_id,))
+    return int(rows[0][0]) if rows else 0
+
+
+async def set_summary(session_id: str, summary: str) -> None:
+    await execute("UPDATE sessions SET summary = %s WHERE id = %s", (summary, session_id))

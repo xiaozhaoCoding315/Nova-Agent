@@ -1,20 +1,45 @@
+"""Retriever tests: two legs fused by RRF, per-leg degradation."""
 import pytest
 from unittest.mock import AsyncMock, patch
+
 from app.core.rag.retriever import retrieve
+from app.models.domain import RetrievedChunk
+
+
+def _chunk(cid: str, content: str, score_type: str) -> RetrievedChunk:
+    return RetrievedChunk(id=cid, content=content, path="doc.md", score_type=score_type)
 
 
 @pytest.mark.asyncio
-async def test_retrieve_merges_all_three_sources():
-    dense_results = [RetrievedChunk(id="d1", content="fastapi", source="doc.md", score_type="dense")]
-    keyword_results = [RetrievedChunk(id="k1", content="中间件", source="doc2.md", score_type="keyword")]
-    graph_results = [RetrievedChunk(id="g1", content="依赖注入", source="doc3.md", score_type="graph")]
+async def test_retrieve_fuses_dense_and_keyword():
+    dense = [_chunk("1", "fastapi", "dense"), _chunk("2", "middleware", "dense")]
+    keyword = [_chunk("2", "middleware", "keyword"), _chunk("3", "session", "keyword")]
 
-    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(return_value=dense_results)), \
-         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(return_value=keyword_results)), \
-         patch("app.core.rag.retriever.graph_search", new=AsyncMock(return_value=graph_results)):
-        result = await retrieve("FastAPI中间件", top_k=5)
-    ids = {c.id for c in result}
-    assert "d1" in ids and "k1" in ids and "g1" in ids
+    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(return_value=dense)), \
+         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(return_value=keyword)):
+        result = await retrieve("FastAPI 中间件", top_k=5)
+
+    ids = [c.id for c in result]
+    # Chunk "2" was returned by both legs, so it must rank first.
+    assert ids[0] == "2"
+    assert set(ids) == {"1", "2", "3"}
 
 
-from app.models.domain import RetrievedChunk
+@pytest.mark.asyncio
+async def test_retrieve_degrades_when_one_leg_fails():
+    keyword = [_chunk("3", "session", "keyword")]
+
+    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(side_effect=RuntimeError("no key"))), \
+         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(return_value=keyword)):
+        result = await retrieve("session", top_k=5)
+
+    assert [c.id for c in result] == ["3"]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_returns_empty_when_all_legs_fail():
+    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(side_effect=RuntimeError("down"))), \
+         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(side_effect=RuntimeError("down"))):
+        result = await retrieve("anything", top_k=5)
+
+    assert result == []

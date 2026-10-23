@@ -24,11 +24,27 @@ def extract_keywords(text: str, top_k: int = 10) -> list[str]:
         return segment(text)[:top_k]
 
 def make_tsquery(text: str) -> str:
+    """Space-joined jieba tokens for plainto_tsquery (punctuation stripped).
+
+    plainto_tsquery escapes metacharacters for us, so tokens containing e.g.
+    ``c++`` or ``foo()`` cannot break the query syntax.
+    """
     words = segment(text)
-    words = [w for w in words if len(w.strip()) > 0 and not re.match(r'^[^\w一-鿿]+$', w)]
-    if not words:
-        return ""
-    return " & ".join(words)
+    cleaned = []
+    for w in words:
+        w = w.strip()
+        if not w or not re.search(r"[A-Za-z0-9\u4e00-\u9fff]", w):
+            continue
+        if re.match(r'^[^\w\u4e00-\u9fff+#]+$', w):
+            continue
+        cleaned.append(w)
+    return " ".join(cleaned[:30])
+
+
+def tokenized_text(text: str) -> str:
+    """jieba-segmented text; feed this to to_tsvector('simple', ...) so that
+    Chinese documents and queries are segmented with the same tokenizer."""
+    return " ".join(w.strip() for w in segment(text) if w.strip())
 
 def highlight_match(content: str, query: str, max_len: int = 200) -> str:
     keywords = extract_keywords(query, top_k=5)

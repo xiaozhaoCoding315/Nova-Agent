@@ -24,18 +24,35 @@ class OpenAICompatibleLLM(LLMProvider):
 
         tool_calls deltas arrive fragmented across chunks; we accumulate them
         by index and emit one aggregated event before finish, keeping the
-        downstream chat loop simple.
+        downstream chat loop simple. Real token usage is requested via
+        stream_options (providers that reject it are retried without).
         """
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            stream=True,
-        )
+        async def _create(**extra):
+            return await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                stream=True,
+                **extra,
+            )
+
+        try:
+            stream = await _create(stream_options={"include_usage": True})
+        except Exception:  # noqa: BLE001 — provider may not support include_usage
+            stream = await _create()
+
         acc: dict[int, dict] = {}
         finish_reason = "stop"
+        usage: dict | None = None
         async for chunk in stream:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage:
+                usage = {
+                    "prompt_tokens": chunk_usage.prompt_tokens,
+                    "completion_tokens": chunk_usage.completion_tokens,
+                    "model": self.model,
+                }
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]
@@ -58,6 +75,8 @@ class OpenAICompatibleLLM(LLMProvider):
         if acc:
             ordered = [acc[i] for i in sorted(acc)]
             yield {"type": "tool_calls", "tool_calls": ordered}
+        if usage:
+            yield {"type": "usage", "usage": usage}
         yield {"type": "finish", "finish_reason": finish_reason}
 
 

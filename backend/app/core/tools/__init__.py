@@ -1,37 +1,31 @@
-"""Agent Skill tool package — registers built-in skills on import."""
-from app.core.tools.base import (  # noqa: F401
-    Tool,
-    ToolError,
+"""Tool package: registry singleton with all built-in tools registered."""
+from app.config import settings
+from app.core.tools import diagnose, fetch_url, json_tool, run_code, search_code, sql_tool
+from app.core.tools.base import (  # noqa: F401  (re-exported for callers)
+    ToolBusinessError,
+    ToolContext,
+    ToolDefinition,
     ToolRegistry,
-    registry,
-    run_tool,
-    validate_arguments,
 )
-from app.core.tools.calculator import calculator_tool
-from app.core.tools.code_executor import code_executor_tool
-from app.core.tools.db_query import db_query_tool
-from app.core.tools.doc_parser import doc_parser_tool
-from app.core.tools.error_diagnosis import error_diagnosis_tool
-from app.core.tools.json_tool import json_tool
 
-registry.register(calculator_tool)
-registry.register(code_executor_tool)
-registry.register(db_query_tool)
-registry.register(doc_parser_tool)
-registry.register(error_diagnosis_tool)
-registry.register(json_tool)
 
-__all__ = [
-    "Tool",
-    "ToolError",
-    "ToolRegistry",
-    "registry",
-    "run_tool",
-    "validate_arguments",
-    "calculator_tool",
-    "code_executor_tool",
-    "db_query_tool",
-    "doc_parser_tool",
-    "error_diagnosis_tool",
-    "json_tool",
-]
+def build_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(run_code.TOOL)
+    registry.register(diagnose.TOOL)
+    registry.register(search_code.TOOL)
+    registry.register(json_tool.TOOL)
+    registry.register(sql_tool.TOOL)
+    if settings.enable_fetch_url:
+        registry.register(fetch_url.TOOL)
+    return registry
+
+
+_registry: ToolRegistry | None = None
+
+
+def get_registry() -> ToolRegistry:
+    global _registry
+    if _registry is None:
+        _registry = build_registry()
+    return _registry

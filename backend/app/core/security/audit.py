@@ -6,11 +6,14 @@ import structlog
 logger = structlog.get_logger()
 
 class AuditAction:
-    CODE_EXECUTION = "code_execution"
-    TOOL_CALL = "tool_call"
-    DOCUMENT_UPLOAD = "document_upload"
+    LOGIN = "login"
+    LOGIN_FAILED = "login_failed"
     CHAT_MESSAGE = "chat_message"
+    TOOL_CALL = "tool_call"
+    SANDBOX_RUN = "sandbox_run"
     RISK_BLOCKED = "risk_blocked"
+    REPO_IMPORT = "repo_import"
+    REPO_DELETE = "repo_delete"
 
 # In-memory buffer for fast access
 _audit_buffer = []

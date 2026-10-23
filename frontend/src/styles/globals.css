@@ -1,23 +1,75 @@
+@import 'highlight.js/styles/github-dark.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  background: #0a0a0f;
-  color: #e0e0e0;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  -webkit-font-smoothing: antialiased;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #12121a; }
-::-webkit-scrollbar-thumb { background: #1e1e2e; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #00f0f0; }
+body {
+  @apply bg-base text-ink antialiased;
+}
 
-@layer utilities {
-  .neon-cyan { box-shadow: 0 0 5px #00f0f0, 0 0 20px #00f0f055; }
-  .neon-pink { box-shadow: 0 0 5px #ff006e, 0 0 20px #ff006e55; }
-  .neon-border { border: 1px solid #00f0f0; box-shadow: 0 0 5px #00f0f033; }
-  .glass { background: rgba(18, 18, 26, 0.8); backdrop-filter: blur(12px); }
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-edge;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-accentSoft;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Markdown content */
+.md-body {
+  @apply text-[14px] leading-relaxed;
+}
+.md-body p {
+  @apply my-2;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  @apply mb-2 mt-4 font-semibold text-ink;
+}
+.md-body ul,
+.md-body ol {
+  @apply my-2 list-outside pl-5;
+}
+.md-body ul {
+  @apply list-disc;
+}
+.md-body ol {
+  @apply list-decimal;
+}
+.md-body a {
+  @apply text-accent underline underline-offset-2;
+}
+.md-body blockquote {
+  @apply my-2 border-l-2 border-edge pl-3 text-dim;
+}
+.md-body table {
+  @apply my-2 w-full border-collapse text-[13px];
+}
+.md-body th,
+.md-body td {
+  @apply border border-edge px-2 py-1 text-left;
+}
+.md-body code {
+  @apply rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-accent;
+}
+.md-body pre code {
+  @apply bg-transparent p-0 text-inherit;
+}
+.md-body pre {
+  @apply my-0 overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed;
 }

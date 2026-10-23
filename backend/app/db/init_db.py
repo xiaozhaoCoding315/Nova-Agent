@@ -1,79 +1,139 @@
-"""One-click database initialization — idempotent, safe to re-run.
+"""Idempotent database initialization — safe to re-run on every boot.
 
-Provides init_postgres(), init_qdrant(), init_neo4j(), check_connectivity(),
-and init_all() to bring every backing store to the expected baseline schema.
+Brings PostgreSQL (schema) and Qdrant (collection) to the baseline the app
+expects, and seeds the default admin/demo accounts.
 """
 import asyncio
 
 import psycopg
-from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import VectorParams, Distance
+import structlog
 
 from app.config import settings
 from app.db import transaction
-from app.db.neo4j import init_graph
+
+logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
 # PostgreSQL
 # ---------------------------------------------------------------------------
 
-# DDL kept as plain strings so it is easy to review and runs transactionally.
-# Every statement is idempotent (IF NOT EXISTS / CREATE OR REPLACE / DROP
-# TRIGGER IF EXISTS) which makes the whole batch safe to run repeatedly.
 _DDL = [
     """
-    CREATE TABLE IF NOT EXISTS documents (
-        id UUID PRIMARY KEY,
-        content TEXT NOT NULL,
-        source VARCHAR(500),
-        metadata JSONB,
-        search_vector tsvector,
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(64) UNIQUE NOT NULL,
+        password_hash VARCHAR(200) NOT NULL,
+        role VARCHAR(16) NOT NULL DEFAULT 'demo',
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS agent_facts (
+    CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY,
-        session_id VARCHAR(100),
-        fact VARCHAR(500) NOT NULL,
-        category VARCHAR(50),
-        importance FLOAT,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(200) DEFAULT '新对话',
+        summary TEXT,
         created_at TIMESTAMPTZ DEFAULT now(),
-        last_accessed TIMESTAMPTZ
+        updated_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id, updated_at DESC)",
     """
-    CREATE TABLE IF NOT EXISTS eval_queries (
-        id SERIAL PRIMARY KEY,
-        query TEXT NOT NULL,
-        category VARCHAR(100),
-        relevant_ids JSONB,
-        notes TEXT,
+    CREATE TABLE IF NOT EXISTS messages (
+        id BIGSERIAL PRIMARY KEY,
+        session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+        role VARCHAR(16) NOT NULL,
+        content TEXT DEFAULT '',
+        tool_json JSONB,
+        prompt_tokens INT DEFAULT 0,
+        completion_tokens INT DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, id)",
     """
-    CREATE TABLE IF NOT EXISTS eval_results (
-        id SERIAL PRIMARY KEY,
-        run_name VARCHAR(200),
-        eval_type VARCHAR(50),
-        query_id INT REFERENCES eval_queries(id),
-        metrics JSONB,
-        ragas_scores JSONB,
-        answer TEXT,
-        duration_ms FLOAT,
+    CREATE TABLE IF NOT EXISTS facts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        hash VARCHAR(64) UNIQUE NOT NULL,
+        importance REAL DEFAULT 1.0,
+        last_used_at TIMESTAMPTZ DEFAULT now(),
+        ttl_days INT DEFAULT 90,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "CREATE INDEX IF NOT EXISTS idx_facts_user ON facts (user_id, importance DESC)",
     """
-    CREATE TABLE IF NOT EXISTS eval_corpora (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(200) UNIQUE,
-        description TEXT,
+    CREATE TABLE IF NOT EXISTS repos (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(200) NOT NULL,
+        source VARCHAR(500) DEFAULT '',
+        root_path TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        error TEXT,
+        stats JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_repos_user ON repos (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS repo_files (
+        id BIGSERIAL PRIMARY KEY,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        language VARCHAR(32),
+        size INT DEFAULT 0,
+        line_count INT DEFAULT 0,
+        is_doc BOOLEAN DEFAULT FALSE
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_repo_files_repo ON repo_files (repo_id, path)",
+    """
+    CREATE TABLE IF NOT EXISTS symbols (
+        id BIGSERIAL PRIMARY KEY,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        file_id BIGINT REFERENCES repo_files(id) ON DELETE CASCADE,
+        kind VARCHAR(20),
+        name VARCHAR(200),
+        parent VARCHAR(200),
+        line_start INT,
+        line_end INT,
+        signature TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols (repo_id, name)",
+    "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols (file_id)",
+    """
+    CREATE TABLE IF NOT EXISTS chunks (
+        id BIGSERIAL PRIMARY KEY,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        file_id BIGINT REFERENCES repo_files(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        line_start INT,
+        line_end INT,
+        lang VARCHAR(32),
+        kind VARCHAR(16) DEFAULT 'code',
+        tsv TSVECTOR
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_chunks_repo ON chunks (repo_id)",
+    "CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING GIN (tsv)",
+    """
+    CREATE TABLE IF NOT EXISTS usage_log (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INT,
+        session_id UUID,
+        model VARCHAR(64),
+        prompt_tokens INT DEFAULT 0,
+        completion_tokens INT DEFAULT 0,
+        tool_calls INT DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "CREATE INDEX IF NOT EXISTS idx_usage_user_time ON usage_log (user_id, created_at)",
     """
     CREATE TABLE IF NOT EXISTS audit_log (
         id VARCHAR(20) PRIMARY KEY,
@@ -86,88 +146,33 @@ _DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action)",
     "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at)",
-    """
-    CREATE OR REPLACE FUNCTION documents_search_vector_update()
-    RETURNS trigger AS $$
-    BEGIN
-        NEW.search_vector := to_tsvector('simple', COALESCE(NEW.content, ''));
-        RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql
-    """,
-    "DROP TRIGGER IF EXISTS documents_search_vector_trigger ON documents",
-    """
-    CREATE TRIGGER documents_search_vector_trigger
-        BEFORE INSERT OR UPDATE ON documents
-        FOR EACH ROW EXECUTE FUNCTION documents_search_vector_update()
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_documents_search ON documents USING GIN (search_vector)",
-    "CREATE INDEX IF NOT EXISTS idx_agent_facts_ttl ON agent_facts (created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_agent_facts_session ON agent_facts (session_id)",
-    """
-    CREATE TABLE IF NOT EXISTS chat_sessions (
-        id VARCHAR(64) PRIMARY KEY,
-        created_at TIMESTAMPTZ DEFAULT now(),
-        updated_at TIMESTAMPTZ DEFAULT now()
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS chat_messages (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        session_id VARCHAR(64),
-        role VARCHAR(20),
-        content TEXT,
-        created_at TIMESTAMPTZ DEFAULT now()
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages (session_id, created_at)",
-    """
-    CREATE TABLE IF NOT EXISTS task_states (
-        id VARCHAR(64) PRIMARY KEY,
-        name VARCHAR(500),
-        status VARCHAR(30),
-        result JSONB,
-        error TEXT,
-        created_at TIMESTAMPTZ,
-        started_at TIMESTAMPTZ,
-        completed_at TIMESTAMPTZ,
-        retries INT DEFAULT 0,
-        max_retries INT DEFAULT 2,
-        parent_id VARCHAR(64),
-        children_ids JSONB DEFAULT '[]',
-        metadata JSONB DEFAULT '{}',
-        history JSONB DEFAULT '[]'
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_task_states_status ON task_states (status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log (user_id, created_at)",
 ]
 
 
+async def ensure_database() -> str:
+    """Create the target database on first run. Returns created | already_exists."""
+
+    def _run() -> str:
+        with psycopg.connect(settings.postgres_admin_dsn, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (settings.postgres_db,))
+                if cur.fetchone():
+                    return "already_exists"
+                # Identifier cannot be parameterized; validate strictly instead.
+                db = settings.postgres_db
+                if not db.replace("_", "").isalnum():
+                    raise ValueError(f"unsafe database name: {db!r}")
+                cur.execute(f'CREATE DATABASE "{db}"')
+                return "created"
+
+    return await asyncio.to_thread(_run)
+
+
 async def init_postgres() -> str:
-    """Create PostgreSQL tables, triggers, and indexes.
-
-    Returns "already_exists" if the ``documents`` table was present before
-    running, otherwise "created".
-    """
-    existed = await _table_exists("documents")
-
-    # transaction() runs the whole DDL batch in a single connection/transaction.
+    db_state = await ensure_database()
     await transaction([(sql, None) for sql in _DDL])
-
-    return "already_exists" if existed else "created"
-
-
-async def _table_exists(table: str) -> bool:
-    """Check whether a table already exists in the public schema."""
-    from app.db import query
-    rows = await query(
-        "SELECT EXISTS("
-        "  SELECT 1 FROM pg_tables "
-        "  WHERE schemaname='public' AND tablename=%s"
-        ")",
-        (table,),
-    )
-    return bool(rows and rows[0][0])
+    return db_state
 
 
 # ---------------------------------------------------------------------------
@@ -175,38 +180,8 @@ async def _table_exists(table: str) -> bool:
 # ---------------------------------------------------------------------------
 
 async def init_qdrant() -> str:
-    """Create the ``novatech_docs`` collection if it does not exist.
-
-    Returns "already_exists" or "created".
-    """
-    client = QdrantClient(url=settings.qdrant_url)
-    try:
-        client.get_collection("novatech_docs")
-        return "already_exists"
-    except UnexpectedResponse as exc:
-        # Only a 404 ("collection not found") should fall through to create.
-        # Any other status (e.g. 500) or exception type is a real failure —
-        # let it propagate so the user sees a clear connection/server error
-        # instead of a confusing failure on the create path.
-        # Use getattr so non-HTTP errors (no status_code) don't raise AttributeError.
-        if getattr(exc, 'status_code', None) != 404:
-            raise
-
-    client.create_collection(
-        collection_name="novatech_docs",
-        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-    )
-    return "created"
-
-
-# ---------------------------------------------------------------------------
-# Neo4j
-# ---------------------------------------------------------------------------
-
-async def init_neo4j() -> str:
-    """Create Neo4j constraints and indexes. Returns "ok"."""
-    await init_graph()
-    return "ok"
+    from app.db.qdrant import ensure_collection
+    return await ensure_collection()
 
 
 # ---------------------------------------------------------------------------
@@ -214,13 +189,8 @@ async def init_neo4j() -> str:
 # ---------------------------------------------------------------------------
 
 async def check_connectivity() -> dict:
-    """Return connection status for all three backing stores.
-
-    Each value is "connected" on success or "failed: <message>" on error.
-    """
     status: dict = {}
 
-    # PostgreSQL
     try:
         with psycopg.connect(settings.postgres_dsn) as conn:
             with conn.cursor() as cur:
@@ -230,42 +200,47 @@ async def check_connectivity() -> dict:
     except Exception as exc:  # noqa: BLE001
         status["postgres"] = f"failed: {exc}"
 
-    # Qdrant
     try:
-        client = QdrantClient(url=settings.qdrant_url)
+        from qdrant_client import QdrantClient
+        client = QdrantClient(url=settings.qdrant_url, timeout=5)
         client.get_collections()
         status["qdrant"] = "connected"
     except Exception as exc:  # noqa: BLE001
         status["qdrant"] = f"failed: {exc}"
 
-    # Neo4j
-    try:
-        from app.db.neo4j import get_driver
-        driver = get_driver()
-        with driver.session(database="neo4j") as session:
-            session.run("RETURN 1").single()
-        status["neo4j"] = "connected"
-    except Exception as exc:  # noqa: BLE001
-        status["neo4j"] = f"failed: {exc}"
-
     return status
 
 
 async def init_all() -> dict:
-    """Run connectivity check and all initializers. Returns a status dict."""
-    return {
-        "connectivity": await check_connectivity(),
-        "postgres": await init_postgres(),
-        "qdrant": await init_qdrant(),
-        "neo4j": await init_neo4j(),
-    }
+    result = {"connectivity": await check_connectivity()}
+    if not str(result["connectivity"].get("postgres", "")).startswith("connected"):
+        logger.error("postgres_unreachable_skipping_init", detail=result["connectivity"]["postgres"])
+        return result
+
+    result["postgres"] = await init_postgres()
+
+    try:
+        result["qdrant"] = await init_qdrant()
+    except Exception as exc:  # noqa: BLE001
+        result["qdrant"] = f"failed: {exc}"
+        logger.error("qdrant_init_failed", error=str(exc))
+
+    try:
+        from app.core.security.auth import ensure_default_users
+        result["users"] = await ensure_default_users()
+    except Exception as exc:  # noqa: BLE001
+        result["users"] = f"failed: {exc}"
+        logger.error("user_seed_failed", error=str(exc))
+
+    return result
 
 
 if __name__ == "__main__":
     import sys
+
     if "--check" in sys.argv:
-        result = asyncio.run(check_connectivity())
-        for k, v in result.items():
+        for k, v in asyncio.run(check_connectivity()).items():
             print(f"  {k}: {v}")
     else:
-        asyncio.run(init_all())
+        for k, v in asyncio.run(init_all()).items():
+            print(f"  {k}: {v}")

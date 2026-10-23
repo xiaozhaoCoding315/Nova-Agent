@@ -1,146 +1,155 @@
-# Nova Agent — AI 全栈技术助手智能体
+# Nova Agent — 开发者 AI 工作台
 
-面向程序员的 AI Agent 系统，自研 DAG 调度引擎与四层记忆架构，打通「精准检索 → 持久记忆 → 可靠执行 → 安全运行」完整链路。
+一个**可自托管**的 AI 开发助手：读懂你的代码、定位你的报错、验证你的代码。不是通用聊天机器人，而是围绕「代码检索 → 报错诊断 → 沙箱执行验证」闭环设计的开发者工具。
 
-## 功能亮点
+## 解决什么问题
 
-### 混合图增强 RAG 检索管线
-三路并行召回——**Qdrant 稠密向量** + **PostgreSQL BM25**（自研 jieba 中文分词）+ **Neo4j 知识图谱**多跳扩展；RRF (k=10) 融合多路结果，ILIKE 兜底解决中文分词边界问题。多路检索互相补充，单路故障不中断整体请求。
+写代码时最常卡住的四件事，Nova 都有对应的确定性能力（不是"让模型自由发挥"）：
 
-### 四层分层记忆架构
-短期会话记忆 → 长期语义记忆（PostgreSQL，TTL 30~365 天）→ 图谱记忆（Neo4j 实体关系）→ DAG 运行时断点记忆。MD5 + Embedding 双重去重，记忆权重动态衰减模拟遗忘曲线，跨会话持久存储用户历史与偏好。
+| 场景 | 怎么用 | 背后机制 |
+|---|---|---|
+| **读懂陌生代码库** | 导入仓库（ZIP / Git URL），直接问「X 功能在哪个文件实现的？」 | 符号级代码索引（函数/类/接口）+ 语义与关键词双路检索，回答携带 `文件:行号` 引用 |
+| **排查报错** | 贴 Python / JVM / Node / Go 堆栈 | 确定性解析错误类型、消息与调用帧 → 在仓库中定位对应文件 → 结合检索给出修复建议 |
+| **验证代码/生成测试** | 「给这个函数写单测，并跑通」 | LLM 写代码 → **Docker 沙箱真实执行** → 读取 stdout/退出码 → 自我纠错迭代（≤5 轮），直到测试全绿 |
+| **日常杂活** | JSON/YAML 校验转换、SQL 审阅、抓取在线文档 | json_tool / sql_tool / fetch_url，全部确定性实现，结果即真相 |
 
-### Agent Skill 工具集（Function-Calling）
-可扩展 Skill 插件机制：`ToolRegistry` 统一注册与参数校验（JSON Schema），LLM 基于 Function-Calling 自主选择工具，SSE 实时推送 `tool_call` / `tool_result` 事件，前端展示工具调用卡片（工具名 / 入参 / 结果 / 耗时）。内置六个工具——**代码沙箱执行**（LLM 自主编写 Python 在禁网只读容器中运行验证，接通 Agent 循环与安全沙箱两大子系统）、**计算器**（AST 白名单求值，杜绝 eval 注入）、**数据库查询**（只读 SELECT、表白名单、强制 LIMIT）、**文档解析**（关键词 AND 匹配定位知识库文档）、**报错诊断**（解析 Python/JVM 堆栈，提取错误类型与位置并交叉检索知识库）、**JSON 处理**（校验/格式化/路径取值）。工具执行全程纳入 Harness 容错（30s 超时、指数退避重试、熔断降级，业务校验拒绝不计入熔断统计），单工具故障不影响对话主链路；Agent 循环最多 4 轮防失控，工具调用全量写入审计日志。知识库支持代码文件上传（.py/.java/.ts/.go 等 20+ 扩展名），按函数/类边界智能分块并保留语言标识。
+## 核心特性
 
-### 自研 DAG ReAct 执行引擎
-零第三方框架依赖，自研 DAGWorkflow 调度核心。支持 Kahn 拓扑排序、循环检测、异步并行执行、节点重试与异常传递。内置多 LLM 厂商竞速调度与任务自动分解器，状态机完整追踪节点生命周期。
+### 代码感知的混合检索
+- **符号索引**：Python 用 AST、Java/TS/JS/Go 等用结构化正则，按函数/类边界提取符号表（名称、类型、起止行号）
+- **双路召回 + RRF 融合**：Qdrant 稠密向量（语义）+ PostgreSQL 全文（jieba 中文分词预处理）并行检索，单路故障自动降级
+- **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
-### Harness 容错引擎 + Docker 安全沙箱
-分级超时控制（LLM 60s / 检索 10s / 工具 30s / DB 5s），指数退避重试（最多 3 次），熔断降级（5 次失败断路，60s 后半开）。Docker 容器强隔离（禁用网络、只读文件、丢弃全部权限），搭配风险正则校验与全量审计日志。
+### Agent 循环 + Function-Calling
+- 6 个工具：`run_code`（沙箱执行）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）
+- 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染工具卡片（入参 / 结果 / 耗时）
+- 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
 
-### RAG 评测体系与可视化前端
-检索指标：Recall@K、MRR、NDCG@10；生成层基于 RAGAS 做 LLM 多维度评测。前端 React18 + TypeScript + TailwindCSS，SSE 流式输出，六面板 Dashboard 覆盖对话、知识库、记忆图谱、评测、DAG 流程图、系统监控。
+### Docker 安全沙箱（绝不降级）
+- LLM 生成的代码只在锁定容器中执行：**禁网络 + 只读根文件系统 + 丢弃全部 capabilities + 非 root uid + pid/内存/CPU 限额**
+- 沙箱镜像预装 numpy / pytest，「写测试 → 运行 → 迭代」开箱即用
+- Docker 不可用时工具**如实标记不可用**，绝不退化为在宿主机执行
+
+### 产品化能力
+- **登录认证**：JWT（httpOnly cookie）+ bcrypt；`admin` / `demo` 双角色，demo 账号供演示访问且带限额（10 条/小时、每日 token 预算、沙箱次数）
+- **会话持久化**：历史会话与消息落库，刷新不丢；支持停止生成（断流后已生成内容仍会保存）
+- **真实健康检查**：PG / Qdrant / LLM / Embedding / 沙箱逐项探活，降级可见
+- **审计与配额**：登录、对话、工具调用、仓库导入/删除全量审计；用量与配额在设置页实时可见
+
+### 两层记忆
+- 会话记忆：持久化消息 + 标题自动生成
+- 长期记忆：对话中抽取用户偏好/事实，MD5 + 向量相似度去重（阈值 0.92），重要性访问加权、闲置衰减、TTL 过期清理（小时级维护循环）
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| **后端框架** | Python · FastAPI |
-| **前端框架** | React 18 · TypeScript · TailwindCSS · Vite |
-| **向量数据库** | Qdrant · PostgreSQL + pgvector |
-| **图数据库** | Neo4j |
-| **LLM 接入** | OpenAI 兼容接口 · 多厂商竞速调度 |
-| **容器化** | Docker |
-| **状态管理** | Zustand |
-| **粒子背景** | Three.js · React Three Fiber |
-
-## 项目结构
-
-```
-nova-agent/
-├── backend/
-│   ├── app/
-│   │   ├── api/v1/          # REST API 路由
-│   │   │   ├── chat.py      # 对话接口
-│   │   │   ├── knowledge.py # 知识库管理
-│   │   │   ├── memory.py    # 记忆查询
-│   │   │   ├── graph.py     # 知识图谱
-│   │   │   ├── evaluation.py# 评测接口
-│   │   │   ├── harness.py   # 容错控制
-│   │   │   ├── sandbox.py   # 沙箱执行
-│   │   │   ├── tasks.py     # DAG 任务
-│   │   │   └── ...
-│   │   ├── core/
-│   │   │   ├── agent/       # DAG 引擎 · 任务分解 · 竞速调度（状态三件套：DAGNode.status 节点态 / TaskStateMachine 校验状态机 / TaskStateManager 持久化存储 Layer 4）
-│   │   │   ├── rag/         # 稠密/关键词/图谱检索 · RRF 融合
-│   │   │   ├── memory/      # 四层记忆 · 去重 · 衰减 · 上下文组装
-│   │   │   ├── harness/     # 超时 · 重试 · 熔断
-│   │   │   ├── sandbox/     # Docker 容器沙箱
-│   │   │   ├── security/    # 风险校验 · 审计日志
-│   │   │   ├── evaluation/  # RAGAS 评测 · 数据集管理
-│   │   │   ├── llm/         # LLM 工厂 · 降级策略
-│   │   │   └── embedding/   # 向量嵌入
-│   │   ├── db/              # PostgreSQL · Neo4j 连接
-│   │   ├── models/          # 领域模型 · Pydantic Schema
-│   │   └── utils/           # 中文分词 · 文本分割 · 实体抽取
-│   ├── tests/               # 单元测试 + 集成测试
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── chat/        # 对话窗口 · 消息气泡 · 输入框
-│   │   │   ├── knowledge/   # 知识库面板 · 上传
-│   │   │   ├── memory/      # 记忆面板 · 图谱画布 · 时间线
-│   │   │   ├── eval/        # 评测面板 · 指标条
-│   │   │   ├── tasks/       # DAG 画布 · 任务创建
-│   │   │   ├── admin/       # 管理面板
-│   │   │   ├── layout/      # 布局组件
-│   │   │   └── particles/   # 粒子特效
-│   │   ├── hooks/           # SSE 流式订阅
-│   │   ├── services/        # API · SSE 客户端
-│   │   ├── stores/          # Zustand 状态管理
-│   │   └── styles/          # 全局样式 · 赛博朋克主题
-│   └── package.json
-└── docs/                    # 设计文档
-```
+| 层 | 选型 |
+|---|---|
+| 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
+| 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
+| 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
+| LLM | OpenAI 兼容多厂商降级链（DeepSeek / DashScope / LongCat） |
+| 沙箱 | Docker（一次性容器，强隔离） |
+| 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
 ## 快速开始
 
-### 前置条件
-
-- Docker + Docker Compose（一键部署，推荐）
-- 开发模式另需：Python 3.12+、Node.js 18+、PostgreSQL/pgvector、Qdrant、Neo4j 实例
-
-### Docker Compose 一键部署（推荐）
-
-全套服务（PostgreSQL+pgvector / Qdrant / Neo4j / backend+前端）一条命令拉起：
+### 方式一：Docker Compose 一键部署（推荐）
 
 ```bash
-cp .env.docker.example .env   # 填入你的 LLM API Key（DeepSeek/DashScope 至少一个）
+cp .env.docker.example .env   # 填入 LLM API Key，修改 SECRET_KEY 与两个账号密码
 docker compose up -d --build  # 构建并启动全部服务
-# 访问 http://localhost:8000
+# 访问 http://<服务器IP>:8000
 ```
 
-首次启动自动完成幂等初始化：建表、创建 Qdrant collection、Neo4j 约束。数据库已有独立实例时，可改用 `docker-compose.vm.yml`（只跑 backend，`host.docker.internal` 直连宿主机数据库）。
+首次启动自动完成幂等初始化：建库建表、创建 Qdrant collection、生成 admin/demo 账号。
 
-> 说明：Docker 沙箱代码执行功能需要容器内访问 Docker 运行时，compose 部署下该功能自动降级并在 `/sandbox/status` 如实上报，其余功能不受影响。
+启用 HTTPS（有域名时）：`cp Caddyfile.example Caddyfile` 改成你的域名，然后 `docker compose --profile https up -d`，并在 `.env` 中设 `COOKIE_SECURE=true`。
 
-### 开发模式（本机调试）
-
-后端：
+### 方式二：本地开发
 
 ```bash
+# 后端（本机进程，热重载）
 cd backend
-python -m venv .venv
-.venv\Scripts\activate        # Windows
 pip install -r requirements.txt
-cp .env.example .env          # 编辑 .env 填入 API Key 与数据库连接
-python run.py                 # 默认 dev 模式，访问 http://localhost:8000/docs
-```
+cp .env.example .env          # 配置 PG/Qdrant 地址与 LLM Key
+python run.py                 # http://localhost:8000
 
-前端：
-
-```bash
+# 前端（Vite 开发服务器，代理到 8000）
 cd frontend
 npm install
-npm run dev                   # Vite 开发服务器 http://localhost:5173
-npm run build                 # 生产构建到 dist/
+npm run dev                   # http://localhost:5173
 ```
+
+说明：
+- 沙箱工具需要本机 Docker 在运行；未运行时设置页会如实显示「沙箱不可用」，其余功能不受影响
+- 首次启动设 `AUTO_INIT_DB=true` 自动建表，或手动执行 `python -m app.db.init_db`
+
+## 配置项（.env 关键项）
+
+| 变量 | 说明 |
+|---|---|
+| `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | LLM Key（至少一个；DashScope 同时提供 embedding） |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
+| `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号（可公开给面试官/朋友使用） |
+| `SECRET_KEY` | JWT 签名密钥（≥32 位随机串） |
+| `COOKIE_SECURE` | 启用 HTTPS 后设为 true |
+| `DEMO_DAILY_TOKENS` / `DEMO_HOURLY_MESSAGES` / `DEMO_SANDBOX_DAILY` | 演示账号限额（0 = 不限） |
+| `SANDBOX_ENABLED` | 沙箱总开关 |
+| `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 
 ## API 概览
 
 | 端点 | 说明 |
-|------|------|
-| `GET /api/v1/health` | 健康检查 |
-| `POST /api/v1/chat` | 对话（SSE 流式） |
-| `POST /api/v1/knowledge/upload` | 知识库上传 |
-| `GET /api/v1/knowledge/search` | 知识检索 |
-| `GET /api/v1/memory/session` | 会话记忆 |
-| `GET /api/v1/memory/long-term` | 长期记忆 |
-| `GET /api/v1/graph/entities` | 图谱实体 |
-| `POST /api/v1/tasks` | 创建 DAG 任务 |
-| `GET /api/v1/tasks/{id}` | 任务状态 |
-| `POST /api/v1/evaluation/run` | 运行评测 |
-| `POST /api/v1/sandbox/execute` | 沙箱代码执行 |
+|---|---|
+| `POST /api/v1/auth/login` `logout` `GET me` | 登录 / 登出 / 当前用户 |
+| `GET/POST /api/v1/chat/sessions` | 会话列表 / 新建 |
+| `GET /api/v1/chat/sessions/{id}/messages` | 历史消息 |
+| `POST /api/v1/chat/message` | 对话（SSE：`meta/retrieval/token/tool_call/tool_result/usage/error/done`） |
+| `POST /api/v1/repos/upload` / `POST /api/v1/repos/git` | 导入仓库（ZIP / 公开 Git URL） |
+| `GET /api/v1/repos` `/{id}` `/{id}/tree` `/{id}/file` `/{id}/search` | 仓库列表 / 详情 / 文件树 / 文件内容 / 仓库内搜索 |
+| `GET /api/v1/status/health` / `usage` | 依赖探活 / 用量配额 |
+
+## 项目结构
+
+```
+backend/app/
+├── api/v1/            auth · chat · repos · status
+├── core/
+│   ├── agent/loop.py  Agent 主循环（检索→工具轮次→持久化）
+│   ├── rag/           双路召回 + RRF（dense / keyword）
+│   ├── indexing/      仓库索引：walker / symbols / chunker / pipeline
+│   ├── memory/        会话 + 长期事实（去重/衰减/清理）
+│   ├── tools/         6 个工具 + 注册表（校验/容错/审计）
+│   ├── sandbox/       Docker 一次性容器执行器
+│   ├── harness/       超时 / 重试 / 熔断
+│   ├── security/      认证 / 限流配额 / 风险规则 / 审计
+│   └── llm/           多厂商降级链 + 工具流式（真实 token 统计）
+├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
+└── models/            Pydantic 模型
+frontend/src/
+├── views/             登录 · 对话 · 工作区 · 设置
+├── components/        消息/工具卡片/Markdown/文件树/代码查看器…
+├── stores/            auth · chat · repos（Zustand）
+└── lib/               API 客户端 · SSE 解析（含中断与错误处理）
+docs/DESIGN.md         架构设计文档（数据模型/API/安全/部署）
+```
+
+## 测试
+
+```bash
+cd backend && python -m pytest tests/ -q
+```
+
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、6 个工具、索引与分块、ZIP 安全、SSRF 防护、熔断重试
+- 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
+
+## 安全说明
+
+- 代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径
+- `fetch_url` 有 SSRF 防护：仅公网 http(s)、逐跳校验重定向、拒绝内网地址、限制响应大小与类型
+- ZIP 导入有路径穿越防护、文件数与大小上限；Git 仅支持公开仓库浅克隆
+- 部署暴露公网前请务必：改 `SECRET_KEY`、改两个账号密码、按需收紧 `CORS_ORIGINS`
+
+## License
+
+个人项目，供学习与演示使用。

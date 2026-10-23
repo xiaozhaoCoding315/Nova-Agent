@@ -1,152 +1,199 @@
-"""Docker sandbox runtime for secure code execution."""
+"""Docker-only sandbox for executing LLM-authored code.
+
+Security invariants (do not weaken):
+- There is NO fallback to host execution. If Docker is unavailable the
+  caller must report the tool as unavailable instead.
+- Containers run with no network, read-only root, all capabilities dropped,
+  a non-root uid, pid/memory/cpu limits, and an explicit ``--name`` so that
+  timeouts can reliably kill the exact container.
+"""
 import asyncio
+import re
 import shutil
 import tempfile
+import uuid
+
 import structlog
-from typing import Optional
-from app.core.sandbox.config import SANDBOX_CONFIG
+
+from app.config import settings
 
 logger = structlog.get_logger()
 
-# Docker availability flag
-_docker_available = None
+_docker_checked: bool | None = None
+
+_SAFE_PATH = re.compile(r"^[\w./\-]+$")
 
 
 def is_docker_available() -> bool:
-    """Check if Docker is installed and running."""
-    global _docker_available
-    if _docker_available is None:
-        _docker_available = shutil.which("docker") is not None
-        if _docker_available:
+    global _docker_checked
+    if _docker_checked is None:
+        if shutil.which("docker") is None:
+            _docker_checked = False
+        else:
+            import subprocess
             try:
-                import subprocess
-                result = subprocess.run(
-                    ["docker", "info"],
-                    capture_output=True, timeout=5
-                )
-                _docker_available = result.returncode == 0
-            except Exception:
-                _docker_available = False
-    return _docker_available
+                result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+                _docker_checked = result.returncode == 0
+            except Exception:  # noqa: BLE001
+                _docker_checked = False
+    return _docker_checked
 
 
-async def execute_in_sandbox(
-    code: str,
-    language: str = "python",
-    inputs: str = "",
-    timeout: int = None,
+async def sandbox_status() -> dict:
+    """Report availability honestly — never silently degrade."""
+    if not settings.sandbox_enabled:
+        return {"available": False, "reason": "disabled by config"}
+
+    docker_ok = await asyncio.to_thread(is_docker_available)
+    if not docker_ok:
+        return {"available": False, "reason": "docker daemon not reachable"}
+
+    def _image_exists() -> bool:
+        import subprocess
+        result = subprocess.run(
+            ["docker", "image", "inspect", settings.sandbox_image],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+
+    try:
+        has_image = await asyncio.to_thread(_image_exists)
+    except Exception:  # noqa: BLE001
+        has_image = False
+
+    if not has_image:
+        return {
+            "available": False,
+            "reason": f"sandbox image missing — build it: docker build -f Dockerfile.sandbox -t {settings.sandbox_image} .",
+        }
+    return {"available": True, "image": settings.sandbox_image}
+
+
+def _safe_relpath(path: str) -> str:
+    """Reject absolute paths and traversal so uploaded files stay in workdir."""
+    path = path.replace("\\", "/").lstrip("/")
+    if not path or ".." in path.split("/") or not _SAFE_PATH.match(path):
+        raise ValueError(f"unsafe file path: {path!r}")
+    return path
+
+
+async def execute(
+    files: dict[str, str],
+    command: str | None = None,
+    stdin: str = "",
+    timeout: int | None = None,
 ) -> dict:
-    """
-    Execute code in an isolated Docker container.
-    Returns: {"stdout": str, "stderr": str, "exit_code": int, "timed_out": bool, "sandboxed": bool}
-    """
-    if not is_docker_available():
-        logger.warning("Docker not available, falling back to direct execution")
-        return await _execute_direct(code, language, inputs, timeout or SANDBOX_CONFIG.timeout_seconds)
+    """Run ``files`` in the sandbox container.
 
-    timeout = timeout or SANDBOX_CONFIG.timeout_seconds
+    Returns {"stdout", "stderr", "exit_code", "timed_out", "sandboxed", "command"}.
+    ``sandboxed`` is always True here — kept in the payload for auditability.
+    """
+    timeout = timeout or settings.sandbox_timeout
+    status = await sandbox_status()
+    if not status["available"]:
+        return {
+            "stdout": "",
+            "stderr": f"沙箱不可用：{status['reason']}",
+            "exit_code": -1,
+            "timed_out": False,
+            "sandboxed": False,
+            "command": "",
+        }
+
+    if not files:
+        return {
+            "stdout": "", "stderr": "no files provided", "exit_code": -1,
+            "timed_out": False, "sandboxed": False, "command": "",
+        }
+    if len(files) > 20 or any(len(v) > 200_000 for v in files.values()):
+        return {
+            "stdout": "", "stderr": "too many files or file too large (max 20 files / 200KB each)",
+            "exit_code": -1, "timed_out": False, "sandboxed": False, "command": "",
+        }
+
+    command = command or "python main.py"
+    container_name = f"nova-sbx-{uuid.uuid4().hex[:12]}"
     tmp_dir = None
     try:
-        tmp_dir = tempfile.mkdtemp(prefix="novatech_sandbox_")
-        # Write code to file
-        filename = "main.py" if language == "python" else f"main.{language}"
-        code_path = f"{tmp_dir}/{filename}"
-        with open(code_path, "w", encoding="utf-8") as f:
-            f.write(code)
-        if inputs:
-            with open(f"{tmp_dir}/input.txt", "w", encoding="utf-8") as f:
-                f.write(inputs)
+        tmp_dir = tempfile.mkdtemp(prefix="nova_sandbox_")
+        for relpath, content in files.items():
+            rel = _safe_relpath(relpath)
+            target = f"{tmp_dir}/{rel}"
+            import os
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(content)
 
-        # Build Docker command with security flags
+        # `timeout` inside the container is the first line of defense;
+        # the outer asyncio timeout + docker kill is the backstop.
+        inner = f"timeout {timeout}s sh -c {_shell_quote(command)}"
+
         cmd = [
             "docker", "run", "--rm",
+            "--name", container_name,
             "--network", "none",
             "--read-only",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--cpus", SANDBOX_CONFIG.cpu_limit,
-            "--memory", SANDBOX_CONFIG.memory_limit,
-            "-v", f"{tmp_dir}:{SANDBOX_CONFIG.work_dir}:rw",
-            "-w", SANDBOX_CONFIG.work_dir,
-            SANDBOX_CONFIG.image,
-            "timeout", str(timeout),
-            "python", filename,
+            "--pids-limit", "64",
+            "--memory", settings.sandbox_memory,
+            "--cpus", settings.sandbox_cpus,
+            "--tmpfs", "/tmp:rw,size=64m",
+            "--user", "65534:65534",
+            "-v", f"{tmp_dir}:/workspace:rw",
+            "-w", "/workspace",
+            settings.sandbox_image,
+            "sh", "-c", inner,
         ]
 
-        # Execute
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE if inputs else None,
+            stdin=asyncio.subprocess.PIPE if stdin else asyncio.subprocess.DEVNULL,
         )
 
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=inputs.encode() if inputs else None),
-                timeout=timeout + 5  # Docker overhead buffer
+                proc.communicate(input=stdin.encode() if stdin else None),
+                timeout=timeout + 10,  # docker startup overhead buffer
             )
             return {
-                "stdout": stdout.decode("utf-8", errors="replace")[:SANDBOX_CONFIG.max_output_size],
-                "stderr": stderr.decode("utf-8", errors="replace")[:10000],
+                "stdout": stdout.decode("utf-8", errors="replace")[:100_000],
+                "stderr": stderr.decode("utf-8", errors="replace")[:10_000],
                 "exit_code": proc.returncode,
                 "timed_out": False,
                 "sandboxed": True,
+                "command": command,
             }
         except asyncio.TimeoutError:
-            # Kill the container
-            try:
-                await asyncio.create_subprocess_exec("docker", "kill", f"novatech-{proc.pid}")
-            except Exception:
-                pass
+            # Kill by the exact container name — the name is real this time.
+            for kill_cmd in (["docker", "kill", container_name],
+                             ["docker", "rm", "-f", container_name]):
+                try:
+                    killer = await asyncio.create_subprocess_exec(
+                        *kill_cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await asyncio.wait_for(killer.wait(), timeout=10)
+                except Exception:  # noqa: BLE001
+                    pass
             return {
-                "stdout": "",
-                "stderr": "Execution timed out",
-                "exit_code": -1,
-                "timed_out": True,
-                "sandboxed": True,
+                "stdout": "", "stderr": f"execution timed out after {timeout}s",
+                "exit_code": -1, "timed_out": True, "sandboxed": True, "command": command,
             }
-    except Exception as e:
-        logger.error("Sandbox execution failed", error=str(e))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sandbox_execution_failed", error=str(exc))
         return {
-            "stdout": "",
-            "stderr": f"Sandbox error: {e}",
-            "exit_code": -1,
-            "timed_out": False,
-            "sandboxed": True,
+            "stdout": "", "stderr": f"sandbox error: {exc}", "exit_code": -1,
+            "timed_out": False, "sandboxed": True, "command": command,
         }
     finally:
         if tmp_dir:
-            import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-async def _execute_direct(code: str, language: str, inputs: str, timeout: int) -> dict:
-    """Fallback: execute directly without Docker (less secure, for dev environments)."""
-    import os, subprocess, tempfile
-    tmp_dir = tempfile.mkdtemp(prefix="novatech_direct_")
-    try:
-        filename = "main.py" if language == "python" else f"main.{language}"
-        filepath = os.path.join(tmp_dir, filename)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(code)
-
-        proc = subprocess.run(
-            ["python", filepath],
-            input=inputs.encode() if inputs else None,
-            capture_output=True,
-            timeout=timeout,
-        )
-        return {
-            "stdout": proc.stdout.decode("utf-8", errors="replace")[:SANDBOX_CONFIG.max_output_size],
-            "stderr": proc.stderr.decode("utf-8", errors="replace")[:10000],
-            "exit_code": proc.returncode,
-            "timed_out": False,
-            "sandboxed": False,
-        }
-    except subprocess.TimeoutExpired:
-        return {"stdout": "", "stderr": "Timed out", "exit_code": -1, "timed_out": True, "sandboxed": False}
-    except Exception as e:
-        return {"stdout": "", "stderr": str(e), "exit_code": -1, "timed_out": False, "sandboxed": False}
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+def _shell_quote(s: str) -> str:
+    return "'" + s.replace("'", "'\"'\"'") + "'"

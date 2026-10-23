@@ -1,186 +1,243 @@
-"""Unit tests for the Agent Skill tool framework."""
+"""Tool system tests: registry contract + each built-in tool."""
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.tools import registry, run_tool, Tool, ToolError
-from app.core.tools.base import validate_arguments
-from app.core.tools.calculator import safe_eval
-from app.core.tools.db_query import _validate_sql, _force_limit, _FORBIDDEN_KEYWORDS
+from app.core.tools import build_registry, get_registry
+from app.core.tools.base import ToolContext, ToolDefinition, ToolRegistry, validate_args
+from app.core.tools.diagnose import parse_trace
+
+USER = {"id": 1, "username": "admin", "role": "admin"}
+CTX = ToolContext(user=USER, repo_ids=[])
 
 
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
+# ---------- registry core ----------
 
-def test_registry_has_builtin_tools():
-    names = registry.names()
-    assert "calculator" in names
-    assert "db_query" in names
-    assert "doc_parser" in names
-
-
-def test_registry_openai_spec_format():
-    tools = registry.to_openai_tools()
-    assert isinstance(tools, list) and len(tools) >= 3
-    for spec in tools:
+def test_registry_has_six_tools_with_openai_specs():
+    specs = get_registry().specs()
+    names = {s["function"]["name"] for s in specs}
+    assert names == {"run_code", "diagnose_error", "search_code", "json_tool", "sql_tool", "fetch_url"}
+    for spec in specs:
         assert spec["type"] == "function"
-        fn = spec["function"]
-        assert fn["name"] and fn["description"]
-        assert isinstance(fn["parameters"], dict)
+        assert spec["function"]["description"]
+        assert spec["function"]["parameters"]["type"] == "object"
 
 
-def test_registry_duplicate_rejected():
-    from app.core.tools.base import ToolRegistry
-    reg = ToolRegistry()
-    tool = Tool(name="t", description="d", parameters={"type": "object", "properties": {}},
-                handler=None)
-    reg.register(tool)
-    with pytest.raises(ToolError):
-        reg.register(tool)
-
-
-def test_registry_unknown_tool():
-    with pytest.raises(ToolError):
-        registry.get("no_such_tool")
-
-
-# ---------------------------------------------------------------------------
-# Argument validation
-# ---------------------------------------------------------------------------
-
-def _calc_tool():
-    return registry.get("calculator")
-
-
-def test_validate_arguments_accepts_dict_and_json_string():
-    tool = _calc_tool()
-    assert validate_arguments(tool, '{"expression": "1+1"}') == {"expression": "1+1"}
-    assert validate_arguments(tool, {"expression": "1+1"}) == {"expression": "1+1"}
-
-
-def test_validate_arguments_rejects_bad_json_and_missing_field():
-    tool = _calc_tool()
-    with pytest.raises(ToolError):
-        validate_arguments(tool, "{not json")
-    with pytest.raises(ToolError):
-        validate_arguments(tool, {})
-
-
-# ---------------------------------------------------------------------------
-# run_tool contract: never raises, always returns dict
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_run_tool_unknown_returns_error_dict():
-    result = await run_tool("ghost_tool", "{}")
-    assert result["ok"] is False
-    assert "unknown tool" in result["error"]
-
-
-@pytest.mark.asyncio
-async def test_run_tool_bad_arguments_returns_error_dict():
-    result = await run_tool("calculator", "{broken json")
-    assert result["ok"] is False
-    assert "calculator" in result["error"]
-
-
-@pytest.mark.asyncio
-async def test_run_tool_calculator_success():
-    result = await run_tool("calculator", '{"expression": "2*(3+4)"}')
-    assert result["ok"] is True
-    assert result["result"] == 14
-
-
-@pytest.mark.asyncio
-async def test_run_tool_calculator_invalid_expression():
-    result = await run_tool("calculator", '{"expression": "__import__(\\"os\\")"}')
-    assert result["ok"] is False
-
-
-@pytest.mark.asyncio
-async def test_run_tool_db_query_write_rejected():
-    result = await run_tool("db_query", '{"sql": "DELETE FROM documents"}')
-    assert result["ok"] is False
-    assert "read-only" in result["error"] or "not allowed" in result["error"]
-
-
-# ---------------------------------------------------------------------------
-# Calculator safe_eval
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("expr,expected", [
-    ("1+2", 3),
-    ("(1+2)*3.5", 10.5),
-    ("2**10", 1024),
-    ("7//2", 3),
-    ("7%3", 1),
-    ("-5 + 3", -2),
-    ("sqrt(144)", 12.0),
-    ("max(1, 9, 3)", 9),
-    ("round(3.14159, 2)", 3.14),
-    ("pi > 3", None),  # comparison not allowed → error path tested below
-])
-def test_safe_eval_basics(expr, expected):
-    if expected is None:
-        with pytest.raises(ValueError):
-            safe_eval(expr)
-    else:
-        assert safe_eval(expr) == expected
-
-
-@pytest.mark.parametrize("evil", [
-    "__import__('os').system('dir')",
-    "open('/etc/passwd')",
-    "exec('1+1')",
-    "lambda: 1",
-    "[1,2,3]",
-    "'abc' + 'def'",
-    "1 if True else 2",
-    "f'{1+1}'",
-])
-def test_safe_eval_rejects_dangerous_syntax(evil):
+def test_registry_rejects_duplicate_registration():
+    registry = ToolRegistry()
+    tool = ToolDefinition(name="x", description="d", parameters={}, func=AsyncMock())
+    registry.register(tool)
     with pytest.raises(ValueError):
-        safe_eval(evil)
+        registry.register(tool)
 
 
-def test_safe_eval_rejects_too_long():
-    with pytest.raises(ValueError):
-        safe_eval("1+" * 150 + "1")
+def test_validate_args_type_and_required():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "n": {"type": "integer"}},
+        "required": ["a"],
+    }
+    assert validate_args(schema, {"a": "x", "n": 1}) is None
+    assert "missing required" in validate_args(schema, {"n": 1})
+    assert "must be of type" in validate_args(schema, {"a": 5})
 
 
-# ---------------------------------------------------------------------------
-# db_query SQL validation
-# ---------------------------------------------------------------------------
-
-def test_validate_sql_allows_select():
-    sql = _validate_sql("SELECT count(*) FROM documents")
-    assert sql.startswith("SELECT")
+@pytest.mark.asyncio
+async def test_unknown_tool_returns_error_not_raise():
+    result = await get_registry().execute("nope", {}, CTX)
+    assert result["ok"] is False and "unknown tool" in result["error"]
 
 
-def test_validate_sql_rejects_non_select():
-    for bad in ["UPDATE documents SET content='x'", "DROP TABLE documents", "", ";x--"]:
-        with pytest.raises(ToolError):
-            _validate_sql(bad)
+@pytest.mark.asyncio
+async def test_invalid_args_are_business_errors():
+    result = await get_registry().execute("sql_tool", {"sql": 123}, CTX)
+    assert result["ok"] is False and result["business"] is True
 
 
-def test_validate_sql_rejects_multiple_statements():
-    with pytest.raises(ToolError):
-        _validate_sql("SELECT 1 FROM documents; SELECT 2 FROM documents")
+# ---------- json_tool ----------
+
+@pytest.mark.asyncio
+async def test_json_tool_validate_format_extract_convert():
+    registry = build_registry()
+
+    r = await registry.execute("json_tool", {"input": '{"a": [1, 2], "b": {"c": 3}}'}, CTX)
+    assert r["ok"] and r["output"]["valid"] and r["output"]["root_type"] == "dict"
+
+    r = await registry.execute("json_tool", {"input": '{"a":1}', "mode": "extract", "path": "a"}, CTX)
+    assert r["ok"] and r["output"]["value"] == 1
+
+    r = await registry.execute("json_tool", {"input": "a: 1\nb:\n  - x", "mode": "convert", "to": "json"}, CTX)
+    assert r["ok"] and json.loads(r["output"]["converted"])["a"] == 1
+
+    r = await registry.execute("json_tool", {"input": "{bad json", "mode": "validate", "format": "json"}, CTX)
+    assert r["ok"] is False and r["business"] is True
 
 
-def test_validate_sql_rejects_unknown_table():
-    with pytest.raises(ToolError):
-        _validate_sql("SELECT * FROM pg_user")
+@pytest.mark.asyncio
+async def test_json_tool_extract_missing_path_is_business_error():
+    r = await build_registry().execute(
+        "json_tool", {"input": '{"a":1}', "mode": "extract", "path": "a.b"}, CTX
+    )
+    assert r["ok"] is False and r["business"] is True and "路径不存在" in r["error"]
 
 
-def test_validate_sql_blocks_cte_write():
-    with pytest.raises(ToolError):
-        _validate_sql("WITH t AS (SELECT 1) DELETE FROM documents")
+# ---------- sql_tool ----------
+
+@pytest.mark.asyncio
+async def test_sql_tool_review_findings():
+    r = await build_registry().execute(
+        "sql_tool", {"sql": "select * from users where id = 1 or 1=1"}, CTX
+    )
+    rules = {f["rule"] for f in r["output"]["findings"]}
+    assert "select_star" in rules and "always_true" in rules
 
 
-def test_force_limit_appends_and_clamps():
-    assert _force_limit("SELECT * FROM documents").endswith("LIMIT 50")
-    assert _force_limit("SELECT * FROM documents LIMIT 10") == "SELECT * FROM documents LIMIT 10"
-    clamped = _force_limit("SELECT * FROM documents LIMIT 9999")
-    assert clamped.endswith("LIMIT 50")
+@pytest.mark.asyncio
+async def test_sql_tool_format_uppercases_keywords_outside_strings():
+    r = await build_registry().execute(
+        "sql_tool", {"sql": "select name from t where note = 'from select'", "mode": "format"}, CTX
+    )
+    formatted = r["output"]["formatted"]
+    assert "SELECT" in formatted and "FROM" in formatted
+    assert "'from select'" in formatted  # string literal untouched
+
+
+@pytest.mark.asyncio
+async def test_sql_tool_flags_delete_without_where():
+    r = await build_registry().execute("sql_tool", {"sql": "delete from users"}, CTX)
+    sevs = {f["rule"]: f["severity"] for f in r["output"]["findings"]}
+    assert sevs.get("no_where") == "critical"
+
+
+# ---------- diagnose_error ----------
+
+def test_parse_python_traceback():
+    tb = '''Traceback (most recent call last):
+  File "/app/main.py", line 10, in <module>
+    run()
+  File "/app/service.py", line 42, in run
+    raise ValueError("boom")
+ValueError: boom'''
+    parsed = parse_trace(tb)
+    assert parsed["language"] == "python"
+    assert parsed["error_type"] == "ValueError"
+    assert parsed["message"] == "boom"
+    assert {"file": "/app/service.py", "line": 42, "func": "run"} in parsed["frames"]
+
+
+def test_parse_jvm_stack():
+    tb = """Exception in thread "main" java.lang.NullPointerException: Cannot invoke
+\tat com.demo.UserService.find(UserService.java:88)
+\tat com.demo.Main.main(Main.java:12)"""
+    parsed = parse_trace(tb)
+    assert parsed["language"] == "java"
+    assert parsed["error_type"] == "java.lang.NullPointerException"
+    assert parsed["frames"][0] == {"file": "UserService.java", "line": 88, "func": "com.demo.UserService.find"}
+
+
+def test_parse_node_stack():
+    tb = """TypeError: x is not a function
+    at handler (/app/routes/index.js:23:9)
+    at process (/app/server.js:10:5)"""
+    parsed = parse_trace(tb)
+    assert parsed["language"] == "javascript"
+    assert parsed["error_type"] == "TypeError"
+    assert parsed["frames"][0]["file"] == "/app/routes/index.js"
+
+
+def test_parse_go_panic():
+    tb = """panic: runtime error: index out of range [5] with length 3
+goroutine 1 [running]:
+main.process()
+\t/app/main.go:17 +0x1a"""
+    parsed = parse_trace(tb)
+    assert parsed["language"] == "go"
+    assert "index out of range" in parsed["message"]
+    assert parsed["frames"][0] == {"file": "/app/main.go", "line": 17, "func": ""}
+
+
+@pytest.mark.asyncio
+async def test_diagnose_requires_stack():
+    r = await build_registry().execute("diagnose_error", {"stack": "  "}, CTX)
+    assert r["ok"] is False and r["business"] is True
+
+
+# ---------- search_code ----------
+
+@pytest.mark.asyncio
+async def test_search_code_merges_symbols_and_snippets(monkeypatch):
+    from app.models.domain import RetrievedChunk
+
+    async def fake_symbols(query, repo_ids=None, limit=8):
+        return [{"name": "login", "kind": "function", "path": "auth.py",
+                 "line_start": 10, "line_end": 20, "signature": "def login(...)"}]
+
+    async def fake_retrieve(query, top_k=8, repo_ids=None):
+        return [RetrievedChunk(id="1", content="def login()", path="auth.py",
+                               line_start=10, line_end=20, score_type="dense")]
+
+    monkeypatch.setattr("app.core.tools.search_code.search_symbols", fake_symbols)
+    monkeypatch.setattr("app.core.tools.search_code.retrieve", fake_retrieve)
+
+    r = await build_registry().execute("search_code", {"query": "login"}, CTX)
+    assert r["ok"]
+    assert r["output"]["symbols"][0]["path"] == "auth.py"
+    assert r["output"]["snippets"][0]["line_start"] == 10
+
+
+# ---------- run_code ----------
+
+@pytest.mark.asyncio
+async def test_run_code_blocks_risky_code():
+    r = await build_registry().execute(
+        "run_code", {"files": {"main.py": "import os; os.system('rm -rf /')"}}, CTX
+    )
+    assert r["ok"] is False and "安全规则" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_code_reports_unavailable_sandbox(monkeypatch):
+    async def unavailable():
+        return {"available": False, "reason": "docker down (test)"}
+
+    monkeypatch.setattr("app.core.tools.run_code.sandbox_status", unavailable)
+    r = await build_registry().execute("run_code", {"files": {"main.py": "print(1)"}}, CTX)
+    assert r["ok"] is False and "沙箱不可用" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_code_executes_when_sandbox_available(monkeypatch):
+    async def available():
+        return {"available": True, "image": "nova-sandbox:latest"}
+
+    async def fake_execute(files, command=None, stdin="", timeout=None):
+        return {"stdout": "1\n", "stderr": "", "exit_code": 0, "timed_out": False,
+                "sandboxed": True, "command": command or "python main.py"}
+
+    monkeypatch.setattr("app.core.tools.run_code.sandbox_status", available)
+    monkeypatch.setattr("app.core.tools.run_code.sandbox_execute", fake_execute)
+    monkeypatch.setattr("app.core.tools.run_code.check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr("app.core.tools.run_code.log_audit", AsyncMock())
+
+    r = await build_registry().execute("run_code", {"files": {"main.py": "print(1)"}}, CTX)
+    assert r["ok"] and r["output"]["exit_code"] == 0 and r["output"]["stdout"] == "1\n"
+
+
+# ---------- fetch_url ----------
+
+@pytest.mark.asyncio
+async def test_fetch_url_rejects_bad_scheme():
+    from app.core.tools.fetch_url import _resolves_to_public
+    r = await build_registry().execute("fetch_url", {"url": "file:///etc/passwd"}, CTX)
+    assert r["ok"] is False and "http" in r["error"]
+
+    assert _resolves_to_public("localhost") is False
+    assert _resolves_to_public("127.0.0.1") is False
+    assert _resolves_to_public("192.168.1.10") is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_blocks_private_host():
+    r = await build_registry().execute("fetch_url", {"url": "http://192.168.150.128:8000/"}, CTX)
+    assert r["ok"] is False and "内网" in r["error"]

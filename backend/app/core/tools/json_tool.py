@@ -1,99 +1,107 @@
-"""JSON skill: validate / format / extract — high-frequency developer chores."""
+"""json_tool: validate / format / extract / convert JSON and YAML."""
 import json
+import re
 
-from app.core.tools.base import Tool, ToolError
+import yaml
 
-_MAX_INPUT_CHARS = 20000
+from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
-
-def _walk(obj, path: str):
-    """Yield (dotted_path, value) for every node."""
-    yield path, obj
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            yield from _walk(v, f"{path}.{k}" if path else str(k))
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            yield from _walk(v, f"{path}[{i}]")
+_PATH_TOKEN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
 
-async def process_json(data: str, operation: str = "validate", query: str = "") -> dict:
-    """Tool handler: validate / format / query a JSON payload."""
-    if not data or not data.strip():
-        raise ToolError("empty json")
-    if len(data) > _MAX_INPUT_CHARS:
-        raise ToolError(f"json too long (max {_MAX_INPUT_CHARS} chars)")
-
+def _parse(text: str, fmt: str = "auto") -> tuple[object, str]:
+    text = text.strip()
+    if fmt in ("json", "auto"):
+        try:
+            return json.loads(text), "json"
+        except json.JSONDecodeError as exc:
+            if fmt == "json":
+                raise ToolBusinessError(f"JSON 解析失败：第 {exc.lineno} 行第 {exc.colno} 列：{exc.msg}")
     try:
-        parsed = json.loads(data)
-    except json.JSONDecodeError as exc:
+        return yaml.safe_load(text), "yaml"
+    except yaml.YAMLError as exc:
+        raise ToolBusinessError(f"YAML 解析失败：{str(exc)[:200]}")
+
+
+def _walk(obj: object, path: str) -> object:
+    current = obj
+    for name, index in _PATH_TOKEN.findall(path):
+        try:
+            current = current[name] if name else current[int(index)]
+        except (KeyError, IndexError, TypeError):
+            raise ToolBusinessError(f"路径不存在：{path}（在 '{name or index}' 处中断）")
+    return current
+
+
+def _describe(obj: object, depth: int = 0) -> object:
+    if isinstance(obj, dict):
+        return {k: _describe(v, depth + 1) for k, v in list(obj.items())[:20]}
+    if isinstance(obj, list):
+        return [f"<{len(obj)} items>"] if obj and depth > 0 else [_describe(v, depth + 1) for v in obj[:5]]
+    return obj
+
+
+async def json_tool(args: dict, ctx: ToolContext) -> dict:
+    text = args.get("input") or ""
+    if not text.strip():
+        raise ToolBusinessError("input 不能为空")
+    mode = args.get("mode", "validate")
+    fmt = args.get("format", "auto")
+
+    data, detected = _parse(text, fmt)
+
+    if mode == "validate":
+        errors = []
+        if detected == "json":
+            pass  # parsed successfully
         return {
-            "ok": True,  # 工具本身执行成功，校验结果是"非法"
-            "valid": False,
-            "operation": operation,
-            "error": f"第 {exc.lineno} 行第 {exc.colno} 列: {exc.msg}",
+            "valid": True,
+            "format": detected,
+            "root_type": type(data).__name__,
+            "summary": _describe(data),
+            "errors": errors,
         }
 
-    if operation == "format":
-        formatted = json.dumps(parsed, ensure_ascii=False, indent=2)
-        return {"valid": True, "operation": "format",
-                "formatted": formatted[:5000], "truncated": len(formatted) > 5000}
+    if mode == "format":
+        if detected == "json" or args.get("to") == "json":
+            return {"formatted": json.dumps(data, ensure_ascii=False, indent=2), "format": "json"}
+        return {"formatted": yaml.safe_dump(data, allow_unicode=True, sort_keys=False), "format": "yaml"}
 
-    if operation == "extract":
-        if not query:
-            raise ToolError("extract 操作需要 query 参数（点号路径，如 data.items[0].id）")
-        current = parsed
-        # 支持 "a.b[0].c" 风格路径
-        for part in query.replace("[", ".[").split("."):
-            if not part:
-                continue
-            try:
-                if part.startswith("["):
-                    current = current[int(part.strip("[]"))]
-                else:
-                    current = current[part]
-            except (KeyError, IndexError, TypeError, ValueError):
-                return {"valid": True, "operation": "extract", "found": False, "query": query}
-        return {
-            "valid": True, "operation": "extract", "found": True, "query": query,
-            "value": current if not isinstance(current, (dict, list))
-                     else json.dumps(current, ensure_ascii=False)[:2000],
-        }
+    if mode == "extract":
+        path = args.get("path")
+        if not path:
+            raise ToolBusinessError("extract 模式需要 path 参数，例如 path='a.b[0].c'")
+        value = _walk(data, path)
+        return {"path": path, "value": value, "type": type(value).__name__}
 
-    # 默认 validate：返回结构概览
-    keys = [p for p, _v in _walk(parsed, "") if p and p.count(".") <= 1][:20]
-    return {
-        "valid": True, "operation": "validate",
-        "top_type": type(parsed).__name__,
-        "top_keys": list(parsed.keys())[:15] if isinstance(parsed, dict) else None,
-        "size_chars": len(data),
-        "paths_preview": keys,
-    }
+    if mode == "convert":
+        to = args.get("to", "yaml")
+        if to == "json":
+            return {"converted": json.dumps(data, ensure_ascii=False, indent=2), "format": "json"}
+        if to == "yaml":
+            return {"converted": yaml.safe_dump(data, allow_unicode=True, sort_keys=False), "format": "yaml"}
+        raise ToolBusinessError("to 只支持 json / yaml")
+
+    raise ToolBusinessError(f"不支持的 mode：{mode}（validate / format / extract / convert）")
 
 
-json_tool = Tool(
+TOOL = ToolDefinition(
     name="json_tool",
     description=(
-        "JSON 处理工具。三种操作：validate 校验合法性并返回结构概览；"
-        "format 格式化缩进；extract 按点号路径提取字段值。"
-        "当用户需要校验/格式化 JSON、从大 JSON 里取值时调用，"
-        "比在回答里手写更可靠。"
+        "处理 JSON/YAML：validate 校验、format 格式化、extract 按路径取值（如 a.b[0].c）、convert 互转。"
+        "确定性实现，校验与取值结果绝对准确，文件太长或嵌套太深时优先用它而不是肉眼检查。"
     ),
     parameters={
         "type": "object",
         "properties": {
-            "data": {"type": "string", "description": "JSON 原文"},
-            "operation": {
-                "type": "string",
-                "enum": ["validate", "format", "extract"],
-                "description": "操作类型，默认 validate",
-            },
-            "query": {
-                "type": "string",
-                "description": "extract 时的字段路径，如 data.items[0].id",
-            },
+            "input": {"type": "string", "description": "JSON 或 YAML 文本"},
+            "mode": {"type": "string", "description": "validate | format | extract | convert（默认 validate）"},
+            "format": {"type": "string", "description": "输入格式：json | yaml | auto（默认 auto）"},
+            "path": {"type": "string", "description": "extract 模式下的取值路径，如 data.items[0].name"},
+            "to": {"type": "string", "description": "convert 目标格式：json | yaml"},
         },
-        "required": ["data"],
+        "required": ["input"],
     },
-    handler=process_json,
+    func=json_tool,
+    timeout=15,
 )
