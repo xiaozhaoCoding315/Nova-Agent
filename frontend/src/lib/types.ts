@@ -444,6 +444,42 @@ export type Usage = {
   sandbox_daily_limit: number
 }
 
+export type MemoryFact = {
+  id: number
+  content: string
+  importance: number
+  ttl_days: number
+  promoted_at?: string | null
+  last_used_at?: string | null
+  created_at?: string | null
+}
+
+export type MemoryDaily = {
+  day: string
+  summary: string
+  message_count: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type Memory = {
+  facts: MemoryFact[]
+  daily: MemoryDaily[]
+}
+
+export type Metrics = {
+  window_days: number
+  accepted_changes: number
+  changes_total: number
+  tasks_total: number
+  first_gate_pass_rate: number
+  rework_rate: number
+  approval_minutes_avg: number | null
+  tokens_total: number
+  p95_job_seconds: number | null
+  generated_at?: string | null
+}
+
 export type StreamToolCard = {
   call: ToolCall
   result?: ToolResult

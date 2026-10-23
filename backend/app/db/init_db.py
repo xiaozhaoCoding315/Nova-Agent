@@ -182,15 +182,38 @@ _DDL = [
         importance REAL DEFAULT 1.0,
         last_used_at TIMESTAMPTZ DEFAULT now(),
         ttl_days INT DEFAULT 90,
+        promoted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
     "ALTER TABLE facts ADD COLUMN IF NOT EXISTS embedding JSONB",
+    "ALTER TABLE facts ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ",
     # Older installs declared hash globally UNIQUE, which made identical facts
     # collide across users.  Replace it with a per-user unique index.
     "ALTER TABLE facts DROP CONSTRAINT IF EXISTS facts_hash_key",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_user_hash ON facts (user_id, hash)",
     "CREATE INDEX IF NOT EXISTS idx_facts_user ON facts (user_id, importance DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS memory_daily (
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        day DATE NOT NULL,
+        summary TEXT NOT NULL,
+        message_count INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (user_id, day)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_memory_daily_user ON memory_daily (user_id, day DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS fact_days (
+        fact_id BIGINT REFERENCES facts(id) ON DELETE CASCADE,
+        day DATE NOT NULL,
+        count INT DEFAULT 1,
+        PRIMARY KEY (fact_id, day)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_fact_days_day ON fact_days (day)",
     """
     CREATE TABLE IF NOT EXISTS usage_log (
         id BIGSERIAL PRIMARY KEY,
@@ -410,6 +433,30 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_change_tasks_request ON change_tasks (request_id, seq)",
+    ]),
+    (5, [
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ",
+        """
+        CREATE TABLE IF NOT EXISTS memory_daily (
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            day DATE NOT NULL,
+            summary TEXT NOT NULL,
+            message_count INT DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (user_id, day)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_memory_daily_user ON memory_daily (user_id, day DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS fact_days (
+            fact_id BIGINT REFERENCES facts(id) ON DELETE CASCADE,
+            day DATE NOT NULL,
+            count INT DEFAULT 1,
+            PRIMARY KEY (fact_id, day)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_fact_days_day ON fact_days (day)",
     ]),
 ]
 

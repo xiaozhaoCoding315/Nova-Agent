@@ -484,6 +484,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory */
+        get: operations["get_memory_api_v1_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/daily/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Daily */
+        delete: operations["delete_daily_api_v1_memory_daily__day__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/facts/{fact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Fact */
+        delete: operations["delete_fact_api_v1_memory_facts__fact_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos": {
         parameters: {
             query?: never;
@@ -940,6 +991,23 @@ export interface paths {
         };
         /** Health */
         get: operations["health_api_v1_status_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/status/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics */
+        get: operations["metrics_api_v1_status_metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1889,6 +1957,52 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** MemoryDailyOut */
+        MemoryDailyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Day */
+            day: string;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+            /** Summary */
+            summary: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** MemoryFactOut */
+        MemoryFactOut: {
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Importance
+             * @default 1
+             */
+            importance: number;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /** Promoted At */
+            promoted_at?: string | null;
+            /**
+             * Ttl Days
+             * @default 90
+             */
+            ttl_days: number;
+        };
+        /** MemoryOut */
+        MemoryOut: {
+            /** Daily */
+            daily?: components["schemas"]["MemoryDailyOut"][];
+            /** Facts */
+            facts?: components["schemas"]["MemoryFactOut"][];
+        };
         /** MessageOut */
         MessageOut: {
             /** Content */
@@ -1903,6 +2017,50 @@ export interface components {
             tool_json?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** MetricsOut */
+        MetricsOut: {
+            /**
+             * Accepted Changes
+             * @default 0
+             */
+            accepted_changes: number;
+            /** Approval Minutes Avg */
+            approval_minutes_avg?: number | null;
+            /**
+             * Changes Total
+             * @default 0
+             */
+            changes_total: number;
+            /**
+             * First Gate Pass Rate
+             * @default 0
+             */
+            first_gate_pass_rate: number;
+            /** Generated At */
+            generated_at?: string | null;
+            /** P95 Job Seconds */
+            p95_job_seconds?: number | null;
+            /**
+             * Rework Rate
+             * @default 0
+             */
+            rework_rate: number;
+            /**
+             * Tasks Total
+             * @default 0
+             */
+            tasks_total: number;
+            /**
+             * Tokens Total
+             * @default 0
+             */
+            tokens_total: number;
+            /**
+             * Window Days
+             * @default 7
+             */
+            window_days: number;
         };
         /** OkOut */
         OkOut: {
@@ -3262,6 +3420,88 @@ export interface operations {
             };
         };
     };
+    get_memory_api_v1_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+        };
+    };
+    delete_daily_api_v1_memory_daily__day__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_fact_api_v1_memory_facts__fact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_repos_api_v1_repos_get: {
         parameters: {
             query?: never;
@@ -4160,6 +4400,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    metrics_api_v1_status_metrics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

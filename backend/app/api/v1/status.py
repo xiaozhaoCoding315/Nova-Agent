@@ -2,9 +2,10 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
+from app.core.metrics.service import compute_metrics
 from app.core.security.auth import get_current_user
 from app.core.security.limits import (
     daily_token_budget,
@@ -14,7 +15,7 @@ from app.core.security.limits import (
     sandbox_runs_today,
     tokens_used_today,
 )
-from app.models.schemas import HealthOut, UsageOut
+from app.models.schemas import HealthOut, MetricsOut, UsageOut
 
 router = APIRouter()
 
@@ -104,3 +105,11 @@ async def usage(user: dict = Depends(get_current_user)):
         sandbox_runs_today=sb_runs,
         sandbox_daily_limit=sandbox_daily_limit(user),
     )
+
+
+@router.get("/status/metrics", response_model=MetricsOut)
+async def metrics(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(get_current_user),
+):
+    return await compute_metrics(user["id"], days)

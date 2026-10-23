@@ -2079,6 +2079,137 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MemoryDailyOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "day",
+          "summary"
+        ],
+        "title": "MemoryDailyOut",
+        "type": "object"
+      },
+      "MemoryFactOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "importance": {
+            "default": 1.0,
+            "title": "Importance",
+            "type": "number"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "ttl_days": {
+            "default": 90,
+            "title": "Ttl Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "MemoryFactOut",
+        "type": "object"
+      },
+      "MemoryOut": {
+        "properties": {
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryDailyOut"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryFactOut"
+            },
+            "title": "Facts",
+            "type": "array"
+          }
+        },
+        "title": "MemoryOut",
+        "type": "object"
+      },
       "MessageOut": {
         "properties": {
           "content": {
@@ -2124,6 +2255,80 @@
           "content"
         ],
         "title": "MessageOut",
+        "type": "object"
+      },
+      "MetricsOut": {
+        "properties": {
+          "accepted_changes": {
+            "default": 0,
+            "title": "Accepted Changes",
+            "type": "integer"
+          },
+          "approval_minutes_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Minutes Avg"
+          },
+          "changes_total": {
+            "default": 0,
+            "title": "Changes Total",
+            "type": "integer"
+          },
+          "first_gate_pass_rate": {
+            "default": 0.0,
+            "title": "First Gate Pass Rate",
+            "type": "number"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "p95_job_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Job Seconds"
+          },
+          "rework_rate": {
+            "default": 0.0,
+            "title": "Rework Rate",
+            "type": "number"
+          },
+          "tasks_total": {
+            "default": 0,
+            "title": "Tasks Total",
+            "type": "integer"
+          },
+          "tokens_total": {
+            "default": 0,
+            "title": "Tokens Total",
+            "type": "integer"
+          },
+          "window_days": {
+            "default": 7,
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "title": "MetricsOut",
         "type": "object"
       },
       "OkOut": {
@@ -4347,6 +4552,111 @@
         ]
       }
     },
+    "/api/v1/memory": {
+      "get": {
+        "operationId": "get_memory_api_v1_memory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/v1/memory/daily/{day}": {
+      "delete": {
+        "operationId": "delete_daily_api_v1_memory_daily__day__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "day",
+            "required": true,
+            "schema": {
+              "title": "Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Daily",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/v1/memory/facts/{fact_id}": {
+      "delete": {
+        "operationId": "delete_fact_api_v1_memory_facts__fact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Fact",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/v1/repos": {
       "get": {
         "operationId": "get_repos_api_v1_repos_get",
@@ -5611,6 +5921,51 @@
           }
         },
         "summary": "Health",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/v1/status/metrics": {
+      "get": {
+        "operationId": "metrics_api_v1_status_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metrics",
         "tags": [
           "status"
         ]

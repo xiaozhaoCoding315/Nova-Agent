@@ -14,6 +14,7 @@
 | **多栈验证** | 工作区/Builder 里点「验证」：自动识别 Python、Node 或混合项目；Python 使用 builder 镜像跑 compileall / pytest / 可选 ruff / mypy，Node 使用 node 镜像跑 lint / tsc / test / build，逐项返回命令、退出码与输出；依赖持久化到仓库级依赖卷。 |
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
+| **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。MVP 支持 Python 后端（FastAPI + SQLite + pytest）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
@@ -59,9 +60,11 @@
 - **审计与配额**：登录、对话、工具调用、仓库导入/删除全量审计；对话/红绿任务/Builder/记忆抽取统一 LLM 记账，导入/重建索引/验证/搜索均有独立配额
 - **持久后台队列**：索引 / 红-绿 / Builder / 会话摘要写入 PostgreSQL `jobs` 表，支持重启恢复、取消与重试；后台入口不再直接 `create_task`
 
-### 两层记忆
+### 三层记忆
 - 会话记忆：持久化消息 + 滚动摘要（每 20 条增量压缩并注入后续轮次）+ 标题自动生成
-- 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重（MD5 + 向量相似度 0.92），重要性访问加权、闲置衰减、TTL 过期清理（小时级维护循环）
+- 日摘要：维护循环按天把跨会话对话压缩为 ≤40 行摘要，存入 `memory_daily`
+- 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重；同一事实在 ≥2 天出现后自动晋升；按语义相关度 + 重要性混合召回；访问加权、闲置衰减、TTL 清理
+- 设置页可查看/删除长期事实与日摘要
 
 ## 技术栈
 
@@ -154,7 +157,8 @@ npm run dev                   # http://localhost:5173
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
-| `GET /api/v1/status/health` / `usage` | 依赖探活 / 用量配额 |
+| `GET /api/v1/status/health` / `usage` / `metrics?days=7` | 依赖探活 / 用量配额 / 交付指标 |
+| `GET /api/v1/memory` · `DELETE /memory/facts/{id}` · `DELETE /memory/daily/{day}` | 查看 / 删除长期事实与日摘要 |
 
 ## 项目结构
 
@@ -176,7 +180,7 @@ backend/app/
 │   ├── editing/       对话内编辑：diff / 审批 / 快照撤销 / 冲突检测
 │   ├── git_ops/       Git 交付：初始化/提交/diff/回滚/导出
 │   ├── trace.py       轨迹事件记录（回放 / CI 审计）
-│   ├── memory/        会话摘要 + 长期事实（去重/衰减/清理）
+│   ├── memory/        会话摘要 + 日摘要 + 长期事实（晋升/语义召回/衰减）
 │   ├── tools/         11 个工具 + 注册表（校验/容错/审计）
 │   ├── sandbox/       Docker 一次性容器执行器
 │   ├── harness/       超时 / 重试 / 熔断
@@ -223,7 +227,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、记忆摘要、契约发现、Git 变更分支
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -278,7 +282,8 @@ cd frontend && npm run contract:check
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
-- 契约生成已接入（OpenAPI → TS），契约 Gate 已能拦截目标仓库漂移；前端仍保留手写 UI 类型别名，逐域迁移仍在进行
+- 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升，矛盾事实检测尚未自动化
+- 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 已接入，黄金仓库回归需要本机 Docker/DB 手动执行
 
 ## License

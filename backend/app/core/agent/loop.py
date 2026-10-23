@@ -117,7 +117,7 @@ async def run_chat(
     # 2) context assembly
     fact_list: list[str] = []
     try:
-        fact_list = await facts_mod.get_relevant_facts(user["id"])
+        fact_list = await facts_mod.get_relevant_facts(user["id"], user_message)
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history = await session_mod.recent_messages(

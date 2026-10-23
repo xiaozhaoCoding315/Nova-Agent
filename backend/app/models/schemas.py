@@ -260,6 +260,44 @@ class ContractStatusOut(BaseModel):
     checked_at: Optional[str] = None
 
 
+# ---------- Memory / metrics ----------
+
+class MemoryFactOut(BaseModel):
+    id: int
+    content: str
+    importance: float = 1.0
+    ttl_days: int = 90
+    promoted_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class MemoryDailyOut(BaseModel):
+    day: str
+    summary: str
+    message_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MemoryOut(BaseModel):
+    facts: list[MemoryFactOut] = Field(default_factory=list)
+    daily: list[MemoryDailyOut] = Field(default_factory=list)
+
+
+class MetricsOut(BaseModel):
+    window_days: int = 7
+    accepted_changes: int = 0
+    changes_total: int = 0
+    tasks_total: int = 0
+    first_gate_pass_rate: float = 0.0
+    rework_rate: float = 0.0
+    approval_minutes_avg: Optional[float] = None
+    tokens_total: int = 0
+    p95_job_seconds: Optional[float] = None
+    generated_at: Optional[str] = None
+
+
 # ---------- Git ----------
 
 class GitCommitOut(BaseModel):

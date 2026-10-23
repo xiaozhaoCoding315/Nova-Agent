@@ -1,7 +1,7 @@
 import type {
   Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, ContractStatus,
-  EditRecord, FileNode, GitInfo, Health, Impact, Job, Message, Repo, Review, Session, Task,
-  TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  EditRecord, FileNode, GitInfo, Health, Impact, Job, Memory, Message, Metrics, Repo, Review,
+  Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -100,6 +100,14 @@ export const api = {
   status: {
     health: () => request<Health>('/status/health'),
     usage: () => request<Usage>('/status/usage'),
+    metrics: (days = 7) => request<Metrics>(`/status/metrics?days=${days}`),
+  },
+
+  memory: {
+    get: () => request<Memory>('/memory'),
+    removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
+    removeDaily: (day: string) =>
+      request<{ ok: boolean }>(`/memory/daily/${encodeURIComponent(day)}`, { method: 'DELETE' }),
   },
 
   tasks: {

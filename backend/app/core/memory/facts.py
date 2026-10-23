@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import re
+from datetime import date
 
 import structlog
 
@@ -54,6 +55,18 @@ async def _is_semantic_duplicate(user_id: int, content: str, embedding: list[flo
     return False
 
 
+async def _record_fact_day(fact_id: int, day: date | None = None) -> None:
+    """Remember that a fact was observed on a day (promotion evidence)."""
+    try:
+        await execute(
+            "INSERT INTO fact_days (fact_id, day, count) VALUES (%s, %s, 1) "
+            "ON CONFLICT (fact_id, day) DO UPDATE SET count = fact_days.count + 1",
+            (fact_id, day or date.today()),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fact_day_record_failed", fact_id=fact_id, error=str(exc))
+
+
 async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS, importance: float = 1.0) -> bool:
     """Store a fact; returns False when deduplicated or rejected."""
     content = content.strip()
@@ -62,14 +75,16 @@ async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS,
 
     content_hash = _content_hash(content)
     existing = await query(
-        "SELECT 1 FROM facts WHERE user_id = %s AND hash = %s", (user_id, content_hash)
+        "SELECT id FROM facts WHERE user_id = %s AND hash = %s", (user_id, content_hash)
     )
     if existing:
+        fact_id = existing[0][0]
         await execute(
             "UPDATE facts SET last_used_at = now(), importance = LEAST(importance + 0.1, 2.0) "
             "WHERE user_id = %s AND hash = %s",
             (user_id, content_hash),
         )
+        await _record_fact_day(fact_id)
         return False
 
     count_rows = await query("SELECT COUNT(*) FROM facts WHERE user_id = %s", (user_id,))
@@ -87,31 +102,75 @@ async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS,
     if await _is_semantic_duplicate(user_id, content, embedding):
         return False
 
-    await execute(
+    rows = await execute(
         """
         INSERT INTO facts (user_id, content, hash, embedding, importance, ttl_days)
         VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id, hash) DO NOTHING
+        RETURNING id
         """,
         (user_id, content, content_hash, json.dumps(embedding) if embedding else None, importance, ttl_days),
     )
+    fact_id = None
+    if rows:
+        fact_id = rows[0][0]
+    else:
+        fallback = await query(
+            "SELECT id FROM facts WHERE user_id = %s AND hash = %s", (user_id, content_hash)
+        )
+        if fallback:
+            fact_id = fallback[0][0]
+    if fact_id is not None:
+        await _record_fact_day(fact_id)
     return True
 
 
-async def get_relevant_facts(user_id: int, limit: int = 8) -> list[str]:
+def _fact_embedding(value) -> list[float] | None:
+    if value is None:
+        return None
+    try:
+        vec = value if isinstance(value, list) else json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return vec if isinstance(vec, list) else None
+
+
+async def get_relevant_facts(
+    user_id: int, query_text: str = "", limit: int = 8
+) -> list[str]:
+    """Rank facts by semantic relevance to the turn plus importance."""
     rows = await query(
-        "SELECT id, content FROM facts WHERE user_id = %s "
-        "ORDER BY importance DESC, last_used_at DESC LIMIT %s",
-        (user_id, limit),
+        "SELECT id, content, embedding, importance FROM facts WHERE user_id = %s "
+        "ORDER BY importance DESC, last_used_at DESC LIMIT 80",
+        (user_id,),
     )
-    if rows:
-        ids = tuple(r[0] for r in rows)
+    if not rows:
+        return []
+
+    ranked = [(r[0], r[1], float(r[3] or 1.0)) for r in rows]
+    if query_text.strip():
+        try:
+            from app.core.embedding.embedder import get_embedder
+            query_vec = (await get_embedder().embed([query_text[:2000]]))[0]
+            scored = []
+            for (fact_id, content, importance), row in zip(ranked, rows):
+                vec = _fact_embedding(row[2])
+                cosine = _cosine(query_vec, vec) if vec else 0.0
+                score = 0.7 * cosine + 0.3 * min(importance, 2.0) / 2.0
+                scored.append((score, fact_id, content, importance))
+            ranked = [(fact_id, content, importance) for _, fact_id, content, importance in sorted(scored, reverse=True)]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("fact_semantic_rank_failed", error=str(exc))
+
+    selected = ranked[:limit]
+    ids = tuple(item[0] for item in selected)
+    if ids:
         await execute(
             "UPDATE facts SET last_used_at = now(), importance = LEAST(importance + 0.1, 2.0) "
             f"WHERE id IN ({','.join(['%s'] * len(ids))})",
             ids,
         )
-    return [r[1] for r in rows]
+    return [item[1] for item in selected]
 
 
 async def extract_facts_from_turn(user_id: int, user_text: str, assistant_text: str) -> int:
@@ -176,3 +235,14 @@ async def run_cleanup() -> dict:
         "facts_decayed": len(decayed) if isinstance(decayed, list) else 0,
         "facts_expired": len(deleted) if isinstance(deleted, list) else 0,
     }
+
+
+async def promote_facts() -> int:
+    """Promote facts observed on at least two distinct days."""
+    rows = await execute(
+        "UPDATE facts f SET importance = LEAST(f.importance + 0.3, 2.0), promoted_at = now() "
+        "WHERE f.promoted_at IS NULL AND f.id IN ("
+        "  SELECT fact_id FROM fact_days GROUP BY fact_id HAVING COUNT(DISTINCT day) >= 2"
+        ") RETURNING f.id"
+    )
+    return len(rows) if isinstance(rows, list) else 0
