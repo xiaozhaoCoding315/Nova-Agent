@@ -24,6 +24,7 @@ type ChatState = {
   selectSession: (id: string) => Promise<void>
   newSession: () => void
   deleteSession: (id: string) => Promise<void>
+  renameSession: (id: string, title: string) => Promise<void>
   send: (content: string, repoIds: string[]) => Promise<void>
   stop: () => void
   clearError: () => void
@@ -86,6 +87,19 @@ export const useChat = create<ChatState>((set, get) => ({
       }))
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '删除失败' })
+    }
+  },
+
+  renameSession: async (id, title) => {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    try {
+      const updated = await api.sessions.rename(id, trimmed)
+      set((s) => ({
+        sessions: s.sessions.map((item) => (item.id === id ? { ...item, ...updated } : item)),
+      }))
+    } catch (err) {
+      set({ error: err instanceof ApiError ? err.message : '重命名失败' })
     }
   },
 

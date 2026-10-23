@@ -11,7 +11,7 @@
 | **项目大脑** | 索引后自动生成模块地图、入口点、热点文件、推荐阅读顺序、依赖图与术语表（全部确定性生成），随重建索引更新。 |
 | **复现-修复闭环（红-绿任务）** | 贴一段 bug 描述：自动生成失败测试（红，校验测试确实运行且失败）→ 产出最小补丁 → 全量测试复跑（绿，最多自动修复 3 次）→ 展示 diff 与真实测试输出 → **你批准后**才写入仓库并重建索引；文件在生成后被改动会拒绝覆盖。 |
 | **Git 交付与轨迹回放** | 工作区可一键初始化 Git、提交、查看 diff、回滚（自动重建索引）、导出 zip；每次对话/工具/审批全程记录轨迹，可在「轨迹」抽屉回放。 |
-| **栈感知验证** | 工作区/Builder 里点「验证」：自动识别 Python 项目，依次执行语法检查、pytest、可选的 ruff/mypy，逐项返回命令、退出码与输出；依赖可持久化安装到仓库级依赖卷。 |
+| **多栈验证** | 工作区/Builder 里点「验证」：自动识别 Python、Node 或混合项目；Python 使用 builder 镜像跑 compileall / pytest / 可选 ruff / mypy，Node 使用 node 镜像跑 lint / tsc / test / build，逐项返回命令、退出码与输出；依赖持久化到仓库级依赖卷。 |
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
@@ -120,6 +120,7 @@ npm run dev                   # http://localhost:5173
 | `DEMO_DAILY_TOKENS` / `DEMO_HOURLY_MESSAGES` / `DEMO_SANDBOX_DAILY` | 演示账号限额（0 = 不限） |
 | `ADMIN_JOB_HOURLY` / `DEMO_JOB_HOURLY` | 导入 / 重建索引 / 验证 / 红绿任务 / Builder / 只读审查每小时次数（0 = 不限） |
 | `SANDBOX_ENABLED` | 沙箱总开关 |
+| `SANDBOX_BUILDER_IMAGE` / `SANDBOX_NODE_IMAGE` | Python 验证镜像 / Node 验证镜像（默认 nova-builder / nova-node） |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 
 ## API 概览
@@ -128,6 +129,7 @@ npm run dev                   # http://localhost:5173
 |---|---|
 | `POST /api/v1/auth/login` `logout` `GET me` | 登录 / 登出 / 当前用户 |
 | `GET/POST /api/v1/chat/sessions` | 会话列表 / 新建 |
+| `PATCH /api/v1/chat/sessions/{id}` | 重命名会话 |
 | `GET /api/v1/chat/sessions/{id}/messages` | 历史消息 |
 | `POST /api/v1/chat/message` | 对话（SSE：`meta/retrieval/token/tool_call/tool_result/usage/error/done`） |
 | `POST /api/v1/repos/upload` / `POST /api/v1/repos/git` | 导入仓库（ZIP / 公开 Git URL） |
@@ -166,7 +168,7 @@ backend/app/
 │   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
 │   ├── changes/       SPEC / Planner / 串行执行器 / Gate / 任务模板
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
-│   ├── verify/        栈感知验证 profile（语法/pytest/可选 lint/类型检查）
+│   ├── verify/        多栈验证 profile（Python + Node，按步骤选镜像）
 │   ├── review/        只读 Reviewer（pass/warn/block + 依据）
 │   ├── builder/       从 0→1：方案生成 + 文件提案（人工审批后写入）
 │   ├── editing/       对话内编辑：diff / 审批 / 快照撤销 / 冲突检测
@@ -242,17 +244,18 @@ cd frontend && npm run contract:check
 
 ## 已知边界
 
-- 沙箱执行仅 **Python**；`nova-sandbox` 预装 numpy/pytest，`nova-builder` 额外预装 fastapi/uvicorn/httpx/pydantic，用于真实跑仓库测试；JS/Java 只做静态分析，不能执行
-- 联网装依赖默认关闭（`SANDBOX_ALLOW_NETWORK=false`），开启后仅管理员可用；依赖持久化在 `nova-deps-<repo>` Docker 卷
+- 沙箱执行支持 **Python 与 Node**：`nova-sandbox` 用于片段，`nova-builder` 预装 fastapi/pytest 等，`nova-node` 提供 Node 20 + tsc；Java/Go 仍只做静态分析
+- 联网装依赖默认关闭（`SANDBOX_ALLOW_NETWORK=false`），开启后仅管理员可用；Python 依赖在 `nova-deps-<repo>` 卷，Node 依赖在 `nova-node-deps-<repo>` 卷
 - 影响分析是**静态分析**（导入图 + 符号引用），不是编译器级调用图
-- 验证 profile 目前覆盖 **Python**（compileall + pytest + 可选 ruff/mypy）；Node/前端项目会如实标记 `unsupported`，不会假装通过
+- 验证 profile 覆盖 **Python 与 Node**（Python: compileall/pytest/可选 ruff/mypy；Node: lint/tsc/test/build）；目标仓库的契约 Gate 尚未接入（P2.3）
+- Node 依赖安装目前只支持仓库根目录 `package.json`，monorepo 子包与锁文件多包场景后续扩展
 - 红-绿任务面向 **Python/pytest** 仓库效果最好；绿阶段跑全量测试，补丁需人工批准
 - Reviewer 是一次结构化只读审查，不是多智能体辩论；它的结论作为证据补充，不替代人工审批
 - Builder MVP 只生成 **Python 后端**项目；已接入 `nova-builder` 真实跑 pytest（含依赖卷），但**不启动常驻服务**（无端口预览）
 - 账号体系为 admin/demo 两级，不开放自助注册
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；未初始化 Git 的仓库不会自动提交
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
-- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 仍只支持 **Python**（compileall + pytest + 可选 ruff/mypy），Node/前端项目会标记 `unsupported` 并明确写入未验证项；尚未引入每任务独立分支/worktree
+- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node，但契约步骤与每任务独立分支/worktree 尚未接入
 - 契约生成已接入（OpenAPI → TS），但前端仍保留手写 UI 类型别名；逐域迁移与契约 Gate 属于 P2 后续
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 接入属于 P2 后续
 

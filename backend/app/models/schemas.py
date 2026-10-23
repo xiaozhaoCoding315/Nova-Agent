@@ -37,6 +37,10 @@ class MessageOut(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class SessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     content: str = Field(min_length=1, max_length=8000)

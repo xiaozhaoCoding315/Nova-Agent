@@ -12,6 +12,8 @@
 
 > **P2.1 进展更新（2026-10-23）**：关键 API 响应模型、OpenAPI 快照（60 paths / 65 schemas）、`contracts/openapi.json`、`api-schema.d.ts`、`contract:generate/check` 与契约快照测试已完成；重复 operation ID 已修复。后端 **186 passed**，契约漂移检查实测会失败并在恢复后通过。Node 沙箱与目标仓库契约 Gate 仍属 P2.2/P2.3。
 
+> **P2.2 进展更新（2026-10-23）**：桌面 Agent 风格侧栏与会话管理重构完成（搜索/分组/重命名/删除确认）；`nova-node` 镜像、Node 多栈 Profile、按步骤镜像/依赖卷、`run_code env=node`、`install_deps kind=node` 已完成。真实 Node 样例 lint/tsc/test/build 全部 passed，失败测试能如实上报；后端 **192 passed**。目标仓库契约 Gate、verify Job 仍属 P2.3。
+
 ---
 
 ## 0. 先给结论

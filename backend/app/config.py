@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     sandbox_enabled: bool = True
     sandbox_image: str = "nova-sandbox:latest"
     sandbox_builder_image: str = "nova-builder:latest"
+    sandbox_node_image: str = "nova-node:latest"
     sandbox_timeout: int = 30
     sandbox_install_timeout: int = 180
     sandbox_memory: str = "256m"

@@ -729,4 +729,52 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 ### 25.4 已知边界
 - 前端尚未全面改为引用 `components["schemas"]`，当前保留手写类型别名；逐域迁移在 P2.2/P2.3。
 - OpenAPI 中的 `dict` 字段仍会生成较宽松的 TS 类型（如 change proposal 的 `tasks`）。
-- 契约 Gate（目标仓库）+ Node 沙箱尚未接入，属于 P2.2/P2.3。
+- 契约 Gate（目标仓库）尚未接入；Node 沙箱已在 v3.3 完成。
+
+---
+
+## 26. v3.2 增量：桌面 Agent 风格界面重构
+
+### 26.1 布局
+- 采用持久左侧栏（Coding Agent 常见结构）：品牌、五个主导航、会话历史、账号区。
+- 会话列表支持搜索、按「今天/昨天/近 7 天/更早」分组、消息数与相对时间。
+- 会话操作从「悬停垃圾桶 + 行内确认」改为「更多菜单 → 重命名/删除 → 删除确认弹窗」，避免误删与布局跳动。
+- 新增 `PATCH /chat/sessions/{id}` 重命名接口；前端会话 store 同步更新。
+- 聊天区新增会话标题行、上下文 chips、可折叠引用面板；消息增加 Nova 头像与助手/用户分层气泡。
+- 移动端侧栏改为抽屉（Ctrl/⌘+B 或菜单按钮切换），Composer 增加输入提示。
+- 全局样式补充深色 `color-scheme`、focus-visible、selection 与更细滚动条。
+
+### 26.2 验证记录（2026-10-23）
+- 前端 `npm run build`：通过（535.43 KB，chunk 警告仍在）。
+- 浏览器结构验证：侧栏、搜索、会话分组、更多菜单、删除确认弹窗、重命名输入均存在；实际重命名后已恢复原标题，删除仅验证取消路径。
+- 内嵌浏览器隐藏视口导致截图不可用，使用无障碍树 + DOM 文本断言验证；桌面端引用面板需在可见视口确认。
+
+---
+
+## 27. v3.3 增量：P2.2 Node 沙箱与多栈验证
+
+### 27.1 Node 沙箱
+- 新增 `Dockerfile.node-builder`：Node 20 + 全局 `tsc`，Compose 新增 `node-image` → `nova-node:latest`。
+- `sandbox_status` 上报 `node_available` / `node_image`；Docker 不可用时如实标记。
+- `sandbox/runtime.execute` 支持 `deps_mount`：Python 依赖卷挂载 `/deps`，Node 依赖卷挂载 `/workspace/node_modules`；联网安装使用 npm 镜像并设置 `/tmp` 缓存。
+- `run_code` 新增 `env=node`（默认命令 `node main.js`）。
+- `install_deps` 支持 `kind=node`：读取根目录 `package.json` + npm/pnpm/yarn lockfile，安装到 `nova-node-deps-<repo>` 卷（管理员 + 联网开关）。
+
+### 27.2 多栈 Profile
+- `VerifyStep` 增加 `image`、`deps_kind`、`network`；`run_verification` 按步骤选择 builder/node 镜像与依赖卷。
+- Python 步骤保持 compileall / pytest / 可选 ruff / mypy；Node 步骤按 package.json 生成 install / lint / tsc / test / build。
+- 混合仓库返回 `stack=fullstack`，Python 与 Node 步骤串行执行。
+- 依赖安装步骤标记为非必需；未缓存且无网络时明确失败/跳过，不伪装通过。
+
+### 27.3 验证记录（2026-10-23）
+- 后端 `pytest`：**192 passed**；前端构建通过。
+- `nova-node:latest` 构建成功（Node 20 + tsc）。
+- 真实 Node 样例（node:test + tsc + 自定义 lint/build）验证：4 个步骤全部 passed。
+- 注入失败测试后：`Node 测试` failed（exit 1），后续 build 停止，整体 `failed`；恢复后重新 passed。
+- 样例仓库与依赖卷已清理，不污染工作区。
+
+### 27.4 已知边界
+- Node 依赖安装只支持仓库根目录 `package.json`；monorepo 子包、workspace 多包待扩展。
+- `nova-node` 当前预装 `tsc`，未预装 `openapi-typescript` / diffutils；目标仓库契约 Gate 在 P2.3 接入时补齐。
+- `/repos/{id}/verify` 仍是同步请求；改 Job 在 P2.3。
+- 变更执行器已自动复用 Node Gate，但尚未用真实混合仓库跑完整变更。

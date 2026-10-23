@@ -10,14 +10,27 @@ body,
   height: 100%;
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
   @apply bg-base text-ink antialiased;
 }
 
+::selection {
+  background: rgba(108, 140, 255, 0.32);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(108, 140, 255, 0.55);
+  outline-offset: 1px;
+}
+
 /* Scrollbars */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
   @apply rounded-full bg-edge;

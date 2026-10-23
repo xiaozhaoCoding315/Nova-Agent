@@ -16,7 +16,7 @@ export function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accentSoft/50 px-4 py-2.5 text-[14px]">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accentSoft/55 px-4 py-2.5 text-[14px] leading-relaxed">
           {message.content}
         </div>
       </div>
@@ -24,19 +24,24 @@ export function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className="max-w-full">
-      <Markdown content={message.content} />
-      {edits.map((edit) => (
-        <EditCard key={edit.id} edit={edit} />
-      ))}
-      {evidence && <EvidenceBar evidence={evidence} />}
-      <DeliveryReport report={message.tool_json?.report} />
-      {tools.length > 0 && (
-        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
-          <Wrench size={11} />
-          <span>调用了 {tools.join('、')}</span>
-        </div>
-      )}
+    <div className="flex gap-3">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-edge bg-raised text-[10.5px] font-semibold text-accent">
+        N
+      </div>
+      <div className="min-w-0 flex-1">
+        <Markdown content={message.content} />
+        {edits.map((edit) => (
+          <EditCard key={edit.id} edit={edit} />
+        ))}
+        {evidence && <EvidenceBar evidence={evidence} />}
+        <DeliveryReport report={message.tool_json?.report} />
+        {tools.length > 0 && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
+            <Wrench size={11} />
+            <span>调用了 {tools.join('、')}</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -51,25 +56,30 @@ export function StreamingBubble({
   editProposals: EditRef[]
 }) {
   return (
-    <div className="max-w-full">
-      {toolCards.map((card) => (
-        <ToolCard key={card.call.id} card={card} />
-      ))}
-      {text ? (
-        <Markdown content={text} />
-      ) : (
-        <p className="flex items-center gap-2 text-[13px] text-dim">
-          <span className="inline-flex gap-1">
-            <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent')} />
-            <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:150ms]')} />
-            <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:300ms]')} />
-          </span>
-          思考中…
-        </p>
-      )}
-      {editProposals.map((edit) => (
-        <EditCard key={edit.id} edit={edit} />
-      ))}
+    <div className="flex gap-3">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-edge bg-raised text-[10.5px] font-semibold text-accent">
+        N
+      </div>
+      <div className="min-w-0 flex-1">
+        {toolCards.map((card) => (
+          <ToolCard key={card.call.id} card={card} />
+        ))}
+        {text ? (
+          <Markdown content={text} />
+        ) : (
+          <p className="flex items-center gap-2 text-[13px] text-dim">
+            <span className="inline-flex gap-1">
+              <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent')} />
+              <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:150ms]')} />
+              <span className={clsx('h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:300ms]')} />
+            </span>
+            思考中…
+          </p>
+        )}
+        {editProposals.map((edit) => (
+          <EditCard key={edit.id} edit={edit} />
+        ))}
+      </div>
     </div>
   )
 }

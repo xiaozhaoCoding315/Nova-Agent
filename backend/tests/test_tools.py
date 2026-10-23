@@ -1,6 +1,6 @@
 """Tool system tests: registry contract + each built-in tool."""
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -253,6 +253,82 @@ async def test_install_deps_requires_network_switch(monkeypatch):
     r = await build_registry().execute("install_deps", {}, ctx)
     assert r["ok"] is False and r["business"] is True
     assert "SANDBOX_ALLOW_NETWORK" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_code_node_env_uses_node_image(monkeypatch):
+    from app.config import settings as app_settings
+
+    async def available():
+        return {
+            "available": True,
+            "builder_available": True,
+            "node_available": True,
+            "node_image": app_settings.sandbox_node_image,
+        }
+
+    async def fake_execute(files, command=None, stdin="", timeout=None, **kwargs):
+        assert kwargs["image"] == app_settings.sandbox_node_image
+        assert kwargs["deps_mount"] == "/workspace/node_modules"
+        assert kwargs["deps_volume"].startswith("nova-node-deps-")
+        return {
+            "stdout": "1\n", "stderr": "", "exit_code": 0, "timed_out": False,
+            "sandboxed": True, "command": command or "node main.js",
+        }
+
+    monkeypatch.setattr("app.core.tools.run_code.sandbox_status", available)
+    monkeypatch.setattr("app.core.tools.run_code.sandbox_execute", fake_execute)
+    monkeypatch.setattr("app.core.tools.run_code._collect_repo_files", AsyncMock(return_value={}))
+    monkeypatch.setattr("app.core.tools.run_code.check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr("app.core.tools.run_code.log_audit", AsyncMock())
+
+    r = await build_registry().execute(
+        "run_code",
+        {
+            "files": {"main.js": "console.log(1)"},
+            "env": "node",
+            "repo_id": "11111111-1111-1111-1111-111111111111",
+        },
+        CTX,
+    )
+    assert r["ok"] and r["output"]["env"] == "node"
+    assert r["output"]["command"] == "node main.js"
+
+
+@pytest.mark.asyncio
+async def test_install_deps_node_uses_node_volume(monkeypatch, tmp_path):
+    from app.config import settings as app_settings
+
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"left-pad": "1.0.0"}}', encoding="utf-8"
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(app_settings, "sandbox_allow_network", True)
+    monkeypatch.setattr(
+        "app.core.tools.install_deps.get_repo",
+        AsyncMock(return_value={"id": "r1", "root_path": str(tmp_path), "user_id": 1}),
+    )
+    monkeypatch.setattr(
+        "app.core.tools.install_deps.sandbox_status",
+        AsyncMock(return_value={"node_available": True}),
+    )
+    monkeypatch.setattr("app.core.tools.install_deps.check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr("app.core.tools.install_deps.log_audit", AsyncMock())
+    execute = AsyncMock(return_value={"exit_code": 0, "stdout": "ok", "stderr": ""})
+    monkeypatch.setattr("app.core.tools.install_deps.execute", execute)
+
+    ctx = ToolContext(user={"id": 1, "role": "admin"}, permission_mode="auto")
+    r = await build_registry().execute(
+        "install_deps",
+        {"repo_id": "11111111-1111-1111-1111-111111111111", "kind": "node"},
+        ctx,
+    )
+
+    assert r["ok"] and r["output"]["kind"] == "node"
+    kwargs = execute.await_args.kwargs
+    assert kwargs["image"] == app_settings.sandbox_node_image
+    assert kwargs["deps_mount"] == "/workspace/node_modules"
+    assert kwargs["command"].startswith("npm ci")
 
 
 # ---------- fetch_url ----------

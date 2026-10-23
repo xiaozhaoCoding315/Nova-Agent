@@ -8,6 +8,7 @@ Security invariants (do not weaken):
   timeouts can reliably kill the exact container.
 """
 import asyncio
+import os
 import re
 import shutil
 import subprocess
@@ -77,6 +78,7 @@ async def sandbox_status() -> dict:
 
     has_default = await check(settings.sandbox_image)
     has_builder = await check(settings.sandbox_builder_image)
+    has_node = await check(settings.sandbox_node_image)
 
     if not has_default:
         return {
@@ -84,6 +86,8 @@ async def sandbox_status() -> dict:
             "reason": f"sandbox image missing — build it: docker build -f Dockerfile.sandbox -t {settings.sandbox_image} .",
             "builder_available": has_builder,
             "builder_image": settings.sandbox_builder_image,
+            "node_available": has_node,
+            "node_image": settings.sandbox_node_image,
             "network_enabled": settings.sandbox_allow_network,
         }
     return {
@@ -91,14 +95,17 @@ async def sandbox_status() -> dict:
         "image": settings.sandbox_image,
         "builder_available": has_builder,
         "builder_image": settings.sandbox_builder_image,
+        "node_available": has_node,
+        "node_image": settings.sandbox_node_image,
         "network_enabled": settings.sandbox_allow_network,
     }
 
 
-def deps_volume_name(repo_id: str) -> str:
-    """Per-repo named volume holding pip-installed packages (/deps)."""
+def deps_volume_name(repo_id: str, kind: str = "python") -> str:
+    """Per-repo named volume holding installed packages/node_modules."""
     safe = "".join(ch for ch in str(repo_id) if ch.isalnum() or ch in "-_")
-    return f"nova-deps-{safe}"
+    prefix = "nova-node-deps" if kind == "node" else "nova-deps"
+    return f"{prefix}-{safe}"
 
 
 def _safe_relpath(path: str) -> str:
@@ -117,6 +124,7 @@ async def execute(
     image: str | None = None,
     network: bool = False,
     deps_volume: str | None = None,
+    deps_mount: str | None = None,
     as_root: bool = False,
     job_id: str | None = None,
 ) -> dict:
@@ -158,10 +166,14 @@ async def execute(
         for relpath, content in files.items():
             rel = _safe_relpath(relpath)
             target = f"{tmp_dir}/{rel}"
-            import os
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(content)
+        if deps_volume and deps_mount and deps_mount.startswith("/workspace/"):
+            os.makedirs(
+                os.path.join(tmp_dir, deps_mount[len("/workspace/"):]),
+                exist_ok=True,
+            )
 
         # `timeout` inside the container is the first line of defense;
         # the outer subprocess timeout + docker kill is the backstop.
@@ -169,12 +181,18 @@ async def execute(
 
         extra: list[str] = []
         if deps_volume:
+            mount = deps_mount or "/deps"
             mode = "rw" if as_root else "ro"
-            extra += ["-v", f"{deps_volume}:/deps:{mode}"]
-            extra += ["-e", "PYTHONPATH=/deps:/workspace"]
+            extra += ["-v", f"{deps_volume}:{mount}:{mode}"]
+            if mount == "/deps":
+                extra += ["-e", "PYTHONPATH=/deps:/workspace"]
         if network:
             extra += ["-e", "PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple"]
             extra += ["-e", "PIP_DISABLE_PIP_VERSION_CHECK=1"]
+            extra += ["-e", "npm_config_registry=https://registry.npmmirror.com"]
+        if image == settings.sandbox_node_image:
+            extra += ["-e", "npm_config_cache=/tmp/npm-cache"]
+            extra += ["-e", "npm_config_update_notifier=false"]
         if as_root:
             extra += ["--user", "0:0"]
         else:

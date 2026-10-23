@@ -293,7 +293,8 @@ export interface paths {
         delete: operations["delete_session_api_v1_chat_sessions__session_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Rename Session */
+        patch: operations["rename_session_api_v1_chat_sessions__session_id__patch"];
         trace?: never;
     };
     "/api/v1/chat/sessions/{session_id}/messages": {
@@ -1974,6 +1975,11 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** SessionRenameRequest */
+        SessionRenameRequest: {
+            /** Title */
+            title: string;
+        };
         /** StatusActionOut */
         StatusActionOut: {
             /**
@@ -2801,6 +2807,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_session_api_v1_chat_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
                 };
             };
             /** @description Validation Error */

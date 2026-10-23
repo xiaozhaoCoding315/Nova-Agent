@@ -50,6 +50,8 @@ export const api = {
     list: () => request<Session[]>('/chat/sessions'),
     create: () => request<Session>('/chat/sessions', { method: 'POST' }),
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
+    rename: (id: string, title: string) =>
+      request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),
     remove: (id: string) => request<{ ok: boolean }>(`/chat/sessions/${id}`, { method: 'DELETE' }),
   },
 

@@ -25,6 +25,7 @@ from app.models.schemas import (
     OkOut,
     ReviewOut,
     SessionOut,
+    SessionRenameRequest,
     TraceEventOut,
 )
 
@@ -48,6 +49,30 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
     return await session_mod.get_messages(session_id)
+
+
+@router.patch("/chat/sessions/{session_id}", response_model=SessionOut)
+async def rename_session(
+    session_id: str,
+    body: SessionRenameRequest,
+    user: dict = Depends(get_current_user),
+):
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="会话标题不能为空")
+    renamed = await session_mod.rename_session(session_id, user["id"], title)
+    if not renamed:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {
+        "id": renamed["id"], "title": renamed["title"],
+        "message_count": await session_mod.count_messages(session_id),
+        "permission_mode": session.get("permission_mode", "ask"),
+        "repo_ids": session.get("repo_ids", []),
+        "created_at": renamed["created_at"], "updated_at": renamed["updated_at"],
+    }
 
 
 @router.delete("/chat/sessions/{session_id}", response_model=OkOut)

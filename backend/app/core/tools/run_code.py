@@ -100,18 +100,33 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
             raise ToolBusinessError(str(exc.detail))
 
     status = await sandbox_status()
-    use_builder = (args.get("env") == "builder") or (bool(repo_id) and args.get("env") != "slim")
-    if use_builder and not status.get("builder_available"):
-        use_builder = False
-    image = settings.sandbox_builder_image if use_builder else settings.sandbox_image
-    deps = deps_volume_name(str(repo_id)) if repo_id else None
+    use_node = args.get("env") == "node"
+    use_builder = False
+    deps_mount = None
+    command = args.get("command")
+    if use_node:
+        if not status.get("node_available"):
+            raise ToolBusinessError(
+                f"node 沙箱镜像未就绪：请构建 {settings.sandbox_node_image}"
+            )
+        image = settings.sandbox_node_image
+        deps = deps_volume_name(str(repo_id), "node") if repo_id else None
+        deps_mount = "/workspace/node_modules"
+        command = command or "node main.js"
+    else:
+        use_builder = (args.get("env") == "builder") or (bool(repo_id) and args.get("env") != "slim")
+        if use_builder and not status.get("builder_available"):
+            use_builder = False
+        image = settings.sandbox_builder_image if use_builder else settings.sandbox_image
+        deps = deps_volume_name(str(repo_id)) if repo_id else None
 
     result = await sandbox_execute(
         files=files,
-        command=args.get("command"),
+        command=command,
         stdin=args.get("stdin", ""),
         image=image,
         deps_volume=deps,
+        deps_mount=deps_mount,
     )
 
     await log_audit(
@@ -130,7 +145,7 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         "stdout": result["stdout"],
         "stderr": result["stderr"],
         "command": result["command"],
-        "env": "builder" if use_builder else "slim",
+        "env": "node" if use_node else ("builder" if use_builder else "slim"),
         "hint": "退出码 0 表示成功" if result["exit_code"] == 0 else "执行失败：请阅读 stderr，修正后重试",
     }
 
@@ -140,7 +155,7 @@ TOOL = ToolDefinition(
     description=(
         "在隔离沙箱中运行代码并返回真实的 stdout / stderr / 退出码。"
         "用途：验证代码是否正确、运行单元测试（command 设为 'python -m pytest -q'）、复现报错。"
-        "沙箱环境：Python 3.12 + numpy + pytest，无网络，禁止访问外部资源。"
+        "环境：python builder（fastapi/pytest）或 node（Node 20 + tsc/openapi-typescript），无网络。"
     ),
     parameters={
         "type": "object",
@@ -155,11 +170,11 @@ TOOL = ToolDefinition(
             },
             "command": {
                 "type": "string",
-                "description": "运行命令（默认 python main.py）；跑测试用 python -m pytest -q",
+                "description": "运行命令（默认 python main.py；node 环境默认 node main.js）",
             },
             "env": {
                 "type": "string",
-                "description": "运行环境：builder（预装 fastapi/pytest 等，适合仓库测试，默认）或 slim（轻量，适合代码片段）",
+                "description": "运行环境：builder（Python 仓库测试，默认）、slim（Python 片段）、node（Node/前端项目）",
             },
             "stdin": {"type": "string", "description": "标准输入内容（可选）"},
         },

@@ -74,6 +74,18 @@ async def delete_session(session_id: str, user_id: int) -> bool:
     return bool(rows)
 
 
+async def rename_session(session_id: str, user_id: int, title: str) -> dict | None:
+    rows = await execute(
+        "UPDATE sessions SET title = %s, updated_at = now() "
+        "WHERE id = %s AND user_id = %s RETURNING id, title, created_at, updated_at",
+        (title[:200], session_id, user_id),
+    )
+    if not rows:
+        return None
+    r = rows[0]
+    return {"id": str(r[0]), "title": r[1], "created_at": r[2], "updated_at": r[3]}
+
+
 async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
     rows = await query(
         "SELECT id, role, content, tool_json, created_at FROM messages "

@@ -44,6 +44,15 @@ services:
     entrypoint: ["true"]
     restart: "no"
 
+  # Node/前端验证镜像：Node 20 + tsc + openapi-typescript
+  node-image:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.node-builder
+    image: nova-node:latest
+    entrypoint: ["true"]
+    restart: "no"
+
   app:
     build:
       context: .
@@ -91,6 +100,7 @@ services:
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-true}
       SANDBOX_IMAGE: nova-sandbox:latest
       SANDBOX_BUILDER_IMAGE: nova-builder:latest
+      SANDBOX_NODE_IMAGE: nova-node:latest
       SANDBOX_ALLOW_NETWORK: ${SANDBOX_ALLOW_NETWORK:-false}
       ENABLE_FETCH_URL: ${ENABLE_FETCH_URL:-true}
 
@@ -108,6 +118,8 @@ services:
       sandbox-image:
         condition: service_completed_successfully
       builder-image:
+        condition: service_completed_successfully
+      node-image:
         condition: service_completed_successfully
     restart: unless-stopped
 

@@ -1,0 +1,9 @@
+# Node/TS verification image: Node 20 + tsc.
+# Project dependencies are installed into a per-repo volume at /workspace/node_modules.
+FROM node:20-bookworm-slim
+
+RUN npm config set registry https://registry.npmmirror.com \
+ && npm install -g typescript@5.6.3 \
+ && corepack enable
+
+WORKDIR /workspace
