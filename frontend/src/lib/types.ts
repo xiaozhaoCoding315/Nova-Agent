@@ -6,6 +6,7 @@ export type Session = {
   message_count: number
   permission_mode?: PermissionMode
   repo_ids?: string[]
+  model?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -443,6 +444,41 @@ export type Usage = {
   hourly_message_limit: number
   sandbox_runs_today: number
   sandbox_daily_limit: number
+}
+
+export type LlmProvider = {
+  id: string
+  label: string
+  base_url: string
+  models: string[]
+}
+
+export type LlmSettings = {
+  source: 'user' | 'server' | 'none'
+  configured: boolean
+  provider?: string | null
+  model?: string | null
+  base_url?: string | null
+  has_key: boolean
+  key_hint?: string | null
+  server_model?: string | null
+  allow_server_fallback: boolean
+  providers: LlmProvider[]
+  updated_at?: string | null
+}
+
+export type LlmSettingsInput = {
+  provider: string
+  model: string
+  base_url?: string | null
+  api_key?: string | null
+}
+
+export type LlmTestResult = {
+  ok: boolean
+  model: string
+  latency_ms: number
+  message: string
 }
 
 export type MemoryFact = {

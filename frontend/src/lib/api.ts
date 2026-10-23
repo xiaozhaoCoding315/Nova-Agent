@@ -1,7 +1,8 @@
 import type {
   Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, ContractStatus,
-  Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, Memory, Message, Metrics, Repo,
-  Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput,
+  LlmTestResult, Memory, Message, Metrics, Repo, Review, Session, Task, TaskListItem, TraceEvent,
+  Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -101,6 +102,15 @@ export const api = {
     health: () => request<Health>('/status/health'),
     usage: () => request<Usage>('/status/usage'),
     metrics: (days = 7) => request<Metrics>(`/status/metrics?days=${days}`),
+  },
+
+  llm: {
+    get: () => request<LlmSettings>('/settings/llm'),
+    save: (input: LlmSettingsInput) =>
+      request<LlmSettings>('/settings/llm', { ...json(input), method: 'PUT' }),
+    clear: () => request<LlmSettings>('/settings/llm', { method: 'DELETE' }),
+    test: (input: LlmSettingsInput) =>
+      request<LlmTestResult>('/settings/llm/test', json(input)),
   },
 
   memory: {

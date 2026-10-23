@@ -15,6 +15,7 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
+| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / 自定义兼容端点）、填写自己的 API Key 和模型；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。支持 Python 后端，以及**契约优先全栈**（OpenAPI → FastAPI + TypeScript Explorer + 双栈 Gate）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
@@ -77,7 +78,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | 阿里云百炼 `qwen3.8-max`（OpenAI 兼容，默认单通道；可配置 deepseek/longcat 降级链） |
+| LLM | 服务端默认阿里云百炼 `qwen3.8-max`（可配置 deepseek/longcat 降级链）；用户可自带任意 OpenAI 兼容 Key 与模型 |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -92,6 +93,8 @@ docker compose up -d --build  # 构建并启动全部服务
 ```
 
 首次启动自动完成幂等初始化：建库建表、创建 Qdrant collection、生成 admin/demo 账号。
+
+公开多用户部署建议设 `LLM_ALLOW_SERVER_FALLBACK=false`，强制每个用户在设置页填写自己的 API Key，未配置时不会回退到服务端 Key。
 
 启用 HTTPS（有域名时）：`cp Caddyfile.example Caddyfile` 改成你的域名，然后 `docker compose --profile https up -d`，并在 `.env` 中设 `COOKIE_SECURE=true`。
 
@@ -118,12 +121,13 @@ npm run dev                   # http://localhost:5173
 
 | 变量 | 说明 |
 |---|---|
-| `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | LLM Key（至少一个；DashScope 同时提供 embedding） |
-| `DASHSCOPE_MODEL` | 阿里云百炼模型名（默认 `qwen3.8-max`） |
-| `LLM_MODEL_PRIORITY` | 模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
+| `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
+| `DASHSCOPE_MODEL` | 服务端默认模型名（默认 `qwen3.8-max`） |
+| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
+| `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
 | `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号（可公开给面试官/朋友使用） |
-| `SECRET_KEY` | JWT 签名密钥（≥32 位随机串） |
+| `SECRET_KEY` | JWT 签名密钥，同时派生用户 API Key 的加密密钥（≥32 位随机串；更换后已存 Key 需重填） |
 | `COOKIE_SECURE` | 启用 HTTPS 后设为 true |
 | `DEMO_DAILY_TOKENS` / `DEMO_HOURLY_MESSAGES` / `DEMO_SANDBOX_DAILY` | 演示账号限额（0 = 不限） |
 | `ADMIN_JOB_HOURLY` / `DEMO_JOB_HOURLY` | 导入 / 重建索引 / 验证 / 红绿任务 / Builder / 只读审查每小时次数（0 = 不限） |
@@ -168,13 +172,15 @@ npm run dev                   # http://localhost:5173
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
 | `GET /api/v1/status/health` / `usage` / `metrics?days=7` | 依赖探活 / 用量配额 / 交付指标 |
+| `GET` · `PUT` · `DELETE /api/v1/settings/llm` | 查看 / 保存 / 移除个人模型服务商、模型与 API Key（响应只含掩码） |
+| `POST /api/v1/settings/llm/test` | 用当前或待保存配置做一次真实连通性测试 |
 | `GET /api/v1/memory` · `DELETE /memory/facts/{id}` · `DELETE /memory/daily/{day}` | 查看 / 删除长期事实与日摘要 |
 
 ## 项目结构
 
 ```
 backend/app/
-├── api/v1/            auth · chat · repos · tasks · builder · changes · git · jobs · status
+├── api/v1/            auth · chat · repos · tasks · builder · changes · git · jobs · status · settings_llm
 ├── core/
 │   ├── agent/loop.py  Agent 主循环（检索→工具轮次→证据校验→持久化）
 │   ├── agent/evidence.py  引用校验（文件/行号/越界）
@@ -197,7 +203,7 @@ backend/app/
 │   ├── sandbox/       Docker 一次性容器执行器
 │   ├── harness/       超时 / 重试 / 熔断
 │   ├── security/      认证 / 限流配额 / 风险规则 / 审计
-│   └── llm/           多厂商降级链 + 工具流式（真实 token 统计）
+│   └── llm/           多厂商降级链 + 用户 BYOK（加密存储）+ 工具流式（真实 token 统计）
 ├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
 └── models/            Pydantic 模型
 frontend/src/
@@ -288,7 +294,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 加密/掩码/服务端回退开关
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -324,6 +330,7 @@ cd frontend && npm run contract:check
 
 - 工具执行前经过能力策略：`readonly` 硬拦截写/执行；拒绝 `.env`、私钥、凭据文件；拒绝绝对路径与穿越；危险命令和 `git push` 在策略层直接 deny
 - 可选 pre-hook/post-hook：Hook 由运维配置，不来自模型；pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；Hook 缺失或超时按失败处理（fail closed）
+- 用户 API Key 使用 `SECRET_KEY` 派生的 Fernet 密钥加密存储，读写接口只返回 `••••后四位`；密钥不会进入对话、轨迹或工具参数
 - 工具输出、SSE 预览、轨迹、审计详情统一做密钥脱敏；脱敏是正则 best-effort，不替代真正的 DLP
 - 代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径
 - 文件工具统一走路径解析器：拒绝绝对路径、`..` 穿越、同前缀兄弟目录与符号链接逃逸；`.env`、私钥、凭据文件禁止读取与写入
@@ -345,6 +352,8 @@ cd frontend && npm run contract:check
 - 全栈 Builder 会立即在未落盘的 overrides 上运行 Python + Node + 契约 Gate；失败自动回喂修复 1 次，仍未通过则禁止写入，需要退回重做
 - 全栈 Builder 依赖 `nova-builder` 与 `nova-node` 镜像；契约类型由 `openapi-typescript` 生成
 - 账号体系为 admin/demo 两级，不开放自助注册
+- BYOK 每个用户同时保存一套服务商配置；模型选择按会话持久化，但仅在使用个人 Key 时生效；Embedding 仍使用服务端 DashScope Key，因此混合检索需要服务端配置 embedding
+- 用户配额仍按角色（admin/demo）固定，尚未提供按用户的额度/成本上限；BYOK 的 token 仍会计入用量审计
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入

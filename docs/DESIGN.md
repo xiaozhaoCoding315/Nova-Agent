@@ -1050,3 +1050,40 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 契约一致性测试只校验 path/method 存在，不校验字段级 schema；前端类型由契约生成，后端 Pydantic 字段由 Gate 测试间接保障。
 - 全栈 Builder 依赖 `nova-builder` / `nova-node` 镜像；依赖安装不在生成阶段自动执行。
 - 仍为“提案 → 批准 → 写入”，不会自动部署；预览需管理员手动触发。
+
+---
+
+## 36. v5.0 增量：P5.1 用户自带模型（BYOK）与桌面 Agent 界面
+
+### 36.1 数据模型（迁移 8）
+- `user_llm_settings(user_id PK, provider, base_url, model, api_key_enc, updated_at)`：每个用户一套活动配置，随用户级联删除。
+- `sessions.model`：会话级模型覆盖；未设置时使用用户配置的默认模型。
+- `LLM_ALLOW_SERVER_FALLBACK`：部署级开关。`false` 时未配置个人 Key 的用户无法调用模型，避免公开部署消耗服务端额度。
+
+### 36.2 密钥与解析
+- API Key 使用 `SECRET_KEY` 经 SHA-256 派生 Fernet 密钥加密；读取接口只返回 `has_key`、`key_hint`（后四位），原始 Key 不进入响应、轨迹或工具参数。
+- 保存时 `api_key` 为空表示保留已存 Key，支持只改模型/服务商而不重输密钥；服务商、Base URL、模型均有校验，拒绝非 http(s) 与云元数据地址。
+- `get_llm(user_id, model)` 解析顺序：用户配置优先且**独占**（错误时不会静默回退到服务端 Key）→ 服务端共享链（若允许）→ 明确报错。
+- 对话、Builder、变更、Reviewer、记忆抽取与摘要等所有 `llm_json`/Agent 调用都携带 `user_id`，统一走同一解析逻辑。
+- 会话模型写入 `sessions.model`，SSE `meta` 与 `SessionOut` 回传；前端 Composer 按会话切换并持久化。
+
+### 36.3 API 与前端
+- `GET/PUT/DELETE /settings/llm`：查看（含服务商预设与掩码）、保存、移除个人配置。
+- `POST /settings/llm/test`：使用待保存或已保存配置做一次真实连通性测试。
+- 设置页改为分区导航（模型与密钥 / 用量 / 指标 / 记忆 / 系统状态 / 账号）；模型页提供服务商卡片、Base URL、密钥、模型下拉与自定义模型。
+- 应用外壳统一为桌面 Agent 风格：可折叠侧栏（Ctrl/⌘ B）、单一顶部栏、会话标题、模型来源徽标、底部状态栏；Composer 内置模型、权限、上下文与发送控件。
+- 新增 `GET /settings/llm` 契约与前端类型；OpenAPI 快照与 `api-schema.d.ts` 同步更新。
+
+### 36.4 验证记录（2026-10-24）
+- 真实数据库迁移 8 幂等应用；临时用户验证加密存储（DB 中无明文）、`key_hint` 掩码、会话模型持久化、用户配置解析为 `OpenAICompatibleLLM`，清理后无孤儿配置/会话。
+- API 端到端：GET 初始为 `server` → PUT 后为 `user`、掩码返回 → 不带 Key 的 PUT 保留密钥 → 会话发送后 `GET /chat/sessions` 返回所选模型 → DELETE 回到 `server`。
+- 错误 Key 真实请求返回 401，SSE 如实上报「模型调用失败」，不泄漏密钥。
+- 浏览器验证：设置页模型与密钥分区、保存反馈、个人/共享来源徽标、Composer 模型下拉与会话模型写入均正常；临时测试账号已删除。
+- 后端 **245 passed**；ruff、前端构建、`contract:check` 全部通过。
+
+### 36.5 已知边界
+- 每个用户同时只保存一套服务商配置，不支持多 Key 轮换或多模型并行路由。
+- Embedding 仍使用服务端 `DASHSCOPE_API_KEY`；个人 Key 不覆盖 RAG 向量化。
+- 配额仍按角色固定，未提供按用户的额度/成本上限；BYOK 调用仍写入 `usage_log`。
+- 仍无自助注册与密码重置；账号由部署者维护。
+- 运行中后端需要重启才能加载新迁移/路由（本地 dev 已验证）。

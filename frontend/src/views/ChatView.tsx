@@ -6,6 +6,7 @@ import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
 import { RefPanel } from '../components/RefPanel'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { useChat } from '../stores/chat'
+import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
 
 const EXAMPLES = [
@@ -23,12 +24,13 @@ const EXAMPLES = [
   },
 ]
 
-export function ChatView() {
+export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const {
     sessions, sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
-    permissionMode, setPermissionMode, send, stop, clearError,
+    permissionMode, setPermissionMode, model, setModel, send, stop, clearError,
   } = useChat()
   const { repos, refresh } = useRepos()
+  const { settings: llmSettings } = useLlm()
   const [selectedRepos, setSelectedRepos] = useState<string[]>([])
   const [trajectoryOpen, setTrajectoryOpen] = useState(false)
   const [refsOpen, setRefsOpen] = useState(true)
@@ -61,8 +63,18 @@ export function ChatView() {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
-  const currentSession = sessions.find((session) => session.id === sessionId)
   const readyRepos = repos.filter((repo) => repo.status === 'ready')
+  const configured = llmSettings?.source === 'user'
+  const provider = llmSettings?.providers.find((item) => item.id === llmSettings.provider)
+  const effectiveModel = model ?? (configured ? llmSettings?.model ?? null : null)
+  const modelChoices = configured
+    ? Array.from(new Set([...(provider?.models ?? []), ...(effectiveModel ? [effectiveModel] : [])]))
+    : []
+  const modelLabel = configured
+    ? (effectiveModel ?? '默认模型')
+    : llmSettings?.source === 'server'
+      ? `服务端默认${llmSettings.server_model ? ` · ${llmSettings.server_model}` : ''}`
+      : '未配置模型 · 点击设置'
 
   const toggleRepo = (id: string) => {
     setSelectedRepos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -71,79 +83,54 @@ export function ChatView() {
   return (
     <div className="flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col">
-        <div className="shrink-0 border-b border-edge bg-panel/40">
-          <div className="flex items-center gap-3 px-5 py-2.5">
-            <div className="min-w-0">
-              <h1 className="truncate text-[13.5px] font-semibold">
-                {currentSession?.title ?? '新对话'}
-              </h1>
-              <p className="mt-0.5 text-[10.5px] text-dim">
-                {messages.length} 条消息 · {selectedRepos.length > 0 ? `${selectedRepos.length} 个关联仓库` : '未关联仓库'}
-              </p>
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              <button
-                onClick={() => setTrajectoryOpen(true)}
-                disabled={!sessionId}
-                className="flex items-center gap-1 rounded-md border border-edge px-2 py-1 text-[11.5px] text-dim transition-colors hover:text-ink disabled:opacity-40"
-                title="查看本会话完整轨迹"
-              >
-                <Activity size={12} /> 轨迹
-              </button>
-              <select
-                value={permissionMode}
-                onChange={(event) => setPermissionMode(event.target.value as 'readonly' | 'ask' | 'auto')}
-                className="rounded-md border border-edge bg-raised px-2 py-1 text-[11.5px] text-dim outline-none"
-                title="权限模式：只读 / 确认写入 / 自动执行"
-              >
-                <option value="readonly">只读</option>
-                <option value="ask">确认写入</option>
-                <option value="auto">自动执行</option>
-              </select>
-              <button
-                onClick={() => setRefsOpen((value) => !value)}
-                className={clsx(
-                  'hidden h-7 w-7 items-center justify-center rounded-md border transition-colors lg:flex',
-                  refsOpen
-                    ? 'border-accentSoft bg-accentSoft/20 text-accent'
-                    : 'border-edge text-dim hover:text-ink',
-                )}
-                title={refsOpen ? '收起引用面板' : '展开引用面板'}
-                aria-label="切换引用面板"
-              >
-                <PanelRight size={13} />
-              </button>
-            </div>
+        <div className="flex shrink-0 items-center gap-2 border-b border-edge/80 bg-panel/25 px-4 py-2">
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-dim/70">上下文</span>
+          <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
+            {readyRepos.length === 0 ? (
+              <span className="truncate text-[11px] text-dim/80">暂无就绪仓库，去「工作区」导入 ZIP 或 Git 仓库</span>
+            ) : (
+              readyRepos.map((repo) => (
+                <button
+                  key={repo.id}
+                  onClick={() => toggleRepo(repo.id)}
+                  className={clsx(
+                    'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
+                    selectedRepos.includes(repo.id)
+                      ? 'border-accent/70 bg-accentSoft/45 text-ink'
+                      : 'border-edge/80 text-dim hover:border-accentSoft hover:text-ink',
+                  )}
+                  title={repo.source}
+                >
+                  {repo.name}
+                </button>
+              ))
+            )}
           </div>
-
-          <div className="flex items-center gap-2 border-t border-edge/60 px-5 py-1.5">
-            <span className="shrink-0 text-[10.5px] uppercase tracking-wide text-dim">上下文</span>
-            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
-              {readyRepos.length === 0 ? (
-                <span className="truncate text-[11px] text-dim">暂无就绪仓库，去「工作区」导入 ZIP 或 Git 仓库</span>
-              ) : (
-                readyRepos.map((repo) => (
-                  <button
-                    key={repo.id}
-                    onClick={() => toggleRepo(repo.id)}
-                    className={clsx(
-                      'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
-                      selectedRepos.includes(repo.id)
-                        ? 'border-accent bg-accentSoft/50 text-ink'
-                        : 'border-edge text-dim hover:text-ink',
-                    )}
-                    title={repo.source}
-                  >
-                    {repo.name}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+          <button
+            onClick={() => setTrajectoryOpen(true)}
+            disabled={!sessionId}
+            className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-edge/80 px-2 text-[11px] text-dim transition-colors hover:text-ink disabled:opacity-40"
+            title="查看本会话完整轨迹"
+          >
+            <Activity size={12} /> 轨迹
+          </button>
+          <button
+            onClick={() => setRefsOpen((value) => !value)}
+            className={clsx(
+              'hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex',
+              refsOpen
+                ? 'border-accent/50 bg-accentSoft/25 text-accent'
+                : 'border-edge/80 text-dim hover:text-ink',
+            )}
+            title={refsOpen ? '收起引用面板' : '展开引用面板'}
+            aria-label="切换引用面板"
+          >
+            <PanelRight size={13} />
+          </button>
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-5">
-          <div className="mx-auto max-w-3xl space-y-6">
+          <div className="mx-auto max-w-4xl space-y-6">
             {messages.length === 0 && !streaming && (
               <div className="mx-auto max-w-2xl pt-10 text-center">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-accentSoft/60 bg-accentSoft/20">
@@ -181,7 +168,7 @@ export function ChatView() {
         </div>
 
         {error && (
-          <div className="mx-auto mb-1 flex w-full max-w-3xl items-center gap-2 px-4 text-[12px] text-err">
+          <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-[12px] text-err">
             <AlertCircle size={13} />
             <span className="flex-1">{error}</span>
             <button onClick={clearError} className="text-dim hover:text-ink" aria-label="关闭">
@@ -193,6 +180,14 @@ export function ChatView() {
         <Composer
           disabled={false}
           streaming={streaming}
+          model={effectiveModel}
+          models={modelChoices}
+          modelLabel={modelLabel}
+          onModelChange={setModel}
+          permissionMode={permissionMode}
+          onPermissionChange={setPermissionMode}
+          contextCount={selectedRepos.length}
+          onConfigureModel={onOpenSettings}
           onSend={(content) => void send(content, selectedRepos)}
           onStop={stop}
         />

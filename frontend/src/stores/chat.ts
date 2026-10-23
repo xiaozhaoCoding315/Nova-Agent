@@ -15,11 +15,13 @@ type ChatState = {
   toolCards: StreamToolCard[]
   streamEdits: EditRef[]
   permissionMode: PermissionMode
+  model: string | null
   refs: RetrievalHit[]
   evidence: Evidence | null
   report: DeliveryReport | null
   error: string | null
   setPermissionMode: (mode: PermissionMode) => void
+  setModel: (model: string | null) => void
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
   newSession: () => void
@@ -41,12 +43,14 @@ export const useChat = create<ChatState>((set, get) => ({
   toolCards: [],
   streamEdits: [],
   permissionMode: 'ask',
+  model: null,
   refs: [],
   evidence: null,
   report: null,
   error: null,
 
   setPermissionMode: (mode) => set({ permissionMode: mode }),
+  setModel: (model) => set({ model }),
 
   loadSessions: async () => {
     try {
@@ -66,6 +70,7 @@ export const useChat = create<ChatState>((set, get) => ({
         messages,
         refs: [],
         error: null,
+        model: session?.model ?? null,
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
       })
     } catch (err) {
@@ -75,7 +80,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   newSession: () => {
     if (get().streaming) return
-    set({ sessionId: null, messages: [], refs: [], error: null })
+    set({ sessionId: null, messages: [], refs: [], model: null, error: null })
   },
 
   deleteSession: async (id) => {
@@ -133,12 +138,14 @@ export const useChat = create<ChatState>((set, get) => ({
           content,
           repo_ids: repoIds,
           permission_mode: get().permissionMode,
+          model: get().model ?? undefined,
         },
         (event, data) => {
           switch (event) {
             case 'meta':
               set((s) => ({
                 sessionId: s.sessionId ?? data.session_id,
+                ...(data.model ? { model: data.model as string } : {}),
                 sessions: data.title
                   ? s.sessions.some((x) => x.id === data.session_id)
                     ? s.sessions.map((x) =>
