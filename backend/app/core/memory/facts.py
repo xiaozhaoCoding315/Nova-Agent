@@ -8,6 +8,7 @@ from datetime import date
 import structlog
 
 from app.config import settings
+from app.core.security.redaction import redact_text
 from app.db import execute, query
 
 logger = structlog.get_logger()
@@ -69,7 +70,7 @@ async def _record_fact_day(fact_id: int, day: date | None = None) -> None:
 
 async def add_fact(user_id: int, content: str, ttl_days: int = DEFAULT_TTL_DAYS, importance: float = 1.0) -> bool:
     """Store a fact; returns False when deduplicated or rejected."""
-    content = content.strip()
+    content = redact_text(content).strip()
     if not content or len(content) > 500:
         return False
 
@@ -184,7 +185,10 @@ async def extract_facts_from_turn(user_id: int, user_text: str, assistant_text: 
         from app.core.security.limits import ensure_token_budget
 
         await ensure_token_budget(user_id=user_id)
-        prompt = _EXTRACT_PROMPT.format(user=user_text[:1500], assistant=assistant_text[:1500])
+        prompt = _EXTRACT_PROMPT.format(
+            user=redact_text(user_text)[:1500],
+            assistant=redact_text(assistant_text)[:1500],
+        )
 
         async def _call() -> tuple[str, dict | None]:
             llm = get_llm()

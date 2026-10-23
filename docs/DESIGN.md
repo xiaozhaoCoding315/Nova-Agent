@@ -878,3 +878,42 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 日摘要依赖 LLM，维护循环可能产生额外 token 成本；不足 8 条消息不生成。
 - 指标为窗口内聚合，审批耗时只统计已应用的编辑；p95 统计全部后台 Job。
 - 尚无周报导出与指标趋势图。
+
+---
+
+## 31. v3.7 增量：P3.2 能力权限 + Hooks + 密钥脱敏
+
+### 31.1 能力策略
+- `ToolDefinition` 增加 `capabilities`；未显式声明时按工具名/类别映射到：
+  `fs.read / fs.write / proc.exec / net.fetch / git.write / deploy / secrets.read`。
+- `decide_tool` 在工具执行前返回 allow/deny + 原因：
+  - `readonly` 硬拦截 `fs.write / proc.exec / git.write / deploy`；
+  - 路径统一 normalize，拒绝绝对路径、穿越与 `.env`/私钥/凭据；
+  - `fetch_url` 受 `ENABLE_FETCH_URL` 控制；
+  - `install_deps` 仅管理员且要求 `SANDBOX_ALLOW_NETWORK`；
+  - `run_code` 拒绝危险模式与 `git push` / `git reset --hard` / `terraform apply` / `kubectl apply|delete`。
+- 每次决策写入 `audit_log`（`policy_decision`），包含工具、能力、decision、args 摘要。
+
+### 31.2 Hooks
+- `TOOL_PRE_HOOK` / `TOOL_POST_HOOK` 由运维配置，模型无法修改。
+- Hook 通过 stdin 接收 JSON（tool、capabilities、args、user、repo_ids、permission_mode；post 含 result），cwd 优先为关联仓库根目录。
+- pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；缺失/超时/其他非零退出均 fail closed。
+- post-hook 失败只记录日志，不改变工具结果。
+- Hook 的 stdout/stderr 在返回前脱敏。
+
+### 31.3 密钥脱敏
+- 新增 `redaction.py`：识别 OpenAI/Ark/AWS/GitHub/Slack 风格 key、JWT、私钥块、环境变量赋值。
+- 接入点：工具输出、工具错误、SSE `tool_call` 参数、轨迹 payload、审计 args 预览、交付报告中的命令与错误。
+- 工具执行仍使用原始参数，仅在展示/持久化/回传模型前脱敏。
+
+### 31.4 验证记录（2026-10-23）
+- 后端 `pytest`：**222 passed**；`ruff check app` 通过；前端构建与契约检查通过。
+- 真实工具注册表验证：只读写/执行、`.env` 读取、`git push`、`rm -rf /` 全部 deny，并写入 `policy_decision` 审计。
+- Hook 单测：退出码 2 阻断、缺失命令 fail closed、post-hook 失败不影响结果。
+- 脱敏单测：key/JWT/私钥/env 与环境变量嵌套对象、工具输出、轨迹 payload 均被替换。
+
+### 31.5 已知边界
+- 能力策略是应用层防线，最终隔离仍是 Docker 容器；未来 `git.write / deploy` 工具接入时需继续沿用同一策略。
+- Hook 命令由运维配置，必须使用可信脚本；当前不提供 Hook 签名或沙箱执行。
+- 脱敏是正则启发式，不覆盖所有自定义密钥格式；真正的 DLP 需外部系统。
+- 尚未实现网络域名 allowlist 与命令参数级白名单（当前为 denylist + 沙箱禁网）。

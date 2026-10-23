@@ -1,5 +1,7 @@
 """Context assembly: system prompt with repo citations + long-term facts."""
 
+from app.core.security.redaction import redact_text
+
 IDENTITY = """你是 Nova，一个严谨的开发者助手，擅长读懂陌生代码库、定位与修复报错、编写并验证代码。
 
 工作规则：
@@ -46,7 +48,7 @@ def build_system_prompt(
         parts.append("\n## 仓库项目约定（来自 AGENTS.md / 项目规则，必须遵守）")
         for rule in rules:
             parts.append(f"### {rule['repo'] or '仓库'} · {rule['source']}")
-            parts.append(rule["content"])
+            parts.append(redact_text(rule["content"]))
         parts.append("以上约定与安全策略冲突时，以安全策略为准。")
 
     if hits:
@@ -54,7 +56,7 @@ def build_system_prompt(
         budget = MAX_SNIPPET_BUDGET
         for i, hit in enumerate(hits, 1):
             location = f"{hit.path}:{hit.line_start}-{hit.line_end}" if hit.path else f"片段{i}"
-            snippet = hit.content[:MAX_SNIPPET_CHARS]
+            snippet = redact_text(hit.content[:MAX_SNIPPET_CHARS])
             block = f"\n[{location}]\n```{hit.lang or ''}\n{snippet}\n```"
             if len(block) > budget:
                 break
@@ -65,6 +67,6 @@ def build_system_prompt(
 
     if fact_list:
         parts.append("\n## 用户长期偏好与背景（来自历史对话）")
-        parts.extend(f"- {f}" for f in fact_list)
+        parts.extend(f"- {redact_text(f)}" for f in fact_list)
 
     return "\n".join(parts)

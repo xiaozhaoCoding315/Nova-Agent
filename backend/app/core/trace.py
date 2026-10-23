@@ -6,6 +6,7 @@ import json
 
 import structlog
 
+from app.core.security.redaction import redact_obj
 from app.db import execute
 
 logger = structlog.get_logger()
@@ -13,10 +14,11 @@ logger = structlog.get_logger()
 
 async def record(session_id: str, turn_id: str, kind: str, payload: dict | None = None) -> None:
     try:
+        safe_payload = redact_obj(payload or {})
         await execute(
             "INSERT INTO trace_events (session_id, turn_id, kind, payload) "
             "VALUES (%s, %s, %s, %s)",
-            (session_id, turn_id, kind, json.dumps(payload or {}, ensure_ascii=False, default=str)),
+            (session_id, turn_id, kind, json.dumps(safe_payload, ensure_ascii=False, default=str)),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("trace_record_failed", kind=kind, error=str(exc))

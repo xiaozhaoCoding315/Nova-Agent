@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     enable_fetch_url: bool = True
     fetch_url_max_kb: int = 512
 
+    # ---------- Tool hooks / policy ----------
+    tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks
+    tool_post_hook: str = ""      # best-effort post-tool audit hook
+
     # ---------- Background jobs ----------
     job_stale_seconds: int = 120        # requeue running jobs whose heartbeat is older
     job_runner_enabled: bool = True

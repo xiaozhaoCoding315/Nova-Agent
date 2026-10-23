@@ -10,6 +10,7 @@ from app.config import settings
 from app.core.llm.json_call import llm_json
 from app.core.memory import session as session_mod
 from app.core.security.limits import ensure_token_budget
+from app.core.security.redaction import redact_text
 
 logger = structlog.get_logger()
 
@@ -39,7 +40,7 @@ def _format_messages(rows: list[tuple]) -> str:
     parts = []
     for role, content in rows:
         label = "用户" if role == "user" else "助手"
-        parts.append(f"{label}: {(content or '').strip()[:800]}")
+        parts.append(f"{label}: {redact_text((content or '').strip())[:800]}")
     return "\n\n".join(parts)
 
 

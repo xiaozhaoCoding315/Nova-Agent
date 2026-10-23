@@ -6,6 +6,7 @@ import structlog
 from app.config import settings
 from app.core.llm.json_call import llm_json
 from app.core.security.limits import ensure_token_budget
+from app.core.security.redaction import redact_text
 from app.db import execute, query
 
 logger = structlog.get_logger()
@@ -64,7 +65,7 @@ async def rollup_day(user_id: int, day: date | None = None, force: bool = False,
 
     await ensure_token_budget(user_id=user_id)
     conversation = "\n\n".join(
-        f"{'用户' if role == 'user' else '助手'}: {(content or '').strip()[:1000]}"
+        f"{'用户' if role == 'user' else '助手'}: {redact_text((content or '').strip())[:1000]}"
         for role, content in rows
     )
     try:

@@ -58,6 +58,8 @@
 - **会话持久化**：历史会话、消息与关联仓库落库，刷新不丢；支持停止生成（断流后已生成内容仍会保存）
 - **真实健康检查**：PG / Qdrant / LLM / Embedding / 沙箱逐项探活，降级可见
 - **审计与配额**：登录、对话、工具调用、仓库导入/删除全量审计；对话/红绿任务/Builder/记忆抽取统一 LLM 记账，导入/重建索引/验证/搜索均有独立配额
+- **能力权限与 Hooks**：工具执行前按 `fs.read / fs.write / proc.exec / net.fetch / git.write / deploy / secrets.read` 能力判定 allow/deny；只读模式硬拦截写入与执行；密钥路径拒绝；危险命令与 `git push` 拒绝；pre-hook 退出码 2 阻断，post-hook 记录审计
+- **密钥脱敏**：工具输出、SSE 预览、轨迹与审计详情中的 API Key / JWT / 私钥 / 环境变量统一替换为 `[REDACTED]`
 - **持久后台队列**：索引 / 红-绿 / Builder / 会话摘要写入 PostgreSQL `jobs` 表，支持重启恢复、取消与重试；后台入口不再直接 `create_task`
 
 ### 三层记忆
@@ -125,6 +127,7 @@ npm run dev                   # http://localhost:5173
 | `ADMIN_JOB_HOURLY` / `DEMO_JOB_HOURLY` | 导入 / 重建索引 / 验证 / 红绿任务 / Builder / 只读审查每小时次数（0 = 不限） |
 | `SANDBOX_ENABLED` | 沙箱总开关 |
 | `SANDBOX_BUILDER_IMAGE` / `SANDBOX_NODE_IMAGE` | Python 验证镜像 / Node 验证镜像（默认 nova-builder / nova-node） |
+| `TOOL_PRE_HOOK` / `TOOL_POST_HOOK` | 可选工具 Hook 命令；pre-hook 收到 JSON stdin，退出码 2 阻断工具 |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 
 ## API 概览
@@ -227,7 +230,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -261,6 +264,9 @@ cd frontend && npm run contract:check
 
 ## 安全说明
 
+- 工具执行前经过能力策略：`readonly` 硬拦截写/执行；拒绝 `.env`、私钥、凭据文件；拒绝绝对路径与穿越；危险命令和 `git push` 在策略层直接 deny
+- 可选 pre-hook/post-hook：Hook 由运维配置，不来自模型；pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；Hook 缺失或超时按失败处理（fail closed）
+- 工具输出、SSE 预览、轨迹、审计详情统一做密钥脱敏；脱敏是正则 best-effort，不替代真正的 DLP
 - 代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径
 - 文件工具统一走路径解析器：拒绝绝对路径、`..` 穿越、同前缀兄弟目录与符号链接逃逸；`.env`、私钥、凭据文件禁止读取与写入
 - 测试保护：修改已有测试文件时禁止删除测试或新增 skip 标记；红绿任务必须新建测试文件
@@ -282,6 +288,8 @@ cd frontend && npm run contract:check
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
+- 能力权限是应用层策略，最终隔离边界仍是容器/宿主机；Hook 命令由运维配置，必须使用可信脚本
+- 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
 - 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升，矛盾事实检测尚未自动化
 - 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 已接入，黄金仓库回归需要本机 Docker/DB 手动执行

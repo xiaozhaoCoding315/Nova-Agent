@@ -102,6 +102,8 @@ services:
       SANDBOX_BUILDER_IMAGE: nova-builder:latest
       SANDBOX_NODE_IMAGE: nova-node:latest
       SANDBOX_ALLOW_NETWORK: ${SANDBOX_ALLOW_NETWORK:-false}
+      TOOL_PRE_HOOK: ${TOOL_PRE_HOOK:-}
+      TOOL_POST_HOOK: ${TOOL_POST_HOOK:-}
       ENABLE_FETCH_URL: ${ENABLE_FETCH_URL:-true}
 
       CORS_ORIGINS: ${CORS_ORIGINS:-}

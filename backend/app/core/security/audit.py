@@ -16,6 +16,8 @@ class AuditAction:
     REPO_DELETE = "repo_delete"
     CHANGE_CREATED = "change_created"
     CHANGE_APPLIED = "change_applied"
+    POLICY_DECISION = "policy_decision"
+    HOOK_BLOCKED = "hook_blocked"
 
 # In-memory buffer for fast access
 _audit_buffer = []

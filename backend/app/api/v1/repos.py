@@ -24,6 +24,7 @@ from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, check_search_quota
 from app.core.security.paths import UnsafePathError, normalize_relpath, resolve_repo_path
+from app.core.security.redaction import redact_text
 from app.db import query as db_query
 from app.models.schemas import (
     BrainOut,
@@ -223,7 +224,7 @@ async def search_in_repo(
         "hits": [
             SearchHitOut(
                 path=h.path, line_start=h.line_start, line_end=h.line_end,
-                content=h.content[:400], score=round(h.score, 3), source=h.score_type,
+                content=redact_text(h.content[:400]), score=round(h.score, 3), source=h.score_type,
             ).model_dump()
             for h in hits
         ],

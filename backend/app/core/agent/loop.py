@@ -24,6 +24,7 @@ from app.core.memory.context import build_system_prompt
 from app.core.rag.retriever import retrieve
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import ensure_token_budget
+from app.core.security.redaction import redact_obj, redact_text
 from app.core.trace import record as trace_record
 from app.core.tools import ToolContext, get_registry
 
@@ -108,7 +109,7 @@ async def run_chat(
             {
                 "path": h.path, "line_start": h.line_start, "line_end": h.line_end,
                 "score": round(h.score, 3), "source": h.score_type, "kind": h.kind,
-                "snippet": h.content[:300],
+                "snippet": redact_text(h.content[:300]),
             }
             for h in hits[:5]
         ],
@@ -151,6 +152,7 @@ async def run_chat(
     ctx = ToolContext(
         user=user,
         repo_ids=repo_ids or [],
+        repo_roots={r["id"]: r["root_path"] for r in repo_meta if r.get("root_path")},
         session_id=session["id"],
         permission_mode=session.get("permission_mode", "ask"),
     )
@@ -308,7 +310,7 @@ async def run_chat(
                     args = json.loads(tc.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                yield _sse("tool_call", id=tc.get("id", ""), name=name, args=args, round=round_no)
+                yield _sse("tool_call", id=tc.get("id", ""), name=name, args=redact_obj(args), round=round_no)
                 await trace_record(session["id"], turn_id, "tool_call", {
                     "name": name, "args": _preview_for_trace(args),
                 })
@@ -321,11 +323,11 @@ async def run_chat(
                     "name": name,
                     "ok": bool(result["ok"]),
                     "ms": int(result.get("ms") or 0),
-                    "command": output.get("command") if isinstance(output, dict) else None,
+                    "command": redact_text(output.get("command")) if isinstance(output, dict) else None,
                     "exit_code": output.get("exit_code") if isinstance(output, dict) else None,
                     "timed_out": bool(output.get("timed_out")) if isinstance(output, dict) else False,
-                    "args": _args_summary(args),
-                    "error": result.get("error") if not result["ok"] else None,
+                    "args": redact_obj(_args_summary(args)),
+                    "error": redact_text(result.get("error")) if not result["ok"] else None,
                 })
                 if isinstance(output, dict) and output.get("edit_id"):
                     edit_entry = {
