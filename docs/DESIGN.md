@@ -917,3 +917,44 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - Hook 命令由运维配置，必须使用可信脚本；当前不提供 Hook 签名或沙箱执行。
 - 脱敏是正则启发式，不覆盖所有自定义密钥格式；真正的 DLP 需外部系统。
 - 尚未实现网络域名 allowlist 与命令参数级白名单（当前为 denylist + 沙箱禁网）。
+
+---
+
+## 32. v3.8 增量：P3.3 预览部署 + 幂等账本
+
+### 32.1 数据模型（迁移 6）
+- `external_actions`：`idempotency_key` 唯一，记录 action/target/status/request/response/error/finished_at。
+- `deployments`：记录 repo、container、host_port、url、status、image、command、workspace_path、stopped_at。
+- 状态：`starting → running → stopped`，失败为 `failed`。
+
+### 32.2 部署流程
+1. 管理员在「工作区 → 预览」点击部署；API 校验 quota 与管理员角色。
+2. 读取仓库文件（跳过密钥/二进制/依赖目录），复制到临时工作区。
+3. 通过 `nova.yaml` 的 `preview.command/health` 覆盖启动命令与健康路径；默认 `uvicorn app.main:app` + `/health`。
+4. `docker run -d`：`nova-builder` 镜像、127.0.0.1 随机端口、只读根文件系统、cap-drop ALL、no-new-privileges、pids/内存/CPU 限制、非 root。
+5. 轮询健康检查（最多 45s）；失败则抓取容器日志、删除容器与临时目录、写入失败记录。
+6. 成功写入 `running + URL`，幂等账本标记 succeeded；前端展示可点击 URL。
+7. 下线：`docker rm -f` + 删除临时目录 + 账本记录 teardown；重复下线幂等。
+
+### 32.3 幂等
+- 部署键：`<user>:deploy:<repo>:<git head>`；相同版本重复部署直接复用运行中的 deployment。
+- 已停止后再次部署自动换新键；失败任务可重试；显式 `force` 生成新键。
+- teardown 键：`<user>:teardown:<deployment_id>`，重复调用不重复操作。
+
+### 32.4 前端
+- 工作区新增「预览」页签：部署按钮、运行中 URL、容器/端口、下线按钮、部署历史与错误。
+- 仅管理员可用；demo 账号会收到 403 并显示错误。
+- 页面明确提示当前仅支持 Python/FastAPI。
+
+### 32.5 验证记录（2026-10-23）
+- 后端 `pytest`：**227 passed**；`ruff check app` 通过；前端构建与契约检查通过。
+- 真实 `todo-api` 部署：容器启动、`GET /health` 返回 200、URL 可访问。
+- 重复部署返回同一 deployment id 与 URL（幂等）。
+- teardown 后容器从 `docker ps -a` 消失，部署状态变为 stopped。
+- 浏览器验证工作区「预览」页签：部署按钮 → running URL → 下线成功。
+
+### 32.6 已知边界
+- 仅支持 Python/FastAPI；Node/全栈预览与 compose 部署未接入。
+- 预览使用 bridge 网络以支持本地端口映射；未做域名反代/TTL 自动回收。
+- 临时工作区在正常 teardown 时清理；进程崩溃后可能残留，需后续启动清理任务。
+- 预览运行的是仓库代码，仍应只对可信仓库/管理员开放。

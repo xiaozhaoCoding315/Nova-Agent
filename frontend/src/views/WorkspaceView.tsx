@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw,
+  CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw, Rocket,
   Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -8,6 +8,7 @@ import { BrainPanel } from '../components/BrainPanel'
 import { BuilderPanel } from '../components/BuilderPanel'
 import { CodeViewer } from '../components/CodeViewer'
 import { ContractPanel } from '../components/ContractPanel'
+import { DeployPanel } from '../components/DeployPanel'
 import { FileTree } from '../components/FileTree'
 import { GitPanel } from '../components/GitPanel'
 import { ImpactPanel } from '../components/ImpactPanel'
@@ -115,7 +116,7 @@ export function WorkspaceView() {
   const [treeLoading, setTreeLoading] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [treeError, setTreeError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'git'>('code')
+  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git'>('code')
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -350,6 +351,7 @@ export function WorkspaceView() {
                   ['brain', '项目地图'],
                   ['impact', '影响分析'],
                   ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
+                  ...(selected.status === 'ready' ? ([['deploy', '预览']] as const) : []),
                   ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
                 ] as const
               ).map(([key, label]) => (
@@ -365,6 +367,7 @@ export function WorkspaceView() {
                   {key === 'brain' && <Waypoints size={12} />}
                   {key === 'impact' && <Radar size={12} />}
                   {key === 'contract' && <GitCompare size={12} />}
+                  {key === 'deploy' && <Rocket size={12} />}
                   {key === 'git' && <GitBranch size={12} />}
                   {label}
                 </button>
@@ -489,6 +492,7 @@ export function WorkspaceView() {
                   onRunVerify={() => void runVerify()}
                 />
               )}
+              {tab === 'deploy' && <DeployPanel repoId={selected.id} />}
               {tab === 'git' && (
                 <GitPanel
                   repoId={selected.id}

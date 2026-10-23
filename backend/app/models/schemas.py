@@ -298,6 +298,29 @@ class MetricsOut(BaseModel):
     generated_at: Optional[str] = None
 
 
+# ---------- Preview deployments ----------
+
+class DeployRequest(BaseModel):
+    force: bool = False
+
+
+class DeploymentOut(BaseModel):
+    id: str
+    user_id: int
+    repo_id: str
+    action_id: Optional[str] = None
+    container_name: Optional[str] = None
+    host_port: Optional[int] = None
+    url: Optional[str] = None
+    status: str
+    image: Optional[str] = None
+    command: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    stopped_at: Optional[datetime] = None
+
+
 # ---------- Git ----------
 
 class GitCommitOut(BaseModel):

@@ -480,6 +480,23 @@ export type Metrics = {
   generated_at?: string | null
 }
 
+export type Deployment = {
+  id: string
+  user_id: number
+  repo_id: string
+  action_id?: string | null
+  container_name?: string | null
+  host_port?: number | null
+  url?: string | null
+  status: string
+  image?: string | null
+  command?: string | null
+  error?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  stopped_at?: string | null
+}
+
 export type StreamToolCard = {
   call: ToolCall
   result?: ToolResult

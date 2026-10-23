@@ -322,6 +322,44 @@ _DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_change_tasks_request ON change_tasks (request_id, seq)",
     """
+    CREATE TABLE IF NOT EXISTS external_actions (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        idempotency_key VARCHAR(240) NOT NULL UNIQUE,
+        action VARCHAR(40) NOT NULL,
+        target VARCHAR(240),
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        request JSONB DEFAULT '{}'::jsonb,
+        response JSONB DEFAULT '{}'::jsonb,
+        error TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        finished_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_external_actions_user ON external_actions (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS deployments (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        action_id UUID REFERENCES external_actions(id) ON DELETE SET NULL,
+        container_name VARCHAR(120),
+        host_port INT,
+        url VARCHAR(300),
+        status VARCHAR(20) NOT NULL DEFAULT 'starting',
+        image VARCHAR(120),
+        command TEXT,
+        workspace_path TEXT,
+        error TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        stopped_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_deployments_user ON deployments (user_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_deployments_repo ON deployments (repo_id, created_at DESC)",
+    """
     CREATE TABLE IF NOT EXISTS audit_log (
         id VARCHAR(20) PRIMARY KEY,
         action VARCHAR(50),
@@ -457,6 +495,46 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_fact_days_day ON fact_days (day)",
+    ]),
+    (6, [
+        """
+        CREATE TABLE IF NOT EXISTS external_actions (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            idempotency_key VARCHAR(240) NOT NULL UNIQUE,
+            action VARCHAR(40) NOT NULL,
+            target VARCHAR(240),
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            request JSONB DEFAULT '{}'::jsonb,
+            response JSONB DEFAULT '{}'::jsonb,
+            error TEXT,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            finished_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_external_actions_user ON external_actions (user_id, created_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS deployments (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            action_id UUID REFERENCES external_actions(id) ON DELETE SET NULL,
+            container_name VARCHAR(120),
+            host_port INT,
+            url VARCHAR(300),
+            status VARCHAR(20) NOT NULL DEFAULT 'starting',
+            image VARCHAR(120),
+            command TEXT,
+            workspace_path TEXT,
+            error TEXT,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            stopped_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_deployments_user ON deployments (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_deployments_repo ON deployments (repo_id, created_at DESC)",
     ]),
 ]
 

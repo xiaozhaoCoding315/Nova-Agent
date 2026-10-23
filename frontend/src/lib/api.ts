@@ -1,7 +1,7 @@
 import type {
   Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, ContractStatus,
-  EditRecord, FileNode, GitInfo, Health, Impact, Job, Memory, Message, Metrics, Repo, Review,
-  Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, Memory, Message, Metrics, Repo,
+  Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -108,6 +108,14 @@ export const api = {
     removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
     removeDaily: (day: string) =>
       request<{ ok: boolean }>(`/memory/daily/${encodeURIComponent(day)}`, { method: 'DELETE' }),
+  },
+
+  deploys: {
+    list: (repoId: string) => request<Deployment[]>(`/repos/${repoId}/deployments`),
+    deploy: (repoId: string, force = false) =>
+      request<Deployment>(`/repos/${repoId}/deploy`, json({ force })),
+    teardown: (id: string) =>
+      request<Deployment>(`/deploys/${id}/teardown`, { method: 'POST' }),
   },
 
   tasks: {

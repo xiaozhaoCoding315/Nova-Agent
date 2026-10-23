@@ -19,6 +19,7 @@
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。MVP 支持 Python 后端（FastAPI + SQLite + pytest）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
 | **变更工作流（SPEC → 计划 → Gate → 审查 → 应用）** | 用自然语言提功能/重构需求：起草 SPEC（目标/In-Out/接口/验收）→ 人工冻结 → 拆成带依赖和可判定验收的任务 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
+| **预览部署** | 管理员在工作区「预览」页签一键部署 Python/FastAPI 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；一键下线并清理容器。 |
 
 ## 解决什么问题
 
@@ -157,6 +158,8 @@ npm run dev                   # http://localhost:5173
 | `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（先切到 `nova/change-<id>` 分支；含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
 | `POST /api/v1/repos/{id}/verify` · `GET .../verify` | **异步入队**多栈验证（Python/Node/契约，逐项结果）/ 查看上次结果 |
 | `GET /api/v1/repos/{id}/contract` | 契约源/目标、文件存在性与最近一次契约检查结果 |
+| `POST /api/v1/repos/{id}/deploy` · `GET .../deployments` | 管理员启动预览部署 / 查看部署历史 |
+| `GET /api/v1/deploys/{id}` · `POST /deploys/{id}/teardown` | 查看预览 / 下线并清理容器 |
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
@@ -176,6 +179,7 @@ backend/app/
 │   ├── impact/        变更影响分析（依赖图 + 符号引用）
 │   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
 │   ├── changes/       SPEC / Planner / 串行执行器 / Gate / 任务模板
+│   ├── deploy/        预览部署：幂等账本、容器启动、健康检查、teardown
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
 │   ├── verify/        多栈验证 profile（Python + Node，按步骤选镜像）
 │   ├── review/        只读 Reviewer（pass/warn/block + 依据）
@@ -230,7 +234,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、部署幂等账本
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -283,12 +287,15 @@ cd frontend && npm run contract:check
 - Node 依赖安装目前只支持仓库根目录 `package.json`，monorepo 子包与锁文件多包场景后续扩展
 - 红-绿任务面向 **Python/pytest** 仓库效果最好；绿阶段跑全量测试，补丁需人工批准
 - Reviewer 是一次结构化只读审查，不是多智能体辩论；它的结论作为证据补充，不替代人工审批
-- Builder MVP 只生成 **Python 后端**项目；已接入 `nova-builder` 真实跑 pytest（含依赖卷），但**不启动常驻服务**（无端口预览）
+- Builder MVP 只生成 **Python 后端**项目；已接入 `nova-builder` 真实跑 pytest（含依赖卷），可通过管理员「预览」页签手动启动预览，但不会自动部署
 - 账号体系为 admin/demo 两级，不开放自助注册
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
 - 能力权限是应用层策略，最终隔离边界仍是容器/宿主机；Hook 命令由运维配置，必须使用可信脚本
+- 预览部署仅支持 **Python/FastAPI**（需要 `app/main.py`，可在 `nova.yaml` 的 `preview.command/health` 覆盖）；Node 预览、TTL 自动回收与域名反代尚未接入
+- 预览容器使用 bridge 网络以支持本地端口映射，仍限制 capabilities/内存/CPU/只读根文件系统；管理员才能部署，停止后容器与临时工作区会被清理
+- 部署历史记录保留在 `deployments`，重复部署由 `external_actions` 幂等键复用同一运行中的预览
 - 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
 - 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升，矛盾事实检测尚未自动化
 - 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序

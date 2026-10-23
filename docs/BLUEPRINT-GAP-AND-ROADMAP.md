@@ -22,6 +22,8 @@
 
 > **P3.2 进展更新（2026-10-23）**：能力型权限引擎（fs/proc/net/git/deploy/secrets）、pre/post Hooks（退出码 2 阻断、fail closed）与密钥脱敏完成；工具输出/SSE/轨迹/审计统一脱敏。只读写入、`.env`、`git push`、危险命令实测 deny；后端 **222 passed**。域名 allowlist、参数级白名单与 Hook 沙箱仍待后续。
 
+> **P3.3 进展更新（2026-10-23）**：预览部署与幂等账本完成。`external_actions` + `deployments`（迁移 6）记录外部动作与预览；管理员可一键部署 Python/FastAPI、健康检查、返回本地 URL、下线清理。真实 `todo-api` 部署健康检查 200，重复部署幂等复用，teardown 清理容器；后端 **227 passed**。Node/全栈预览、TTL 回收、域名反代仍待后续。
+
 ---
 
 ## 0. 先给结论

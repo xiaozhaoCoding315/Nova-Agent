@@ -331,6 +331,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/deploys/{deploy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Deploy */
+        get: operations["get_deploy_api_v1_deploys__deploy_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deploys/{deploy_id}/teardown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Teardown Deploy */
+        post: operations["teardown_deploy_api_v1_deploys__deploy_id__teardown_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/edits/{edit_id}": {
         parameters: {
             query?: never;
@@ -647,6 +681,40 @@ export interface paths {
         };
         /** Contract Status */
         get: operations["contract_status_api_v1_repos__repo_id__contract_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repos/{repo_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deploy Repo */
+        post: operations["deploy_repo_api_v1_repos__repo_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repos/{repo_id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Repo Deployments */
+        get: operations["repo_deployments_api_v1_repos__repo_id__deployments_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1602,6 +1670,45 @@ export interface components {
              * @default false
              */
             target_exists: boolean;
+        };
+        /** DeployRequest */
+        DeployRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
+        /** DeploymentOut */
+        DeploymentOut: {
+            /** Action Id */
+            action_id?: string | null;
+            /** Command */
+            command?: string | null;
+            /** Container Name */
+            container_name?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Host Port */
+            host_port?: number | null;
+            /** Id */
+            id: string;
+            /** Image */
+            image?: string | null;
+            /** Repo Id */
+            repo_id: string;
+            /** Status */
+            status: string;
+            /** Stopped At */
+            stopped_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Url */
+            url?: string | null;
+            /** User Id */
+            user_id: number;
         };
         /** EditApproveOut */
         EditApproveOut: {
@@ -3141,6 +3248,68 @@ export interface operations {
             };
         };
     };
+    get_deploy_api_v1_deploys__deploy_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teardown_deploy_api_v1_deploys__deploy_id__teardown_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_edit_endpoint_api_v1_edits__edit_id__get: {
         parameters: {
             query?: never;
@@ -3732,6 +3901,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContractStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_repo_api_v1_repos__repo_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeployRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repo_deployments_api_v1_repos__repo_id__deployments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentOut"][];
                 };
             };
             /** @description Validation Error */

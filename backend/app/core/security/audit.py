@@ -18,6 +18,8 @@ class AuditAction:
     CHANGE_APPLIED = "change_applied"
     POLICY_DECISION = "policy_decision"
     HOOK_BLOCKED = "hook_blocked"
+    DEPLOY = "deploy"
+    DEPLOY_STOP = "deploy_stop"
 
 # In-memory buffer for fast access
 _audit_buffer = []
