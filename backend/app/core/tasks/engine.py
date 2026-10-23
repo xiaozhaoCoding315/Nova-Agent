@@ -8,7 +8,6 @@ Pipeline (deterministic, LLM used only where it adds value):
 """
 import difflib
 import json
-import re
 import shlex
 import time
 from pathlib import Path

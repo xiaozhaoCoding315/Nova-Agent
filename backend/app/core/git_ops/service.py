@@ -153,3 +153,43 @@ async def auto_commit(root: Path | str, message: str) -> str | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("auto_commit_failed", error=str(exc))
         return None
+
+
+async def prepare_change_branch(root: Path | str, change_id: str) -> dict:
+    """Create/check out an isolated branch for one change.
+
+    Refuses to switch when the workspace has uncommitted changes so an
+    approved proposal never mixes with the user's in-progress edits.
+    """
+    root = Path(root)
+    if not git_available() or not (root / ".git").is_dir():
+        return {"branch": None, "original": None}
+
+    dirty = await _git(root, "status", "--porcelain")
+    if dirty.stdout.strip():
+        raise ValueError("工作区有未提交改动，请先提交或撤销后再应用变更")
+
+    original = (await _git(root, "rev-parse", "--abbrev-ref", "HEAD")).stdout.strip() or "main"
+    branch = f"nova/change-{str(change_id)[:8]}"
+    exists = await _git(root, "rev-parse", "--verify", f"refs/heads/{branch}")
+    result = (
+        await _git(root, "checkout", branch)
+        if exists.returncode == 0
+        else await _git(root, "checkout", "-b", branch)
+    )
+    if result.returncode != 0:
+        raise ValueError(f"创建变更分支失败：{(result.stderr or result.stdout)[:300]}")
+    return {"branch": branch, "original": original}
+
+
+async def restore_change_branch(
+    root: Path | str, original: str | None, *, discard: bool = False
+) -> bool:
+    """Return to the original branch, optionally discarding partial writes."""
+    if not original:
+        return False
+    root = Path(root)
+    if discard:
+        await _git(root, "reset", "--hard", "HEAD")
+    result = await _git(root, "checkout", original)
+    return result.returncode == 0

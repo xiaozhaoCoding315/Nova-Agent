@@ -359,6 +359,7 @@ export type ChangeEvidence = {
   applied?: boolean
   applied_at?: string
   commit?: string | null
+  branch?: string | null
   applied_files?: string[]
 }
 

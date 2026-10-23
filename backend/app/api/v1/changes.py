@@ -1,10 +1,13 @@
 """Change workflow endpoints: SPEC -> plan -> execute -> review -> apply."""
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.changes import service
+from app.core.conflicts import ConflictError
 from app.core.editing.service import apply_edit, reject_edit
+from app.core.git_ops.service import prepare_change_branch, restore_change_branch
 from app.core.indexing.pipeline import get_repo
 from app.core.jobs.runner import runner
 from app.core.jobs.service import (
@@ -156,15 +159,31 @@ async def apply_change(
     review = proposal.get("review") or {}
     if review.get("verdict") == "block" and not (body and body.force):
         raise HTTPException(status_code=400, detail="只读审查判定为 block，不能直接应用；请先修复或强制应用")
+
+    repo = await get_repo(change["repo_id"], user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    root = Path(repo["root_path"])
+    try:
+        branch_info = await prepare_change_branch(root, change_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
     try:
         applied = await apply_edit(edit_id, user["id"])
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except (ValueError, ConflictError) as exc:
+        await restore_change_branch(root, branch_info.get("original"), discard=True)
+        status = 409 if isinstance(exc, ConflictError) else 400
+        raise HTTPException(status_code=status, detail=str(exc))
+    except Exception:
+        await restore_change_branch(root, branch_info.get("original"), discard=True)
+        raise
     evidence = change.get("evidence") or {}
     evidence.update({
         "applied": True,
         "applied_at": datetime.now(timezone.utc).isoformat(),
         "commit": applied.get("commit"),
+        "branch": branch_info.get("branch"),
         "applied_files": applied.get("applied") or [],
     })
     await service.set_evidence(change_id, evidence)
@@ -175,10 +194,16 @@ async def apply_change(
         details={
             "change_id": change_id, "repo_id": change["repo_id"],
             "files": applied.get("applied") or [], "commit": applied.get("commit"),
+            "branch": branch_info.get("branch"),
         },
     )
     await enqueue_index(change["repo_id"], reindex=True, user_id=user["id"])
-    return {"ok": True, "applied": applied.get("applied") or [], "commit": applied.get("commit")}
+    return {
+        "ok": True,
+        "applied": applied.get("applied") or [],
+        "commit": applied.get("commit"),
+        "branch": branch_info.get("branch"),
+    }
 
 
 @router.post("/changes/{change_id}/reject", response_model=OkOut)

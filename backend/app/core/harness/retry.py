@@ -1,9 +1,7 @@
 """Exponential backoff retry with timeout enforcement."""
 import asyncio
-import time
-import functools
 import structlog
-from app.core.harness.config import RETRY, TIMEOUTS
+from app.core.harness.config import RETRY
 
 logger = structlog.get_logger()
 

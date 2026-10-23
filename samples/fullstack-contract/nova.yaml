@@ -1,0 +1,3 @@
+contract:
+  source: contracts/openapi.json
+  target: frontend/src/lib/api-schema.d.ts

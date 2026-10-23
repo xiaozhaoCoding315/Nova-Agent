@@ -128,7 +128,7 @@ export const api = {
     approvePlan: (id: string) => request<Change>(`/changes/${id}/plan/approve`, { method: 'POST' }),
     execute: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/execute`, { method: 'POST' }),
     apply: (id: string, force = false) =>
-      request<{ ok: boolean; applied: string[]; commit?: string | null }>(
+      request<{ ok: boolean; applied: string[]; commit?: string | null; branch?: string | null }>(
         `/changes/${id}/apply`, json({ force }),
       ),
     reject: (id: string) => request<{ ok: boolean }>(`/changes/${id}/reject`, { method: 'POST' }),

@@ -544,6 +544,9 @@ export function ChangesView() {
                 {detail.evidence.commit && (
                   <p className="font-mono text-[11px] text-dim">commit {detail.evidence.commit}</p>
                 )}
+                {detail.evidence.branch && (
+                  <p className="font-mono text-[11px] text-dim">分支 {detail.evidence.branch}</p>
+                )}
                 <div className="flex items-center gap-1.5 text-[11.5px] text-dim">
                   <ArrowRight size={12} />
                   {detail.evidence.applied ? '已写入仓库并触发重新索引' : '等待批准后写入仓库'}

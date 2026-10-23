@@ -321,6 +321,7 @@ class ChangeEvidenceOut(BaseModel):
     applied: Optional[bool] = None
     applied_at: Optional[str] = None
     commit: Optional[str] = None
+    branch: Optional[str] = None
     applied_files: list[str] = Field(default_factory=list)
 
 
@@ -373,6 +374,7 @@ class ChangeApplyOut(BaseModel):
     ok: bool = True
     applied: list[str] = Field(default_factory=list)
     commit: Optional[str] = None
+    branch: Optional[str] = None
 
 
 class ChangeReportOut(BaseModel):

@@ -148,7 +148,7 @@ npm run dev                   # http://localhost:5173
 | `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、变更、会话摘要） |
 | `POST /api/v1/changes` · `GET /changes` `/{id}` · `PATCH /changes/{id}` | 创建变更（自动起草 SPEC）/ 列表 / 详情 / 编辑 SPEC |
 | `POST /changes/{id}/approve` · `/plan` · `/plan/approve` · `/execute` | 冻结 SPEC / 生成计划 / 批准计划 / 执行计划 |
-| `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
+| `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（先切到 `nova/change-<id>` 分支；含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
 | `POST /api/v1/repos/{id}/verify` · `GET .../verify` | **异步入队**多栈验证（Python/Node/契约，逐项结果）/ 查看上次结果 |
 | `GET /api/v1/repos/{id}/contract` | 契约源/目标、文件存在性与最近一次契约检查结果 |
 | `GET /repos/{id}/git` · `POST /git/init` `/git/commit` `/git/rollback` · `GET /git/diff` | Git 状态 / 初始化 / 提交 / 回滚 / diff |
@@ -193,7 +193,11 @@ docs/DESIGN.md         架构设计文档（数据模型/API/安全/部署）
 contracts/openapi.json FastAPI 导出的单一契约源（提交）
 frontend/src/lib/api-schema.d.ts  由契约生成的 TS 类型（提交）
 backend/scripts/export_openapi.py 契约导出/--check 脚本
+backend/scripts/run_golden.py     黄金仓库回归（需 Docker/DB）
 frontend/scripts/contract-check.mjs 前端契约类型漂移检查
+samples/               Python / Node / 全栈契约黄金样例
+.github/workflows/ci.yml  CI：lint + tests + build + contract
+scripts/check.sh       本地一键检查
 ```
 
 ## Headless CLI（CI 友好）
@@ -216,11 +220,27 @@ python nova.py export --repo todo-api --out todo-api.zip
 cd backend && python -m pytest tests/ -q
 cd frontend && npm run build
 cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
+bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、记忆摘要
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、记忆摘要、契约发现、Git 变更分支
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
+- CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
+
+### 黄金仓库回归
+
+```bash
+cd backend && python -m scripts.run_golden
+```
+
+需要 PostgreSQL、Docker 与 `nova-builder` / `nova-node` 镜像。覆盖：
+
+- `samples/python-api`：compileall + pytest
+- `samples/node-app`：lint + tsc + node test + build
+- `samples/fullstack-contract`：Python + Node + OpenAPI → TS 契约检查
+
+脚本会创建临时仓库行并在结束后清理。
 
 ### 契约生成与漂移检查
 
@@ -255,11 +275,11 @@ cd frontend && npm run contract:check
 - Reviewer 是一次结构化只读审查，不是多智能体辩论；它的结论作为证据补充，不替代人工审批
 - Builder MVP 只生成 **Python 后端**项目；已接入 `nova-builder` 真实跑 pytest（含依赖卷），但**不启动常驻服务**（无端口预览）
 - 账号体系为 admin/demo 两级，不开放自助注册
-- Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；未初始化 Git 的仓库不会自动提交
+- Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
-- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查，但每任务独立分支/worktree 尚未接入
+- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
 - 契约生成已接入（OpenAPI → TS），契约 Gate 已能拦截目标仓库漂移；前端仍保留手写 UI 类型别名，逐域迁移仍在进行
-- `contract:check` 需要本机 Python 与 Node 依赖；CI 接入属于 P2 后续
+- `contract:check` 需要本机 Python 与 Node 依赖；CI 已接入，黄金仓库回归需要本机 Docker/DB 手动执行
 
 ## License
 

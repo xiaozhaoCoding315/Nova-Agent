@@ -1261,6 +1261,8 @@ export interface components {
         ChangeApplyOut: {
             /** Applied */
             applied?: string[];
+            /** Branch */
+            branch?: string | null;
             /** Commit */
             commit?: string | null;
             /**
@@ -1294,6 +1296,8 @@ export interface components {
             applied_at?: string | null;
             /** Applied Files */
             applied_files?: string[];
+            /** Branch */
+            branch?: string | null;
             /** Commit */
             commit?: string | null;
             /** Elapsed Ms */

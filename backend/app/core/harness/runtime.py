@@ -1,8 +1,7 @@
 """Harness Runtime: unified execution wrapper with timeout + retry + circuit breaker + fallback."""
 import asyncio
 import structlog
-from typing import Callable, Any, Optional
-from app.core.harness.config import TIMEOUTS
+from typing import Callable, Any
 from app.core.harness.retry import retry_with_backoff, with_timeout
 from app.core.harness.circuit import get_breaker
 

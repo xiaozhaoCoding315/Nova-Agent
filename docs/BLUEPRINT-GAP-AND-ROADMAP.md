@@ -16,6 +16,8 @@
 
 > **P2.3 进展更新（2026-10-23）**：`verify` 已改为持久 Job（进度/取消/证据落库）；目标仓库契约 Gate（OpenAPI → TS 漂移检查）与工作区「契约」页签完成；`nova-node` 增加 `openapi-typescript`。真实契约样例通过、手动漂移失败、verify Job 成功写入 last_check；后端 **200 passed**。前端契约类型逐域迁移、真实混合仓库变更回归仍待后续。
 
+> **P2.4 进展更新（2026-10-23）**：CI（GitHub Actions + `scripts/check.sh`）、三套黄金仓库（Python/Node/fullstack-contract）与回归脚本完成；变更应用改为 `nova/change-<id>` 分支交付，脏工作区拒绝、失败回滚。后端 **202 passed**，ruff 全绿，黄金仓库全部 passed。worktree、自动合并/PR、真实混合仓库变更回归仍待后续。
+
 ---
 
 ## 0. 先给结论

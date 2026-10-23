@@ -1,0 +1,9 @@
+{
+  "name": "nova-fullstack-contract-golden",
+  "private": true,
+  "scripts": {
+    "lint": "node frontend/scripts/lint.js",
+    "test": "node --test frontend/test",
+    "build": "node frontend/scripts/build.js"
+  }
+}

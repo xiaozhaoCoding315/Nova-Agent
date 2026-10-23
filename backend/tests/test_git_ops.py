@@ -12,6 +12,8 @@ from app.core.git_ops.service import (
     export_zip,
     git_available,
     init_repo,
+    prepare_change_branch,
+    restore_change_branch,
     rollback,
     status,
 )
@@ -48,6 +50,30 @@ async def test_rollback_rejects_bad_hash(tmp_path):
     await init_repo(tmp_path)
     with pytest.raises(ValueError):
         await rollback(tmp_path, "rm -rf /")
+
+
+@pytest.mark.asyncio
+async def test_change_branch_isolates_commits(tmp_path):
+    (tmp_path / "a.txt").write_text("1\n", encoding="utf-8")
+    await init_repo(tmp_path)
+
+    info = await prepare_change_branch(tmp_path, "abcdef123456")
+    assert info["branch"] == "nova/change-abcdef12"
+    (tmp_path / "b.txt").write_text("2\n", encoding="utf-8")
+    await commit(tmp_path, "change on branch")
+
+    assert await restore_change_branch(tmp_path, info["original"]) is True
+    assert not (tmp_path / "b.txt").exists()
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "1\n"
+
+
+@pytest.mark.asyncio
+async def test_change_branch_refuses_dirty_workspace(tmp_path):
+    (tmp_path / "a.txt").write_text("1\n", encoding="utf-8")
+    await init_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="未提交"):
+        await prepare_change_branch(tmp_path, "abcdef123456")
 
 
 def test_export_zip_excludes_git(tmp_path):

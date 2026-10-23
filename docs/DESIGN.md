@@ -809,3 +809,39 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 契约源与 target 必须在仓库内；monorepo 子包仍按根目录处理。
 - 前端契约面板是只读状态展示；从面板生成 target 的写操作尚未提供。
 - 真实混合 Python + Node 变更任务尚未端到端回归。
+
+---
+
+## 29. v3.5 增量：P2.4 CI + 黄金仓库 + 变更分支
+
+### 29.1 CI 与本地检查
+- 新增 `.github/workflows/ci.yml`：Python 3.12 + Node 20，执行 `ruff check app`、`pytest`、前端构建、`contract:check`。
+- 新增 `scripts/check.sh`：本地一键执行相同检查。
+- 清理后端全量 lint（未使用导入与 `app.db` 显式 re-export），`ruff check app` 全绿。
+
+### 29.2 黄金仓库回归
+- `samples/python-api`：compileall + pytest。
+- `samples/node-app`：lint + tsc + node test + build。
+- `samples/fullstack-contract`：Python + Node + OpenAPI → TS 契约检查；`nova.yaml` 指定 source/target。
+- `backend/scripts/run_golden.py`：创建临时仓库行、逐套运行 `run_verification`、比对期望状态、清理仓库行与 Node 依赖卷。
+- 2026-10-23 实测：三套全部 passed；fullstack 6 步（语法/单测/lint/Node test/build/契约检查）。
+
+### 29.3 变更分支交付
+- 新增 `prepare_change_branch` / `restore_change_branch`：
+  - 工作区有未提交改动时拒绝应用（409），避免与用户改动混合；
+  - 从当前 HEAD 创建/切换到 `nova/change-<id8>`；
+  - 应用失败时丢弃半成品并切回原分支；
+  - 成功后证据记录分支名，工作区停留在变更分支，合并回主分支由用户手动完成。
+- 前端交付证据展示分支；Git 面板可直接查看当前分支。
+
+### 29.4 验证记录（2026-10-23）
+- 后端 `pytest`：**202 passed**；`ruff check app` 通过。
+- `scripts/check.sh` 通过：ruff + pytest + 前端构建 + 契约检查。
+- 黄金仓库回归：`python -m scripts.run_golden` → all golden cases passed。
+- Git 分支单测：隔离提交、切回原分支、脏工作区拒绝均通过。
+
+### 29.5 已知边界
+- 当前是“每变更一个分支”，不是每任务 worktree；多个变更会从当前分支继续叠加。
+- 不自动合并/开 PR；用户需手动 review 后合并。
+- 黄金仓库回归依赖本机 PostgreSQL 与 Docker 镜像，未放入 GitHub CI。
+- CI 不构建沙箱镜像；`nova-node` / `nova-builder` 由部署或本地构建提供。

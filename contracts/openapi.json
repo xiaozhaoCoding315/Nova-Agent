@@ -416,6 +416,17 @@
             "title": "Applied",
             "type": "array"
           },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
           "commit": {
             "anyOf": [
               {
@@ -509,6 +520,17 @@
             },
             "title": "Applied Files",
             "type": "array"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
           },
           "commit": {
             "anyOf": [
