@@ -4,16 +4,180 @@ export type Session = {
   id: string
   title: string
   message_count: number
+  permission_mode?: PermissionMode
+  repo_ids?: string[]
   created_at?: string
   updated_at?: string
+}
+
+export type PermissionMode = 'readonly' | 'ask' | 'auto'
+
+export type EditRef = {
+  id: string
+  files: string[]
+  staged: boolean
+  status: string
+  diff?: string
+}
+
+export type ReviewFinding = {
+  file?: string
+  line?: number
+  issue: string
+  suggestion?: string
+}
+
+export type Review = {
+  verdict: 'pass' | 'warn' | 'block'
+  summary: string
+  blocking: ReviewFinding[]
+  non_blocking: ReviewFinding[]
+  evidence: string[]
+  reviewed_at?: string
+}
+
+export type EditRecord = {
+  id: string
+  status: 'pending' | 'applied' | 'rejected' | 'reverted'
+  files: Record<string, string>
+  file_paths: string[]
+  diff: string
+  note: string
+  repo_id: string
+  repo_name: string
+  review?: Review | null
+  created_at?: string
+  applied_at?: string
+}
+
+export type DeliveryReport = {
+  status: 'verified' | 'partial' | 'unverified' | 'failed'
+  request: string
+  repos: { id: string; name: string }[]
+  permission_mode: string
+  final_answer?: string
+  files_changed: { path: string; status: string }[]
+  commands: { tool: string; command: string; exit_code?: number; ok: boolean; timed_out?: boolean; ms: number }[]
+  checks: { name: string; status: string; detail: string }[]
+  citations: { verified: number; missing: number; out_of_range: number; skipped: number; executed: boolean }
+  unverified: string[]
+  errors: string[]
+  stats: {
+    rounds: number
+    tools: string[]
+    prompt_tokens: number
+    completion_tokens: number
+    elapsed_ms: number
+  }
+  generated_at?: string
 }
 
 export type Message = {
   id: number
   role: string
   content: string
-  tool_json?: { tools_used?: string[] } | null
+  tool_json?: {
+    tools_used?: string[]
+    evidence?: Evidence
+    edits?: EditRef[]
+    report?: DeliveryReport
+  } | null
   created_at?: string
+}
+
+export type Citation = {
+  path: string
+  line: number
+  status: 'verified' | 'missing' | 'out_of_range' | 'unchecked'
+  resolved_path?: string
+}
+
+export type Evidence = {
+  citations: Citation[]
+  verified: number
+  missing: number
+  out_of_range: number
+  skipped: number
+  executed: boolean
+}
+
+export type Brain = {
+  totals: { files: number; lines: number; symbols: number; dependencies: number; docs: number; tests: number }
+  languages: Record<string, number>
+  entry_points: string[]
+  hot_files: { path: string; inbound: number; outbound: number }[]
+  reading_order: string[]
+  modules: { module: string; files: number; lines: number; symbols: number }[]
+  graph: { nodes: string[]; edges: [string, string][] }
+  glossary: { name: string; kind: string; path: string; line: number; signature: string }[]
+}
+
+export type Impact = {
+  found: boolean
+  query?: string
+  symbols?: { name: string; kind: string; path: string; line_start: number; line_end: number; signature: string }[]
+  targets?: string[]
+  direct_dependents?: string[]
+  transitive_dependents?: string[]
+  references?: { path: string; line_start: number; occurrences: number }[]
+  tests?: string[]
+  risk?: { level: 'low' | 'medium' | 'high' | 'unknown'; score?: number; reasons: string[] }
+  suggested_command?: string
+  note?: string
+}
+
+export type TaskStep = {
+  step: string
+  status?: string
+  detail?: string
+  analysis?: string
+  files?: string[]
+  test_files?: string[]
+  fix_files?: string[]
+  command?: string
+  exit_code?: number
+  root_prefix?: string | null
+  stdout?: string
+  stderr?: string
+}
+
+export type TaskResult = {
+  analysis?: string
+  root_prefix?: string
+  test_files?: Record<string, string>
+  fix_files?: Record<string, string>
+  base_files?: Record<string, string | null>
+  red?: { exit_code: number; stdout: string; stderr: string; command: string; detail?: string }
+  green?: { exit_code: number; stdout: string; stderr: string; command: string }
+  diff?: string
+  applied?: boolean
+  rejected?: boolean
+  error?: string
+  elapsed_ms?: number
+  repair_attempts?: number
+  review?: Review | null
+}
+
+export type Task = {
+  id: string
+  title: string
+  bug_report: string
+  status: string
+  steps: TaskStep[]
+  result: TaskResult
+  created_at?: string
+  repo_id: string
+  repo_name: string
+}
+
+export type TaskListItem = {
+  id: string
+  title: string
+  status: string
+  created_at?: string
+  repo_id: string
+  repo_name: string
+  applied: boolean
 }
 
 export type RetrievalHit = {
@@ -29,16 +193,102 @@ export type RetrievalHit = {
 export type ToolCall = { id: string; name: string; args: Record<string, unknown>; round: number }
 export type ToolResult = { id: string; name: string; ok: boolean; ms: number; preview: string }
 
-export type RepoStatus = 'pending' | 'indexing' | 'ready' | 'failed'
+export type RepoStatus =
+  | 'pending'
+  | 'indexing'
+  | 'ready'
+  | 'failed'
+  | 'planning'
+  | 'plan_ready'
+  | 'approved'
+  | 'generating'
+  | 'review'
 
 export type Repo = {
   id: string
   name: string
   source: string
   status: RepoStatus
+  kind?: 'import' | 'builder'
   error?: string | null
-  stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number }
+  stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number; dependencies?: number }
   created_at?: string
+}
+
+export type BuilderPlan = {
+  summary: string
+  stack: string[]
+  structure: { path: string; purpose: string }[]
+  data_model: { table: string; fields: string[] }[]
+  api: { method: string; path: string; description: string }[]
+  milestones: { name: string; tasks: string[]; verification?: string }[]
+  risks: string[]
+}
+
+export type BuilderProposal = {
+  files: { path: string; content: string }[]
+  notes?: string
+  feedback?: string
+}
+
+export type VerifyStep = {
+  name: string
+  command: string
+  required: boolean
+  status: 'passed' | 'failed' | 'skipped'
+  exit_code: number
+  timed_out?: boolean
+  stdout: string
+  stderr: string
+  duration_ms: number
+}
+
+export type VerifyResult = {
+  status: 'passed' | 'failed' | 'unsupported'
+  stack?: string
+  notes?: string[]
+  steps?: VerifyStep[]
+  elapsed_ms?: number
+  exit_code: number
+  stdout: string
+  stderr: string
+  command: string
+  image: string
+  at: string
+}
+
+export type GitCommit = { hash: string; message: string; date: string }
+
+export type GitInfo = {
+  available: boolean
+  initialized: boolean
+  branch?: string
+  dirty?: boolean
+  changed_files?: number
+  commits: GitCommit[]
+  reason?: string
+}
+
+export type TraceEvent = {
+  id: number
+  turn_id?: string | null
+  kind: string
+  payload: Record<string, any>
+  created_at?: string
+}
+
+export type BuilderPlanResponse = {
+  status: RepoStatus
+  plan: BuilderPlan | Record<string, never>
+  brief?: string
+  rules?: string
+  error?: string | null
+}
+
+export type BuilderProposalResponse = {
+  status: RepoStatus
+  proposal: BuilderProposal | Record<string, never>
+  error?: string | null
 }
 
 export type FileNode = {

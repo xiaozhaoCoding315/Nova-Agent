@@ -387,3 +387,250 @@ frontend/src/
 | **6 测试与部署** | 单测/集成测试补齐；compose 生产形态；README 重写 | `docker compose up` 一键起；端到端验收通过；228+ 旧测试清理为新测试集 |
 
 每个 Phase 结束必须全量测试通过，且不引入回归；测试文件与被测模块同生命周期（删功能=删测试）。
+---
+
+## 15. v2.1 增量：可验证工程能力
+
+> 目标：从"能聊代码"升级为"敢对结论负责、能算清影响、能交付验证过的补丁"。
+
+### 15.1 证据化回答（Verification Layer）
+- 回答结束后由后端校验文本中的 `文件:行号` 引用：存在性、后缀匹配、行号是否越界；无关联仓库时标记为"未校验"
+- SSE 新增 `evidence` 事件；证据快照与 `tools_used` 一起写入 `messages.tool_json`，历史消息可回看
+- 前端证据条：`N 处引用已核对 / 沙箱实测 / N 处引用可疑 / 未校验`，可展开逐条查看
+- 系统提示词明确告知模型"引用会被逐一校验"，行为类结论必须沙箱实测
+
+### 15.2 导入依赖图（影响雷达与项目大脑的底座）
+- 索引时提取并解析导入：Python（ast，含相对导入）、JS/TS（相对路径 + 扩展名/index 解析）、Java/Kotlin/Scala（包路径后缀匹配）
+- 存储 `file_deps(repo_id, file_id, source_path, target, resolved_path, kind)`，重建索引级联清理
+- 未解析的外部依赖（如 `react`、`os`）不入图
+
+### 15.3 变更影响雷达
+- `impact_analysis` 工具 + `GET /repos/{id}/impact`：符号（精确优先）或文件路径 → 直接依赖、1-3 层传递依赖、符号引用（PG 词边界正则）、相关测试、风险评分与建议测试命令
+- 风险规则：直接依赖数、传递依赖数、目标是否为类型/类、是否缺少相关测试
+- 前端「工作区 → 影响分析」面板：风险卡片、依赖文件列表（可打开）、引用位置、建议命令可复制
+
+### 15.4 项目大脑
+- 索引完成后确定性生成（不调用 LLM）：语言分布、入口点、热点文件（入度）、推荐阅读顺序、模块统计、依赖图（Top 24 节点）、术语表
+- 存储 `repos.brain JSONB`，`GET /repos/{id}/brain` 返回；前端「项目地图」以 SVG 环形依赖图 + 列表呈现，节点可点击打开文件
+
+### 15.5 红-绿修复任务
+- 数据表 `tasks(id, user_id, repo_id, title, bug_report, status, steps, result)`
+- 流水线：检索相关文件 → LLM 生成 `{analysis, test_files, fix_files}`（关闭深度思考以控制时延）→
+  沙箱带测试跑（必须失败=红）→ 带补丁复跑（必须通过=绿，最多一次修复迭代）→ 生成 unified diff
+- 状态机：`running → ready | failed`；`ready → applied | rejected`
+- **人工审批栅栏**：补丁只写入任务结果，`POST /tasks/{id}/apply` 才落盘并自动重建索引
+- 沙箱配额与审计复用 `run_code` 的配额规则（每次运行均记录 `sandbox_run`）
+- 前端「任务」视图：新建任务、步骤时间线（定位/生成/红/绿）、根因分析、diff、真实测试输出、批准/拒绝
+
+### 15.6 新增接口
+`GET /repos/{id}/brain` · `GET /repos/{id}/impact?q=` · `POST /tasks` · `GET /tasks` · `GET /tasks/{id}` · `POST /tasks/{id}/apply` · `POST /tasks/{id}/reject`
+
+### 15.7 验证记录（2026-10-23）
+- 示例仓库 `buggy_shop`：折扣 >100% 导致负总价 → 红阶段 `2 failed` → 绿阶段 `2 passed` → 审批写入 + 重建索引
+- `calculate_tax` 影响分析：直接依赖 2（`app/main.py`、`tests/test_tax.py`），引用 3 处，建议命令 `pytest tests/test_tax.py`
+- 证据化回答：6 处引用全部核对通过；沙箱实测标记在 run_code 成功时出现
+
+---
+
+## 16. v2.2 增量：Builder 模式（从 0→1）
+
+> MVP 范围（已确认）：Plan 模式 + 文件提案审批；技术栈限定 Python 后端。
+
+### 16.1 数据模型
+`repos` 表新增：`kind`（import | builder）、`brief`（需求原文）、`rules`（项目约定，写入 AGENTS.md）、`plan JSONB`、`proposal JSONB`。
+Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分析。
+
+### 16.2 状态机与审批栅栏
+`planning → plan_ready →（确认）→ approved →（生成）→ generating → review →（批准）→ indexing → ready`
+- 失败回到 `failed` / `approved`，错误落 `repos.error`
+- 任何文件写入都必须经过 `proposal/approve`；方案与代码各有一个确认点
+
+### 16.3 生成策略
+- 方案：LLM 输出结构化 JSON（summary/stack/structure/data_model/api/milestones/risks），后端裁剪字段与数量
+- 文件：LLM 输出 `{files:[{path,content}], notes}`，后端做路径安全（拒绝对路径/穿越）、数量（≤30）与体积（单文件 ≤120KB、总计 ≤400KB）限制
+- 结构化调用复用 `core/llm/json_call.py`：关闭深度思考（qwen3.8-max 开启思考时首 token 约 126s，关闭后约 9s），失败时重试一次 JSON 解析
+- 写入后调用现有索引管线（符号/分块/向量/依赖图/项目大脑）并进入 `ready`
+
+### 16.4 接口
+`POST /repos/builder` · `GET /repos/{id}/plan` · `POST /repos/{id}/plan/approve` · `POST /repos/{id}/plan/generate` ·
+`POST /repos/{id}/generate` · `GET /repos/{id}/proposal` · `POST /repos/{id}/proposal/approve` · `POST /repos/{id}/proposal/reject`
+
+### 16.5 前端
+工作区新增「新建项目」与「项目构建」页签：四阶段进度（方案→生成代码→审阅提案→写入项目）、方案可视化（结构/API/数据模型/里程碑/风险）、提案逐文件展开、退回重做可携带审阅意见。
+
+### 16.6 验证记录（2026-10-23）
+- 输入「待办清单 API」需求 → 方案含 5 个端点、4 个里程碑、4 条风险 → 确认后生成 12 个文件（app/tests/README/AGENTS.md 等）→ 批准写入 → 索引产出 11 文件 / 38 分块 / 25 符号 / 6 依赖
+- 生成代码在沙箱中 `python -m compileall` 全部通过；随后对该项目提问「有哪些 API」→ 模型用 `nl -ba` 读取源码，给出 5 个端点与准确行号，证据校验通过
+- 发现并修复：`run_code` 曾对整个仓库做风险正则扫描，README 中的 ```bash 代码块被误判为注入导致所有沙箱调用被拦截；现只扫描模型本轮新写的代码
+
+### 16.7 已知边界
+- 只生成 Python 后端；不安装依赖、不启动服务（沙箱禁网），深度运行验证依赖后续「构建沙箱」
+- 生成质量受模型与需求描述影响；通过审批与证据机制降低风险，但不替代人工 review
+
+---
+
+## 17. v2.3 增量：对话内编辑 + 权限模式 + 快照
+
+### 17.1 权限模式（per-session）
+`readonly | ask | auto`（存 `sessions.permission_mode`，默认 `ask`）
+- `readonly`：注册表直接拦截 `write`/`execute` 类工具（write_files、run_code），并给出明确提示
+- `ask`：读/查/执行允许；`write_files` 只生成待审批提案，不落盘
+- `auto`：`write_files` 直接写入（仍保留快照与审计）
+
+### 17.2 新工具
+`read_file`（分页读原文）、`list_files`（按前缀列文件）、`write_files`（整文件写入；diff + 快照 + 审批）。
+工具定义新增 `category` 字段（read/write/execute/network），权限判定集中在 `ToolRegistry.execute`。
+
+### 17.3 编辑流水线与快照
+`edits` 表：`files`（新内容）、`base_files`（写入前快照，新增文件为 null）、`diff`、`status`、`session_id`。
+- 提案：`POST /chat/message` 中 `write_files` 在 ask 模式生成 `edit_proposal` SSE 事件 + `edits` 记录
+- 批准：写入文件 → 状态 `applied` → 后台 `reindex_repo`
+- 拒绝：状态 `rejected`，不落盘
+- 撤销：用 `base_files` 恢复（新增文件删除）→ `reverted` → 重建索引
+- 历史消息保存 `tool_json.edits`，前端 `EditCard` 可在历史会话中继续批准/撤销
+
+### 17.4 前端
+对话仓库栏新增权限模式选择（只读 / 确认写入 / 自动执行）；编辑提案卡片展示文件列表、可展开 diff、批准/拒绝/撤销与状态。
+
+### 17.5 验证记录（2026-10-23）
+- ask 模式：模型 `read_file` → `write_files`（2 个文件）→ 生成 diff 提案；磁盘未变；UI 点击批准后落盘并重建索引；点击撤销后文件恢复原文（状态 reverted）
+- readonly 模式：`write_files` 与 `run_code` 均被拦截，模型如实说明并建议切换模式
+- 修复：编辑后误用增量 `index_repo` 导致索引重复（11 文件变 33 条），已改为清空重建的 `reindex_repo`，现场重建后恢复 11 文件 / 25 符号
+
+---
+
+## 18. v2.4 增量：构建验证沙箱
+
+### 18.1 镜像与依赖
+- `nova-builder`：python:3.12 + fastapi/uvicorn/pydantic/pytest/httpx/numpy，用于仓库级测试；`nova-sandbox` 保持轻量用于片段执行
+- `run_code` 新增 `env` 参数（builder / slim）；带 `repo_id` 默认走 builder，共享仓库级依赖卷 `nova-deps-<repo>`（挂载 /deps，`PYTHONPATH=/deps:/workspace`）
+- `install_deps`（管理员、`SANDBOX_ALLOW_NETWORK=true`）：固定命令 `pip install --target /deps -r requirements.txt`，root 在沙箱内安装，产物持久化到依赖卷；其余运行仍以非 root、只读根文件系统执行
+
+### 18.2 一键验证
+`POST /repos/{id}/verify`：把仓库文件复制进沙箱，用 builder 镜像跑 `python -m pytest -q`，结果（status/exit/stdout/image/时间）写入 `repos.last_check`；前端工作区对任何就绪仓库提供「验证」按钮，Builder 完成后同样适用。
+
+### 18.3 验证记录（2026-10-23）
+- `todo-api` 首次验证：**9 failed / 1 passed**（SQLite 跨线程使用，生成代码的真实缺陷）
+- 让 Nova 在对话中复现并修复：定位 `conftest.py` 的 `check_same_thread` 与 TestClient 线程池问题，写入修复 → 再次验证 **10 passed**
+- 依赖卷自测：联网安装 `cowsay==6.1` 到 `nova-deps-selftest`，随后离线运行 `import cowsay` 成功
+
+### 18.4 安全边界
+- 联网仅限管理员显式开启；命令固定为 pip 安装，不接受任意命令
+- 安装进程在沙箱容器内以 root 运行（pip 需要写依赖卷），仍受禁宿主挂载、pids/内存/CPU 限制约束
+- 依赖卷按仓库隔离；删除仓库时不自动删除卷（可在服务器上手动清理）
+
+---
+
+## 19. v2.5 增量：桌面 Agent 形态前端
+
+参考 Claude Code / Codex / Cursor 的桌面 Agent 布局：
+- **左侧图标导航栏**：对话 / 工作区 / 任务 / 设置 + 用户与退出
+- **顶栏**：当前视图、命令面板入口、真实健康状态
+- **底部状态栏**：当前模型（qwen3.8-max）、权限模式、沙箱可用性、今日 token、版本
+- **命令面板**：Ctrl/⌘ + K，支持搜索并执行「切换视图 / 新建对话 / 切换权限模式 / 退出」
+- **快捷键**：Ctrl/⌘ + 1..4 切换视图；Esc 关闭面板
+- 工作区顶栏新增「验证」按钮与结果条（通过/失败、exit code、镜像、时间，可展开输出）
+
+---
+
+## 20. v2.6 增量：Git 交付 + Trajectory + Headless CLI
+
+### 20.1 Git 交付
+- `core/git_ops/service.py`：`init/commit/status/diff/rollback/export_zip`，全部用 `git -C <workspace>` 固定参数调用（超时、禁用 shell）
+- 工作区初始化后：对话编辑批准/撤销、红-绿任务应用、Builder 写入都会**自动提交**（`auto_commit`，失败不影响主流程）
+- 回滚：`git reset --hard <hash>`（前端二次确认）→ 后台 `reindex_repo`
+- 导出：zip 排除 `.git`/构建目录，临时文件下载后清理；单文件 >5MB 跳过
+- API：`GET /repos/{id}/git`、`POST /git/init|commit|rollback`、`GET /git/diff`、`GET /repos/{id}/export`
+- 前端「Git 交付」页签：分支/干净状态、diff、提交框、历史提交（回滚需确认）、导出按钮
+
+### 20.2 Trajectory（全链路轨迹）
+- 表 `trace_events(session_id, turn_id, kind, payload, created_at)`
+- 记录：`user`、`turn_start`（含权限模式与仓库）、`retrieval`（命中路径）、`llm_round`（轮次/字符/真实 token）、`tool_call`、`tool_result`、`edit_proposal`、`edit_applied/rejected/reverted`、`error`、`done`（最终回答、工具、耗时）
+- 写入 best-effort，失败不阻塞主链路；`GET /chat/sessions/{id}/trajectory`
+- 前端「轨迹」抽屉：按时间线展示、可展开查看原始 payload
+
+### 20.3 Headless CLI
+- `backend/nova.py`：`repos / run / verify / trajectory / export`
+- `run --json` 输出 JSONL 事件；默认 `--permission readonly`；退出码 0 成功 / 1 失败 / 2 请求错误
+- 通过 HTTP + 登录 Cookie 与 Web 服务共用同一套权限与审计（CI 可复现）
+
+### 20.4 验证记录（2026-10-23）
+- Git：init → 修改 README → 检测 dirty/diff → commit（`test: git delivery flow`）→ 回滚到首个快照（改动消失、索引重建）→ 导出 zip（12 文件，不含 .git）
+- 轨迹：一轮只读问答产生 5 个事件（user/turn_start/retrieval/llm_round/done），UI 抽屉展示正常
+- CLI：`verify`（passed/exit 0）、`trajectory`（5 事件）、`export`（12 文件）、`run --json`（29 个事件，含 tool_call/tool_result/evidence）
+
+---
+
+## 21. v2.7 增量：P0 安全与配额加固（2026-10-23）
+
+### 21.1 路径与密钥防护
+- 新增 `core/security/paths.py`：统一 `normalize_relpath` / `is_secret_path` / `resolve_repo_path`
+- 拒绝绝对路径、`..` 穿越、同前缀兄弟目录、符号链接逃逸；`.env*`（示例文件除外）、`.git/`、私钥与凭据文件禁止读写
+- 接入 `read_file`、对话编辑（创建/批准/快照）、红绿任务应用、Builder 应用、文件查看 API、`run_code` 仓库复制、`install_deps`
+
+### 21.2 测试完整性守卫
+- 新增 `core/security/test_guard.py`
+- 修改已有测试文件时，删除测试函数或新增 `skip`/`skipTest` 标记会被拒绝
+- 红绿任务必须是新测试文件，不能覆盖已有测试；在编辑创建、批准、任务应用、Builder 应用四个入口统一校验
+
+### 21.3 配额与用量覆盖
+- `usage_log` 增加 `source`（chat / task / builder / memory）；新增 `core/llm/usage.py` 统一记账
+- 新增 `ensure_token_budget`：对话逐轮、任务每次生成、Builder 每次生成、记忆抽取前都检查每日 token 预算
+- 新增 `check_job_quota`：导入 / 重建索引 / 红绿任务 / Builder 每小时次数；`check_search_quota` 限制仓库搜索
+- `/verify` 复用沙箱日配额；编辑批准、任务应用、Builder 写入、Git 回滚触发的重建索引也计入配额
+- 配置项：`ADMIN_JOB_HOURLY` / `DEMO_JOB_HOURLY`
+
+### 21.4 会话关联仓库与项目规则
+- `sessions.repo_ids` 持久化关联仓库；`POST /chat/message` 校验仓库归属（防跨用户检索），前端切换会话时恢复/清空选择
+- 新增 `core/agent/rules.py`：读取关联仓库根目录 `AGENTS.md`（兼容 `CLAUDE.md`），Builder 项目回退到 `repos.rules`，注入系统提示词并限制总长度
+
+### 21.5 验证记录（2026-10-23）
+- 后端 `python -m pytest tests -q`：**141 passed**
+- 前端 `npm run build`（tsc + vite）：通过
+- 新增测试：路径/密钥、测试守卫、项目规则、配额记账
+
+---
+
+## 22. v2.8 增量：P1 验证闭环与只读审查（2026-10-23）
+
+### 22.1 栈感知验证 profile
+- 新增 `core/verify/profiles.py`：检测 Python/Node 项目；Python 默认执行 `compileall` + `pytest`，有 `ruff.toml`/`mypy.ini` 时追加可选 lint/类型检查
+- 新增 `core/verify/service.py`：逐步运行、逐项记录命令/退出码/输出/耗时；必需步骤失败后停止，返回结构化 `steps` 与 `stack`
+- `/repos/{id}/verify` 改为调用统一服务；Node/前端项目返回 `unsupported`，不伪装通过
+- `Dockerfile.builder` 增加 ruff / mypy
+
+### 22.2 红绿任务升级
+- 红阶段分类：只有测试真实运行并失败才算有效红；`ERROR collecting`、`ModuleNotFoundError`、`ImportError`、`SyntaxError`、0 收集、超时均判定为无效复现
+- 绿阶段从“只跑新测试”改为 **全量 `compileall + pytest`**；失败最多自动修复 **3 次**
+- 任务结果保存 `base_files` 快照，应用前检测文件是否被外部修改
+
+### 22.3 文件冲突检测
+- 新增 `core/conflicts.py` 的 `ConflictError`
+- 对话编辑：创建时保存 base 快照；批准时对比当前内容，冲突返回 409；撤销时检测应用后是否又被修改
+- 红绿任务与 Builder：生成时保存 base 快照，应用前比对；冲突均返回 409，不再静默覆盖
+
+### 22.4 只读 Reviewer
+- 新增 `core/review/service.py`：直接 LLM 调用且不提供任何工具，结构上无法写入/执行
+- 输出 `verdict`（pass/warn/block）、summary、blocking/non-blocking（文件/行号/建议）、evidence
+- 支持 `POST /edits/{id}/review` 与 `POST /tasks/{id}/review`；编辑审查结果落 `edits.review`，任务审查结果写回 `tasks.result.review`
+- 前端 `ReviewPanel`：编辑卡片与任务详情均可触发审查并展示结论
+
+### 22.5 交付报告
+- 新增 `core/agent/report.py`：确定性生成，不调用 LLM
+- 内容：状态、执行命令与退出码、改动文件、测试/引用检查、未验证项、错误、token/耗时/轮次
+- `done` SSE 事件携带 `report`；同时写入 `messages.tool_json.report`，历史消息可回看
+- 前端 `DeliveryReport` 组件：折叠展示检查结果、命令、改动文件与未验证项
+
+### 22.6 验证记录（2026-10-23）
+- 后端 `python -m pytest tests -q`：**161 passed**
+- 前端 `npm run build`：通过
+- 真实验证：`todo-api` 仓库在 `nova-builder` 中执行语法检查 + pytest，**10 passed**，返回 2 个结构化步骤
+- Reviewer 冒烟：对一条 Todo API diff 调用真实模型，读取项目 `AGENTS.md` 后给出 `block`，指出响应格式、sqlite3 使用和缺少测试三处违约
+- UI 冒烟：在生产形态页面验证交付报告、只读审查面板、会话关联仓库恢复；真实审查接口返回 `block` 并渲染 blocking 依据
+- 修复回归：P0 中若干入口把同步的 `check_job_quota` 当成异步函数 `await`，导致审查接口 500；已全部修正并新增静态契约测试 `tests/test_api_contracts.py`
+- 本地库迁移：`edits.review` 列已生效
+
+### 22.7 已知边界
+- 验证 profile 目前只执行 Python；Node/前端项目标记 `unsupported`（P2）
+- Reviewer 是单次结构化审查，不是多智能体辩论，结论作为证据补充
+- 冲突检测基于完整文件内容快照，适合当前整文件写入模型；后续若引入 patch，需要改为 hunk 级基线

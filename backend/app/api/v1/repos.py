@@ -23,6 +23,8 @@ from app.core.indexing.walker import clone_git, safe_extract_zip
 from app.core.rag.retriever import retrieve
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
+from app.core.security.limits import check_job_quota, check_search_quota
+from app.core.security.paths import UnsafePathError, normalize_relpath, resolve_repo_path
 from app.db import query as db_query
 from app.models.schemas import FileContentOut, FileNodeOut, RepoImportGit, RepoOut, SearchHitOut
 
@@ -38,6 +40,7 @@ def _display_name(filename: str) -> str:
 
 @router.post("/repos/upload", response_model=RepoOut)
 async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    check_job_quota(user, "import")
     repo_id = str(uuid.uuid4())
     dest_root = Path(settings.repos_dir) / repo_id
     dest_root.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,7 @@ async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_cur
 
 @router.post("/repos/git", response_model=RepoOut)
 async def import_git_repo(body: RepoImportGit, user: dict = Depends(get_current_user)):
+    check_job_quota(user, "import")
     repo_id = str(uuid.uuid4())
     dest = Path(settings.repos_dir) / repo_id
     dest.mkdir(parents=True, exist_ok=True)
@@ -120,6 +124,7 @@ async def reindex(repo_id: str, user: dict = Depends(get_current_user)):
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
+    check_job_quota(user, "reindex")
     await set_status(repo_id, "pending")
     asyncio.create_task(reindex_repo(repo_id))
     return {"ok": True, "status": "pending"}
@@ -162,9 +167,11 @@ async def get_file(repo_id: str, path: str = Query(...), user: dict = Depends(ge
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
 
-    rel = path.replace("\\", "/").lstrip("/")
-    if ".." in rel.split("/"):
-        raise HTTPException(status_code=400, detail="非法路径")
+    try:
+        rel = normalize_relpath(path)
+        target = resolve_repo_path(repo["root_path"], rel)
+    except UnsafePathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     rows = await db_query(
         "SELECT language, line_count, size FROM repo_files WHERE repo_id = %s AND path = %s",
@@ -177,9 +184,7 @@ async def get_file(repo_id: str, path: str = Query(...), user: dict = Depends(ge
     if size > MAX_FILE_VIEW_BYTES:
         raise HTTPException(status_code=413, detail="文件过大，无法在线预览")
 
-    root = Path(repo["root_path"]).resolve()
-    target = (root / rel).resolve()
-    if not str(target).startswith(str(root)) or not target.is_file():
+    if not target.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
 
     try:
@@ -200,6 +205,7 @@ async def search_in_repo(
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
 
+    check_search_quota(user)
     symbols = await search_symbols(q, [repo_id], limit=8)
     hits = await retrieve(q, top_k=8, repo_ids=[repo_id])
     return {
@@ -212,3 +218,26 @@ async def search_in_repo(
             for h in hits
         ],
     }
+
+
+@router.get("/repos/{repo_id}/impact")
+async def impact_in_repo(
+    repo_id: str,
+    q: str = Query(..., min_length=1),
+    depth: int = Query(2, ge=1, le=3),
+    user: dict = Depends(get_current_user),
+):
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    from app.core.impact.analysis import analyze_impact
+    return await analyze_impact(repo_id, q, depth=depth)
+
+
+@router.get("/repos/{repo_id}/brain")
+async def repo_brain(repo_id: str, user: dict = Depends(get_current_user)):
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    rows = await db_query("SELECT brain FROM repos WHERE id = %s", (repo_id,))
+    return (rows[0][0] if rows else None) or {}

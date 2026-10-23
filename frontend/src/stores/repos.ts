@@ -9,6 +9,7 @@ type RepoState = {
   refresh: () => Promise<void>
   uploadZip: (file: File) => Promise<void>
   importGit: (url: string) => Promise<void>
+  createBuilder: (name: string, requirements: string, rules?: string) => Promise<Repo>
   remove: (id: string) => Promise<void>
   reindex: (id: string) => Promise<void>
   clearError: () => void
@@ -50,6 +51,18 @@ export const useRepos = create<RepoState>((set, get) => ({
       set((s) => ({ repos: [repo, ...s.repos] }))
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '导入失败' })
+      throw err
+    }
+  },
+
+  createBuilder: async (name, requirements, rules) => {
+    set({ error: null })
+    try {
+      const repo = await api.repos.createBuilder(name, requirements, rules)
+      set((s) => ({ repos: [repo, ...s.repos] }))
+      return repo
+    } catch (err) {
+      set({ error: err instanceof ApiError ? err.message : '创建项目失败' })
       throw err
     }
   },

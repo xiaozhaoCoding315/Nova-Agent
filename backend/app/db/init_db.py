@@ -2,6 +2,11 @@
 
 Brings PostgreSQL (schema) and Qdrant (collection) to the baseline the app
 expects, and seeds the default admin/demo accounts.
+
+The DDL below is the *baseline* for a fresh database.  Schema changes for
+existing databases live in ``_MIGRATIONS`` and are recorded in
+``schema_migrations``.  New columns must go through a migration; do not keep
+appending one-off ALTER statements to the baseline forever.
 """
 import asyncio
 
@@ -9,7 +14,7 @@ import psycopg
 import structlog
 
 from app.config import settings
-from app.db import transaction
+from app.db import query, transaction
 
 logger = structlog.get_logger()
 
@@ -17,6 +22,8 @@ logger = structlog.get_logger()
 # PostgreSQL
 # ---------------------------------------------------------------------------
 
+# Baseline schema, ordered so that every foreign-key target exists before the
+# table that references it.  Keep this list topologically sorted.
 _DDL = [
     """
     CREATE TABLE IF NOT EXISTS users (
@@ -33,10 +40,16 @@ _DDL = [
         user_id INT REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(200) DEFAULT '新对话',
         summary TEXT,
+        summary_upto_id BIGINT DEFAULT 0,
+        permission_mode VARCHAR(12) DEFAULT 'ask',
+        repo_ids JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS permission_mode VARCHAR(12) DEFAULT 'ask'",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo_ids JSONB DEFAULT '[]'::jsonb",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT DEFAULT 0",
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id, updated_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS messages (
@@ -52,19 +65,6 @@ _DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, id)",
     """
-    CREATE TABLE IF NOT EXISTS facts (
-        id BIGSERIAL PRIMARY KEY,
-        user_id INT REFERENCES users(id) ON DELETE CASCADE,
-        content TEXT NOT NULL,
-        hash VARCHAR(64) UNIQUE NOT NULL,
-        importance REAL DEFAULT 1.0,
-        last_used_at TIMESTAMPTZ DEFAULT now(),
-        ttl_days INT DEFAULT 90,
-        created_at TIMESTAMPTZ DEFAULT now()
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_facts_user ON facts (user_id, importance DESC)",
-    """
     CREATE TABLE IF NOT EXISTS repos (
         id UUID PRIMARY KEY,
         user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -79,6 +79,13 @@ _DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_repos_user ON repos (user_id, created_at DESC)",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS brain JSONB DEFAULT '{}'::jsonb",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS kind VARCHAR(16) DEFAULT 'import'",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS brief TEXT",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS rules TEXT",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS plan JSONB",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS proposal JSONB",
+    "ALTER TABLE repos ADD COLUMN IF NOT EXISTS last_check JSONB",
     """
     CREATE TABLE IF NOT EXISTS repo_files (
         id BIGSERIAL PRIMARY KEY,
@@ -107,6 +114,19 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols (repo_id, name)",
     "CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols (file_id)",
     """
+    CREATE TABLE IF NOT EXISTS file_deps (
+        id BIGSERIAL PRIMARY KEY,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        file_id BIGINT REFERENCES repo_files(id) ON DELETE CASCADE,
+        source_path TEXT NOT NULL,
+        target TEXT NOT NULL,
+        resolved_path TEXT,
+        kind VARCHAR(16)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_file_deps_repo ON file_deps (repo_id)",
+    "CREATE INDEX IF NOT EXISTS idx_file_deps_resolved ON file_deps (repo_id, resolved_path)",
+    """
     CREATE TABLE IF NOT EXISTS chunks (
         id BIGSERIAL PRIMARY KEY,
         repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
@@ -122,6 +142,56 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_chunks_repo ON chunks (repo_id)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING GIN (tsv)",
     """
+    CREATE TABLE IF NOT EXISTS edits (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        status VARCHAR(12) DEFAULT 'pending',
+        files JSONB NOT NULL,
+        base_files JSONB,
+        diff TEXT,
+        note TEXT,
+        review JSONB,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        applied_at TIMESTAMPTZ
+    )
+    """,
+    "ALTER TABLE edits ADD COLUMN IF NOT EXISTS review JSONB",
+    "CREATE INDEX IF NOT EXISTS idx_edits_repo ON edits (repo_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_edits_user ON edits (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS trace_events (
+        id BIGSERIAL PRIMARY KEY,
+        session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+        turn_id UUID,
+        kind VARCHAR(32),
+        payload JSONB,
+        created_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events (session_id, id)",
+    "CREATE INDEX IF NOT EXISTS idx_trace_turn ON trace_events (turn_id)",
+    """
+    CREATE TABLE IF NOT EXISTS facts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        hash VARCHAR(64) NOT NULL,
+        embedding JSONB,
+        importance REAL DEFAULT 1.0,
+        last_used_at TIMESTAMPTZ DEFAULT now(),
+        ttl_days INT DEFAULT 90,
+        created_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "ALTER TABLE facts ADD COLUMN IF NOT EXISTS embedding JSONB",
+    # Older installs declared hash globally UNIQUE, which made identical facts
+    # collide across users.  Replace it with a per-user unique index.
+    "ALTER TABLE facts DROP CONSTRAINT IF EXISTS facts_hash_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_user_hash ON facts (user_id, hash)",
+    "CREATE INDEX IF NOT EXISTS idx_facts_user ON facts (user_id, importance DESC)",
+    """
     CREATE TABLE IF NOT EXISTS usage_log (
         id BIGSERIAL PRIMARY KEY,
         user_id INT,
@@ -130,10 +200,55 @@ _DDL = [
         prompt_tokens INT DEFAULT 0,
         completion_tokens INT DEFAULT 0,
         tool_calls INT DEFAULT 0,
+        source VARCHAR(20) DEFAULT 'chat',
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'chat'",
     "CREATE INDEX IF NOT EXISTS idx_usage_user_time ON usage_log (user_id, created_at)",
+    """
+    CREATE TABLE IF NOT EXISTS jobs (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        kind VARCHAR(32) NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(16) NOT NULL DEFAULT 'queued',
+        progress REAL DEFAULT 0,
+        step TEXT,
+        result JSONB,
+        error TEXT,
+        idempotency_key VARCHAR(200),
+        attempts INT DEFAULT 0,
+        max_attempts INT DEFAULT 1,
+        cancel_requested BOOLEAN DEFAULT FALSE,
+        heartbeat_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs (user_id, created_at DESC)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs (idempotency_key) "
+    "WHERE idempotency_key IS NOT NULL",
+    """
+    CREATE TABLE IF NOT EXISTS tasks (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+        title VARCHAR(200),
+        bug_report TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'running',
+        steps JSONB DEFAULT '[]'::jsonb,
+        result JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id) ON DELETE SET NULL",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks (user_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_job ON tasks (job_id)",
     """
     CREATE TABLE IF NOT EXISTS audit_log (
         id VARCHAR(20) PRIMARY KEY,
@@ -147,6 +262,55 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action)",
     "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log (user_id, created_at)",
+]
+
+_SCHEMA_MIGRATIONS_DDL = """
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INT PRIMARY KEY,
+        applied_at TIMESTAMPTZ DEFAULT now()
+    )
+"""
+
+# Incremental migrations for databases created by an older baseline.  Each
+# statement must be idempotent: startup may race with a previous partial run.
+_MIGRATIONS: list[tuple[int, list[str]]] = [
+    (1, [
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT DEFAULT 0",
+    ]),
+    (2, [
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS embedding JSONB",
+        "ALTER TABLE facts DROP CONSTRAINT IF EXISTS facts_hash_key",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_user_hash ON facts (user_id, hash)",
+    ]),
+    (3, [
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            kind VARCHAR(32) NOT NULL,
+            payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status VARCHAR(16) NOT NULL DEFAULT 'queued',
+            progress REAL DEFAULT 0,
+            step TEXT,
+            result JSONB,
+            error TEXT,
+            idempotency_key VARCHAR(200),
+            attempts INT DEFAULT 0,
+            max_attempts INT DEFAULT 1,
+            cancel_requested BOOLEAN DEFAULT FALSE,
+            heartbeat_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            started_at TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs (user_id, created_at DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs (idempotency_key) "
+        "WHERE idempotency_key IS NOT NULL",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id) ON DELETE SET NULL",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_job ON tasks (job_id)",
+    ]),
 ]
 
 
@@ -171,7 +335,26 @@ async def ensure_database() -> str:
 
 async def init_postgres() -> str:
     db_state = await ensure_database()
+
+    # Baseline first: a fresh database gets a complete, correctly ordered
+    # schema.  Then record/apply incremental migrations.
     await transaction([(sql, None) for sql in _DDL])
+    await transaction([(_SCHEMA_MIGRATIONS_DDL, None)])
+
+    applied = {int(row[0]) for row in await query("SELECT version FROM schema_migrations")}
+    for version, statements in _MIGRATIONS:
+        if version in applied:
+            continue
+        await transaction(
+            [(sql, None) for sql in statements]
+            + [(
+                "INSERT INTO schema_migrations (version) VALUES (%s) "
+                "ON CONFLICT (version) DO NOTHING",
+                (version,),
+            )]
+        )
+        logger.info("schema_migration_applied", version=version)
+
     return db_state
 
 

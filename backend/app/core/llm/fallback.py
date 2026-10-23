@@ -8,10 +8,10 @@ class FallbackLLM(LLMProvider):
     def __init__(self, providers: list[LLMProvider]):
         self.providers = providers
 
-    async def astream(self, messages: list[dict]):
+    async def astream(self, messages: list[dict], **kwargs):
         for provider in self.providers:
             try:
-                async for token in provider.astream(messages):
+                async for token in provider.astream(messages, **kwargs):
                     yield token
                 return  # success — stop chain
             except Exception as e:
@@ -20,7 +20,7 @@ class FallbackLLM(LLMProvider):
                 continue
         raise RuntimeError("All LLM providers failed")
 
-    async def astream_with_tools(self, messages: list[dict], tools: list[dict]):
+    async def astream_with_tools(self, messages: list[dict], tools: list[dict], **kwargs):
         """Provider-chain function calling.
 
         Same degradation semantics as astream, with one refinement: once any
@@ -32,7 +32,7 @@ class FallbackLLM(LLMProvider):
         for provider in self.providers:
             yielded = False
             try:
-                async for event in provider.astream_with_tools(messages, tools):
+                async for event in provider.astream_with_tools(messages, tools, **kwargs):
                     yielded = True
                     yield event
                 return  # success — stop chain

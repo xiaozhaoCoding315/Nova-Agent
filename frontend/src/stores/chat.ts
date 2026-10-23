@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
 import { streamChat } from '../lib/sse'
-import type { Message, RetrievalHit, Session, StreamToolCard, ToolCall, ToolResult } from '../lib/types'
+import type {
+  DeliveryReport, EditRef, Evidence, Message, PermissionMode, RetrievalHit, Session, StreamToolCard,
+  ToolCall, ToolResult,
+} from '../lib/types'
 
 type ChatState = {
   sessions: Session[]
@@ -10,8 +13,13 @@ type ChatState = {
   streaming: boolean
   streamText: string
   toolCards: StreamToolCard[]
+  streamEdits: EditRef[]
+  permissionMode: PermissionMode
   refs: RetrievalHit[]
+  evidence: Evidence | null
+  report: DeliveryReport | null
   error: string | null
+  setPermissionMode: (mode: PermissionMode) => void
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
   newSession: () => void
@@ -30,8 +38,14 @@ export const useChat = create<ChatState>((set, get) => ({
   streaming: false,
   streamText: '',
   toolCards: [],
+  streamEdits: [],
+  permissionMode: 'ask',
   refs: [],
+  evidence: null,
+  report: null,
   error: null,
+
+  setPermissionMode: (mode) => set({ permissionMode: mode }),
 
   loadSessions: async () => {
     try {
@@ -45,7 +59,14 @@ export const useChat = create<ChatState>((set, get) => ({
     if (get().streaming) return
     try {
       const messages = await api.sessions.messages(id)
-      set({ sessionId: id, messages, refs: [], error: null })
+      const session = get().sessions.find((s) => s.id === id)
+      set({
+        sessionId: id,
+        messages,
+        refs: [],
+        error: null,
+        ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
+      })
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '加载会话失败' })
     }
@@ -81,7 +102,9 @@ export const useChat = create<ChatState>((set, get) => ({
       streaming: true,
       streamText: '',
       toolCards: [],
+      streamEdits: [],
       refs: [],
+      report: null,
       error: null,
       messages: [...s.messages, { id: Date.now(), role: 'user', content }],
     }))
@@ -91,18 +114,35 @@ export const useChat = create<ChatState>((set, get) => ({
 
     try {
       await streamChat(
-        { session_id: get().sessionId ?? undefined, content, repo_ids: repoIds },
+        {
+          session_id: get().sessionId ?? undefined,
+          content,
+          repo_ids: repoIds,
+          permission_mode: get().permissionMode,
+        },
         (event, data) => {
           switch (event) {
             case 'meta':
-              if (!get().sessionId) set({ sessionId: data.session_id })
-              if (data.title) {
-                set((s) => ({
-                  sessions: s.sessions.some((x) => x.id === data.session_id)
-                    ? s.sessions.map((x) => (x.id === data.session_id ? { ...x, title: data.title } : x))
-                    : [{ id: data.session_id, title: data.title, message_count: 1 }, ...s.sessions],
-                }))
-              }
+              set((s) => ({
+                sessionId: s.sessionId ?? data.session_id,
+                sessions: data.title
+                  ? s.sessions.some((x) => x.id === data.session_id)
+                    ? s.sessions.map((x) =>
+                        x.id === data.session_id
+                          ? { ...x, title: data.title, repo_ids: data.repo_ids ?? x.repo_ids }
+                          : x,
+                      )
+                    : [
+                        {
+                          id: data.session_id,
+                          title: data.title,
+                          message_count: 1,
+                          repo_ids: data.repo_ids ?? [],
+                        },
+                        ...s.sessions,
+                      ]
+                  : s.sessions,
+              }))
               break
             case 'retrieval':
               set({ refs: data.hits ?? [] })
@@ -125,6 +165,26 @@ export const useChat = create<ChatState>((set, get) => ({
             case 'error':
               set({ error: data.message ?? '生成失败' })
               break
+            case 'evidence':
+              set({ evidence: data as unknown as Evidence })
+              break
+            case 'done':
+              set({ report: (data.report ?? null) as DeliveryReport | null })
+              break
+            case 'edit_proposal':
+              set((s) => ({
+                streamEdits: [
+                  ...s.streamEdits,
+                  {
+                    id: data.id,
+                    files: data.files ?? [],
+                    staged: Boolean(data.staged),
+                    status: data.status ?? 'pending',
+                    diff: data.diff ?? '',
+                  },
+                ],
+              }))
+              break
             default:
               break
           }
@@ -134,8 +194,8 @@ export const useChat = create<ChatState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '请求失败，请重试' })
     } finally {
-      const { streamText, toolCards, messages } = get()
-      if (streamText || toolCards.length > 0) {
+      const { streamText, toolCards, messages, evidence, streamEdits, report } = get()
+      if (streamText || toolCards.length > 0 || streamEdits.length > 0) {
         set({
           messages: [
             ...messages,
@@ -143,14 +203,17 @@ export const useChat = create<ChatState>((set, get) => ({
               id: Date.now() + 1,
               role: 'assistant',
               content: streamText,
-              tool_json: toolCards.length
-                ? { tools_used: toolCards.map((c) => c.call.name) }
-                : null,
+              tool_json: {
+                ...(toolCards.length ? { tools_used: toolCards.map((c) => c.call.name) } : {}),
+                ...(evidence ? { evidence } : {}),
+                ...(streamEdits.length ? { edits: streamEdits } : {}),
+                ...(report ? { report } : {}),
+              },
             },
           ],
         })
       }
-      set({ streaming: false, streamText: '', toolCards: [] })
+      set({ streaming: false, streamText: '', toolCards: [], streamEdits: [], evidence: null, report: null })
       abortController = null
       void get().loadSessions()
     }

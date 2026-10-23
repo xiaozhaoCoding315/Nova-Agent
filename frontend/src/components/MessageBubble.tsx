@@ -1,12 +1,17 @@
 import clsx from 'clsx'
 import { Wrench } from 'lucide-react'
-import type { Message, StreamToolCard } from '../lib/types'
+import type { EditRef, Message, StreamToolCard } from '../lib/types'
+import { DeliveryReport } from './DeliveryReport'
+import { EditCard } from './EditCard'
+import { EvidenceBar } from './EvidenceBar'
 import { Markdown } from './Markdown'
 import { ToolCard } from './ToolCard'
 
 export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const tools = message.tool_json?.tools_used ?? []
+  const evidence = message.tool_json?.evidence
+  const edits = message.tool_json?.edits ?? []
 
   if (isUser) {
     return (
@@ -21,6 +26,11 @@ export function MessageBubble({ message }: { message: Message }) {
   return (
     <div className="max-w-full">
       <Markdown content={message.content} />
+      {edits.map((edit) => (
+        <EditCard key={edit.id} edit={edit} />
+      ))}
+      {evidence && <EvidenceBar evidence={evidence} />}
+      <DeliveryReport report={message.tool_json?.report} />
       {tools.length > 0 && (
         <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
           <Wrench size={11} />
@@ -31,7 +41,15 @@ export function MessageBubble({ message }: { message: Message }) {
   )
 }
 
-export function StreamingBubble({ text, toolCards }: { text: string; toolCards: StreamToolCard[] }) {
+export function StreamingBubble({
+  text,
+  toolCards,
+  editProposals,
+}: {
+  text: string
+  toolCards: StreamToolCard[]
+  editProposals: EditRef[]
+}) {
   return (
     <div className="max-w-full">
       {toolCards.map((card) => (
@@ -49,6 +67,9 @@ export function StreamingBubble({ text, toolCards }: { text: string; toolCards: 
           思考中…
         </p>
       )}
+      {editProposals.map((edit) => (
+        <EditCard key={edit.id} edit={edit} />
+      ))}
     </div>
   )
 }

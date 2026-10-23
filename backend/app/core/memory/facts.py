@@ -118,23 +118,30 @@ async def extract_facts_from_turn(user_id: int, user_text: str, assistant_text: 
     try:
         from app.core.harness.runtime import execute_with_harness
         from app.core.llm.factory import get_llm
+        from app.core.llm.usage import record_usage
+        from app.core.security.limits import ensure_token_budget
 
+        await ensure_token_budget(user_id=user_id)
         prompt = _EXTRACT_PROMPT.format(user=user_text[:1500], assistant=assistant_text[:1500])
 
-        async def _call() -> str:
+        async def _call() -> tuple[str, dict | None]:
             llm = get_llm()
             chunks = []
+            usage = None
             async for event in llm.astream_with_tools(
                 [{"role": "user", "content": prompt}], tools=[]
             ):
                 if event.get("type") == "content":
                     chunks.append(event["content"])
-            return "".join(chunks)
+                elif event.get("type") == "usage":
+                    usage = event.get("usage")
+            return "".join(chunks), usage
 
-        raw = await execute_with_harness(
+        raw, usage = await execute_with_harness(
             _call, context="memory/extract", timeout=settings.llm_timeout,
-            use_retry=False, use_circuit=False, fallback=lambda: "",
+            use_retry=False, use_circuit=False, fallback=lambda: ("", None),
         )
+        await record_usage(user_id, None, usage, source="memory")
         match = re.search(r"\[.*\]", raw, re.DOTALL)
         if not match:
             return 0

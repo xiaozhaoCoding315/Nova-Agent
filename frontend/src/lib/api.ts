@@ -1,4 +1,7 @@
-import type { FileNode, Health, Message, Repo, Session, Usage, User } from './types'
+import type {
+  Brain, BuilderPlanResponse, BuilderProposalResponse, EditRecord, FileNode, GitInfo, Health,
+  Impact, Message, Repo, Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+} from './types'
 
 export class ApiError extends Error {
   status: number
@@ -61,16 +64,75 @@ export const api = {
       ),
     search: (id: string, q: string) =>
       request<{ symbols: unknown[]; hits: unknown[] }>(`/repos/${id}/search?q=${encodeURIComponent(q)}`),
+    brain: (id: string) => request<Brain>(`/repos/${id}/brain`),
+    impact: (id: string, q: string, depth = 2) =>
+      request<Impact>(`/repos/${id}/impact?q=${encodeURIComponent(q)}&depth=${depth}`),
     upload: async (file: File): Promise<Repo> => {
       const form = new FormData()
       form.append('file', file)
       return request<Repo>('/repos/upload', { method: 'POST', body: form })
     },
     importGit: (gitUrl: string, name?: string) => request<Repo>('/repos/git', json({ git_url: gitUrl, name })),
+    createBuilder: (name: string, requirements: string, rules?: string) =>
+      request<Repo>('/repos/builder', json({ name, requirements, rules })),
+    getPlan: (id: string) => request<BuilderPlanResponse>(`/repos/${id}/plan`),
+    regeneratePlan: (id: string) =>
+      request<{ ok: boolean }>(`/repos/${id}/plan/generate`, { method: 'POST' }),
+    approvePlan: (id: string) =>
+      request<{ ok: boolean }>(`/repos/${id}/plan/approve`, { method: 'POST' }),
+    generate: (id: string, feedback?: string) =>
+      request<{ ok: boolean }>(`/repos/${id}/generate`, json({ feedback: feedback ?? null })),
+    getProposal: (id: string) => request<BuilderProposalResponse>(`/repos/${id}/proposal`),
+    approveProposal: (id: string) =>
+      request<{ ok: boolean; applied: string[] }>(`/repos/${id}/proposal/approve`, { method: 'POST' }),
+    rejectProposal: (id: string) =>
+      request<{ ok: boolean }>(`/repos/${id}/proposal/reject`, { method: 'POST' }),
+    verify: (id: string) =>
+      request<VerifyResult>(`/repos/${id}/verify`, { method: 'POST' }),
+    lastVerify: (id: string) => request<Partial<VerifyResult>>(`/repos/${id}/verify`),
+    exportUrl: (id: string) => `/api/v1/repos/${id}/export`,
   },
 
   status: {
     health: () => request<Health>('/status/health'),
     usage: () => request<Usage>('/status/usage'),
   },
+
+  tasks: {
+    list: () => request<TaskListItem[]>('/tasks'),
+    create: (repoId: string, bugReport: string, title?: string) =>
+      request<Task>('/tasks', json({ repo_id: repoId, bug_report: bugReport, title })),
+    get: (id: string) => request<Task>(`/tasks/${id}`),
+    apply: (id: string) =>
+      request<{ ok: boolean; applied: string[]; reindex_started: boolean }>(`/tasks/${id}/apply`, {
+        method: 'POST',
+      }),
+    reject: (id: string) => request<{ ok: boolean }>(`/tasks/${id}/reject`, { method: 'POST' }),
+    review: (id: string) => request<Review>(`/tasks/${id}/review`, { method: 'POST' }),
+  },
+
+  edits: {
+    get: (id: string) => request<EditRecord>(`/edits/${id}`),
+    approve: (id: string) =>
+      request<{ ok: boolean; applied: string[] }>(`/edits/${id}/approve`, { method: 'POST' }),
+    reject: (id: string) => request<{ ok: boolean }>(`/edits/${id}/reject`, { method: 'POST' }),
+    revert: (id: string) =>
+      request<{ ok: boolean; restored: string[]; removed: string[] }>(`/edits/${id}/revert`, {
+        method: 'POST',
+      }),
+    review: (id: string) => request<Review>(`/edits/${id}/review`, { method: 'POST' }),
+  },
+
+  git: {
+    status: (id: string) => request<GitInfo>(`/repos/${id}/git`),
+    init: (id: string) => request<GitInfo>(`/repos/${id}/git/init`, { method: 'POST' }),
+    commit: (id: string, message?: string) =>
+      request<GitInfo>(`/repos/${id}/git/commit`, json({ message })),
+    diff: (id: string) => request<{ diff: string }>(`/repos/${id}/git/diff`),
+    rollback: (id: string, commit: string) =>
+      request<GitInfo & { reindex_started: boolean }>(`/repos/${id}/git/rollback`, json({ commit })),
+  },
+
+  trajectory: (sessionId: string) =>
+    request<TraceEvent[]>(`/chat/sessions/${sessionId}/trajectory`),
 }

@@ -56,11 +56,16 @@ async def test_plain_answer_event_sequence(monkeypatch):
     events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
 
     names = [e["event"] for e in events]
-    assert names == ["meta", "retrieval", "token", "usage", "done"]
+    assert names == ["meta", "retrieval", "token", "usage", "evidence", "done"]
     assert events[2]["data"]["text"] == "你好"
     assert events[3]["data"]["prompt_tokens"] == 10
     assert events[-1]["data"]["message_id"] == 101
     assert events[-1]["data"]["tools_used"] == []
+    report = events[-1]["data"]["report"]
+    assert report["status"] in ("verified", "partial", "unverified")
+    assert report["stats"]["rounds"] == 1
+    tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
+    assert "report" in tool_json
 
 
 @pytest.mark.asyncio

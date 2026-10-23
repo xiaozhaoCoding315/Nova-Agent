@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,8 @@ class SessionOut(BaseModel):
     id: str
     title: str
     message_count: int = 0
+    permission_mode: str = "ask"
+    repo_ids: list[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -38,7 +40,9 @@ class MessageOut(BaseModel):
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     content: str = Field(min_length=1, max_length=8000)
-    repo_ids: list[str] = Field(default_factory=list)
+    # None = keep the session's saved selection; [] = explicitly clear it.
+    repo_ids: Optional[list[str]] = None
+    permission_mode: Optional[Literal["readonly", "ask", "auto"]] = None
 
 
 # ---------- Workspace ----------
@@ -48,11 +52,34 @@ class RepoImportGit(BaseModel):
     name: Optional[str] = None
 
 
+# ---------- Builder ----------
+
+class BuilderCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    requirements: str = Field(min_length=10, max_length=8000)
+    rules: Optional[str] = Field(default=None, max_length=4000)
+
+
+class BuilderFeedback(BaseModel):
+    feedback: Optional[str] = Field(default=None, max_length=4000)
+
+
+# ---------- Git ----------
+
+class GitCommitRequest(BaseModel):
+    message: Optional[str] = Field(default=None, max_length=200)
+
+
+class GitRollbackRequest(BaseModel):
+    commit: str = Field(min_length=7, max_length=40)
+
+
 class RepoOut(BaseModel):
     id: str
     name: str
     source: str = ""
     status: str = "pending"
+    kind: str = "import"          # import | builder
     error: Optional[str] = None
     stats: dict = Field(default_factory=dict)
     created_at: Optional[datetime] = None
@@ -90,6 +117,14 @@ class SearchHitOut(BaseModel):
     content: str
     score: float = 0.0
     source: str = ""               # dense | keyword | symbol
+
+
+# ---------- Tasks ----------
+
+class TaskCreate(BaseModel):
+    repo_id: str
+    bug_report: str = Field(min_length=5, max_length=8000)
+    title: Optional[str] = Field(default=None, max_length=120)
 
 
 # ---------- Status ----------

@@ -14,10 +14,13 @@ CTX = ToolContext(user=USER, repo_ids=[])
 
 # ---------- registry core ----------
 
-def test_registry_has_six_tools_with_openai_specs():
+def test_registry_has_all_tools_with_openai_specs():
     specs = get_registry().specs()
     names = {s["function"]["name"] for s in specs}
-    assert names == {"run_code", "diagnose_error", "search_code", "json_tool", "sql_tool", "fetch_url"}
+    assert names == {
+        "run_code", "read_file", "list_files", "search_code", "impact_analysis",
+        "diagnose_error", "write_files", "install_deps", "json_tool", "sql_tool", "fetch_url",
+    }
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
@@ -215,9 +218,11 @@ async def test_run_code_reports_unavailable_sandbox(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_code_executes_when_sandbox_available(monkeypatch):
     async def available():
-        return {"available": True, "image": "nova-sandbox:latest"}
+        return {"available": True, "image": "nova-sandbox:latest",
+                "builder_available": True, "builder_image": "nova-builder:latest"}
 
-    async def fake_execute(files, command=None, stdin="", timeout=None):
+    async def fake_execute(files, command=None, stdin="", timeout=None, **kwargs):
+        assert kwargs.get("image") == "nova-builder:latest"
         return {"stdout": "1\n", "stderr": "", "exit_code": 0, "timed_out": False,
                 "sandboxed": True, "command": command or "python main.py"}
 
@@ -226,8 +231,28 @@ async def test_run_code_executes_when_sandbox_available(monkeypatch):
     monkeypatch.setattr("app.core.tools.run_code.check_sandbox_quota", AsyncMock())
     monkeypatch.setattr("app.core.tools.run_code.log_audit", AsyncMock())
 
-    r = await build_registry().execute("run_code", {"files": {"main.py": "print(1)"}}, CTX)
+    r = await build_registry().execute(
+        "run_code", {"files": {"main.py": "print(1)"}, "env": "builder"}, CTX
+    )
     assert r["ok"] and r["output"]["exit_code"] == 0 and r["output"]["stdout"] == "1\n"
+
+
+@pytest.mark.asyncio
+async def test_install_deps_admin_only():
+    ctx = ToolContext(user={"id": 2, "role": "demo"}, permission_mode="auto")
+    r = await build_registry().execute("install_deps", {}, ctx)
+    assert r["ok"] is False and r["business"] is True
+    assert "管理员" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_install_deps_requires_network_switch(monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "sandbox_allow_network", False)
+    ctx = ToolContext(user={"id": 1, "role": "admin"}, permission_mode="auto")
+    r = await build_registry().execute("install_deps", {}, ctx)
+    assert r["ok"] is False and r["business"] is True
+    assert "SANDBOX_ALLOW_NETWORK" in r["error"]
 
 
 # ---------- fetch_url ----------

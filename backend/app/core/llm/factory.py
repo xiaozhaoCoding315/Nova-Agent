@@ -9,17 +9,18 @@ class OpenAICompatibleLLM(LLMProvider):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
-    async def astream(self, messages: list[dict]):
+    async def astream(self, messages: list[dict], **kwargs):
         stream = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
             stream=True,
+            **kwargs,
         )
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
-    async def astream_with_tools(self, messages: list[dict], tools: list[dict]):
+    async def astream_with_tools(self, messages: list[dict], tools: list[dict], **kwargs):
         """Streamed OpenAI-compatible function calling.
 
         tool_calls deltas arrive fragmented across chunks; we accumulate them
@@ -38,9 +39,9 @@ class OpenAICompatibleLLM(LLMProvider):
             )
 
         try:
-            stream = await _create(stream_options={"include_usage": True})
+            stream = await _create(stream_options={"include_usage": True}, **kwargs)
         except Exception:  # noqa: BLE001 — provider may not support include_usage
-            stream = await _create()
+            stream = await _create(**kwargs)
 
         acc: dict[int, dict] = {}
         finish_reason = "stop"

@@ -6,9 +6,11 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.core.indexing.languages import SKIP_DIRS, is_supported
-from app.core.sandbox.runtime import execute as sandbox_execute, sandbox_status
+from app.config import settings
+from app.core.sandbox.runtime import deps_volume_name, execute as sandbox_execute, sandbox_status
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import check_sandbox_quota
+from app.core.security.paths import is_secret_path
 from app.core.security.risk import RiskLevel, grade_risk
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
@@ -36,7 +38,7 @@ async def _collect_repo_files(repo_id: str, user: dict) -> dict[str, str]:
         for name in filenames:
             path = Path(dirpath) / name
             rel = str(path.relative_to(root)).replace("\\", "/")
-            if not is_supported(rel):
+            if not is_supported(rel) or is_secret_path(rel):
                 continue
             try:
                 size = path.stat().st_size
@@ -72,16 +74,20 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
             "files 必须是非空对象：{相对路径: 文件内容}，例如 {\"main.py\": \"print('hi')\"}"
         )
 
-    code_blob = "\n".join(files.values())
-    level, reasons = grade_risk(code_blob)
-    if level == RiskLevel.BLOCK:
-        await log_audit(
-            AuditAction.RISK_BLOCKED,
-            user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
-            details={"reasons": reasons[:5]},
-            risk_level="block",
-        )
-        raise ToolBusinessError("代码被安全规则拦截：" + "；".join(reasons[:3]))
+    # Risk-scan only the code the model authored this turn. Repo files are the
+    # user's own workspace and often contain markdown like "```bash", which
+    # would otherwise trip the injection regex and block every sandbox run.
+    provided_blob = "\n".join(str(v) for v in provided.values())
+    if provided_blob.strip():
+        level, reasons = grade_risk(provided_blob)
+        if level == RiskLevel.BLOCK:
+            await log_audit(
+                AuditAction.RISK_BLOCKED,
+                user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
+                details={"reasons": reasons[:5]},
+                risk_level="block",
+            )
+            raise ToolBusinessError("代码被安全规则拦截：" + "；".join(reasons[:3]))
 
     status = await sandbox_status()
     if not status["available"]:
@@ -93,10 +99,19 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         except HTTPException as exc:
             raise ToolBusinessError(str(exc.detail))
 
+    status = await sandbox_status()
+    use_builder = (args.get("env") == "builder") or (bool(repo_id) and args.get("env") != "slim")
+    if use_builder and not status.get("builder_available"):
+        use_builder = False
+    image = settings.sandbox_builder_image if use_builder else settings.sandbox_image
+    deps = deps_volume_name(str(repo_id)) if repo_id else None
+
     result = await sandbox_execute(
         files=files,
         command=args.get("command"),
         stdin=args.get("stdin", ""),
+        image=image,
+        deps_volume=deps,
     )
 
     await log_audit(
@@ -115,6 +130,7 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         "stdout": result["stdout"],
         "stderr": result["stderr"],
         "command": result["command"],
+        "env": "builder" if use_builder else "slim",
         "hint": "退出码 0 表示成功" if result["exit_code"] == 0 else "执行失败：请阅读 stderr，修正后重试",
     }
 
@@ -141,10 +157,15 @@ TOOL = ToolDefinition(
                 "type": "string",
                 "description": "运行命令（默认 python main.py）；跑测试用 python -m pytest -q",
             },
+            "env": {
+                "type": "string",
+                "description": "运行环境：builder（预装 fastapi/pytest 等，适合仓库测试，默认）或 slim（轻量，适合代码片段）",
+            },
             "stdin": {"type": "string", "description": "标准输入内容（可选）"},
         },
         "required": [],
     },
     func=run_code,
+    category="execute",
     timeout=45,
 )

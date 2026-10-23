@@ -60,26 +60,45 @@ async def sandbox_status() -> dict:
     if not docker_ok:
         return {"available": False, "reason": "docker daemon not reachable"}
 
-    def _image_exists() -> bool:
+    def _image_exists(image: str) -> bool:
         import subprocess
         result = subprocess.run(
-            ["docker", "image", "inspect", settings.sandbox_image],
+            ["docker", "image", "inspect", image],
             capture_output=True,
             timeout=10,
         )
         return result.returncode == 0
 
-    try:
-        has_image = await asyncio.to_thread(_image_exists)
-    except Exception:  # noqa: BLE001
-        has_image = False
+    async def check(image: str) -> bool:
+        try:
+            return await asyncio.to_thread(_image_exists, image)
+        except Exception:  # noqa: BLE001
+            return False
 
-    if not has_image:
+    has_default = await check(settings.sandbox_image)
+    has_builder = await check(settings.sandbox_builder_image)
+
+    if not has_default:
         return {
             "available": False,
             "reason": f"sandbox image missing — build it: docker build -f Dockerfile.sandbox -t {settings.sandbox_image} .",
+            "builder_available": has_builder,
+            "builder_image": settings.sandbox_builder_image,
+            "network_enabled": settings.sandbox_allow_network,
         }
-    return {"available": True, "image": settings.sandbox_image}
+    return {
+        "available": True,
+        "image": settings.sandbox_image,
+        "builder_available": has_builder,
+        "builder_image": settings.sandbox_builder_image,
+        "network_enabled": settings.sandbox_allow_network,
+    }
+
+
+def deps_volume_name(repo_id: str) -> str:
+    """Per-repo named volume holding pip-installed packages (/deps)."""
+    safe = "".join(ch for ch in str(repo_id) if ch.isalnum() or ch in "-_")
+    return f"nova-deps-{safe}"
 
 
 def _safe_relpath(path: str) -> str:
@@ -95,11 +114,18 @@ async def execute(
     command: str | None = None,
     stdin: str = "",
     timeout: int | None = None,
+    image: str | None = None,
+    network: bool = False,
+    deps_volume: str | None = None,
+    as_root: bool = False,
+    job_id: str | None = None,
 ) -> dict:
     """Run ``files`` in the sandbox container.
 
     Returns {"stdout", "stderr", "exit_code", "timed_out", "sandboxed", "command"}.
-    ``sandboxed`` is always True here — kept in the payload for auditability.
+    ``deps_volume`` mounts a per-repo named volume at /deps (PYTHONPATH) so
+    packages installed with ``pip --target`` persist across runs.
+    ``as_root`` is only used for the admin-only dependency installer.
     """
     timeout = timeout or settings.sandbox_timeout
     status = await sandbox_status()
@@ -138,13 +164,32 @@ async def execute(
                 fh.write(content)
 
         # `timeout` inside the container is the first line of defense;
-        # the outer asyncio timeout + docker kill is the backstop.
+        # the outer subprocess timeout + docker kill is the backstop.
         inner = f"timeout {timeout}s sh -c {_shell_quote(command)}"
+
+        extra: list[str] = []
+        if deps_volume:
+            mode = "rw" if as_root else "ro"
+            extra += ["-v", f"{deps_volume}:/deps:{mode}"]
+            extra += ["-e", "PYTHONPATH=/deps:/workspace"]
+        if network:
+            extra += ["-e", "PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple"]
+            extra += ["-e", "PIP_DISABLE_PIP_VERSION_CHECK=1"]
+        if as_root:
+            extra += ["--user", "0:0"]
+        else:
+            extra += ["--user", "65534:65534"]
+
+        labels = []
+        if job_id:
+            safe_job = "".join(ch for ch in str(job_id) if ch.isalnum() or ch in "-_")
+            labels = ["--label", f"nova.job_id={safe_job}"]
 
         cmd = [
             "docker", "run", "--rm",
             "--name", container_name,
-            "--network", "none",
+            *labels,
+            "--network", "bridge" if network else "none",
             "--read-only",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
@@ -152,10 +197,10 @@ async def execute(
             "--memory", settings.sandbox_memory,
             "--cpus", settings.sandbox_cpus,
             "--tmpfs", "/tmp:rw,size=64m",
-            "--user", "65534:65534",
+            *extra,
             "-v", f"{tmp_dir}:/workspace:rw",
             "-w", "/workspace",
-            settings.sandbox_image,
+            image or settings.sandbox_image,
             "sh", "-c", inner,
         ]
 
@@ -194,6 +239,42 @@ async def execute(
     finally:
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def kill_job_containers(job_id: str) -> int:
+    """Stop sandbox containers labelled with ``job_id``.
+
+    Used by the job runner when a user cancels a long-running task.  The
+    sandbox still has its own timeout as a backstop; this makes cancellation
+    take effect immediately instead of waiting for the command to finish.
+    """
+    safe_job = "".join(ch for ch in str(job_id) if ch.isalnum() or ch in "-_")
+    if not safe_job or shutil.which("docker") is None:
+        return 0
+
+    def _run() -> int:
+        listed = subprocess.run(
+            ["docker", "ps", "-q", "--filter", f"label=nova.job_id={safe_job}"],
+            capture_output=True,
+            timeout=15,
+        )
+        ids = [line.strip() for line in listed.stdout.decode("utf-8", "replace").splitlines() if line.strip()]
+        killed = 0
+        for container_id in ids:
+            result = subprocess.run(
+                ["docker", "kill", container_id],
+                capture_output=True,
+                timeout=15,
+            )
+            if result.returncode == 0:
+                killed += 1
+        return killed
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sandbox_job_kill_failed", job_id=safe_job, error=str(exc))
+        return 0
 
 
 def _run_docker(cmd: list[str], stdin_bytes: bytes | None, timeout: int) -> "subprocess.CompletedProcess":

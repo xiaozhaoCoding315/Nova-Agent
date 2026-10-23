@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen3.8-max"   # 阿里云百炼（DashScope）模型名
     llm_timeout: int = 90          # seconds per LLM call (harness)
+    task_llm_timeout: int = 180    # red-green task generation is heavier (thinking models)
     max_rounds: int = 5            # agent tool-calling rounds
 
     @property
@@ -52,6 +53,8 @@ class Settings(BaseSettings):
     admin_daily_tokens: int = 0        # 0 = unlimited
     demo_sandbox_daily: int = 20
     admin_sandbox_daily: int = 0       # 0 = unlimited
+    admin_job_hourly: int = 30         # import / reindex / task / builder
+    demo_job_hourly: int = 5
 
     # ---------- Workspace limits ----------
     max_upload_mb: int = 100
@@ -64,13 +67,20 @@ class Settings(BaseSettings):
     # ---------- Sandbox ----------
     sandbox_enabled: bool = True
     sandbox_image: str = "nova-sandbox:latest"
+    sandbox_builder_image: str = "nova-builder:latest"
     sandbox_timeout: int = 30
+    sandbox_install_timeout: int = 180
     sandbox_memory: str = "256m"
     sandbox_cpus: str = "0.5"
+    sandbox_allow_network: bool = False   # 允许“安装依赖”时联网（admin only）
 
     # ---------- Tools ----------
     enable_fetch_url: bool = True
     fetch_url_max_kb: int = 512
+
+    # ---------- Background jobs ----------
+    job_stale_seconds: int = 120        # requeue running jobs whose heartbeat is older
+    job_runner_enabled: bool = True
 
     # ---------- App ----------
     app_env: str = "dev"

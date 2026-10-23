@@ -35,6 +35,15 @@ services:
     entrypoint: ["true"]
     restart: "no"
 
+  # 验证镜像：预装 fastapi/pytest 等，用于真实跑仓库测试
+  builder-image:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.builder
+    image: nova-builder:latest
+    entrypoint: ["true"]
+    restart: "no"
+
   app:
     build:
       context: .
@@ -76,9 +85,13 @@ services:
       DEMO_DAILY_TOKENS: ${DEMO_DAILY_TOKENS:-100000}
       ADMIN_SANDBOX_DAILY: ${ADMIN_SANDBOX_DAILY:-0}
       DEMO_SANDBOX_DAILY: ${DEMO_SANDBOX_DAILY:-20}
+      ADMIN_JOB_HOURLY: ${ADMIN_JOB_HOURLY:-30}
+      DEMO_JOB_HOURLY: ${DEMO_JOB_HOURLY:-5}
 
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-true}
       SANDBOX_IMAGE: nova-sandbox:latest
+      SANDBOX_BUILDER_IMAGE: nova-builder:latest
+      SANDBOX_ALLOW_NETWORK: ${SANDBOX_ALLOW_NETWORK:-false}
       ENABLE_FETCH_URL: ${ENABLE_FETCH_URL:-true}
 
       CORS_ORIGINS: ${CORS_ORIGINS:-}
@@ -93,6 +106,8 @@ services:
       qdrant:
         condition: service_started
       sandbox-image:
+        condition: service_completed_successfully
+      builder-image:
         condition: service_completed_successfully
     restart: unless-stopped
 

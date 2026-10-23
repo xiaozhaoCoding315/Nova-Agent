@@ -30,6 +30,8 @@ class ToolBusinessError(Exception):
 class ToolContext:
     user: dict
     repo_ids: list[str] = field(default_factory=list)
+    session_id: str = ""
+    permission_mode: str = "auto"   # readonly | ask | auto
 
 
 @dataclass
@@ -39,6 +41,7 @@ class ToolDefinition:
     parameters: dict
     func: Callable[[dict, ToolContext], Awaitable[dict]]
     timeout: int = TIMEOUTS.tool_timeout
+    category: str = "read"          # read | write | execute | network
 
 
 _TYPE_CHECKS = {
@@ -121,6 +124,14 @@ class ToolRegistry:
         err = validate_args(tool.parameters, args)
         if err:
             return {"ok": False, "error": err, "ms": 0, "business": True}
+
+        if ctx.permission_mode == "readonly" and tool.category in ("write", "execute"):
+            return {
+                "ok": False,
+                "error": f"当前为只读模式，已阻止 {name}；请切换权限模式（需确认 / 自动）后再试",
+                "ms": 0,
+                "business": True,
+            }
 
         start = time.perf_counter()
         try:

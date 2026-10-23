@@ -1,10 +1,11 @@
 import clsx from 'clsx'
-import { AlertCircle, X } from 'lucide-react'
+import { Activity, AlertCircle, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Composer } from '../components/Composer'
 import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
 import { RefPanel } from '../components/RefPanel'
 import { SessionList } from '../components/SessionList'
+import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { useChat } from '../stores/chat'
 import { useRepos } from '../stores/repos'
 
@@ -25,11 +26,13 @@ const EXAMPLES = [
 
 export function ChatView() {
   const {
-    sessions, sessionId, messages, streaming, streamText, toolCards, refs, error,
+    sessions, sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
+    permissionMode, setPermissionMode,
     loadSessions, selectSession, newSession, deleteSession, send, stop, clearError,
   } = useChat()
   const { repos, refresh } = useRepos()
   const [selectedRepos, setSelectedRepos] = useState<string[]>([])
+  const [trajectoryOpen, setTrajectoryOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
@@ -38,6 +41,19 @@ export function ChatView() {
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!sessionId) {
+      setSelectedRepos([])
+      return
+    }
+    const current = sessions.find((s) => s.id === sessionId)
+    setSelectedRepos(current?.repo_ids ?? [])
+    // Restore the persisted selection when switching sessions. The meta event
+    // updates sessionId and the session entry atomically, so reading sessions
+    // here sees the new repo_ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -109,6 +125,24 @@ export function ChatView() {
               ))
             )}
           </div>
+          <button
+            onClick={() => setTrajectoryOpen(true)}
+            disabled={!sessionId}
+            className="flex shrink-0 items-center gap-1 rounded-md border border-edge px-2 py-1 text-[11.5px] text-dim hover:text-ink disabled:opacity-40"
+            title="查看本会话的完整执行轨迹（检索/工具/审批）"
+          >
+            <Activity size={12} /> 轨迹
+          </button>
+          <select
+            value={permissionMode}
+            onChange={(e) => setPermissionMode(e.target.value as 'readonly' | 'ask' | 'auto')}
+            className="shrink-0 rounded-md border border-edge bg-raised px-2 py-1 text-[11.5px] text-dim outline-none"
+            title="权限模式：只读不写入；确认模式下修改先生成提案；自动模式直接写入"
+          >
+            <option value="readonly">只读</option>
+            <option value="ask">确认写入</option>
+            <option value="auto">自动执行</option>
+          </select>
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-5">
@@ -137,7 +171,9 @@ export function ChatView() {
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
-            {streaming && <StreamingBubble text={streamText} toolCards={toolCards} />}
+            {streaming && (
+              <StreamingBubble text={streamText} toolCards={toolCards} editProposals={streamEdits} />
+            )}
           </div>
         </div>
 
@@ -164,6 +200,12 @@ export function ChatView() {
           <RefPanel refs={refs} />
         </div>
       </aside>
+
+      <TrajectoryDrawer
+        sessionId={sessionId}
+        open={trajectoryOpen}
+        onClose={() => setTrajectoryOpen(false)}
+      />
     </div>
   )
 }

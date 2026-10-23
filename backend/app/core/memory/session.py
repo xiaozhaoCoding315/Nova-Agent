@@ -19,26 +19,34 @@ async def create_session(user_id: int, title: str = DEFAULT_TITLE) -> dict:
         "INSERT INTO sessions (id, user_id, title) VALUES (%s, %s, %s)",
         (session_id, user_id, title),
     )
-    return {"id": session_id, "user_id": user_id, "title": title}
+    return {
+        "id": session_id, "user_id": user_id, "title": title,
+        "permission_mode": "ask", "repo_ids": [],
+    }
 
 
 async def get_session(session_id: str, user_id: int) -> dict | None:
     rows = await query(
-        "SELECT id, title, summary, created_at, updated_at FROM sessions "
-        "WHERE id = %s AND user_id = %s",
+        "SELECT id, title, summary, permission_mode, created_at, updated_at, repo_ids "
+        "FROM sessions WHERE id = %s AND user_id = %s",
         (session_id, user_id),
     )
     if not rows:
         return None
     r = rows[0]
-    return {"id": str(r[0]), "title": r[1], "summary": r[2], "created_at": r[3], "updated_at": r[4]}
+    return {
+        "id": str(r[0]), "title": r[1], "summary": r[2],
+        "permission_mode": r[3] or "ask", "created_at": r[4], "updated_at": r[5],
+        "repo_ids": [str(x) for x in (r[6] or [])],
+    }
 
 
 async def list_sessions(user_id: int, limit: int = 50) -> list[dict]:
     rows = await query(
         """
         SELECT s.id, s.title, s.created_at, s.updated_at,
-               (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id)
+               (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id),
+               s.permission_mode, s.repo_ids
         FROM sessions s
         WHERE s.user_id = %s
         ORDER BY s.updated_at DESC
@@ -50,6 +58,8 @@ async def list_sessions(user_id: int, limit: int = 50) -> list[dict]:
         {
             "id": str(r[0]), "title": r[1], "created_at": r[2],
             "updated_at": r[3], "message_count": int(r[4]),
+            "permission_mode": r[5] or "ask",
+            "repo_ids": [str(x) for x in (r[6] or [])],
         }
         for r in rows
     ]
@@ -106,6 +116,14 @@ async def add_message(
     )
     await execute("UPDATE sessions SET updated_at = now() WHERE id = %s", (session_id,))
     return rows[0][0] if rows else 0
+
+
+async def set_repo_ids(session_id: str, repo_ids: list[str]) -> None:
+    import json
+    await execute(
+        "UPDATE sessions SET repo_ids = %s, updated_at = now() WHERE id = %s",
+        (json.dumps(repo_ids, ensure_ascii=False), session_id),
+    )
 
 
 async def maybe_set_title(session_id: str, first_user_content: str) -> str:

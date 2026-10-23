@@ -103,5 +103,6 @@ TOOL = ToolDefinition(
         "required": ["url"],
     },
     func=fetch_url,
+    category="network",
     timeout=25,
 )

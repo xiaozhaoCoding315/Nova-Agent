@@ -92,3 +92,51 @@ async def check_sandbox_quota(user: dict) -> None:
                 status_code=429,
                 detail=f"今日代码执行次数已用完（上限 {limit} 次）",
             )
+
+
+def job_hourly_limit(user: dict) -> int:
+    return settings.admin_job_hourly if user["role"] == "admin" else settings.demo_job_hourly
+
+
+def check_job_quota(user: dict, kind: str) -> None:
+    """Rate-limit expensive background entrypoints (import/reindex/task/builder)."""
+    limit = job_hourly_limit(user)
+    if limit > 0:
+        _rate_check(user, f"job:{kind}", limit)
+
+
+def check_search_quota(user: dict) -> None:
+    """Search hits the embedding API; allow more than chat but still bound it."""
+    limit = hourly_message_limit(user) * 10
+    if limit > 0:
+        _rate_check(user, "search", limit)
+
+
+async def ensure_token_budget(
+    user: dict | None = None,
+    *,
+    user_id: int | None = None,
+    extra_tokens: int = 0,
+) -> None:
+    """Raise 429 when today's token budget is exhausted.
+
+    ``extra_tokens`` accounts for usage accumulated inside the current turn,
+    which is not yet visible in ``usage_log``.
+    """
+    if user is None:
+        if user_id is None:
+            return
+        rows = await query("SELECT id, role FROM users WHERE id = %s", (user_id,))
+        if not rows:
+            return
+        user = {"id": rows[0][0], "role": rows[0][1]}
+
+    budget = daily_token_budget(user)
+    if budget <= 0:
+        return
+    used = await tokens_used_today(user["id"])
+    if used + max(int(extra_tokens or 0), 0) >= budget:
+        raise HTTPException(
+            status_code=429,
+            detail=f"今日 token 配额已用完（{budget}），请明天再试或联系管理员",
+        )
