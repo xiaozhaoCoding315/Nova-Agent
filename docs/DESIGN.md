@@ -989,3 +989,33 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - server 进程是运维可信代码；当前没有额外进程沙箱、签名或资源限制。
 - 工具参数只经过通用路径/能力校验，未按 MCP server 语义做细粒度参数过滤。
 - 工具发现发生在启动时；配置变更需重启应用。
+
+---
+
+## 34. v4.0 增量：P4.1 Node/全栈预览 + TTL 回收
+
+### 34.1 多运行时预览
+- `_preview_config` 自动选择运行时：
+  - `app/main.py` → Python / `nova-builder` / `uvicorn` / 端口 8000 / `/health`
+  - `package.json` 且有 start 脚本 → Node / `nova-node` / `npm start` / 端口 3000 / `/`
+  - `nova.yaml` 的 `preview.runtime/command/port/health/image` 可覆盖，用于 fullstack 或自定义服务
+- Python 预览挂载仓库依赖卷 `/deps`（PYTHONPATH）；Node 预览挂载 `nova-node-deps-<repo>` 到 `/workspace/node_modules`（只读），并注入 `PORT`。
+- 端口映射按运行时端口动态设置；容器仍为只读根文件系统、cap-drop ALL、非 root、资源限制。
+
+### 34.2 TTL 回收
+- 新增 `PREVIEW_TTL_MINUTES`（默认 120，0 = 关闭）。
+- 小时级维护循环调用 `cleanup_expired()`：找出超时的 `running` 部署，逐个执行 teardown（删容器、删临时目录、写 stopped、记账）。
+- teardown 仍保留幂等键，重复清理不重复操作。
+
+### 34.3 验证记录（2026-10-23）
+- `samples/node-app` 真实部署：Node 容器启动，`/` 返回 200（`node preview ok`），teardown 清理。
+- `samples/fullstack-contract` 通过 `nova.yaml preview.runtime=node` 覆盖，`/` 返回 200（`fullstack preview ok`）。
+- Python `todo-api` 预览仍通过健康检查 200。
+- 部署/TTL 单测覆盖 Python/Node 配置、端口校验、超时清理；后端测试见最新全量结果。
+
+### 34.4 已知边界
+- 域名反代/HTTPS 未自动配置；当前只返回 `127.0.0.1:<port>` 本地 URL。
+- Node 依赖需预先安装到依赖卷；预览启动不会联网安装。
+- TTL 清理依赖小时级维护循环，最坏延迟约 1 小时。
+- 预览使用 bridge 网络以支持端口映射；未做网络域名 allowlist。
+- 临时工作区在正常 teardown/TTL 清理时删除；进程崩溃仍可能残留。

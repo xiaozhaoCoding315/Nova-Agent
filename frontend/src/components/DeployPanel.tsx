@@ -81,10 +81,10 @@ export function DeployPanel({ repoId }: { repoId: string }) {
         </div>
 
         <p className="text-[11.5px] leading-relaxed text-dim">
-          使用 <code className="rounded bg-raised px-1 font-mono">nova-builder</code> 启动隔离容器并做健康检查；
-          当前仅支持 Python/FastAPI（需要 <code className="rounded bg-raised px-1 font-mono">app/main.py</code>，
-          可在 <code className="rounded bg-raised px-1 font-mono">nova.yaml</code> 配置 preview.command）。
-          仅管理员可操作。
+          使用隔离容器启动项目并做健康检查：支持 Python/FastAPI（<code className="rounded bg-raised px-1 font-mono">app/main.py</code>）
+          与 Node（<code className="rounded bg-raised px-1 font-mono">package.json</code> 的 start 脚本）。
+          可在 <code className="rounded bg-raised px-1 font-mono">nova.yaml</code> 的 preview.runtime/command/port/health 覆盖；
+          Node 依赖需先安装到仓库依赖卷。仅管理员可操作。
         </p>
 
         {error && (

@@ -1,3 +1,9 @@
 contract:
   source: contracts/openapi.json
   target: frontend/src/lib/api-schema.d.ts
+
+preview:
+  runtime: node
+  command: node frontend/scripts/serve.js
+  port: 3000
+  health: /

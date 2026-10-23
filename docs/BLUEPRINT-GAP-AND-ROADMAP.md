@@ -26,6 +26,8 @@
 
 > **P3.4 进展更新（2026-10-23）**：MCP stdio 客户端、server allowlist、工具能力映射与审计完成；工具名 `mcp__server__tool`，默认仅管理员，走统一 policy。fake MCP server 验证 initialize/list/call、allowlist 过滤与 demo 拒绝；后端 **230 passed**。HTTP/SSE transport、OAuth、MCP 进程沙箱仍待后续。
 
+> **P4.1 进展更新（2026-10-23）**：预览部署扩展到 Node 与 fullstack（`nova.yaml preview.runtime/command/port/health` 覆盖），新增 `PREVIEW_TTL_MINUTES` 自动回收；Python `todo-api`、Node `samples/node-app`、fullstack-contract 均真实部署健康检查 200。域名反代/HTTPS 与 Node 依赖自动安装仍待后续。
+
 ---
 
 ## 0. 先给结论

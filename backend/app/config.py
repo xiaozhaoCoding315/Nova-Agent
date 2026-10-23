@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     mcp_admin_only: bool = True
     mcp_timeout: int = 30
 
+    # ---------- Preview deployments ----------
+    preview_ttl_minutes: int = 120   # 0 = never auto-stop
+
     # ---------- Background jobs ----------
     job_stale_seconds: int = 120        # requeue running jobs whose heartbeat is older
     job_runner_enabled: bool = True

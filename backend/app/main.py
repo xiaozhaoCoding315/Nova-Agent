@@ -24,6 +24,11 @@ async def _cleanup_loop() -> None:
         try:
             from app.core.memory.cleanup import run_cleanup
             summary = await run_cleanup()
+            try:
+                from app.core.deploy.service import cleanup_expired
+                summary["previews_expired"] = await cleanup_expired()
+            except Exception:
+                logger.exception("preview_cleanup_failed")
             logger.info("cleanup_done", **summary)
         except ImportError:
             pass

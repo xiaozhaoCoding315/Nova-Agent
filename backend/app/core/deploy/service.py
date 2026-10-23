@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -15,18 +16,30 @@ from app.config import settings
 from app.core.contracts.service import parse_nova_config
 from app.core.deploy import ledger
 from app.core.indexing.pipeline import get_repo
+from app.core.sandbox.runtime import deps_volume_name
 from app.core.security.audit import AuditAction, log_audit
 from app.core.tools.run_code import _collect_repo_files
 
 logger = structlog.get_logger()
 
-DEFAULT_COMMAND = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-DEFAULT_HEALTH = "/health"
+DEFAULT_PYTHON_COMMAND = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+DEFAULT_PYTHON_HEALTH = "/health"
+DEFAULT_NODE_COMMAND = "npm start"
+DEFAULT_NODE_HEALTH = "/"
 HEALTH_TIMEOUT_S = 45
 
 
 class DeployError(ValueError):
     """Deployment could not be started; the message is user-facing."""
+
+
+@dataclass(frozen=True)
+class PreviewSpec:
+    runtime: str          # python | node
+    image: str
+    command: str
+    port: int
+    health: str
 
 
 def _free_port() -> int:
@@ -54,12 +67,64 @@ async def _git_head(root: Path) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _preview_config(files: dict[str, str]) -> tuple[str, str]:
+def _package_scripts(files: dict[str, str]) -> dict:
+    import json
+
+    raw = files.get("package.json")
+    if not raw:
+        return {}
+    try:
+        package = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    scripts = package.get("scripts") if isinstance(package, dict) else None
+    return scripts if isinstance(scripts, dict) else {}
+
+
+def _preview_config(files: dict[str, str]) -> PreviewSpec:
     config = parse_nova_config(files.get("nova.yaml", ""))
     preview = config.get("preview") if isinstance(config.get("preview"), dict) else {}
-    command = str(preview.get("command") or DEFAULT_COMMAND)
-    health = str(preview.get("health") or DEFAULT_HEALTH)
-    return command, health
+    runtime = str(preview.get("runtime") or "").lower()
+    if runtime not in ("python", "node"):
+        if "app/main.py" in files:
+            runtime = "python"
+        elif "package.json" in files:
+            runtime = "node"
+        else:
+            raise DeployError("未找到可预览的入口（app/main.py 或 package.json）")
+
+    command_override = str(preview.get("command") or "").strip()
+    health_override = str(preview.get("health") or "").strip()
+    port_override = preview.get("port")
+
+    if runtime == "node":
+        scripts = _package_scripts(files)
+        if not command_override and "start" not in scripts:
+            raise DeployError("Node 项目缺少 start 脚本；请在 nova.yaml 的 preview.command 指定启动命令")
+        command = command_override or DEFAULT_NODE_COMMAND
+        port = int(port_override or 3000)
+        health = health_override or DEFAULT_NODE_HEALTH
+        image = settings.sandbox_node_image
+    else:
+        if "app/main.py" not in files and not command_override:
+            raise DeployError("未找到 app/main.py；请在 nova.yaml 的 preview.command 指定启动命令")
+        command = command_override or DEFAULT_PYTHON_COMMAND
+        port = int(port_override or 8000)
+        health = health_override or DEFAULT_PYTHON_HEALTH
+        image = settings.sandbox_builder_image
+
+    image_override = str(preview.get("image") or "").strip()
+    if image_override in ("builder", "python"):
+        image = settings.sandbox_builder_image
+    elif image_override == "node":
+        image = settings.sandbox_node_image
+    elif image_override:
+        image = image_override
+    if not 1 <= port <= 65535:
+        raise DeployError(f"预览端口不合法：{port}")
+    if not health.startswith("/"):
+        health = "/" + health
+    return PreviewSpec(runtime=runtime, image=image, command=command, port=port, health=health)
 
 
 async def _wait_health(url: str, health_path: str, timeout: int = HEALTH_TIMEOUT_S) -> bool:
@@ -146,12 +211,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
     files = await _collect_repo_files(repo_id, user)
     if not files:
         raise DeployError("仓库没有可部署文件")
-    if "package.json" in files and "app/main.py" not in files:
-        raise DeployError("当前预览部署仅支持 Python/FastAPI 项目（需要 app/main.py）")
-    if "app/main.py" not in files and "nova.yaml" not in files:
-        raise DeployError("未找到 app/main.py；可在 nova.yaml 的 preview.command 指定启动命令")
-
-    command, health = _preview_config(files)
+    spec = _preview_config(files)
     root = Path(repo["root_path"])
     head = await _git_head(root)
     base_key = f"{user['id']}:deploy:{repo_id}:{head or 'nogit'}"
@@ -173,7 +233,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
 
     action = await ledger.begin(
         user["id"], key, "deploy", repo_id,
-        {"repo_id": repo_id, "command": command, "head": head},
+        {"repo_id": repo_id, "runtime": spec.runtime, "command": spec.command, "head": head},
     )
     deploy_id = str(uuid.uuid4())
     container_name = f"nova-preview-{deploy_id[:12]}"
@@ -182,6 +242,8 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
         target = workspace / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+    if spec.runtime == "node":
+        (workspace / "node_modules").mkdir(exist_ok=True)
 
     from app.db import execute
 
@@ -190,32 +252,49 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
         "(id, user_id, repo_id, action_id, container_name, status, image, command, workspace_path) "
         "VALUES (%s, %s, %s, %s, %s, 'starting', %s, %s, %s)",
         (deploy_id, user["id"], repo_id, action["id"], container_name,
-         settings.sandbox_builder_image, command, str(workspace)),
+         spec.image, spec.command, str(workspace)),
     )
     await log_audit(
         AuditAction.DEPLOY, user_id=str(user["id"]),
-        details={"deployment_id": deploy_id, "repo_id": repo_id, "command": command[:300]},
+        details={
+            "deployment_id": deploy_id, "repo_id": repo_id,
+            "runtime": spec.runtime, "command": spec.command[:300],
+        },
     )
+
+    deps: list[str] = []
+    if spec.runtime == "python":
+        deps += [
+            "-v", f"{deps_volume_name(repo_id)}:/deps:ro",
+            "-e", "PYTHONPATH=/deps:/workspace",
+        ]
+    else:
+        deps += [
+            "-v", f"{deps_volume_name(repo_id, 'node')}:/workspace/node_modules:ro",
+            "-e", "npm_config_cache=/tmp/npm-cache",
+            "-e", f"PORT={spec.port}",
+        ]
 
     port = _free_port()
     docker_args = [
         "docker", "run", "-d", "--name", container_name,
         "--label", f"nova.preview_id={deploy_id}",
         "--label", f"nova.user_id={user['id']}",
-        "-p", f"127.0.0.1:{port}:8000",
+        "-p", f"127.0.0.1:{port}:{spec.port}",
         "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--pids-limit", "128", "--memory", settings.sandbox_memory,
         "--cpus", settings.sandbox_cpus, "--tmpfs", "/tmp:rw,size=64m",
         "-v", f"{workspace}:/workspace:rw", "-w", "/workspace",
+        *deps,
         "--user", "65534:65534",
-        settings.sandbox_builder_image, "sh", "-c", command,
+        spec.image, "sh", "-c", spec.command,
     ]
     url = f"http://127.0.0.1:{port}"
     try:
         started = await _docker(docker_args, timeout=60)
         if started.returncode != 0:
             raise DeployError(f"容器启动失败：{(started.stderr or started.stdout)[:800]}")
-        if not await _wait_health(url, health):
+        if not await _wait_health(url, spec.health):
             logs = await _container_logs(container_name)
             raise DeployError(f"健康检查未通过：\n{logs[-1200:]}")
         await execute(
@@ -265,3 +344,24 @@ async def teardown_preview(user: dict, deploy_id: str) -> dict:
         details={"deployment_id": deploy_id, "container": deployment["container_name"]},
     )
     return await get_deployment(deploy_id, user["id"]) or {}
+
+
+async def cleanup_expired() -> int:
+    """Stop previews older than PREVIEW_TTL_MINUTES (best-effort)."""
+    if settings.preview_ttl_minutes <= 0:
+        return 0
+    from app.db import query
+
+    rows = await query(
+        "SELECT id, user_id FROM deployments WHERE status = 'running' "
+        "AND created_at < now() - make_interval(mins => %s)",
+        (settings.preview_ttl_minutes,),
+    )
+    stopped = 0
+    for deploy_id, user_id in rows:
+        try:
+            await teardown_preview({"id": int(user_id)}, str(deploy_id))
+            stopped += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("preview_ttl_cleanup_failed", deployment_id=str(deploy_id), error=str(exc))
+    return stopped

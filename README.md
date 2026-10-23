@@ -19,7 +19,7 @@
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。MVP 支持 Python 后端（FastAPI + SQLite + pytest）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
 | **变更工作流（SPEC → 计划 → Gate → 审查 → 应用）** | 用自然语言提功能/重构需求：起草 SPEC（目标/In-Out/接口/验收）→ 人工冻结 → 拆成带依赖和可判定验收的任务 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
-| **预览部署** | 管理员在工作区「预览」页签一键部署 Python/FastAPI 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；一键下线并清理容器。 |
+| **预览部署** | 管理员在工作区「预览」页签一键部署 **Python/FastAPI 或 Node** 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；超时自动下线；一键清理容器。 |
 | **MCP 外接工具** | 通过 stdio 接入本地 MCP server：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
 
 ## 解决什么问题
@@ -132,6 +132,7 @@ npm run dev                   # http://localhost:5173
 | `TOOL_PRE_HOOK` / `TOOL_POST_HOOK` | 可选工具 Hook 命令；pre-hook 收到 JSON stdin，退出码 2 阻断工具 |
 | `MCP_ENABLED` / `MCP_CONFIG_PATH` | MCP 开关 / server allowlist 配置文件路径 |
 | `MCP_ADMIN_ONLY` / `MCP_SERVERS_JSON` | MCP 工具是否仅管理员 / 用内联 JSON 覆盖配置文件 |
+| `PREVIEW_TTL_MINUTES` | 运行中预览自动下线时间（默认 120，0 = 不自动回收） |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 
 ## API 概览
@@ -260,6 +261,24 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
+## 预览部署
+
+在工作区「预览」页签由管理员部署。默认行为：
+
+- 含 `app/main.py`：`nova-builder` + `uvicorn app.main:app`，健康检查 `/health`
+- 含 `package.json` 且配置了 start 脚本：`nova-node` + `npm start`，默认端口 3000、健康检查 `/`
+- 可用仓库内 `nova.yaml` 覆盖：
+
+```yaml
+preview:
+  runtime: node
+  command: node frontend/scripts/serve.js
+  port: 3000
+  health: /
+```
+
+Node 依赖需先通过 `install_deps kind=node` 安装到仓库依赖卷；fullstack 项目通常指定 Node 静态/前端服务。
+
 ## 测试
 
 ```bash
@@ -269,7 +288,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、部署幂等账本、MCP allowlist/调用
+- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -328,8 +347,9 @@ cd frontend && npm run contract:check
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
 - 能力权限是应用层策略，最终隔离边界仍是容器/宿主机；Hook 命令由运维配置，必须使用可信脚本
-- 预览部署仅支持 **Python/FastAPI**（需要 `app/main.py`，可在 `nova.yaml` 的 `preview.command/health` 覆盖）；Node 预览、TTL 自动回收与域名反代尚未接入
-- 预览容器使用 bridge 网络以支持本地端口映射，仍限制 capabilities/内存/CPU/只读根文件系统；管理员才能部署，停止后容器与临时工作区会被清理
+- 预览部署支持 **Python/FastAPI**（`app/main.py`）与 **Node**（`package.json` 的 start 脚本）；fullstack 项目可用 `nova.yaml` 的 `preview.runtime: node` + command 指定前端/静态服务
+- 预览使用 bridge 网络以支持本地端口映射；域名反代尚未接入；Node 依赖需先安装到 `nova-node-deps-<repo>` 卷
+- 运行中预览默认 120 分钟后由维护循环自动下线（`PREVIEW_TTL_MINUTES`，0 = 关闭）
 - 部署历史记录保留在 `deployments`，重复部署由 `external_actions` 幂等键复用同一运行中的预览
 - MCP 仅支持 stdio + newline JSON-RPC；远程 HTTP/SSE、OAuth、按参数级过滤尚未接入；MCP server 进程属于运维可信代码
 - 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
