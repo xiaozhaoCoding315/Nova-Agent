@@ -27,7 +27,10 @@ class SlowLLM:
 
 
 def _patch_common(monkeypatch, llm):
-    monkeypatch.setattr(loop_mod, "get_llm", lambda: llm)
+    async def _get_llm(*_args, **_kwargs):
+        return llm
+
+    monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))

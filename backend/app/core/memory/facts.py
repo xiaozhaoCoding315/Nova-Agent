@@ -191,7 +191,7 @@ async def extract_facts_from_turn(user_id: int, user_text: str, assistant_text: 
         )
 
         async def _call() -> tuple[str, dict | None]:
-            llm = get_llm()
+            llm = await get_llm(user_id)
             chunks = []
             usage = None
             async for event in llm.astream_with_tools(

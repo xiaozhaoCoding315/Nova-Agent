@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
+from app.core.llm.factory import server_default_model
 from app.core.metrics.service import compute_metrics
 from app.core.security.auth import get_current_user
 from app.core.security.limits import (
@@ -44,9 +45,11 @@ async def _check_qdrant() -> str:
 
 
 def _check_llm() -> str:
-    if not settings.llm_configured:
-        return "failed: no API key configured"
-    return f"ok: {','.join(settings.llm_priority_list)}"
+    if settings.llm_configured:
+        return f"ok: {','.join(settings.llm_priority_list)}"
+    if not settings.llm_allow_server_fallback:
+        return "ok: user-provided keys only (server fallback disabled)"
+    return "failed: no API key configured"
 
 
 def _git_available() -> bool:
@@ -78,14 +81,15 @@ async def health():
         "postgres": postgres,
         "qdrant": qdrant,
         "llm": _check_llm(),
-        "model": settings.dashscope_model,
+        "model": server_default_model() or settings.dashscope_model,
         "embedding": _check_embedding(),
         "sandbox": sandbox,
         "git": "ok" if _git_available() else "missing",
         "uptime_s": int(time.time() - _STARTED_AT),
         "env": settings.app_env,
     }
-    core_ok = postgres == "ok" and qdrant == "ok" and settings.llm_configured
+    llm_ready = settings.llm_configured or not settings.llm_allow_server_fallback
+    core_ok = postgres == "ok" and qdrant == "ok" and llm_ready
     return HealthOut(status="ok" if core_ok else "degraded", version=VERSION, components=components)
 
 

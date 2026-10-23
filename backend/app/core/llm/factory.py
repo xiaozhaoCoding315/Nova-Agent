@@ -2,6 +2,7 @@ from openai import AsyncOpenAI
 from app.config import settings
 from app.core.llm.base import LLMProvider
 from app.core.llm.fallback import FallbackLLM
+from app.core.llm.user_settings import get_user_config
 
 
 class OpenAICompatibleLLM(LLMProvider):
@@ -81,11 +82,22 @@ class OpenAICompatibleLLM(LLMProvider):
         yield {"type": "finish", "finish_reason": finish_reason}
 
 
-def get_llm() -> LLMProvider:
-    providers = []
-    priority = settings.llm_priority_list
+def server_default_model() -> str | None:
+    """Model the shared server key would use, for display and fallbacks."""
+    for name in settings.llm_priority_list:
+        name = name.lower()
+        if name == "longcat" and settings.longcat_api_key:
+            return settings.longcat_model
+        if name == "deepseek" and settings.deepseek_api_key:
+            return "deepseek-chat"
+        if name == "dashscope" and settings.dashscope_api_key:
+            return settings.dashscope_model
+    return None
 
-    for name in priority:
+
+def _server_llm() -> LLMProvider:
+    providers = []
+    for name in settings.llm_priority_list:
         name = name.lower()
         if name == "longcat" and settings.longcat_api_key:
             providers.append(OpenAICompatibleLLM(
@@ -104,3 +116,23 @@ def get_llm() -> LLMProvider:
     if not providers:
         raise RuntimeError("No LLM providers configured")
     return FallbackLLM(providers)
+
+
+async def get_llm(user_id: int | None = None, model: str | None = None) -> LLMProvider:
+    """Resolve the provider for one call.
+
+    A user-saved key takes precedence and is used exclusively, so a bad personal
+    config never silently spends the server owner's quota. Without one, the
+    shared env-key chain is used unless the deployment disables that fallback.
+    """
+    if user_id is not None:
+        config = await get_user_config(user_id)
+        if config:
+            if not config["api_key"]:
+                raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
+            chosen_model = (model or config["model"]).strip()
+            return OpenAICompatibleLLM(config["api_key"], config["base_url"], chosen_model)
+
+    if not settings.llm_allow_server_fallback:
+        raise RuntimeError("尚未配置个人模型 API Key，且服务端未开放共享模型")
+    return _server_llm()

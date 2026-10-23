@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     llm_timeout: int = 90          # seconds per LLM call (harness)
     task_llm_timeout: int = 180    # red-green task generation is heavier (thinking models)
     max_rounds: int = 5            # agent tool-calling rounds
+    # Deployment switch: false forces every user to bring their own key.
+    llm_allow_server_fallback: bool = True
 
     @property
     def llm_configured(self) -> bool:

@@ -25,6 +25,7 @@ class SessionOut(BaseModel):
     message_count: int = 0
     permission_mode: str = "ask"
     repo_ids: list[str] = Field(default_factory=list)
+    model: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -47,6 +48,7 @@ class ChatRequest(BaseModel):
     # None = keep the session's saved selection; [] = explicitly clear it.
     repo_ids: Optional[list[str]] = None
     permission_mode: Optional[Literal["readonly", "ask", "auto"]] = None
+    model: Optional[str] = Field(default=None, max_length=120)
 
 
 # ---------- Workspace ----------
@@ -171,6 +173,44 @@ class UsageOut(BaseModel):
     hourly_message_limit: int
     sandbox_runs_today: int
     sandbox_daily_limit: int       # 0 = unlimited
+
+
+# ---------- Per-user LLM settings ----------
+
+class LlmProviderOut(BaseModel):
+    id: str
+    label: str
+    base_url: str
+    models: list[str] = Field(default_factory=list)
+
+
+class LlmSettingsOut(BaseModel):
+    source: Literal["user", "server", "none"]
+    configured: bool
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    has_key: bool = False
+    key_hint: Optional[str] = None
+    server_model: Optional[str] = None
+    allow_server_fallback: bool = True
+    providers: list[LlmProviderOut] = Field(default_factory=list)
+    updated_at: Optional[datetime] = None
+
+
+class LlmSettingsUpdate(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    model: str = Field(min_length=1, max_length=120)
+    base_url: Optional[str] = Field(default=None, max_length=500)
+    # Empty/None keeps the stored key, so users can change model without retyping it.
+    api_key: Optional[str] = Field(default=None, max_length=4000)
+
+
+class LlmTestOut(BaseModel):
+    ok: bool
+    model: str
+    latency_ms: int = 0
+    message: str = ""
 
 
 # ---------- Shared API envelopes ----------

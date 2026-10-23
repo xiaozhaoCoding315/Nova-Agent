@@ -84,6 +84,7 @@ async def run_chat(
         session_id=session["id"],
         title=session["title"],
         repo_ids=session.get("repo_ids", repo_ids),
+        model=session.get("model"),
         turn_id=turn_id,
     )
 
@@ -256,8 +257,9 @@ async def run_chat(
                 break
 
             try:
+                llm = await get_llm(user["id"], model=session.get("model"))
                 async with asyncio.timeout(settings.llm_timeout):
-                    async for event in get_llm().astream_with_tools(messages, specs):
+                    async for event in llm.astream_with_tools(messages, specs):
                         etype = event.get("type")
                         if etype == "content":
                             round_text.append(event["content"])

@@ -13,22 +13,22 @@ HISTORY_LIMIT = 12          # messages injected into the prompt
 ARCHIVE_THRESHOLD = 30      # summarize once a session grows beyond this
 
 
-async def create_session(user_id: int, title: str = DEFAULT_TITLE) -> dict:
+async def create_session(user_id: int, title: str = DEFAULT_TITLE, model: str | None = None) -> dict:
     session_id = str(uuid.uuid4())
     await execute(
-        "INSERT INTO sessions (id, user_id, title) VALUES (%s, %s, %s)",
-        (session_id, user_id, title),
+        "INSERT INTO sessions (id, user_id, title, model) VALUES (%s, %s, %s, %s)",
+        (session_id, user_id, title, model),
     )
     return {
         "id": session_id, "user_id": user_id, "title": title,
-        "permission_mode": "ask", "repo_ids": [],
+        "permission_mode": "ask", "repo_ids": [], "model": model,
     }
 
 
 async def get_session(session_id: str, user_id: int) -> dict | None:
     rows = await query(
         "SELECT id, title, summary, permission_mode, created_at, updated_at, repo_ids, "
-        "summary_upto_id FROM sessions WHERE id = %s AND user_id = %s",
+        "summary_upto_id, model FROM sessions WHERE id = %s AND user_id = %s",
         (session_id, user_id),
     )
     if not rows:
@@ -39,6 +39,7 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
         "permission_mode": r[3] or "ask", "created_at": r[4], "updated_at": r[5],
         "repo_ids": [str(x) for x in (r[6] or [])],
         "summary_upto_id": int(r[7] or 0),
+        "model": r[8],
     }
 
 
@@ -47,7 +48,7 @@ async def list_sessions(user_id: int, limit: int = 50) -> list[dict]:
         """
         SELECT s.id, s.title, s.created_at, s.updated_at,
                (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id),
-               s.permission_mode, s.repo_ids
+               s.permission_mode, s.repo_ids, s.model
         FROM sessions s
         WHERE s.user_id = %s
         ORDER BY s.updated_at DESC
@@ -61,6 +62,7 @@ async def list_sessions(user_id: int, limit: int = 50) -> list[dict]:
             "updated_at": r[3], "message_count": int(r[4]),
             "permission_mode": r[5] or "ask",
             "repo_ids": [str(x) for x in (r[6] or [])],
+            "model": r[7],
         }
         for r in rows
     ]

@@ -35,6 +35,16 @@ _DDL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS user_llm_settings (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        provider VARCHAR(32) NOT NULL,
+        base_url TEXT NOT NULL,
+        model VARCHAR(120) NOT NULL,
+        api_key_enc TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY,
         user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -43,6 +53,7 @@ _DDL = [
         summary_upto_id BIGINT DEFAULT 0,
         permission_mode VARCHAR(12) DEFAULT 'ask',
         repo_ids JSONB DEFAULT '[]'::jsonb,
+        model VARCHAR(120),
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
     )
@@ -50,6 +61,7 @@ _DDL = [
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS permission_mode VARCHAR(12) DEFAULT 'ask'",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo_ids JSONB DEFAULT '[]'::jsonb",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model VARCHAR(120)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id, updated_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS messages (
@@ -540,6 +552,19 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
     ]),
     (7, [
         "ALTER TABLE repos ADD COLUMN IF NOT EXISTS stack_mode VARCHAR(20) DEFAULT 'python'",
+    ]),
+    (8, [
+        """
+        CREATE TABLE IF NOT EXISTS user_llm_settings (
+            user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            provider VARCHAR(32) NOT NULL,
+            base_url TEXT NOT NULL,
+            model VARCHAR(120) NOT NULL,
+            api_key_enc TEXT NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model VARCHAR(120)",
     ]),
 ]
 

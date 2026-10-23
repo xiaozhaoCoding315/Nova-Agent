@@ -71,6 +71,7 @@ async def rename_session(
         "message_count": await session_mod.count_messages(session_id),
         "permission_mode": session.get("permission_mode", "ask"),
         "repo_ids": session.get("repo_ids", []),
+        "model": session.get("model"),
         "created_at": renamed["created_at"], "updated_at": renamed["updated_at"],
     }
 
@@ -95,7 +96,12 @@ async def chat_message(
         if not session:
             raise HTTPException(status_code=404, detail="会话不存在")
     else:
-        session = await session_mod.create_session(user["id"])
+        session = await session_mod.create_session(user["id"], model=body.model)
+
+    if body.model and body.model.strip() != (session.get("model") or ""):
+        model = body.model.strip()
+        await execute("UPDATE sessions SET model = %s WHERE id = %s", (model, session["id"]))
+        session["model"] = model
 
     if body.permission_mode and body.permission_mode != session.get("permission_mode"):
         await execute(
@@ -122,6 +128,7 @@ async def chat_message(
         "content": body.content[:4000],
         "repo_ids": effective_repo_ids,
         "permission_mode": session.get("permission_mode", "ask"),
+        "model": session.get("model"),
     })
 
     generator = run_chat(user, session, body.content, effective_repo_ids, turn_id=turn_id)

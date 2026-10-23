@@ -1050,6 +1050,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Settings */
+        get: operations["get_llm_settings_api_v1_settings_llm_get"];
+        /** Update Llm Settings */
+        put: operations["update_llm_settings_api_v1_settings_llm_put"];
+        post?: never;
+        /** Clear Llm Settings */
+        delete: operations["clear_llm_settings_api_v1_settings_llm_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Llm Settings */
+        post: operations["test_llm_settings_api_v1_settings_llm_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status/health": {
         parameters: {
             query?: never;
@@ -1637,6 +1673,8 @@ export interface components {
         ChatRequest: {
             /** Content */
             content: string;
+            /** Model */
+            model?: string | null;
             /** Permission Mode */
             permission_mode?: ("readonly" | "ask" | "auto") | null;
             /** Repo Ids */
@@ -2063,6 +2101,79 @@ export interface components {
             /** User Id */
             user_id?: number | null;
         };
+        /** LlmProviderOut */
+        LlmProviderOut: {
+            /** Base Url */
+            base_url: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Models */
+            models?: string[];
+        };
+        /** LlmSettingsOut */
+        LlmSettingsOut: {
+            /**
+             * Allow Server Fallback
+             * @default true
+             */
+            allow_server_fallback: boolean;
+            /** Base Url */
+            base_url?: string | null;
+            /** Configured */
+            configured: boolean;
+            /**
+             * Has Key
+             * @default false
+             */
+            has_key: boolean;
+            /** Key Hint */
+            key_hint?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Providers */
+            providers?: components["schemas"]["LlmProviderOut"][];
+            /** Server Model */
+            server_model?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "user" | "server" | "none";
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** LlmSettingsUpdate */
+        LlmSettingsUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+        };
+        /** LlmTestOut */
+        LlmTestOut: {
+            /**
+             * Latency Ms
+             * @default 0
+             */
+            latency_ms: number;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Model */
+            model: string;
+            /** Ok */
+            ok: boolean;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Password */
@@ -2288,6 +2399,8 @@ export interface components {
              * @default 0
              */
             message_count: number;
+            /** Model */
+            model?: string | null;
             /**
              * Permission Mode
              * @default ask
@@ -4612,6 +4725,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_settings_api_v1_settings_llm_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsOut"];
+                };
+            };
+        };
+    };
+    update_llm_settings_api_v1_settings_llm_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_llm_settings_api_v1_settings_llm_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsOut"];
+                };
+            };
+        };
+    };
+    test_llm_settings_api_v1_settings_llm_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmTestOut"];
                 };
             };
             /** @description Validation Error */
