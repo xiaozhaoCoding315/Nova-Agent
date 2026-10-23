@@ -30,10 +30,27 @@ _DDL = [
         id SERIAL PRIMARY KEY,
         username VARCHAR(64) UNIQUE NOT NULL,
         password_hash VARCHAR(200) NOT NULL,
+        display_name VARCHAR(80),
         role VARCHAR(16) NOT NULL DEFAULT 'demo',
+        status VARCHAR(16) NOT NULL DEFAULT 'active',
+        is_guest BOOLEAN NOT NULL DEFAULT FALSE,
+        expires_at TIMESTAMPTZ,
+        token_version INT NOT NULL DEFAULT 0,
+        password_updated_at TIMESTAMPTZ,
+        recovery_code_hash VARCHAR(200),
+        last_login_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active'",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash VARCHAR(200)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+    "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status, expires_at)",
     """
     CREATE TABLE IF NOT EXISTS user_llm_settings (
         user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -565,6 +582,18 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         )
         """,
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model VARCHAR(120)",
+    ]),
+    (9, [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash VARCHAR(200)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+        "UPDATE users SET display_name = username WHERE display_name IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status, expires_at)",
     ]),
 ]
 

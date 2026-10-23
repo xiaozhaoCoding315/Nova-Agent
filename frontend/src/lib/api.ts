@@ -1,8 +1,8 @@
 import type {
-  Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem, ContractStatus,
-  Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput,
-  LlmTestResult, Memory, Message, Metrics, Repo, Review, Session, Task, TaskListItem, TraceEvent,
-  Usage, User, VerifyResult,
+  AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem,
+  ContractStatus, Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, LlmSettings,
+  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, RegisterResult, Repo, Review, Session,
+  Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -43,9 +43,35 @@ function json(body: unknown): RequestInit {
 }
 
 export const api = {
+  authConfig: () => request<AuthConfig>('/auth/config'),
   login: (username: string, password: string) => request<User>('/auth/login', json({ username, password })),
+  register: (username: string, password: string, displayName?: string, inviteCode?: string) =>
+    request<RegisterResult>('/auth/register', json({
+      username, password, display_name: displayName || null, invite_code: inviteCode || null,
+    })),
+  guest: () => request<User>('/auth/guest', { method: 'POST' }),
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
   me: () => request<User>('/auth/me'),
+  updateProfile: (displayName: string) =>
+    request<User>('/auth/profile', { ...json({ display_name: displayName }), method: 'PATCH' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<User>('/auth/password', json({ current_password: currentPassword, new_password: newPassword })),
+  resetPassword: (username: string, recoveryCode: string, newPassword: string) =>
+    request<{ ok: boolean }>('/auth/password/reset', json({
+      username, recovery_code: recoveryCode, new_password: newPassword,
+    })),
+
+  admin: {
+    users: () => request<User[]>('/admin/users'),
+    createUser: (username: string, password: string, displayName?: string, role: 'admin' | 'demo' = 'demo') =>
+      request<User>('/admin/users', json({ username, password, display_name: displayName || null, role })),
+    updateUser: (id: number, patch: { status?: 'active' | 'disabled'; role?: 'admin' | 'demo'; display_name?: string }) =>
+      request<User>(`/admin/users/${id}`, { ...json(patch), method: 'PATCH' }),
+    resetPassword: (id: number, newPassword: string) =>
+      request<{ ok: boolean }>(`/admin/users/${id}/password`, json({ new_password: newPassword })),
+    removeUser: (id: number) =>
+      request<{ ok: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
+  },
 
   sessions: {
     list: () => request<Session[]>('/chat/sessions'),

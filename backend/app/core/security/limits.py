@@ -39,14 +39,20 @@ def messages_last_hour(user_id: int) -> int:
 
 
 def hourly_message_limit(user: dict) -> int:
+    if user.get("is_guest"):
+        return settings.guest_hourly_messages
     return settings.admin_hourly_messages if user["role"] == "admin" else settings.demo_hourly_messages
 
 
 def daily_token_budget(user: dict) -> int:
+    if user.get("is_guest"):
+        return settings.guest_daily_tokens
     return settings.admin_daily_tokens if user["role"] == "admin" else settings.demo_daily_tokens
 
 
 def sandbox_daily_limit(user: dict) -> int:
+    if user.get("is_guest"):
+        return settings.guest_sandbox_daily
     return settings.admin_sandbox_daily if user["role"] == "admin" else settings.demo_sandbox_daily
 
 
@@ -95,6 +101,8 @@ async def check_sandbox_quota(user: dict) -> None:
 
 
 def job_hourly_limit(user: dict) -> int:
+    if user.get("is_guest"):
+        return settings.guest_job_hourly
     return settings.admin_job_hourly if user["role"] == "admin" else settings.demo_job_hourly
 
 
@@ -126,10 +134,10 @@ async def ensure_token_budget(
     if user is None:
         if user_id is None:
             return
-        rows = await query("SELECT id, role FROM users WHERE id = %s", (user_id,))
+        rows = await query("SELECT id, role, is_guest FROM users WHERE id = %s", (user_id,))
         if not rows:
             return
-        user = {"id": rows[0][0], "role": rows[0][1]}
+        user = {"id": rows[0][0], "role": rows[0][1], "is_guest": bool(rows[0][2])}
 
     budget = daily_token_budget(user)
     if budget <= 0:

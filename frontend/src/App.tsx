@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
+import { RecoveryCodeModal } from './components/RecoveryCodeModal'
 import { SessionList } from './components/SessionList'
 import { StatusDot } from './components/common'
 import { api } from './lib/api'
@@ -46,8 +47,16 @@ const PERMISSION_LABEL: Record<string, string> = {
   auto: '自动执行',
 }
 
+function guestHoursLeft(expiresAt?: string | null): number | null {
+  if (!expiresAt) return null
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  return Number.isNaN(diff) ? null : Math.max(0, Math.ceil(diff / 3_600_000))
+}
+
 export default function App() {
-  const { user, checked, check, logout } = useAuth()
+  const {
+    user, checked, check, logout, pendingRecoveryCode, clearRecoveryCode,
+  } = useAuth()
   const {
     sessions, sessionId, messages, loadSessions, selectSession, newSession, deleteSession,
     renameSession, permissionMode, setPermissionMode,
@@ -146,6 +155,8 @@ export default function App() {
   const modelSource = llmSettings?.source === 'user'
     ? '个人密钥'
     : llmSettings?.source === 'server' ? '服务端密钥' : '未配置'
+  const displayName = user?.display_name || user?.username || ''
+  const guestRemaining = user ? guestHoursLeft(user.expires_at) : null
   const pageTitle = view === 'chat'
     ? (sessionId ? activeSession?.title ?? '对话' : '新对话')
     : VIEW_TITLE[view]
@@ -334,11 +345,15 @@ export default function App() {
             sidebarCollapsed && 'md:flex-col md:gap-1 md:px-0',
           )}>
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accentSoft/50 text-[11px] font-medium text-accent">
-              {user.username.slice(0, 1).toUpperCase()}
+              {displayName.slice(0, 1).toUpperCase()}
             </div>
             <div className={clsx('min-w-0 flex-1', sidebarCollapsed && 'md:hidden')}>
-              <p className="truncate text-[12px] text-ink">{user.username}</p>
-              <p className="text-[10px] uppercase tracking-wide text-dim">{user.role}</p>
+              <p className="truncate text-[12px] text-ink">{displayName}</p>
+              <p className="truncate text-[10px] text-dim">
+                {user.is_guest
+                  ? `游客体验${guestRemaining == null ? '' : ` · 剩余 ${guestRemaining}h`}`
+                  : user.role === 'admin' ? '管理员' : '普通用户'}
+              </p>
             </div>
             <button
               onClick={() => void logout()}
@@ -459,6 +474,9 @@ export default function App() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={actions} />
+      {pendingRecoveryCode && (
+        <RecoveryCodeModal code={pendingRecoveryCode} onClose={clearRecoveryCode} />
+      )}
     </div>
   )
 }

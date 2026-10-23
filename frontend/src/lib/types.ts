@@ -1,4 +1,25 @@
-export type User = { id: number; username: string; role: 'admin' | 'demo' }
+export type User = {
+  id: number
+  username: string
+  display_name?: string | null
+  role: 'admin' | 'demo'
+  status?: 'active' | 'disabled'
+  is_guest?: boolean
+  expires_at?: string | null
+  created_at?: string | null
+}
+
+export type AuthConfig = {
+  registration_mode: 'open' | 'invite' | 'closed'
+  guest_enabled: boolean
+  invite_required: boolean
+  min_password_length: number
+}
+
+export type RegisterResult = {
+  user: User
+  recovery_code: string
+}
 
 export type Session = {
   id: string

@@ -1,9 +1,11 @@
 import {
   Activity, AlertCircle, Brain, CheckCircle2, Clock, Coins, Cpu, Eye, EyeOff, KeyRound,
-  LogOut, RefreshCw, Server, ShieldCheck, Trash2, TrendingUp, Zap,
+  RefreshCw, Server, Trash2, TrendingUp, Users, Zap,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { AccountPanel } from '../components/AccountPanel'
+import { AdminUsersPanel } from '../components/AdminUsersPanel'
 import { Badge, Button, Modal, Spinner, StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { Health, LlmSettings, Memory, Metrics, Usage } from '../lib/types'
@@ -79,7 +81,7 @@ function MetricTile({ label, value, hint }: { label: string; value: string; hint
   )
 }
 
-type SectionKey = 'model' | 'usage' | 'metrics' | 'memory' | 'system' | 'account'
+type SectionKey = 'model' | 'usage' | 'metrics' | 'memory' | 'system' | 'account' | 'admin'
 
 const SECTIONS: { key: SectionKey; label: string; icon: typeof Cpu }[] = [
   { key: 'model', label: '模型与密钥', icon: Cpu },
@@ -87,7 +89,8 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Cpu }[] = [
   { key: 'metrics', label: '交付指标', icon: TrendingUp },
   { key: 'memory', label: '长期记忆', icon: Brain },
   { key: 'system', label: '系统状态', icon: Server },
-  { key: 'account', label: '账号', icon: ShieldCheck },
+  { key: 'account', label: '账号与安全', icon: KeyRound },
+  { key: 'admin', label: '用户管理', icon: Users },
 ]
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -361,7 +364,6 @@ function ModelSection({ settings, loading, onReload }: {
 
 export function SettingsView() {
   const user = useAuth((s) => s.user)
-  const logout = useAuth((s) => s.logout)
   const {
     settings: llmSettings, loading: llmLoading, load: loadLlm,
   } = useLlm()
@@ -425,7 +427,8 @@ export function SettingsView() {
     : []
 
   const pct = (value: number) => `${Math.round(value * 100)}%`
-  const sectionTitle = SECTIONS.find((item) => item.key === section)?.label ?? '设置'
+  const sections = SECTIONS.filter((item) => item.key !== 'admin' || user?.role === 'admin')
+  const sectionTitle = sections.find((item) => item.key === section)?.label ?? '设置'
 
   const refresh = () => {
     void load()
@@ -437,7 +440,7 @@ export function SettingsView() {
       <aside className="hidden w-52 shrink-0 border-r border-edge/70 bg-panel/25 p-3 md:block">
         <p className="px-2 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-dim/70">设置</p>
         <nav className="space-y-0.5">
-          {SECTIONS.map(({ key, label, icon: Icon }) => (
+          {sections.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setSection(key)}
@@ -451,7 +454,7 @@ export function SettingsView() {
           ))}
         </nav>
         <p className="mt-4 px-2 text-[10px] leading-relaxed text-dim/50">
-          v{health?.version ?? '2.0.0'} · {user?.username}
+          v{health?.version ?? '2.0.0'} · {user?.display_name || user?.username}
         </p>
       </aside>
 
@@ -459,7 +462,7 @@ export function SettingsView() {
         <div className="mx-auto max-w-3xl p-5 md:p-6">
           <div className="mb-4 flex items-center gap-2 md:hidden">
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-              {SECTIONS.map(({ key, label }) => (
+              {sections.map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => setSection(key)}
@@ -477,7 +480,13 @@ export function SettingsView() {
             <div>
               <h2 className="text-[16px] font-semibold">{sectionTitle}</h2>
               <p className="mt-0.5 text-[11px] text-dim">
-                {section === 'model' ? '配置你自己的模型服务商与 API Key；支持按会话切换模型。' : '账号与运行状态。'}
+                {section === 'model'
+                  ? '配置你自己的模型服务商与 API Key；支持按会话切换模型。'
+                  : section === 'account'
+                    ? '个人资料、密码与会话安全。'
+                    : section === 'admin'
+                      ? '管理系统账号、禁用账号与重置密码。'
+                      : '用量、交付指标与运行状态。'}
               </p>
             </div>
             <Button size="sm" onClick={refresh} disabled={loading || llmLoading}>
@@ -643,23 +652,9 @@ export function SettingsView() {
             </section>
           )}
 
-          {section === 'account' && (
-            <section className="rounded-xl border border-edge bg-panel p-4">
-              <h3 className="mb-2 text-[13px] font-medium">账号</h3>
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck size={16} className="text-accent" />
-                <div>
-                  <p className="text-[13px]">
-                    {user?.username} <Badge tone={user?.role === 'admin' ? 'accent' : 'dim'}>{user?.role}</Badge>
-                  </p>
-                  <p className="text-[11.5px] text-dim">账号由部署者在服务端 .env 中维护（ADMIN_PASSWORD / DEMO_PASSWORD）</p>
-                </div>
-                <Button size="sm" variant="danger" className="ml-auto" onClick={() => void logout()}>
-                  <LogOut size={12} /> 退出登录
-                </Button>
-              </div>
-            </section>
-          )}
+          {section === 'account' && <AccountPanel />}
+
+          {section === 'admin' && user?.role === 'admin' && <AdminUsersPanel />}
         </div>
       </div>
     </div>

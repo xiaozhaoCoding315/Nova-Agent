@@ -41,11 +41,24 @@ async def _cleanup_loop() -> None:
 async def lifespan(_: FastAPI):
     setup_logging()
     logger.info("nova_agent_starting", version=VERSION, env=settings.app_env)
-    if settings.app_env == "prod":
-        if len(settings.secret_key) < 32:
-            logger.warning("weak_secret_key", hint="set SECRET_KEY to a random 32+ char string")
-        if settings.admin_password in ("", "admin123") or settings.demo_password in ("", "demo123"):
-            logger.warning("default_passwords_in_use", hint="set ADMIN_PASSWORD / DEMO_PASSWORD in .env")
+    if settings.registration_mode not in ("open", "invite", "closed"):
+        raise RuntimeError("REGISTRATION_MODE must be one of: open, invite, closed")
+    if settings.app_env in ("prod", "production"):
+        weak_secrets = {
+            "change-me-in-production",
+            "change-me-to-a-random-32-plus-char-string",
+        }
+        problems = []
+        if len(settings.secret_key) < 32 or settings.secret_key in weak_secrets:
+            problems.append("SECRET_KEY must be a random 32+ character value")
+        if settings.admin_password in ("", "admin123"):
+            problems.append("ADMIN_PASSWORD must be set to a strong value")
+        if settings.demo_password in ("", "demo123"):
+            problems.append("DEMO_PASSWORD must be set to a strong value")
+        if problems:
+            raise RuntimeError("insecure production configuration: " + "; ".join(problems))
+    elif settings.secret_key == "change-me-in-production":
+        logger.warning("weak_secret_key", hint="set SECRET_KEY to a random 32+ char string")
     if settings.auto_init_db:
         try:
             from app.db.init_db import init_all

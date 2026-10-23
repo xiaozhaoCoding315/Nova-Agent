@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     admin_password: str = ""
     demo_username: str = "demo"
     demo_password: str = ""
+    # Account lifecycle: open | invite | closed
+    registration_mode: str = "open"
+    registration_invite_code: str = ""
+    max_registrations_per_hour: int = 10
+    max_users: int = 50
+    min_password_length: int = 8
+    guest_enabled: bool = True
+    guest_ttl_hours: int = 24
 
     # ---------- Quotas ----------
     admin_hourly_messages: int = 60
@@ -57,6 +65,10 @@ class Settings(BaseSettings):
     admin_sandbox_daily: int = 0       # 0 = unlimited
     admin_job_hourly: int = 30         # import / reindex / task / builder
     demo_job_hourly: int = 5
+    guest_hourly_messages: int = 5
+    guest_daily_tokens: int = 50_000
+    guest_sandbox_daily: int = 1
+    guest_job_hourly: int = 2
 
     # ---------- Workspace limits ----------
     max_upload_mb: int = 100

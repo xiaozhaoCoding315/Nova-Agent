@@ -14,7 +14,63 @@ class LoginRequest(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+    display_name: Optional[str] = None
     role: str
+    status: str = "active"
+    is_guest: bool = False
+    expires_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class AuthConfigOut(BaseModel):
+    registration_mode: str
+    guest_enabled: bool
+    invite_required: bool
+    min_password_length: int
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=200)
+    display_name: Optional[str] = Field(default=None, max_length=80)
+    invite_code: Optional[str] = Field(default=None, max_length=200)
+
+
+class RegisterOut(BaseModel):
+    user: UserOut
+    recovery_code: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
+
+
+class PasswordResetRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    recovery_code: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
+
+
+class AdminUserCreateRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=200)
+    display_name: Optional[str] = Field(default=None, max_length=80)
+    role: Literal["admin", "demo"] = "demo"
+
+
+class AdminUserUpdateRequest(BaseModel):
+    status: Optional[Literal["active", "disabled"]] = None
+    role: Optional[Literal["admin", "demo"]] = None
+    display_name: Optional[str] = Field(default=None, max_length=80)
+
+
+class AdminPasswordResetRequest(BaseModel):
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 # ---------- Chat ----------
