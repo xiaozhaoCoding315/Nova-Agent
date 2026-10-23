@@ -97,8 +97,8 @@ def get_llm() -> LLMProvider:
         elif name == "dashscope" and settings.dashscope_api_key:
             providers.append(OpenAICompatibleLLM(
                 settings.dashscope_api_key,
-                "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "qwen-turbo"))
+                settings.dashscope_base_url,
+                settings.dashscope_model))
 
     if not providers:
         raise RuntimeError("No LLM providers configured")

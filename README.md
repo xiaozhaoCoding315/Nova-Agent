@@ -47,7 +47,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | OpenAI 兼容多厂商降级链（DeepSeek / DashScope / LongCat） |
+| LLM | 阿里云百炼 `qwen3.8-max`（OpenAI 兼容，默认单通道；可配置 deepseek/longcat 降级链） |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -89,6 +89,8 @@ npm run dev                   # http://localhost:5173
 | 变量 | 说明 |
 |---|---|
 | `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | LLM Key（至少一个；DashScope 同时提供 embedding） |
+| `DASHSCOPE_MODEL` | 阿里云百炼模型名（默认 `qwen3.8-max`） |
+| `LLM_MODEL_PRIORITY` | 模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
 | `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号（可公开给面试官/朋友使用） |
 | `SECRET_KEY` | JWT 签名密钥（≥32 位随机串） |

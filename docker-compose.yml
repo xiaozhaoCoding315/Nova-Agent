@@ -54,9 +54,10 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: "6333"
 
-      LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-deepseek,dashscope,longcat}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-dashscope}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_MODEL: ${DASHSCOPE_MODEL:-qwen3.8-max}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
       LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.longcat.chat/openai/v1}
       LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}

@@ -5,12 +5,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # ---------- LLM ----------
-    llm_model_priority: str = "deepseek,dashscope,longcat"
+    llm_model_priority: str = "dashscope,deepseek,longcat"
     longcat_api_key: str = ""
     longcat_base_url: str = "https://api.longcat.chat/openai/v1"
     longcat_model: str = "LongCat-2.0"
     deepseek_api_key: str = ""
     dashscope_api_key: str = ""
+    dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    dashscope_model: str = "qwen3.8-max"   # 阿里云百炼（DashScope）模型名
     llm_timeout: int = 90          # seconds per LLM call (harness)
     max_rounds: int = 5            # agent tool-calling rounds
 
