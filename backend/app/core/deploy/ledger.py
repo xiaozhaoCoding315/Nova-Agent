@@ -14,12 +14,12 @@ def _row_to_dict(row) -> dict:
     }
 
 
-async def get(key: str) -> dict | None:
+async def get(user_id: int, key: str) -> dict | None:
     rows = await query(
         "SELECT id, user_id, idempotency_key, action, target, status, request, "
         "response, error, created_at, updated_at, finished_at "
-        "FROM external_actions WHERE idempotency_key = %s",
-        (key,),
+        "FROM external_actions WHERE user_id = %s AND idempotency_key = %s",
+        (user_id, key),
     )
     return _row_to_dict(rows[0]) if rows else None
 
@@ -27,7 +27,7 @@ async def get(key: str) -> dict | None:
 async def begin(
     user_id: int, key: str, action: str, target: str, request: dict
 ) -> dict:
-    existing = await get(key)
+    existing = await get(user_id, key)
     if existing:
         return existing
     action_id = str(uuid.uuid4())
@@ -41,31 +41,34 @@ async def begin(
         )
     except Exception:
         # A concurrent request won the unique key race.
-        existing = await get(key)
+        existing = await get(user_id, key)
         if existing:
             return existing
         raise
-    return await get(key) or {
+    return await get(user_id, key) or {
         "id": action_id, "user_id": user_id, "idempotency_key": key,
         "action": action, "target": target, "status": "pending",
         "request": request, "response": {}, "error": None,
     }
 
 
-async def mark_pending(key: str) -> None:
+async def mark_pending(user_id: int, key: str) -> None:
     await execute(
         "UPDATE external_actions SET status = 'pending', error = NULL, "
-        "finished_at = NULL, updated_at = now() WHERE idempotency_key = %s",
-        (key,),
+        "finished_at = NULL, updated_at = now() "
+        "WHERE user_id = %s AND idempotency_key = %s",
+        (user_id, key),
     )
 
 
 async def finish(
-    key: str, status: str, response: dict | None = None, error: str | None = None
+    user_id: int, key: str, status: str,
+    response: dict | None = None, error: str | None = None,
 ) -> None:
     await execute(
         "UPDATE external_actions SET status = %s, response = %s, error = %s, "
-        "finished_at = now(), updated_at = now() WHERE idempotency_key = %s",
+        "finished_at = now(), updated_at = now() "
+        "WHERE user_id = %s AND idempotency_key = %s",
         (status, json.dumps(response or {}, ensure_ascii=False),
-         error[:2000] if error else None, key),
+         error[:2000] if error else None, user_id, key),
     )

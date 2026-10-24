@@ -57,6 +57,16 @@ async def upsert_points(points: list[PointStruct]) -> None:
     await asyncio.to_thread(client.upsert, settings.qdrant_collection, points=points)
 
 
+async def backfill_repo_user_payload(repo_id: str, user_id: int) -> None:
+    client = get_client()
+    await asyncio.to_thread(
+        client.set_payload,
+        collection_name=settings.qdrant_collection,
+        payload={"user_id": user_id},
+        points=repo_filter([repo_id]),
+    )
+
+
 async def delete_repo_points(repo_id: str) -> None:
     """Remove all vectors of one repo by payload filter."""
     client = get_client()

@@ -8,6 +8,7 @@ from app.core.deploy.service import (
     list_deployments,
     teardown_preview,
 )
+from app.core.indexing.pipeline import get_repo
 from app.core.security.auth import require_admin
 from app.core.security.limits import check_job_quota
 from app.models.schemas import DeployRequest, DeploymentOut
@@ -30,6 +31,8 @@ async def deploy_repo(
 
 @router.get("/repos/{repo_id}/deployments", response_model=list[DeploymentOut])
 async def repo_deployments(repo_id: str, user: dict = Depends(require_admin)):
+    if not await get_repo(repo_id, user["id"]):
+        raise HTTPException(status_code=404, detail="仓库不存在或无权访问")
     return await list_deployments(user["id"], repo_id=repo_id)
 
 

@@ -87,6 +87,10 @@ async def admin_delete_user_endpoint(user_id: int, user: dict = Depends(require_
     if user_id == user["id"]:
         raise HTTPException(status_code=400, detail="不能删除当前登录的账号")
     try:
+        from app.core.account_cleanup import purge_user_resources
+        from app.core.security.accounts import assert_user_deletable
+        await assert_user_deletable(user_id)
+        await purge_user_resources(user_id)
         await admin_delete_user(user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

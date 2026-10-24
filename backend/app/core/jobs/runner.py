@@ -135,7 +135,7 @@ class JobRunner:
                 """
                 INSERT INTO jobs (id, user_id, kind, payload, idempotency_key, max_attempts)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (idempotency_key) DO NOTHING
+                ON CONFLICT (user_id, idempotency_key) DO NOTHING
                 RETURNING id
                 """,
                 (job_id, user_id, kind, payload_json, idempotency_key, max_attempts),
@@ -144,7 +144,8 @@ class JobRunner:
                 job_id = str(rows[0][0])
             else:
                 existing = await query(
-                    "SELECT id FROM jobs WHERE idempotency_key = %s", (idempotency_key,)
+                    "SELECT id FROM jobs WHERE user_id = %s AND idempotency_key = %s",
+                    (user_id, idempotency_key),
                 )
                 if existing:
                     job_id = str(existing[0][0])

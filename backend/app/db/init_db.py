@@ -387,7 +387,7 @@ _DDL = [
     CREATE TABLE IF NOT EXISTS external_actions (
         id UUID PRIMARY KEY,
         user_id INT REFERENCES users(id) ON DELETE CASCADE,
-        idempotency_key VARCHAR(240) NOT NULL UNIQUE,
+        idempotency_key VARCHAR(240) NOT NULL,
         action VARCHAR(40) NOT NULL,
         target VARCHAR(240),
         status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -478,8 +478,8 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         """,
         "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs (user_id, created_at DESC)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs (idempotency_key) "
-        "WHERE idempotency_key IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_user_idempotency "
+        "ON jobs (user_id, idempotency_key)",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS idx_tasks_job ON tasks (job_id)",
     ]),
@@ -563,7 +563,7 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         CREATE TABLE IF NOT EXISTS external_actions (
             id UUID PRIMARY KEY,
             user_id INT REFERENCES users(id) ON DELETE CASCADE,
-            idempotency_key VARCHAR(240) NOT NULL UNIQUE,
+            idempotency_key VARCHAR(240) NOT NULL,
             action VARCHAR(40) NOT NULL,
             target VARCHAR(240),
             status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -681,6 +681,14 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_user_files_session ON user_files (session_id)",
         "CREATE INDEX IF NOT EXISTS idx_user_files_repo ON user_files (repo_id)",
     ]),
+    (12, [
+        "DROP INDEX IF EXISTS idx_jobs_idempotency",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_user_idempotency "
+        "ON jobs (user_id, idempotency_key)",
+        "ALTER TABLE external_actions DROP CONSTRAINT IF EXISTS external_actions_idempotency_key_key",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_external_actions_user_key "
+        "ON external_actions (user_id, idempotency_key)",
+    ]),
 ]
 
 
@@ -784,6 +792,16 @@ async def init_all() -> dict:
     except Exception as exc:  # noqa: BLE001
         result["qdrant"] = f"failed: {exc}"
         logger.error("qdrant_init_failed", error=str(exc))
+
+    try:
+        from app.db.qdrant import backfill_repo_user_payload
+        repos = await query("SELECT id, user_id FROM repos")
+        for repo_id, user_id in repos:
+            await backfill_repo_user_payload(str(repo_id), int(user_id))
+        result["qdrant_payload"] = len(repos)
+    except Exception as exc:  # noqa: BLE001
+        result["qdrant_payload"] = f"failed: {exc}"
+        logger.warning("qdrant_payload_backfill_failed", error=str(exc))
 
     try:
         from app.core.security.auth import ensure_default_users

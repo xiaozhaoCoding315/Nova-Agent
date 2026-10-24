@@ -248,7 +248,7 @@ async def admin_reset_password(user_id: int, new_password: str) -> None:
         raise ValueError("账号不存在")
 
 
-async def admin_delete_user(user_id: int) -> None:
+async def assert_user_deletable(user_id: int) -> None:
     rows = await query("SELECT role, status FROM users WHERE id = %s", (user_id,))
     if not rows:
         raise ValueError("账号不存在")
@@ -259,4 +259,8 @@ async def admin_delete_user(user_id: int) -> None:
         )
         if admins and int(admins[0][0]) == 0:
             raise ValueError("不能删除最后一个管理员")
+
+
+async def admin_delete_user(user_id: int) -> None:
+    await assert_user_deletable(user_id)
     await execute("DELETE FROM users WHERE id = %s", (user_id,))

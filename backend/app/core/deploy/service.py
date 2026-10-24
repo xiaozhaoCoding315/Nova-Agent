@@ -217,7 +217,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
     base_key = f"{user['id']}:deploy:{repo_id}:{head or 'nogit'}"
     key = f"{base_key}:force:{uuid.uuid4().hex[:8]}" if force else base_key
 
-    existing = await ledger.get(key)
+    existing = await ledger.get(user["id"], key)
     if existing and existing["status"] == "pending":
         raise DeployError("该版本正在部署中，请稍后刷新")
     if existing and existing["status"] == "succeeded" and not force:
@@ -229,7 +229,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
         key = f"{base_key}:redeploy:{uuid.uuid4().hex[:8]}"
         existing = None
     if existing and existing["status"] in ("failed", "unknown") and not force:
-        await ledger.mark_pending(key)
+        await ledger.mark_pending(user["id"], key)
 
     action = await ledger.begin(
         user["id"], key, "deploy", repo_id,
@@ -302,7 +302,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
             "updated_at = now() WHERE id = %s",
             (port, url, deploy_id),
         )
-        await ledger.finish(key, "succeeded", {"deployment_id": deploy_id, "url": url})
+        await ledger.finish(user["id"], key, "succeeded", {"deployment_id": deploy_id, "url": url})
         logger.info("preview_running", deployment_id=deploy_id, url=url)
         return await get_deployment(deploy_id, user["id"]) or {}
     except Exception as exc:  # noqa: BLE001
@@ -313,7 +313,7 @@ async def deploy_preview(user: dict, repo_id: str, force: bool = False) -> dict:
             "UPDATE deployments SET status = 'failed', error = %s, updated_at = now() WHERE id = %s",
             (detail, deploy_id),
         )
-        await ledger.finish(key, "failed", error=detail)
+        await ledger.finish(user["id"], key, "failed", error=detail)
         if isinstance(exc, DeployError):
             raise
         raise DeployError(detail)
@@ -338,12 +338,53 @@ async def teardown_preview(user: dict, deploy_id: str) -> dict:
     )
     teardown_key = f"{user['id']}:teardown:{deploy_id}"
     await ledger.begin(user["id"], teardown_key, "teardown", deploy_id, {"deployment_id": deploy_id})
-    await ledger.finish(teardown_key, "succeeded", {"deployment_id": deploy_id, "status": "stopped"})
+    await ledger.finish(user["id"], teardown_key, "succeeded", {"deployment_id": deploy_id, "status": "stopped"})
     await log_audit(
         AuditAction.DEPLOY_STOP, user_id=str(user["id"]),
         details={"deployment_id": deploy_id, "container": deployment["container_name"]},
     )
     return await get_deployment(deploy_id, user["id"]) or {}
+
+
+async def cleanup_repo_resources(repo_id: str, user_id: int) -> dict:
+    """Best-effort removal of previews, workspaces and dependency volumes."""
+    from app.db import execute, query
+
+    rows = await query(
+        "SELECT id, container_name, workspace_path FROM deployments "
+        "WHERE repo_id = %s AND user_id = %s",
+        (repo_id, user_id),
+    )
+    containers = 0
+    workspaces = 0
+    for _deploy_id, container_name, workspace_path in rows:
+        if container_name:
+            try:
+                await _docker(["docker", "rm", "-f", str(container_name)], timeout=20)
+                containers += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("preview_container_cleanup_failed",
+                               container=container_name, error=str(exc))
+        if workspace_path:
+            workspace = Path(str(workspace_path))
+            if workspace.name.startswith("nova_preview_"):
+                shutil.rmtree(workspace, ignore_errors=True)
+                workspaces += 1
+    await execute(
+        "UPDATE deployments SET status = 'stopped', workspace_path = NULL, "
+        "stopped_at = COALESCE(stopped_at, now()), updated_at = now() "
+        "WHERE repo_id = %s AND user_id = %s",
+        (repo_id, user_id),
+    )
+    volumes = 0
+    for kind in ("python", "node"):
+        name = deps_volume_name(repo_id, kind)
+        try:
+            await _docker(["docker", "volume", "rm", "-f", name], timeout=20)
+            volumes += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return {"containers": containers, "workspaces": workspaces, "volumes": volumes}
 
 
 async def cleanup_expired() -> int:

@@ -79,6 +79,11 @@ async def delete_repo(repo_id: str, user_id: int) -> bool:
     repo = await get_repo(repo_id, user_id)
     if not repo:
         return False
+    try:
+        from app.core.deploy.service import cleanup_repo_resources
+        await cleanup_repo_resources(repo_id, user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("repo_resource_cleanup_failed", repo_id=repo_id, error=str(exc))
     await execute("DELETE FROM repos WHERE id = %s AND user_id = %s", (repo_id, user_id))
     from app.core.storage.user_storage import repo_container
     shutil.rmtree(repo_container(user_id, repo_id), ignore_errors=True)
@@ -144,7 +149,9 @@ async def _insert_chunks(repo_id: str, file_id: int, chunks: list[dict]) -> list
     return ids
 
 
-async def _embed_and_upload(repo_id: str, pending: list[tuple[int, dict, str]]) -> int:
+async def _embed_and_upload(
+    repo_id: str, user_id: int, pending: list[tuple[int, dict, str]]
+) -> int:
     if not pending:
         return 0
     try:
@@ -171,7 +178,7 @@ async def _embed_and_upload(repo_id: str, pending: list[tuple[int, dict, str]]) 
                 id=chunk_id,
                 vector=vec,
                 payload={
-                    "repo_id": repo_id, "path": rel,
+                    "user_id": user_id, "repo_id": repo_id, "path": rel,
                     "line_start": ch["line_start"], "line_end": ch["line_end"],
                     "lang": ch["lang"], "kind": ch["kind"],
                     "content": ch["content"][:EMBEDDING_CHAR_LIMIT],
@@ -277,7 +284,7 @@ async def index_repo(repo_id: str, ctx=None) -> None:
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.65, step="生成向量索引")
-        stats["embedded"] = await _embed_and_upload(repo_id, pending)
+        stats["embedded"] = await _embed_and_upload(repo_id, repo["user_id"], pending)
         stats["dependencies"] = len(resolved_deps)
         await execute(
             "UPDATE repos SET status = 'ready', stats = %s, brain = %s, error = NULL, "
