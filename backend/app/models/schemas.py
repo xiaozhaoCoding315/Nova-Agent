@@ -126,6 +126,17 @@ class SourceUsageOut(BaseModel):
 
 # ---------- Night queue ----------
 
+class BuilderDesignMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+
+class BuilderDesignRequest(BaseModel):
+    """Conversational project design: full turn history, server replies once."""
+    messages: list[BuilderDesignMessage] = Field(min_length=1, max_length=40)
+    stack: Literal["python", "fullstack"] = "fullstack"
+
+
 class NightQueueRequest(BaseModel):
     kind: Literal["change_execute", "task", "chat", "builder"]
     change_id: Optional[str] = None

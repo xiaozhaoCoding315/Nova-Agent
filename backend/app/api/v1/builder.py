@@ -20,6 +20,7 @@ from app.models.schemas import (
     BuilderActionOut,
     BuilderApplyOut,
     BuilderCreate,
+    BuilderDesignRequest,
     BuilderFeedback,
     BuilderPlanOut,
     BuilderProposalOut,
@@ -29,6 +30,59 @@ from app.models.schemas import (
 )
 
 router = APIRouter()
+
+DESIGN_SYSTEM_PROMPT = """你是 Nova 的项目设计搭档。用户想做一个软件项目，你通过轻松的多轮对话帮他把想法打磨成可以直接生成的方案。
+
+规则：
+1. 每轮只问 1-2 个当下最关键的问题（目标用户、核心功能、数据实体、主要页面或接口、技术约束），不要一次抛一串问题
+2. 用户回答后先用一句话确认你的理解，再继续问
+3. 不写代码、不聊实现细节
+4. 当信息足够（通常 2-4 轮），主动输出最终需求，格式必须是：
+[方案定稿]
+（一段完整、可直接交给代码生成的需求：项目目标、功能清单、数据模型与主要字段、主要页面或 API、非功能要求）
+5. 输出定稿后不再提问；用户要求调整时修订后重新输出定稿
+6. 全程使用中文，口吻自然，像一个耐心的技术朋友"""
+
+
+async def _design_reply(messages: list[dict], user: dict, stack: str) -> tuple[str, dict | None]:
+    import asyncio
+
+    from app.config import settings
+    from app.core.llm.factory import get_llm
+
+    llm = await get_llm(user["id"], purpose="plan")
+    full = [
+        {"role": "system", "content": DESIGN_SYSTEM_PROMPT + f"\n目标技术栈：{stack}"},
+        *messages,
+    ]
+    parts: list[str] = []
+    usage: dict | None = None
+    async with asyncio.timeout(settings.llm_timeout):
+        async for event in llm.astream_with_tools(full, []):
+            if isinstance(event, str):
+                parts.append(event)
+            elif event.get("type") == "content":
+                parts.append(event.get("content") or "")
+            elif event.get("type") == "usage":
+                usage = event.get("usage")
+    return "".join(parts), usage
+
+
+@router.post("/repos/builder/design", response_model=dict)
+async def builder_design_chat(body: BuilderDesignRequest, user: dict = Depends(get_current_user)):
+    """Conversational project design: agent asks, user answers, plan converges."""
+    await ensure_token_budget(user)
+    history = [
+        {"role": m.role, "content": m.content} for m in body.messages[-40:]
+    ]
+    try:
+        reply, usage = await _design_reply(history, user, body.stack)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"设计对话失败：{str(exc)[:200]}")
+    if usage:
+        from app.core.llm.usage import record_usage
+        await record_usage(user["id"], None, usage, source="builder")
+    return {"reply": reply}
 
 
 async def _own_repo(repo_id: str, user_id: int) -> dict:

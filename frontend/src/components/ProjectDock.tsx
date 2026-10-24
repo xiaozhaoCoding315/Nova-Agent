@@ -308,6 +308,7 @@ export function ProjectDock({
       <NewProjectDialog
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
+        onStartImport={() => setImportOpen(true)}
         onCreated={(repoId) => {
           void refresh()
           setActiveId(repoId)

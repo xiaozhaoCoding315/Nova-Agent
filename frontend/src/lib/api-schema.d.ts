@@ -865,6 +865,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/builder/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Builder Design Chat
+         * @description Conversational project design: agent asks, user answers, plan converges.
+         */
+        post: operations["builder_design_chat_api_v1_repos_builder_design_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/git": {
         parameters: {
             query?: never;
@@ -1838,6 +1858,30 @@ export interface components {
             /**
              * Stack
              * @default python
+             * @enum {string}
+             */
+            stack: "python" | "fullstack";
+        };
+        /** BuilderDesignMessage */
+        BuilderDesignMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+        };
+        /**
+         * BuilderDesignRequest
+         * @description Conversational project design: full turn history, server replies once.
+         */
+        BuilderDesignRequest: {
+            /** Messages */
+            messages: components["schemas"]["BuilderDesignMessage"][];
+            /**
+             * Stack
+             * @default fullstack
              * @enum {string}
              */
             stack: "python" | "fullstack";
@@ -5144,6 +5188,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    builder_design_chat_api_v1_repos_builder_design_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuilderDesignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

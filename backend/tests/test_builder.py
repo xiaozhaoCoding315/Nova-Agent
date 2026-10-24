@@ -110,3 +110,43 @@ def test_smoke_test_falls_back_to_health():
 
     source = _smoke_test_source([])
     assert '"/health"' in source
+
+
+@pytest.mark.asyncio
+async def test_design_chat_endpoint_streams_and_records(monkeypatch):
+    from app.api.v1 import builder as builder_api
+    from app.models.schemas import BuilderDesignRequest
+
+    class FakeLLM:
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            assert messages[0]["role"] == "system"
+            assert "项目设计搭档" in messages[0]["content"]
+            assert messages[-1]["content"] == "做个博客"
+            yield {"type": "content", "content": "给谁用？"}
+            yield {"type": "usage", "usage": {"prompt_tokens": 1, "completion_tokens": 2}}
+            yield {"type": "finish", "finish_reason": "stop"}
+
+    recorded = []
+
+    async def fake_record(*args, **kwargs):
+        recorded.append(kwargs.get("source"))
+
+    async def fake_get_llm(user_id=None, model=None, purpose=None):
+        assert purpose == "plan"
+        return FakeLLM()
+
+    async def fake_budget(user=None, **kwargs):
+        return None
+
+    import app.core.llm.factory as factory_mod
+    import app.core.llm.usage as usage_mod
+    monkeypatch.setattr(factory_mod, "get_llm", fake_get_llm)
+    monkeypatch.setattr(usage_mod, "record_usage", fake_record)
+    monkeypatch.setattr(builder_api, "ensure_token_budget", fake_budget)
+
+    req = BuilderDesignRequest(
+        messages=[{"role": "user", "content": "做个博客"}], stack="fullstack",
+    )
+    resp = await builder_api.builder_design_chat(req, user={"id": 1})
+    assert resp["reply"] == "给谁用？"
+    assert recorded == ["builder"]

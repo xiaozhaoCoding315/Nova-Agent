@@ -707,6 +707,58 @@
         "title": "BuilderCreate",
         "type": "object"
       },
+      "BuilderDesignMessage": {
+        "properties": {
+          "content": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "BuilderDesignMessage",
+        "type": "object"
+      },
+      "BuilderDesignRequest": {
+        "description": "Conversational project design: full turn history, server replies once.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/BuilderDesignMessage"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          },
+          "stack": {
+            "default": "fullstack",
+            "enum": [
+              "python",
+              "fullstack"
+            ],
+            "title": "Stack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "BuilderDesignRequest",
+        "type": "object"
+      },
       "BuilderFeedback": {
         "properties": {
           "feedback": {
@@ -7178,6 +7230,50 @@
           }
         },
         "summary": "Create Builder Project",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/v1/repos/builder/design": {
+      "post": {
+        "description": "Conversational project design: agent asks, user answers, plan converges.",
+        "operationId": "builder_design_chat_api_v1_repos_builder_design_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderDesignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Builder Design Chat Api V1 Repos Builder Design Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Builder Design Chat",
         "tags": [
           "builder"
         ]
