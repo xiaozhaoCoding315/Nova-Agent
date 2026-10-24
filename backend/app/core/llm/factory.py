@@ -6,9 +6,13 @@ from app.core.llm.user_settings import get_user_config
 
 
 class OpenAICompatibleLLM(LLMProvider):
-    def __init__(self, api_key: str, base_url: str, model: str):
+    def __init__(self, api_key: str, base_url: str, model: str, reasoning_effort: str | None = None):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
+        # 推理强度只在对话主链路携带；摘要/抽取等工具型调用不带。
+        self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
+        # 上下文窗口（token）：BYOK 用户可配；由 get_llm 统一填默认值。
+        self.context_window: int | None = None
 
     async def astream(self, messages: list[dict], **kwargs):
         stream = await self.client.chat.completions.create(
@@ -42,7 +46,13 @@ class OpenAICompatibleLLM(LLMProvider):
         try:
             stream = await _create(stream_options={"include_usage": True}, **kwargs)
         except Exception:  # noqa: BLE001 — provider may not support include_usage
-            stream = await _create(**kwargs)
+            try:
+                stream = await _create(**kwargs)
+            except Exception:  # noqa: BLE001 — provider may reject reasoning_effort etc.
+                if kwargs:
+                    stream = await _create()
+                else:
+                    raise
 
         acc: dict[int, dict] = {}
         finish_reason = "stop"
@@ -144,6 +154,33 @@ def route_model_for(purpose: str | None) -> str | None:
     return None
 
 
+def resolve_context_window(user_id: int | None, provider: LLMProvider | None = None) -> int:
+    """Effective context window for the context meter (tokens)."""
+    if provider is not None and getattr(provider, "context_window", None):
+        return int(provider.context_window)
+    return settings.default_context_window
+
+
+async def _fallback_allowed_for(user_id: int | None) -> bool:
+    """服务端共享 Key 只供应给：系统调用（无用户）、游客、管理员；
+    注册用户默认必须自带 Key（保护部署者额度）。DB 异常时按拒绝处理。"""
+    if user_id is None:
+        return True
+    if not settings.llm_allow_server_fallback:
+        return False
+    try:
+        from app.db import query
+        rows = await query(
+            "SELECT role, is_guest FROM users WHERE id = %s", (user_id,)
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    if not rows:
+        return False
+    role, is_guest = rows[0][0], bool(rows[0][1])
+    return is_guest or role == "admin" or settings.llm_server_fallback_registered
+
+
 async def get_llm(
     user_id: int | None = None,
     model: str | None = None,
@@ -154,8 +191,9 @@ async def get_llm(
     A user-saved key takes precedence and is used exclusively, so a bad personal
     config never silently spends the server owner's quota — and purpose routing
     never overrides a BYOK user's own model choice. Without a personal key, the
-    shared env-key chain is used (routed by purpose when configured) unless the
-    deployment disables that fallback.
+    shared env-key chain only serves guests and admins (system calls too);
+    registered users must bring their own key unless the deployment explicitly
+    opens ``llm_server_fallback_registered``.
     """
     if user_id is not None:
         config = await get_user_config(user_id)
@@ -163,8 +201,19 @@ async def get_llm(
             if not config["api_key"]:
                 raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
             chosen_model = (model or config["model"]).strip()
-            return OpenAICompatibleLLM(config["api_key"], config["base_url"], chosen_model)
+            llm = OpenAICompatibleLLM(
+                config["api_key"], config["base_url"], chosen_model,
+                reasoning_effort=config.get("reasoning_effort"),
+            )
+            llm.context_window = config.get("context_window") or settings.default_context_window
+            return llm
 
-    if not settings.llm_allow_server_fallback:
-        raise RuntimeError("尚未配置个人模型 API Key，且服务端未开放共享模型")
-    return _server_llm(model_override=route_model_for(purpose))
+    if not await _fallback_allowed_for(user_id):
+        raise RuntimeError(
+            "请先在「设置 → 模型」配置你的个人 API Key，再开始对话"
+            if user_id is not None
+            else "尚未配置个人模型 API Key，且服务端未开放共享模型"
+        )
+    llm = _server_llm(model_override=route_model_for(purpose))
+    llm.context_window = settings.default_context_window
+    return llm

@@ -1,11 +1,14 @@
 import asyncio
+import html
 import time
+import urllib.parse
 from pathlib import Path
 
 import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -156,6 +159,70 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+# ---------- 桌面客户端安装包下载 ----------
+# 运维把安装包（如 Nova-Agent-Setup-2.0.0.exe）放进 DOWNLOADS_DIR 后，用户即可在
+# 登录页点「下载桌面客户端」或直接访问 /downloads 获取；无需认证。
+_DOWNLOADS_DIR = Path(settings.downloads_dir)
+_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _human_size(size: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{size} B"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+@app.get("/downloads", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/downloads/", response_class=HTMLResponse, include_in_schema=False)
+async def downloads_page() -> HTMLResponse:
+    """列出安装包目录内容。动态生成，放入文件后刷新页面即可见。"""
+    files = sorted(
+        (p for p in _DOWNLOADS_DIR.iterdir() if p.is_file() and not p.name.startswith(".")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    rows = []
+    for path in files:
+        stat = path.stat()
+        name = html.escape(path.name)
+        href = urllib.parse.quote(path.name)
+        modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
+        rows.append(
+            f'<a class="item" href="/downloads/files/{href}" download>'
+            f'<span class="name">{name}</span>'
+            f'<span class="meta">{_human_size(stat.st_size)} · {modified}</span></a>'
+        )
+    body = (
+        "".join(rows)
+        if rows
+        else '<p class="empty">暂无安装包。请管理员把安装包放入 <code>DOWNLOADS_DIR</code>（默认 data/downloads）目录。</p>'
+    )
+    return HTMLResponse(
+        "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Nova Agent 桌面客户端下载</title><style>"
+        "body{background:#101014;color:#e8e8ee;font:14px/1.6 system-ui,'Segoe UI',sans-serif;"
+        "display:flex;justify-content:center;padding:48px 16px;margin:0}"
+        ".wrap{width:100%;max-width:560px}h1{font-size:18px;margin:0 0 4px}"
+        "p.sub{color:#9a9aa8;font-size:12.5px;margin:0 0 24px}"
+        "a.item{display:flex;justify-content:space-between;gap:16px;padding:12px 14px;margin-bottom:8px;"
+        "border:1px solid #26262e;border-radius:10px;text-decoration:none;color:#e8e8ee;font-size:13px}"
+        "a.item:hover{border-color:#4c6fff}"
+        ".name{font-weight:500;word-break:break-all}.meta{color:#9a9aa8;white-space:nowrap;font-size:11.5px}"
+        ".empty{color:#9a9aa8;font-size:12.5px;border:1px dashed #26262e;border-radius:10px;padding:16px}"
+        "code{background:#1a1a22;border-radius:4px;padding:1px 5px;font-size:11.5px}"
+        "</style></head><body><div class=\"wrap\">"
+        "<h1>Nova Agent 桌面客户端</h1>"
+        "<p class=\"sub\">安装后输入本服务器地址即可使用，数据仍保存在服务器上。</p>"
+        f"{body}"
+        "</div></body></html>"
+    )
+
+
+app.mount("/downloads/files", StaticFiles(directory=_DOWNLOADS_DIR), name="downloads_files")
 
 _FRONTEND_DIST = (
     Path(settings.frontend_dist)

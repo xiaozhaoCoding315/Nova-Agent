@@ -14,6 +14,8 @@ from app.db import execute, query
 
 MAX_MODEL_LENGTH = 120
 BLOCKED_HOSTS = {"169.254.169.254", "metadata.google.internal"}
+REASONING_EFFORTS = {"", "low", "medium", "high"}
+MAX_CONTEXT_WINDOW = 10_000_000
 
 
 def provider_presets() -> list[dict]:
@@ -86,13 +88,13 @@ def _clean_model(model: str) -> str:
 
 async def get_user_config(user_id: int) -> dict | None:
     rows = await query(
-        "SELECT provider, base_url, model, api_key_enc, updated_at "
+        "SELECT provider, base_url, model, api_key_enc, context_window, reasoning_effort, updated_at "
         "FROM user_llm_settings WHERE user_id = %s",
         (user_id,),
     )
     if not rows:
         return None
-    provider, base_url, model, encrypted, updated_at = rows[0]
+    provider, base_url, model, encrypted, context_window, reasoning_effort, updated_at = rows[0]
     api_key = ""
     key_error = ""
     try:
@@ -106,8 +108,27 @@ async def get_user_config(user_id: int) -> dict | None:
         "api_key": api_key,
         "key_hint": f"••••{api_key[-4:]}" if len(api_key) >= 8 else ("••••" if api_key else ""),
         "key_error": key_error,
+        "context_window": int(context_window) if context_window else None,
+        "reasoning_effort": reasoning_effort or "",
         "updated_at": updated_at,
     }
+
+
+def clean_context_window(value: int | None) -> int | None:
+    """None/0 = 未指定（用部署默认窗口）；否则必须是合理的 token 数。"""
+    if value is None or int(value) <= 0:
+        return None
+    value = int(value)
+    if value < 2048 or value > MAX_CONTEXT_WINDOW:
+        raise ValueError("上下文窗口需在 2048 - 10,000,000 tokens 之间")
+    return value
+
+
+def clean_reasoning_effort(value: str | None) -> str:
+    effort = (value or "").strip().lower()
+    if effort not in REASONING_EFFORTS:
+        raise ValueError("推理强度只能是 low / medium / high 或留空")
+    return effort
 
 
 async def save_user_config(
@@ -117,6 +138,8 @@ async def save_user_config(
     model: str,
     base_url: str | None = None,
     api_key: str | None = None,
+    context_window: int | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict:
     preset = provider_by_id(provider)
     if not preset:
@@ -136,16 +159,20 @@ async def save_user_config(
 
     await execute(
         """
-        INSERT INTO user_llm_settings (user_id, provider, base_url, model, api_key_enc, updated_at)
-        VALUES (%s, %s, %s, %s, %s, now())
+        INSERT INTO user_llm_settings
+            (user_id, provider, base_url, model, api_key_enc, context_window, reasoning_effort, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, now())
         ON CONFLICT (user_id) DO UPDATE SET
             provider = EXCLUDED.provider,
             base_url = EXCLUDED.base_url,
             model = EXCLUDED.model,
             api_key_enc = EXCLUDED.api_key_enc,
+            context_window = EXCLUDED.context_window,
+            reasoning_effort = EXCLUDED.reasoning_effort,
             updated_at = now()
         """,
-        (user_id, provider, clean_base, clean_model, encrypt_key(key)),
+        (user_id, provider, clean_base, clean_model, encrypt_key(key),
+         clean_context_window(context_window), clean_reasoning_effort(reasoning_effort)),
     )
     saved = await get_user_config(user_id)
     if saved is None:

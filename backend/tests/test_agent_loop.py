@@ -59,9 +59,12 @@ async def test_plain_answer_event_sequence(monkeypatch):
     events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
 
     names = [e["event"] for e in events]
-    assert names == ["meta", "retrieval", "token", "usage", "evidence", "done"]
-    assert events[2]["data"]["text"] == "你好"
-    assert events[3]["data"]["prompt_tokens"] == 10
+    assert names == ["meta", "retrieval", "context", "token", "usage", "evidence", "done"]
+    assert events[3]["data"]["text"] == "你好"
+    assert events[4]["data"]["prompt_tokens"] == 10
+    context_event = events[2]["data"]
+    assert context_event["window"] > 0
+    assert "系统提示" in context_event["sections"]
     assert events[-1]["data"]["message_id"] == 101
     assert events[-1]["data"]["tools_used"] == []
     report = events[-1]["data"]["report"]
@@ -149,7 +152,7 @@ async def test_stop_mid_stream_persists_partial_output(monkeypatch):
         if loop_mod.session_mod.add_message.await_count:
             break
 
-    assert seen == ["meta", "retrieval", "token"]
+    assert seen == ["meta", "retrieval", "context", "token"]
     loop_mod.session_mod.add_message.assert_awaited()
     content = loop_mod.session_mod.add_message.await_args.args[2]
     assert content == "部分"
@@ -174,3 +177,67 @@ async def test_context_includes_facts_in_system_prompt(monkeypatch):
     system = captured["messages"][0]
     assert system["role"] == "system"
     assert "用户偏好 Java 后端" in system["content"]
+
+@pytest.mark.asyncio
+async def test_rounds_exhausted_emits_incomplete_notice(monkeypatch):
+    llm = FakeLLM([[
+        {"type": "tool_calls", "tool_calls": [
+            {"id": "t1", "name": "json_tool", "arguments": json.dumps({"input": '{"a": 1}'})}
+        ]},
+        {"type": "finish", "finish_reason": "tool_calls"},
+    ]])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod.settings, "max_rounds", 1)
+    monkeypatch.setattr(loop_mod.settings, "max_continuations", 0)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+    notices = [e for e in events if e["event"] == "notice" and e["data"].get("kind") == "incomplete"]
+    assert notices
+
+
+@pytest.mark.asyncio
+async def test_max_rounds_auto_continues(monkeypatch):
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t1", "name": "json_tool", "arguments": json.dumps({"input": '{"a": 1}'})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "完成了"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod.settings, "max_rounds", 1)
+    monkeypatch.setattr(loop_mod.settings, "max_continuations", 1)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+    kinds = [e["data"].get("kind") for e in events if e["event"] == "notice"]
+    assert "continued" in kinds
+    assert "incomplete" not in kinds
+    assert any(e["event"] == "token" and e["data"]["text"] == "完成了" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_without_output_auto_continues(monkeypatch):
+    class FlakyThenOk:
+        def __init__(self):
+            self.calls = 0
+
+        async def astream_with_tools(self, messages, tools):
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("provider hiccup")
+            yield {"type": "content", "content": "续上了"}
+            yield {"type": "finish", "finish_reason": "stop"}
+
+    _patch_common(monkeypatch, FlakyThenOk())
+    monkeypatch.setattr(loop_mod.settings, "llm_round_retries", 0)
+    monkeypatch.setattr(loop_mod.settings, "max_continuations", 1)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+    kinds = [e["data"].get("kind") for e in events if e["event"] == "notice"]
+    assert "continued" in kinds
+    assert any(e["event"] == "token" and e["data"]["text"] == "续上了" for e in events)

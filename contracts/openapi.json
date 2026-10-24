@@ -334,6 +334,11 @@
       },
       "AuthConfigOut": {
         "properties": {
+          "email_verification": {
+            "default": false,
+            "title": "Email Verification",
+            "type": "boolean"
+          },
           "guest_enabled": {
             "title": "Guest Enabled",
             "type": "boolean"
@@ -2177,6 +2182,66 @@
         "title": "EditRevertOut",
         "type": "object"
       },
+      "EmailCodeRequest": {
+        "properties": {
+          "email": {
+            "maxLength": 190,
+            "minLength": 5,
+            "title": "Email",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "register",
+            "enum": [
+              "register",
+              "reset"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "EmailCodeRequest",
+        "type": "object"
+      },
+      "EmailResetRequest": {
+        "properties": {
+          "code": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 190,
+            "minLength": 5,
+            "title": "Email",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 3,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "code",
+          "new_password"
+        ],
+        "title": "EmailResetRequest",
+        "type": "object"
+      },
       "FileContentOut": {
         "properties": {
           "content": {
@@ -2743,6 +2808,89 @@
         "title": "ImpactSymbolOut",
         "type": "object"
       },
+      "InviteCodeCreateRequest": {
+        "properties": {
+          "expires_days": {
+            "default": 0,
+            "maximum": 3650.0,
+            "minimum": 0.0,
+            "title": "Expires Days",
+            "type": "integer"
+          },
+          "max_uses": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Max Uses",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "InviteCodeCreateRequest",
+        "type": "object"
+      },
+      "InviteCodeOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "max_uses": {
+            "title": "Max Uses",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "used_count": {
+            "title": "Used Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "max_uses",
+          "used_count"
+        ],
+        "title": "InviteCodeOut",
+        "type": "object"
+      },
       "JobOut": {
         "properties": {
           "attempts": {
@@ -2917,6 +3065,17 @@
             "title": "Configured",
             "type": "boolean"
           },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
           "has_key": {
             "default": false,
             "title": "Has Key",
@@ -2961,6 +3120,17 @@
             },
             "title": "Providers",
             "type": "array"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           },
           "server_model": {
             "anyOf": [
@@ -3028,6 +3198,19 @@
             ],
             "title": "Base Url"
           },
+          "context_window": {
+            "anyOf": [
+              {
+                "maximum": 10000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
           "model": {
             "maxLength": 120,
             "minLength": 1,
@@ -3039,6 +3222,18 @@
             "minLength": 1,
             "title": "Provider",
             "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           }
         },
         "required": [
@@ -3074,6 +3269,78 @@
           "model"
         ],
         "title": "LlmTestOut",
+        "type": "object"
+      },
+      "LocalExecClaim": {
+        "properties": {
+          "command": {
+            "title": "Command",
+            "type": "string"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "cwd": {
+            "title": "Cwd",
+            "type": "string"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "shell",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "cwd",
+          "command"
+        ],
+        "title": "LocalExecClaim",
+        "type": "object"
+      },
+      "LocalExecResult": {
+        "properties": {
+          "exit_code": {
+            "default": 0,
+            "title": "Exit Code",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "output": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "title": "LocalExecResult",
         "type": "object"
       },
       "LoginRequest": {
@@ -3680,6 +3947,30 @@
               }
             ],
             "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 190,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "email_code": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Code"
           },
           "invite_code": {
             "anyOf": [
@@ -4861,6 +5152,112 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/invites": {
+      "get": {
+        "operationId": "admin_list_invites_api_v1_admin_invites_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InviteCodeOut"
+                  },
+                  "title": "Response Admin List Invites Api V1 Admin Invites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Admin List Invites",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_invite_api_v1_admin_invites_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteCodeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCodeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Create Invite",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invites/{invite_id}": {
+      "delete": {
+        "operationId": "admin_delete_invite_api_v1_admin_invites__invite_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "title": "Invite Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Delete Invite",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/usage/sources": {
       "get": {
         "description": "Token spend grouped by call source and model for cost attribution.",
@@ -5140,6 +5537,50 @@
         ]
       }
     },
+    "/api/v1/auth/email/code": {
+      "post": {
+        "description": "发送邮箱验证码（注册 / 找回密码）。邮件服务未配置时明确报 503。",
+        "operationId": "email_code_api_v1_auth_email_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Email Code Api V1 Auth Email Code Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Email Code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/guest": {
       "post": {
         "operationId": "guest_api_v1_auth_guest_post",
@@ -5321,6 +5762,48 @@
           }
         },
         "summary": "Reset Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/email": {
+      "post": {
+        "description": "用户名 + 邮箱验证码找回密码（邮箱须与账号绑定一致）。",
+        "operationId": "reset_password_by_email_api_v1_auth_password_reset_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Password By Email",
         "tags": [
           "auth"
         ]
@@ -6967,6 +7450,110 @@
         "summary": "Retry Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/local/exec/pending": {
+      "get": {
+        "description": "本地执行器长轮询：原子地把 pending 置为 claimed 并返回，避免重复领取。",
+        "operationId": "claim_pending_api_v1_local_exec_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocalExecClaim"
+                  },
+                  "title": "Response Claim Pending Api V1 Local Exec Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Claim Pending",
+        "tags": [
+          "local"
+        ]
+      }
+    },
+    "/api/v1/local/exec/status": {
+      "get": {
+        "description": "对话界面显示本机执行器是否在线（基于轮询心跳，30 秒窗口）。",
+        "operationId": "local_exec_status_api_v1_local_exec_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Local Exec Status Api V1 Local Exec Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Local Exec Status",
+        "tags": [
+          "local"
+        ]
+      }
+    },
+    "/api/v1/local/exec/{request_id}/result": {
+      "post": {
+        "operationId": "submit_result_api_v1_local_exec__request_id__result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalExecResult"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Result Api V1 Local Exec  Request Id  Result Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Result",
+        "tags": [
+          "local"
         ]
       }
     },

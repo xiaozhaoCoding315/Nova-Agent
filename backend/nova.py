@@ -329,6 +329,107 @@ def cmd_bridge_watch(args) -> int:
 
 
 
+def cmd_agent(args) -> int:
+    """本地执行器：长轮询领取服务器派发的命令，在本机执行并回传。
+
+    这是 Agent「够到用户电脑」的通道：用户运行 nova.py agent 后，
+    对话里的 local_run_command 工具就能在本机真实执行命令。
+    """
+    import subprocess
+
+    root = Path(args.dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    poll = max(float(args.interval or 3), 1.5)
+    timeout = max(int(args.timeout or 120), 5)
+    confirm = not args.yes
+
+    print(f"Nova 本地执行器已启动")
+    print(f"  根目录：{root}")
+    print(f"  服务器：{os.getenv('NOVA_URL', 'http://localhost:8000')}")
+    print(f"  执行前确认：{'开启（每条命令需在终端按 y 确认，--yes 可跳过）' if confirm else '关闭（--yes，命令将直接执行）'}")
+    print("  Ctrl+C 停止")
+    c = client()
+    while True:
+        try:
+            r = c.get("/api/v1/local/exec/pending", timeout=35)
+            if r.status_code != 200:
+                time.sleep(poll)
+                continue
+            pending = r.json()
+            for item in pending:
+                kind = item.get("kind", "shell")
+                if kind == "write":
+                    rel = (item.get("file_path") or "").strip()
+                    content = item.get("content") or ""
+                    target = (root / rel).resolve()
+                    if not rel or (target != root and root not in target.parents):
+                        _post_result(c, item["id"], ok=False, exit_code=-1,
+                                     output=f"路径越界：{rel} 不在根目录内")
+                        continue
+                    stamp = time.strftime('%H:%M:%S')
+                    print(f"\n[{stamp}] 收到文件写入请求:")
+                    print(f"  目标：{target}（{len(content.encode('utf-8'))} 字节）")
+                    if confirm:
+                        answer = input("  允许写入本机文件？[y/N] ").strip().lower()
+                        if answer != "y":
+                            _post_result(c, item["id"], ok=False, exit_code=-1, output="用户拒绝了本次文件写入")
+                            print("  已拒绝")
+                            continue
+                    try:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text(content, encoding="utf-8")
+                        _post_result(c, item["id"], ok=True, exit_code=0,
+                                     output=f"written {len(content.encode('utf-8'))} bytes -> {target}")
+                        print("  写入完成")
+                    except Exception as exc:  # noqa: BLE001
+                        _post_result(c, item["id"], ok=False, exit_code=-1, output=f"写入失败：{exc}")
+                    continue
+
+                command, cwd = item["command"], item.get("cwd", ".")
+                workdir = (root / cwd).resolve() if not Path(cwd).is_absolute() else Path(cwd)
+                inside = workdir == root or root in workdir.parents
+                if not inside:
+                    _post_result(c, item["id"], ok=False, exit_code=-1, output=f"目录越界：{workdir} 不在根目录内")
+                    continue
+                stamp = time.strftime('%H:%M:%S')
+                print(f"\n[{stamp}] 收到命令（{workdir}）:")
+                print(f"  $ {command}")
+                if confirm:
+                    answer = input("  允许在本机执行？[y/N] ").strip().lower()
+                    if answer != "y":
+                        _post_result(c, item["id"], ok=False, exit_code=-1, output="用户拒绝了本次命令执行")
+                        print("  已拒绝")
+                        continue
+                try:
+                    proc = subprocess.run(
+                        command, shell=True, cwd=str(workdir),
+                        capture_output=True, text=True, timeout=timeout,
+                    )
+                    stderr_part = ("\n[stderr]\n" + proc.stderr) if proc.stderr else ""
+                    output = ((proc.stdout or "") + stderr_part).strip()
+                    _post_result(c, item["id"], ok=proc.returncode == 0, exit_code=proc.returncode, output=output)
+                    print(f"  完成，exit {proc.returncode}")
+                except subprocess.TimeoutExpired:
+                    _post_result(c, item["id"], ok=False, exit_code=-1, output=f"命令超时（>{timeout}s）")
+                    print("  超时")
+                except Exception as exc:  # noqa: BLE001
+                    _post_result(c, item["id"], ok=False, exit_code=-1, output=f"执行器错误：{exc}")
+        except KeyboardInterrupt:
+            print("\n已停止")
+            return 0
+        except httpx.HTTPError:
+            time.sleep(poll)
+        time.sleep(poll)
+
+
+def _post_result(c: httpx.Client, request_id: str, *, ok: bool, exit_code: int, output: str) -> None:
+    try:
+        c.post(f"/api/v1/local/exec/{request_id}/result",
+               json={"ok": ok, "output": output[:100000], "exit_code": exit_code}, timeout=30)
+    except httpx.HTTPError as exc:
+        print(f"  回传结果失败：{exc}", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="nova", description="Nova Agent headless CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -376,6 +477,13 @@ def main() -> int:
     b_watch.add_argument("dir")
     b_watch.add_argument("--interval", type=int, default=5)
     b_watch.set_defaults(func=cmd_bridge_watch)
+
+    p_agent = sub.add_parser("agent", help="本地执行器：让对话里的 Agent 能在你本机执行命令")
+    p_agent.add_argument("--dir", default=".", help="执行器根目录（Agent 的命令只能在此目录及子目录内运行）")
+    p_agent.add_argument("--yes", action="store_true", help="跳过逐条确认（信任对话派发的命令）")
+    p_agent.add_argument("--interval", type=float, default=3.0, help="轮询间隔秒数（默认 3）")
+    p_agent.add_argument("--timeout", type=int, default=120, help="单条命令执行超时秒数（默认 120）")
+    p_agent.set_defaults(func=cmd_agent)
 
     args = parser.parse_args()
     return args.func(args)

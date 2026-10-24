@@ -12,15 +12,17 @@ FROM docker:27-cli AS dockercli
 # ---------- Stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends util-linux \
+# 国内服务器构建：Debian 官方源在境内很慢，统一切到阿里云镜像
+RUN sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends util-linux git \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 
 WORKDIR /app
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
 
 COPY backend/ ./
 COPY --from=frontend-build /web/dist /app/frontend_dist

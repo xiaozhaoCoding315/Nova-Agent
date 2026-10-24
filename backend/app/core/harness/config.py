@@ -13,7 +13,7 @@ class RetryConfig:
 
 @dataclass
 class TimeoutConfig:
-    llm_timeout: int = 60          # LLM inference
+    llm_timeout: int = 240         # LLM inference
     retrieval_timeout: int = 10    # RAG retrieval
     tool_timeout: int = 30         # External tool calls
     db_timeout: int = 5            # Database queries

@@ -5,7 +5,10 @@ from app.core.security.accounts import (
     admin_delete_user,
     admin_reset_password,
     admin_set_user_fields,
+    create_invite,
     create_user,
+    delete_invite,
+    list_invites,
     list_users_with_usage,
 )
 from app.core.security.audit import log_audit
@@ -16,6 +19,8 @@ from app.models.schemas import (
     AdminUserCreateRequest,
     AdminUserOut,
     AdminUserUpdateRequest,
+    InviteCodeCreateRequest,
+    InviteCodeOut,
     OkOut,
     SourceUsageOut,
     UserOut,
@@ -130,4 +135,41 @@ async def admin_delete_user_endpoint(user_id: int, user: dict = Depends(require_
         raise HTTPException(status_code=400, detail=str(exc))
     await log_audit("admin_user_delete", user_id=str(user["id"]),
                     details={"target": user_id}, risk_level="warn")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# 邀请码（注册收紧：只有持有有效邀请码的访客能注册正式账号）
+# ---------------------------------------------------------------------------
+
+
+@router.get("/admin/invites", response_model=list[InviteCodeOut])
+async def admin_list_invites(user: dict = Depends(require_admin)):
+    return await list_invites()
+
+
+@router.post("/admin/invites", response_model=InviteCodeOut)
+async def admin_create_invite(
+    body: InviteCodeCreateRequest,
+    user: dict = Depends(require_admin),
+):
+    try:
+        invite = await create_invite(
+            note=body.note,
+            max_uses=body.max_uses,
+            expires_days=body.expires_days or None,
+            created_by=user["id"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await log_audit("invite_create", user_id=str(user["id"]), details={"note": body.note})
+    return invite
+
+
+@router.delete("/admin/invites/{invite_id}", response_model=OkOut)
+async def admin_delete_invite(invite_id: int, user: dict = Depends(require_admin)):
+    removed = await delete_invite(invite_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="邀请码不存在")
+    await log_audit("invite_delete", user_id=str(user["id"]), details={"invite_id": invite_id})
     return {"ok": True}

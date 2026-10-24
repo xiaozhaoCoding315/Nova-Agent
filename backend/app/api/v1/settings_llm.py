@@ -20,11 +20,20 @@ from app.models.schemas import LlmSettingsOut, LlmSettingsUpdate, LlmTestOut
 router = APIRouter()
 
 
-def _public_view(config: dict | None) -> LlmSettingsOut:
+def _public_view(config: dict | None, user: dict) -> LlmSettingsOut:
     has_key = bool(config and config.get("api_key"))
+    # 服务端共享 Key 的适用范围随账号而变：游客/管理员可用，注册用户需自带 Key。
+    server_applies = bool(
+        settings.llm_allow_server_fallback
+        and (
+            user.get("is_guest")
+            or user.get("role") == "admin"
+            or settings.llm_server_fallback_registered
+        )
+    )
     if has_key:
         source = "user"
-    elif settings.llm_configured and settings.llm_allow_server_fallback:
+    elif settings.llm_configured and server_applies:
         source = "server"
     else:
         source = "none"
@@ -38,7 +47,9 @@ def _public_view(config: dict | None) -> LlmSettingsOut:
         has_key=has_key,
         key_hint=config.get("key_hint") if has_key else None,
         server_model=server_default_model(),
-        allow_server_fallback=settings.llm_allow_server_fallback,
+        allow_server_fallback=server_applies,
+        context_window=config.get("context_window") if config else None,
+        reasoning_effort=config.get("reasoning_effort") if config else None,
         providers=provider_presets(),
         updated_at=config.get("updated_at") if config else None,
     )
@@ -46,7 +57,7 @@ def _public_view(config: dict | None) -> LlmSettingsOut:
 
 @router.get("/settings/llm", response_model=LlmSettingsOut)
 async def get_llm_settings(user: dict = Depends(get_current_user)):
-    return _public_view(await get_user_config(user["id"]))
+    return _public_view(await get_user_config(user["id"]), user)
 
 
 @router.put("/settings/llm", response_model=LlmSettingsOut)
@@ -61,16 +72,18 @@ async def update_llm_settings(
             model=body.model,
             base_url=body.base_url,
             api_key=body.api_key,
+            context_window=body.context_window,
+            reasoning_effort=body.reasoning_effort,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return _public_view(await get_user_config(user["id"]))
+    return _public_view(await get_user_config(user["id"]), user)
 
 
 @router.delete("/settings/llm", response_model=LlmSettingsOut)
 async def clear_llm_settings(user: dict = Depends(get_current_user)):
     await delete_user_config(user["id"])
-    return _public_view(None)
+    return _public_view(None, user)
 
 
 @router.post("/settings/llm/test", response_model=LlmTestOut)

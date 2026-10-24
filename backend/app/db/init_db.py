@@ -66,7 +66,53 @@ _DDL = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_daily_tokens INT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_hourly_messages INT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_sandbox_daily INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip VARCHAR(64)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(190)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL",
+    """
+    CREATE TABLE IF NOT EXISTS email_codes (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(190) NOT NULL,
+        code_hash VARCHAR(200) NOT NULL,
+        purpose VARCHAR(16) NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_email_codes_email ON email_codes (email, purpose, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status, expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_users_guest_ip ON users (created_ip) WHERE is_guest",
+    """
+    CREATE TABLE IF NOT EXISTS invite_codes (
+        id SERIAL PRIMARY KEY,
+        code VARCHAR(32) UNIQUE NOT NULL,
+        note VARCHAR(120),
+        max_uses INT NOT NULL DEFAULT 1,
+        used_count INT NOT NULL DEFAULT 0,
+        created_by INT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        expires_at TIMESTAMPTZ
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS local_exec_requests (
+        id UUID PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        cwd TEXT NOT NULL DEFAULT '.',
+        command TEXT NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        output TEXT,
+        exit_code INT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_local_exec_pending ON local_exec_requests (user_id, status, created_at)",
+    "ALTER TABLE local_exec_requests ADD COLUMN IF NOT EXISTS kind VARCHAR(12) NOT NULL DEFAULT 'shell'",
+    "ALTER TABLE local_exec_requests ADD COLUMN IF NOT EXISTS file_path TEXT",
+    "ALTER TABLE local_exec_requests ADD COLUMN IF NOT EXISTS content TEXT",
     """
     CREATE TABLE IF NOT EXISTS user_llm_settings (
         user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -77,6 +123,8 @@ _DDL = [
         updated_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "ALTER TABLE user_llm_settings ADD COLUMN IF NOT EXISTS context_window INT",
+    "ALTER TABLE user_llm_settings ADD COLUMN IF NOT EXISTS reasoning_effort VARCHAR(12)",
     """
     CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY,

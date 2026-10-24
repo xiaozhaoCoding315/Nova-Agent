@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     admin, auth, builder, changes, chat, contracts, deploys, files, git_ops, jobs, memory,
-    night, repos, settings_llm, settings_quota, status, tasks,
+    night, local_exec, repos, settings_llm, settings_quota, status, tasks,
 )
 
 api_router = APIRouter()
@@ -16,6 +16,7 @@ api_router.include_router(deploys.router, tags=["deploys"])
 api_router.include_router(files.router, tags=["files"])
 api_router.include_router(git_ops.router, tags=["git"])
 api_router.include_router(jobs.router, tags=["jobs"])
+api_router.include_router(local_exec.router, tags=["local"])
 api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(night.router, tags=["night"])
 api_router.include_router(repos.router, tags=["repos"])

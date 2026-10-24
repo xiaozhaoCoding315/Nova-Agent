@@ -93,8 +93,28 @@ async def sandbox_runs_today(user_id: int) -> int:
     return int(rows[0][0]) if rows else 0
 
 
+async def messages_total(user_id: int) -> int:
+    rows = await query(
+        "SELECT COUNT(*) FROM messages m JOIN sessions s ON s.id = m.session_id "
+        "WHERE s.user_id = %s AND m.role = 'user'",
+        (user_id,),
+    )
+    return int(rows[0][0]) if rows else 0
+
+
 async def check_chat_quota(user: dict) -> None:
-    """Raise 429 when the hourly rate or the daily token budget is exhausted."""
+    """Raise 429 when the hourly rate, the daily token budget or the guest
+    lifetime message cap is exhausted."""
+    if user.get("is_guest") and settings.guest_total_messages > 0:
+        used = await messages_total(user["id"])
+        if used >= settings.guest_total_messages:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"游客体验已结束（限 {settings.guest_total_messages} 条对话）。"
+                    "注册账号即可继续使用全部功能。"
+                ),
+            )
     limit = hourly_message_limit(user)
     if limit > 0:
         _rate_check(user, "chat", limit)

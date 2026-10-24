@@ -41,6 +41,7 @@ class AuthConfigOut(BaseModel):
     guest_enabled: bool
     invite_required: bool
     min_password_length: int
+    email_verification: bool = False
 
 
 class RegisterRequest(BaseModel):
@@ -48,6 +49,21 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=1, max_length=200)
     display_name: Optional[str] = Field(default=None, max_length=80)
     invite_code: Optional[str] = Field(default=None, max_length=200)
+    # 邮箱验证启用时必填
+    email: Optional[str] = Field(default=None, max_length=190)
+    email_code: Optional[str] = Field(default=None, max_length=12)
+
+
+class EmailCodeRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=190)
+    purpose: Literal["register", "reset"] = "register"
+
+
+class EmailResetRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    email: str = Field(min_length=5, max_length=190)
+    code: str = Field(min_length=1, max_length=12)
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 class RegisterOut(BaseModel):
@@ -75,6 +91,22 @@ class AdminUserCreateRequest(BaseModel):
     password: str = Field(min_length=1, max_length=200)
     display_name: Optional[str] = Field(default=None, max_length=80)
     role: Literal["admin", "demo"] = "demo"
+
+
+class InviteCodeCreateRequest(BaseModel):
+    note: str = Field(default="", max_length=120)
+    max_uses: int = Field(default=1, ge=1, le=10_000)
+    expires_days: int = Field(default=0, ge=0, le=3650)
+
+
+class InviteCodeOut(BaseModel):
+    id: int
+    code: str
+    note: str = ""
+    max_uses: int
+    used_count: int
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 
 class AdminUserUpdateRequest(BaseModel):
@@ -383,6 +415,8 @@ class LlmSettingsOut(BaseModel):
     key_hint: Optional[str] = None
     server_model: Optional[str] = None
     allow_server_fallback: bool = True
+    context_window: Optional[int] = None       # None = 跟随部署默认窗口
+    reasoning_effort: Optional[str] = None     # "" / low / medium / high
     providers: list[LlmProviderOut] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
@@ -393,6 +427,9 @@ class LlmSettingsUpdate(BaseModel):
     base_url: Optional[str] = Field(default=None, max_length=500)
     # Empty/None keeps the stored key, so users can change model without retyping it.
     api_key: Optional[str] = Field(default=None, max_length=4000)
+    # 0/None = 清除自定义窗口（跟随部署默认）；reasoning_effort 空 = 默认
+    context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    reasoning_effort: Optional[str] = Field(default=None, max_length=12)
 
 
 class LlmTestOut(BaseModel):

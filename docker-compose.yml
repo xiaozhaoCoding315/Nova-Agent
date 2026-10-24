@@ -73,6 +73,8 @@ services:
       QDRANT_PORT: "6333"
 
       LLM_MODEL_PRIORITY: ${LLM_MODEL_PRIORITY:-dashscope}
+      LLM_ALLOW_SERVER_FALLBACK: ${LLM_ALLOW_SERVER_FALLBACK:-true}
+      LLM_SERVER_FALLBACK_REGISTERED: ${LLM_SERVER_FALLBACK_REGISTERED:-false}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       DASHSCOPE_MODEL: ${DASHSCOPE_MODEL:-qwen3.8-max}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -96,6 +98,18 @@ services:
       DEMO_SANDBOX_DAILY: ${DEMO_SANDBOX_DAILY:-20}
       ADMIN_JOB_HOURLY: ${ADMIN_JOB_HOURLY:-30}
       DEMO_JOB_HOURLY: ${DEMO_JOB_HOURLY:-5}
+
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+      REGISTRATION_INVITE_CODE: ${REGISTRATION_INVITE_CODE:-}
+      MAX_USERS: ${MAX_USERS:-50}
+      GUEST_ENABLED: ${GUEST_ENABLED:-true}
+      GUEST_TTL_HOURS: ${GUEST_TTL_HOURS:-24}
+      GUEST_HOURLY_MESSAGES: ${GUEST_HOURLY_MESSAGES:-5}
+      GUEST_DAILY_TOKENS: ${GUEST_DAILY_TOKENS:-50000}
+      GUEST_SANDBOX_DAILY: ${GUEST_SANDBOX_DAILY:-1}
+      GUEST_JOB_HOURLY: ${GUEST_JOB_HOURLY:-2}
+      GUEST_TOTAL_MESSAGES: ${GUEST_TOTAL_MESSAGES:-3}
+      GUEST_ONCE_IP_DAYS: ${GUEST_ONCE_IP_DAYS:-7}
 
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-true}
       SANDBOX_IMAGE: nova-sandbox:latest
@@ -124,10 +138,20 @@ services:
 
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SSL: ${SMTP_SSL:-true}
+      EMAIL_VERIFY_REQUIRED: ${EMAIL_VERIFY_REQUIRED:-true}
     volumes:
       # 沙箱依赖宿主 docker：app 只创建受限的一次性容器（无网络/只读/丢权限）
       - /var/run/docker.sock:/var/run/docker.sock
       - repos_data:/app/data
+      # 桌面客户端安装包目录：把安装包放到宿主机 ./data/downloads，用户即可从 /downloads 下载
+      - ./data/downloads:/app/data/downloads
     depends_on:
       postgres:
         condition: service_healthy

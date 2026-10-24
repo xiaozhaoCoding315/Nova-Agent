@@ -119,6 +119,7 @@ async def create_user(
     is_guest: bool = False,
     expires_at: datetime | None = None,
     recovery_code: str | None = None,
+    created_ip: str | None = None,
 ) -> dict:
     username = validate_username(username)
     validate_password(password)
@@ -132,12 +133,12 @@ async def create_user(
     try:
         rows = await execute(
             "INSERT INTO users "
-            "(username, password_hash, display_name, role, is_guest, expires_at, recovery_code_hash) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            "(username, password_hash, display_name, role, is_guest, expires_at, recovery_code_hash, created_ip) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {USER_COLUMNS}",
             (
                 username, hash_password(password), display, role,
-                is_guest, expires_at, recovery_hash,
+                is_guest, expires_at, recovery_hash, (created_ip or "")[:64] or None,
             ),
         )
     except psycopg.errors.UniqueViolation:
@@ -147,7 +148,7 @@ async def create_user(
     return user_from_row(rows[0])
 
 
-async def create_guest_user() -> tuple[dict, str]:
+async def create_guest_user(ip: str | None = None) -> tuple[dict, str]:
     username = f"guest_{secrets.token_hex(4)}"
     password = secrets.token_urlsafe(18)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.guest_ttl_hours)
@@ -157,6 +158,7 @@ async def create_guest_user() -> tuple[dict, str]:
         display_name="游客",
         is_guest=True,
         expires_at=expires_at,
+        created_ip=ip,
     )
     return user, password
 
@@ -357,3 +359,221 @@ async def assert_user_deletable(user_id: int) -> None:
 async def admin_delete_user(user_id: int) -> None:
     await assert_user_deletable(user_id)
     await execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+
+# ---------------------------------------------------------------------------
+# 邀请码（动态注册凭证，管理员在设置页生成/管理）
+# ---------------------------------------------------------------------------
+
+INVITE_COLUMNS = "id, code, note, max_uses, used_count, created_by, created_at, expires_at"
+_INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # 去掉易混淆的 I/L/O/0/1
+
+
+def generate_invite_code() -> str:
+    body = "-".join(
+        "".join(secrets.choice(_INVITE_ALPHABET) for _ in range(4)) for _ in range(3)
+    )
+    return f"NOVA-{body}"
+
+
+def _invite_from_row(row: tuple) -> dict:
+    return {
+        "id": int(row[0]),
+        "code": row[1],
+        "note": row[2] or "",
+        "max_uses": int(row[3]),
+        "used_count": int(row[4]),
+        "created_by": row[5],
+        "created_at": row[6],
+        "expires_at": row[7],
+    }
+
+
+async def create_invite(
+    *, note: str = "", max_uses: int = 1, expires_days: int | None = None, created_by: int
+) -> dict:
+    max_uses = int(max_uses)
+    if not 1 <= max_uses <= 10_000:
+        raise ValueError("可用次数需在 1-10000 之间")
+    expires_at = None
+    if expires_days and int(expires_days) > 0:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=int(expires_days))
+    for _ in range(5):  # 撞唯一键时重换码
+        code = generate_invite_code()
+        try:
+            rows = await execute(
+                "INSERT INTO invite_codes (code, note, max_uses, created_by, expires_at) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                f"RETURNING {INVITE_COLUMNS}",
+                (code, (note or "").strip()[:120] or None, max_uses, created_by, expires_at),
+            )
+            break
+        except psycopg.errors.UniqueViolation:
+            continue
+    else:
+        raise RuntimeError("邀请码生成失败，请重试")
+    return _invite_from_row(rows[0])
+
+
+async def list_invites() -> list[dict]:
+    rows = await query(
+        f"SELECT {INVITE_COLUMNS} FROM invite_codes ORDER BY created_at DESC LIMIT 200"
+    )
+    return [_invite_from_row(row) for row in rows]
+
+
+async def delete_invite(invite_id: int) -> bool:
+    rows = await execute(
+        "DELETE FROM invite_codes WHERE id = %s RETURNING id", (int(invite_id),)
+    )
+    return bool(rows)
+
+
+async def consume_invite(code: str) -> dict:
+    """原子核销：有效且未超次数/未过期才计数，否则抛 ValueError。"""
+    value = (code or "").strip().upper()
+    rows = await execute(
+        "UPDATE invite_codes SET used_count = used_count + 1 "
+        "WHERE code = %s AND used_count < max_uses "
+        "AND (expires_at IS NULL OR expires_at > now()) "
+        f"RETURNING {INVITE_COLUMNS}",
+        (value,),
+    )
+    if not rows:
+        raise ValueError("邀请码无效、已用完或已过期")
+    return _invite_from_row(rows[0])
+
+
+async def register_with_invite(
+    username: str,
+    password: str,
+    *,
+    display_name: str = "",
+    invite_code: str,
+    recovery_code: str,
+    created_ip: str | None = None,
+) -> dict:
+    """先建号再核销邀请码；核销失败则回删账号，保证邀请码不被无效占用。"""
+    user = await create_user(
+        username,
+        password,
+        display_name=display_name,
+        role="demo",
+        recovery_code=recovery_code,
+        created_ip=created_ip,
+    )
+    try:
+        await consume_invite(invite_code)
+    except ValueError:
+        await execute("DELETE FROM users WHERE id = %s", (user["id"],))
+        raise
+    return user
+
+
+# ---------------------------------------------------------------------------
+# 邮箱验证码（注册验证 / 找回密码）
+# ---------------------------------------------------------------------------
+
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+_EMAIL_CODE_TTL_S = 60  # 同一邮箱两次发码的最小间隔
+
+
+def validate_email(email: str | None) -> str:
+    value = (email or "").strip().lower()
+    if not value or not EMAIL_RE.match(value) or len(value) > 190:
+        raise ValueError("请输入有效的邮箱地址")
+    return value
+
+
+async def request_email_code(email: str, purpose: str) -> str:
+    """生成并存储验证码（哈希存储），返回明文码给调用方发送。"""
+    from app.core.security.auth import hash_password
+    from app.core.security.mailer import generate_email_code
+
+    email = validate_email(email)
+    if purpose not in ("register", "reset"):
+        raise ValueError("不支持的验证码用途")
+    recent = await query(
+        "SELECT created_at FROM email_codes WHERE email = %s AND purpose = %s "
+        "ORDER BY created_at DESC LIMIT 1",
+        (email, purpose),
+    )
+    if recent:
+        from datetime import datetime, timezone
+        created = recent[0][0]
+        if created and (datetime.now(timezone.utc) - created).total_seconds() < _EMAIL_CODE_TTL_S:
+            raise ValueError("发送太频繁，请 1 分钟后再试")
+    hour_count = await query(
+        "SELECT COUNT(*) FROM email_codes WHERE email = %s "
+        "AND created_at > now() - interval '1 hour'",
+        (email,),
+    )
+    if hour_count and int(hour_count[0][0]) >= 5:
+        raise ValueError("该邮箱验证码请求过多，请稍后再试")
+
+    code = generate_email_code()
+    await execute(
+        "INSERT INTO email_codes (email, code_hash, purpose, expires_at) "
+        "VALUES (%s, %s, %s, now() + (%s * interval '1 minute'))",
+        (email, hash_password(code), purpose, settings.email_code_ttl_minutes),
+    )
+    return code
+
+
+async def verify_email_code(email: str, code: str, purpose: str, *, consume: bool = True) -> None:
+    from app.core.security.auth import verify_password
+
+    email = validate_email(email)
+    rows = await query(
+        "SELECT id, code_hash FROM email_codes WHERE email = %s AND purpose = %s "
+        "AND used_at IS NULL AND expires_at > now() ORDER BY created_at DESC LIMIT 1",
+        (email, purpose),
+    )
+    if not rows:
+        raise ValueError("验证码不存在或已过期，请重新获取")
+    if not verify_password((code or "").strip(), rows[0][1]):
+        raise ValueError("验证码不正确")
+    if consume:
+        await execute("UPDATE email_codes SET used_at = now() WHERE id = %s", (rows[0][0],))
+
+
+async def email_taken(email: str) -> bool:
+    rows = await query("SELECT 1 FROM users WHERE email = %s LIMIT 1", (email,))
+    return bool(rows)
+
+
+async def bind_email_after_register(user: dict, email: str, email_code: str) -> None:
+    """建号后绑定并核销邮箱验证码；任一步失败回删账号，保证一致性。"""
+    email = validate_email(email)
+    if await email_taken(email):
+        await execute("DELETE FROM users WHERE id = %s", (user["id"],))
+        raise ValueError("该邮箱已被注册")
+    try:
+        await verify_email_code(email, email_code, "register", consume=True)
+    except ValueError:
+        await execute("DELETE FROM users WHERE id = %s", (user["id"],))
+        raise
+    await execute(
+        "UPDATE users SET email = %s, email_verified = TRUE WHERE id = %s",
+        (email, user["id"]),
+    )
+
+
+async def reset_password_with_email_code(username: str, email: str, code: str, new_password: str) -> None:
+    """用户名 + 邮箱验证码找回密码（邮箱必须与该账号绑定的一致）。"""
+    username = validate_username(username)
+    email = validate_email(email)
+    rows = await query(
+        "SELECT id, email, email_verified FROM users WHERE username = %s", (username,)
+    )
+    if not rows or not rows[0][2] or (rows[0][1] or "").lower() != email:
+        raise ValueError("账号不存在，或该账号未绑定此邮箱")
+    await verify_email_code(email, code, "reset", consume=True)
+
+    if len(new_password or "") < settings.min_password_length:
+        raise ValueError(f"密码至少需要 {settings.min_password_length} 位")
+    await execute(
+        "UPDATE users SET password_hash = %s, password_updated_at = now(), "
+        "token_version = token_version + 1 WHERE id = %s",
+        (hash_password(new_password), rows[0][0]),
+    )

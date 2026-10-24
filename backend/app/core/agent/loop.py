@@ -5,6 +5,7 @@ them. Persistence lives in a ``finally`` block so that client disconnects
 (the stop button) still store whatever was generated.
 """
 import asyncio
+import itertools
 import json
 import time
 import uuid
@@ -13,10 +14,11 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
+from app.core.agent.context_meter import estimate_messages, estimate_tokens
 from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
 from app.core.harness.config import TIMEOUTS
-from app.core.llm.factory import get_llm
+from app.core.llm.factory import get_llm, resolve_context_window
 from app.core.llm.usage import record_usage
 from app.core.memory import facts as facts_mod
 from app.core.memory import session as session_mod
@@ -140,24 +142,29 @@ async def run_chat(
         except Exception:  # noqa: BLE001
             continue
     repo_rules = load_repo_rules(repo_meta)
+    prompt_sections: dict[str, str] = {}
     system_content = build_system_prompt(
         hits, fact_list, repo_selected=bool(repo_ids),
         repos=repo_meta, rules=repo_rules,
         summary=session.get("summary") or "",
+        sections=prompt_sections,
     )
+    attachment_block = ""
     if attachments:
         lines = [
             f"- {item['filename']}（id={item['id']}，{item['mime']}，{item['size']} bytes）"
             for item in attachments[:5]
         ]
-        system_content += (
+        attachment_block = (
             "\n\n本轮用户上传了附件：\n" + "\n".join(lines)
             + "\n如需读取附件内容，请调用 read_uploaded_file 工具，不要臆测内容。"
         )
+        system_content += attachment_block
     try:
         from app.core.skills import build_skill_prompt
         skill_prompt = build_skill_prompt(user_message)
         if skill_prompt:
+            prompt_sections["skills"] = skill_prompt
             system_content += f"\n\n{skill_prompt}"
     except Exception as exc:  # noqa: BLE001
         logger.warning("skills_inject_failed", error=str(exc))
@@ -167,16 +174,42 @@ async def run_chat(
         if lesson_list:
             active_lesson_ids = [item["id"] for item in lesson_list]
             lines = [f"- {item['content']}" for item in lesson_list]
-            system_content += (
+            lesson_block = (
                 "\n\n## 已吸取的教训（来自过往失败与返工，遵循可避免重复犯错）\n"
                 + "\n".join(lines)
             )
+            prompt_sections["lessons"] = lesson_block
+            system_content += lesson_block
     except Exception as exc:  # noqa: BLE001
         logger.warning("lessons_inject_failed", error=str(exc))
     messages: list[dict] = [
         {"role": "system", "content": system_content},
         *history,
     ]
+
+    # 上下文计量：分段估算本次提示的构成，供前端展示「用了多少、用在哪里」。
+    context_window = resolve_context_window(user["id"])
+    section_labels = {
+        "identity": "系统提示", "summary": "会话摘要", "repos": "仓库说明",
+        "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
+        "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
+    }
+    section_tokens = {
+        section_labels.get(key, key): estimate_tokens(text)
+        for key, text in prompt_sections.items()
+    }
+    section_tokens["附件"] = estimate_tokens(attachment_block)
+    section_tokens = {key: value for key, value in section_tokens.items() if value > 0}
+    history_tokens = estimate_messages(history) + estimate_tokens(user_message) + 8
+    section_tokens["历史与提问"] = history_tokens
+    context_total = sum(section_tokens.values())
+    context_info = {
+        "window": context_window,
+        "sections": section_tokens,
+        "total": context_total,
+        "estimate": True,
+    }
+    yield _sse("context", **context_info)
 
     ctx = ToolContext(
         user=user,
@@ -235,6 +268,10 @@ async def run_chat(
             if final_text:
                 tool_json["evidence"] = await _build_evidence()
             tool_json["report"] = await _build_report()
+            # 历史消息回看时也能展示本轮上下文构成
+            if usage_total["prompt_tokens"]:
+                context_info["actual_prompt_tokens"] = usage_total["prompt_tokens"]
+            tool_json["context"] = context_info
         message_id = await session_mod.add_message(
             session["id"], "assistant", final_text,
             tool_json=tool_json,
@@ -278,9 +315,22 @@ async def run_chat(
         logger.info("chat_done", session=session["id"], tools=tools_used, rounds=rounds)
         return message_id
 
+    CONTINUE_INSTRUCTION = (
+        "系统提示：你已连续调用多轮工具。请从中断处继续完成任务；"
+        "若任务已完成，请直接给出最终答复与总结，不要再调用工具。"
+    )
     try:
-        # 3) tool-calling rounds
-        for round_no in range(1, settings.max_rounds + 1):
+        # 3) tool-calling rounds — 长任务模式：段触顶注入继续指令而不是终止，
+        #    瞬时失败自动重试（对齐主流 Agent 的 driver 续跑模式）
+        rounds = 0
+        continuations_left = max(int(settings.max_continuations), 0)
+        turn_deadline = time.monotonic() + max(int(settings.turn_timeout), 60)
+        for round_no in itertools.count(1):
+            if time.monotonic() > turn_deadline:
+                errors.append("任务时长达到上限（自动暂停）")
+                yield _sse("notice", kind="incomplete",
+                           message="任务执行时间较长，已自动暂停。点击「继续任务」接着做。")
+                break
             rounds = round_no
             round_text: list[str] = []
             tool_calls: list[dict] = []
@@ -297,30 +347,59 @@ async def run_chat(
                 yield _sse("error", code="quota_exceeded", message=str(exc.detail))
                 break
 
-            try:
-                llm = await get_llm(user["id"], model=session.get("model"))
-                async with asyncio.timeout(settings.llm_timeout):
-                    async for event in llm.astream_with_tools(messages, specs):
-                        etype = event.get("type")
-                        if etype == "content":
-                            round_text.append(event["content"])
-                            content_parts.append(event["content"])
-                            yield _sse("token", text=event["content"])
-                        elif etype == "tool_calls":
-                            tool_calls = event["tool_calls"]
-                        elif etype == "usage":
-                            usage = event["usage"]
-            except TimeoutError:
-                errors.append(f"模型响应超时（{settings.llm_timeout}s）")
-                await trace_record(session["id"], turn_id, "error", {"code": "llm_timeout"})
-                yield _sse("error", code="llm_timeout",
-                           message=f"模型响应超时（{settings.llm_timeout}s），请重试或换个问法")
-                break
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("llm_call_failed", error=str(exc))
-                errors.append(f"模型调用失败：{str(exc)[:300]}")
-                await trace_record(session["id"], turn_id, "error", {"code": "llm_error", "message": str(exc)[:500]})
-                yield _sse("error", code="llm_error", message=f"模型调用失败：{exc}")
+            llm_failed: str | None = None
+            llm_error_detail = ""
+            for attempt in range(max(int(settings.llm_round_retries), 0) + 1):
+                llm_failed = None
+                llm_error_detail = ""
+                try:
+                    llm = await get_llm(user["id"], model=session.get("model"))
+                    async with asyncio.timeout(settings.llm_timeout):
+                        async for event in llm.astream_with_tools(messages, specs):
+                            etype = event.get("type")
+                            if etype == "content":
+                                round_text.append(event["content"])
+                                content_parts.append(event["content"])
+                                yield _sse("token", text=event["content"])
+                            elif etype == "tool_calls":
+                                tool_calls = event["tool_calls"]
+                            elif etype == "usage":
+                                usage = event["usage"]
+                    break
+                except TimeoutError:
+                    llm_failed = "timeout"
+                except Exception as exc:  # noqa: BLE001
+                    llm_failed = "error"
+                    llm_error_detail = str(exc)
+                if round_text or tool_calls or attempt >= max(int(settings.llm_round_retries), 0):
+                    break
+                yield _sse("notice", kind="retry",
+                           message=f"模型连接抖动，自动重试（{attempt + 2}/{max(int(settings.llm_round_retries), 0) + 1}）…")
+
+            if llm_failed:
+                had_output = bool(round_text or tool_calls)
+                if continuations_left > 0:
+                    # 中断续跑：已流出的部分作为 assistant 消息入库，让模型接着写
+                    continuations_left -= 1
+                    if had_output:
+                        messages.append({"role": "assistant", "content": "".join(round_text)})
+                    messages.append({"role": "user", "content": CONTINUE_INSTRUCTION})
+                    reason = "超时" if llm_failed == "timeout" else "连接错误"
+                    errors.append(f"模型调用{reason}，已自动从中断处继续")
+                    await trace_record(session["id"], turn_id, "llm_continued", {"reason": reason})
+                    yield _sse("notice", kind="continued", message=f"模型调用{reason}，已自动从中断处继续…")
+                    continue
+                if llm_failed == "timeout":
+                    errors.append(f"模型响应超时（{settings.llm_timeout}s）")
+                    await trace_record(session["id"], turn_id, "error", {"code": "llm_timeout"})
+                    yield _sse("error", code="llm_timeout",
+                               message="模型响应超时。点击「继续任务」可从中断处接着做。")
+                else:
+                    logger.warning("llm_call_failed", error=llm_error_detail[:300])
+                    errors.append(f"模型调用失败：{llm_error_detail[:300]}")
+                    await trace_record(session["id"], turn_id, "error",
+                                       {"code": "llm_error", "message": llm_error_detail[:500]})
+                    yield _sse("error", code="llm_error", message=f"模型调用失败：{llm_error_detail}")
                 break
 
             if usage:
@@ -403,6 +482,19 @@ async def run_chat(
                     "role": "tool", "tool_call_id": tc.get("id", ""),
                     "name": name, "content": _tool_message(result),
                 })
+
+            # 段触顶：注入继续指令接着跑（主流 driver 续跑模式）
+            if round_no >= settings.max_rounds:
+                if continuations_left > 0:
+                    continuations_left -= 1
+                    messages.append({"role": "user", "content": CONTINUE_INSTRUCTION})
+                    await trace_record(session["id"], turn_id, "rounds_continued", {"round": round_no})
+                    yield _sse("notice", kind="continued",
+                               message="任务较大，已自动开启下一段继续执行…")
+                else:
+                    yield _sse("notice", kind="incomplete",
+                               message="任务轮次较多，本轮先到这里。点击「继续任务」接着做。")
+                    break
 
         yield _sse(
             "usage",

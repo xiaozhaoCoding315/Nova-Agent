@@ -13,9 +13,12 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen3.8-max"   # 阿里云百炼（DashScope）模型名
-    llm_timeout: int = 90          # seconds per LLM call (harness)
+    llm_timeout: int = 300         # seconds per LLM call (长任务的生成可能持续数分钟)
     task_llm_timeout: int = 180    # red-green task generation is heavier (thinking models)
-    max_rounds: int = 5            # agent tool-calling rounds
+    max_rounds: int = 12           # 每段工具调用轮次（触顶后自动续段，见 max_continuations）
+    max_continuations: int = 3     # 段触顶后自动注入"继续"指令的次数（长任务不断档）
+    turn_timeout: int = 1800       # 单轮任务总时长上限（秒），到点暂停并可手动继续
+    llm_round_retries: int = 1     # 单轮模型调用失败且无产出时的自动重试次数
     # Deployment switch: false forces every user to bring their own key.
     llm_allow_server_fallback: bool = True
     # Model routing by purpose, applies to the shared server key only (BYOK
@@ -76,6 +79,27 @@ class Settings(BaseSettings):
     guest_daily_tokens: int = 50_000
     guest_sandbox_daily: int = 1
     guest_job_hourly: int = 2
+    guest_total_messages: int = 3     # 游客终身可发送的对话条数（0 = 不限）
+    guest_once_ip_days: int = 7       # 同一 IP 创建游客的最小间隔天数（0 = 不限制）
+    default_context_window: int = 131_072   # 未配置个性化窗口时的上下文估算基准
+    local_exec_timeout: int = 60            # 本地执行器回传结果的等待上限（秒）
+    # 服务端共享 Key 的供应范围：开启基础开关后，默认仅游客与管理员可用；
+    # 注册用户必须自带 API Key（保护部署者额度），除非显式放开此开关。
+    llm_server_fallback_registered: bool = False
+
+    # ---------- 邮箱（注册验证 / 找回密码）----------
+    smtp_host: str = ""            # 如 smtp.qq.com 或 smtpdm.aliyun.com；留空 = 未启用邮件
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""        # QQ/163 邮箱填授权码，不是登录密码
+    smtp_from: str = ""            # 发件人显示，如 "Nova Agent <xxx@qq.com>"
+    smtp_ssl: bool = True          # 465 端口用 SSL；587 端口请设 false（走 STARTTLS）
+    email_verify_required: bool = True   # 邮件服务启用后，注册是否必须邮箱验证码
+    email_code_ttl_minutes: int = 10
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_host and self.smtp_user and self.smtp_password and self.smtp_from)
 
     # ---------- Workspace limits ----------
     max_upload_mb: int = 100
@@ -147,6 +171,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     auto_init_db: bool = False
     frontend_dist: str = ""        # explicit frontend build path (set in Docker)
+    downloads_dir: str = "data/downloads"   # 桌面客户端安装包目录，挂载到 /downloads
 
     @property
     def postgres_dsn(self) -> str:
