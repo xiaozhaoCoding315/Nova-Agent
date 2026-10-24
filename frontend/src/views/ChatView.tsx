@@ -1,6 +1,7 @@
 import clsx from 'clsx'
-import { Activity, AlertCircle, FolderTree, GitPullRequest, PanelRight, Sparkles, X } from 'lucide-react'
+import { Activity, AlertCircle, Copy, Check, FolderTree, ListTodo, MessageSquare, MonitorDown, PanelRight, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { api } from '../lib/api'
 import { Composer } from '../components/Composer'
 import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
 import { ProjectDock } from '../components/ProjectDock'
@@ -9,19 +10,7 @@ import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
-import { useWorkflow } from '../stores/workflow'
-
-/** Cross-file / needs-verification requests: suggest the workflow once, dismissibly. */
-const WORKFLOW_SUGGESTION = new RegExp(
-  [
-    '(新增|实现|开发|加)(一个|个|新的?)?(功能|接口|页面|模块|端点)',
-    '重构',
-    '从零|从 0|全栈项目',
-    '前后端(一起|同时|都)',
-    '并(跑通|通过)(全量)?(测试|构建)',
-    '(写|补)(一套|完整)?.*(测试|单测).*(通过|跑通)',
-  ].join('|'),
-)
+import type { LocalExecStatus } from '../lib/types'
 
 const EXAMPLES = [
   {
@@ -41,29 +30,35 @@ const EXAMPLES = [
 export function ChatView({
   onOpenSettings,
   onOpenWorkspace,
-  onOpenWorkflow,
+  onOpenTasks,
 }: {
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
-  onOpenWorkflow: (tab: 'changes' | 'tasks', repoId?: string) => void
+  onOpenTasks: (repoId?: string) => void
 }) {
   const {
     sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
     permissionMode, setPermissionMode, model, setModel, selectedRepoIds, toggleRepo,
     attachments, uploading, uploadAttachment, removeAttachment,
-    send, stop, clearError, streamUsage,
+    send, stop, clearError, streamUsage, contextMeter, turnNotice,
   } = useChat()
   const { repos, refresh } = useRepos()
   const { settings: llmSettings } = useLlm()
   const [trajectoryOpen, setTrajectoryOpen] = useState(false)
-  const [dockOpen, setDockOpen] = useState(true)
+  const [dockOpen, setDockOpen] = useState(false)
   const [dockTab, setDockTab] = useState<'project' | 'refs'>('project')
-  const [workflowHint, setWorkflowHint] = useState<{ text: string } | null>(null)
+  const [localOpen, setLocalOpen] = useState(false)
+  const [localStatus, setLocalStatus] = useState<LocalExecStatus | null>(null)
+  const [copiedCmd, setCopiedCmd] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
   useEffect(() => {
     void refresh()
+    const pollLocal = () => void api.local.status().then(setLocalStatus).catch(() => {})
+    pollLocal()
+    const timer = setInterval(pollLocal, 20_000)
+    return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -98,7 +93,7 @@ export function ChatView({
           <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-dim/70">上下文</span>
           <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
             {readyRepos.length === 0 ? (
-              <span className="truncate text-[11px] text-dim/80">暂无就绪仓库，去「工作区」导入 ZIP 或 Git 仓库</span>
+              <span className="truncate text-[11px] text-dim/80">还没有项目 — 把文件夹拖进对话，或在输入框输入 @</span>
             ) : (
               readyRepos.map((repo) => (
                 <button
@@ -115,6 +110,54 @@ export function ChatView({
                   {repo.name}
                 </button>
               ))
+            )}
+          </div>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setLocalOpen((value) => !value)}
+              className={clsx(
+                'flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[11px] transition-colors',
+                localStatus?.connected
+                  ? 'border-ok/50 bg-ok/10 text-ok'
+                  : 'border-edge/80 text-dim hover:text-ink',
+              )}
+              title={localStatus?.connected ? '本机执行器已连接，Nova 可操作你的电脑' : '本机未连接：挂上 nova agent 后，Nova 可在你的电脑上执行命令、生成文件'}
+            >
+              <MonitorDown size={12} />
+              <span className="hidden sm:inline">{localStatus?.connected ? '本机已连接' : '本机未连接'}</span>
+            </button>
+            {localOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setLocalOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-xl border border-edge bg-panel p-3 shadow-xl">
+                  <p className="text-[12.5px] font-semibold">把你的电脑接入 Nova</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-dim">
+                    在本机运行下面的命令（需要 backend 目录里的 nova.py），Nova 就能直接在你的电脑上
+                    执行命令、生成文件——每一步都先经你确认。
+                  </p>
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-edge bg-base/60 px-2.5 py-2">
+                    <code className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink">
+                      python nova.py agent --dir 你的项目目录
+                    </code>
+                    <button
+                      onClick={() => {
+                        void navigator.clipboard.writeText('python nova.py agent --dir 你的项目目录')
+                        setCopiedCmd(true)
+                        setTimeout(() => setCopiedCmd(false), 1500)
+                      }}
+                      className="shrink-0 text-dim hover:text-ink"
+                      title="复制命令"
+                      aria-label="复制命令"
+                    >
+                      {copiedCmd ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[10px] leading-relaxed text-dim/70">
+                    前置环境变量 NOVA_URL / NOVA_USERNAME / NOVA_PASSWORD 指向本站；
+                    启动后约 3 秒内这里会变成「已连接」。加 --yes 可跳过逐条确认。
+                  </p>
+                </div>
+              </>
             )}
           </div>
           <button
@@ -149,7 +192,7 @@ export function ChatView({
         </div>
 
         <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-5">
-          <div className="mx-auto max-w-4xl space-y-6">
+          <div className="mx-auto max-w-5xl space-y-6">
             {messages.length === 0 && !streaming && (
               <div className="mx-auto max-w-2xl pt-10 text-center">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-accentSoft/60 bg-accentSoft/20">
@@ -157,9 +200,35 @@ export function ChatView({
                 </div>
                 <h2 className="mt-4 text-[18px] font-semibold">开始一段新的对话</h2>
                 <p className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-dim">
-                  关联仓库后，Nova 会读懂代码、定位报错、在沙箱里运行验证，并给每个结论附上证据。
+                  直接提问、贴报错，或让 Nova 在沙箱里真实跑代码验证；接入本机后还能直接操作你的电脑。
                 </p>
-                <div className="mt-6 grid gap-2.5 sm:grid-cols-3">
+
+                <div className="mt-7 grid gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left">
+                    <MessageSquare size={14} className="text-accent" />
+                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">直接提问</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">无需任何配置，问代码、贴报错，回答带证据。</p>
+                  </div>
+                  <button
+                    onClick={() => setLocalOpen(true)}
+                    className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left transition-colors hover:border-accentSoft"
+                  >
+                    <MonitorDown size={14} className="text-accent" />
+                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">连接你的电脑</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
+                  </button>
+                  <button
+                    onClick={() => onOpenTasks(selectedRepoIds[0])}
+                    className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left transition-colors hover:border-accentSoft"
+                  >
+                    <ListTodo size={14} className="text-accent" />
+                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">大任务走流水线</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">修 Bug / 多文件改动，逐步真实验证，最后统一等你批准。</p>
+                  </button>
+                </div>
+
+                <p className="mt-8 text-[11px] uppercase tracking-[0.12em] text-dim/60">试试这些问题</p>
+                <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
                   {EXAMPLES.map((example) => (
                     <button
                       key={example.title}
@@ -172,7 +241,7 @@ export function ChatView({
                   ))}
                 </div>
                 <p className="mt-5 text-[10.5px] leading-relaxed text-dim/60">
-                  右侧「项目」面板可直接切换仓库、浏览文件并打开完整工作区；跨文件功能用「工作流 → 变更」，单 Bug 用「工作流 → 修复任务」。
+                  要让 Nova 读懂某个代码项目？在右侧「项目」面板导入；需要多步验证的修复或功能交给「任务」。
                 </p>
               </div>
             )}
@@ -186,37 +255,30 @@ export function ChatView({
           </div>
         </div>
 
-        {error && (
-          <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-[12px] text-err">
-            <AlertCircle size={13} />
-            <span className="flex-1">{error}</span>
-            <button onClick={clearError} className="text-dim hover:text-ink" aria-label="关闭">
-              <X size={13} />
-            </button>
+        {turnNotice && (
+          <div className="mx-auto mb-1 flex w-full max-w-5xl items-center gap-2 px-4 text-[11.5px]">
+            <span className={clsx('flex-1', turnNotice.kind === 'incomplete' ? 'text-warn' : 'text-dim')}>
+              {turnNotice.message}
+            </span>
+            {turnNotice.kind === 'incomplete' && (
+              <button
+                onClick={() => {
+                  useChat.setState({ turnNotice: null })
+                  void send('请从中断处继续完成刚才的任务，完成所有步骤后给出总结。', selectedRepoIds)
+                }}
+                className="shrink-0 rounded-lg border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accentSoft/40"
+              >
+                继续任务
+              </button>
+            )}
           </div>
         )}
 
-        {workflowHint && (
-          <div className="mx-auto mb-1 flex w-full max-w-4xl items-start gap-2 rounded-lg border border-accent/30 bg-accentSoft/20 px-3 py-2 text-[11.5px] leading-relaxed text-ink">
-            <GitPullRequest size={13} className="mt-0.5 shrink-0 text-accent" />
-            <span className="flex-1">
-              这个需求适合走工作流（SPEC 冻结 → 逐任务验证门 → 只读审查 → 批准写入），比在对话里堆轮次更可靠。
-              <button
-                onClick={() => {
-                  useWorkflow.getState().setPendingRequirements(workflowHint.text)
-                  onOpenWorkflow('changes', selectedRepoIds[0])
-                  setWorkflowHint(null)
-                }}
-                className="ml-1.5 rounded border border-accent/50 px-1.5 py-0.5 text-[10.5px] text-accent transition-colors hover:bg-accent/10"
-              >
-                转入工作流并带入需求
-              </button>
-            </span>
-            <button
-              onClick={() => setWorkflowHint(null)}
-              className="text-dim hover:text-ink"
-              aria-label="关闭建议"
-            >
+        {error && (
+          <div className="mx-auto mb-1 flex w-full max-w-5xl items-center gap-2 px-4 text-[12px] text-err">
+            <AlertCircle size={13} />
+            <span className="flex-1">{error}</span>
+            <button onClick={clearError} className="text-dim hover:text-ink" aria-label="关闭">
               <X size={13} />
             </button>
           </div>
@@ -232,15 +294,13 @@ export function ChatView({
           permissionMode={permissionMode}
           onPermissionChange={setPermissionMode}
           contextCount={selectedRepoIds.length}
+          contextMeter={contextMeter}
           attachments={attachments}
           uploading={uploading}
           onAttach={(file) => void uploadAttachment(file)}
           onRemoveAttachment={(id) => void removeAttachment(id)}
           onConfigureModel={onOpenSettings}
           onSend={(content) => {
-            if (WORKFLOW_SUGGESTION.test(content) && content.trim().length >= 12) {
-              setWorkflowHint({ text: content })
-            }
             void send(content, selectedRepoIds)
           }}
           onStop={stop}
@@ -286,7 +346,7 @@ export function ChatView({
                 selectedRepos={selectedRepoIds}
                 onToggleRepo={toggleRepo}
                 onOpenWorkspace={onOpenWorkspace}
-                onOpenWorkflow={onOpenWorkflow}
+                onOpenTasks={onOpenTasks}
               />
             ) : (
               <RefPanel refs={refs} />
@@ -300,6 +360,7 @@ export function ChatView({
         open={trajectoryOpen}
         onClose={() => setTrajectoryOpen(false)}
       />
+
     </div>
   )
 }

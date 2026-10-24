@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Check, Download, FilePlus2, FlaskConical, FolderTree, GitPullRequest, Sparkles, Trash2, X,
+  Check, Download, FilePlus2, FolderTree, ListTodo, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
@@ -13,8 +13,8 @@ import { Badge, Button, Spinner } from './common'
 
 const STATUS_LABEL: Record<string, string> = {
   pending: '排队中',
-  indexing: '索引中',
-  ready: '就绪',
+  indexing: '正在阅读代码',
+  ready: '可用',
   failed: '失败',
   planning: '规划中',
   plan_ready: '待确认方案',
@@ -76,12 +76,12 @@ export function ProjectDock({
   selectedRepos,
   onToggleRepo,
   onOpenWorkspace,
-  onOpenWorkflow,
+  onOpenTasks,
 }: {
   selectedRepos: string[]
   onToggleRepo: (id: string) => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
-  onOpenWorkflow: (tab: 'changes' | 'tasks', repoId?: string) => void
+  onOpenTasks: (repoId?: string) => void
 }) {
   const { repos, refresh, remove } = useRepos()
   const [importOpen, setImportOpen] = useState(false)
@@ -173,7 +173,7 @@ export function ProjectDock({
           <button
             onClick={() => setImportOpen(true)}
             className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[10.5px] text-dim transition-colors hover:bg-raised hover:text-ink"
-            title="导入 ZIP / Git 仓库"
+            title="导入项目"
           >
             <FilePlus2 size={11} /> 导入
           </button>
@@ -183,7 +183,7 @@ export function ProjectDock({
       <div className="max-h-[38%] shrink-0 overflow-y-auto px-2 py-2">
         {repos.length === 0 ? (
           <p className="px-1 py-2 text-[11.5px] leading-relaxed text-dim">
-            还没有仓库。导入 ZIP / Git 仓库，或从 0 新建一个项目。
+            还没有项目。点「导入」上传文件夹，或从 0 新建。
           </p>
         ) : (
           repos.map((repo) => (
@@ -198,7 +198,7 @@ export function ProjectDock({
         )}
         {selectedRepos.length > 1 && (
           <p className="px-1 pt-1.5 text-[10px] leading-relaxed text-dim/60">
-            对话会同时使用已选的 {selectedRepos.length} 个仓库；文件树显示当前仓库。
+            对话将同时参考选中的 {selectedRepos.length} 个项目。
           </p>
         )}
       </div>
@@ -233,7 +233,7 @@ export function ProjectDock({
                 <button
                   onClick={() => setConfirmDelete(true)}
                   className="flex shrink-0 items-center rounded-md p-1 text-dim/70 transition-colors hover:bg-err/10 hover:text-err"
-                  title="删除仓库（文件、索引与向量一并清理）"
+                  title="删除项目（文件与阅读索引一并清理）"
                 >
                   <Trash2 size={10} />
                 </button>
@@ -243,7 +243,7 @@ export function ProjectDock({
                     onClick={() => void deleteActive()}
                     disabled={deleting}
                     className="flex items-center gap-1 rounded-md border border-err/50 px-1.5 py-0.5 text-[10px] text-err transition-colors hover:bg-err/10 disabled:opacity-50"
-                    title="确认删除：会清理文件、索引、向量与预览"
+                    title="确认删除：项目文件与分析索引一并清理"
                   >
                     {deleting ? <Spinner /> : null} 确认删除
                   </button>
@@ -260,7 +260,7 @@ export function ProjectDock({
             <div className="min-h-0 flex-1 overflow-y-auto px-1">
               {active.status !== 'ready' ? (
                 <p className="px-3 py-3 text-[11.5px] leading-relaxed text-dim">
-                  {STATUS_LABEL[active.status] ?? active.status}。索引完成后可浏览文件树。
+                  {STATUS_LABEL[active.status] ?? active.status}，完成后即可浏览文件。
                 </p>
               ) : treeLoading ? (
                 <p className="flex items-center gap-2 px-3 py-3 text-[11.5px] text-dim">
@@ -279,26 +279,20 @@ export function ProjectDock({
           </>
         ) : (
           <div className="px-3 py-4 text-[11.5px] leading-relaxed text-dim">
-            选择上方仓库加入对话上下文，即可浏览文件并打开完整工作区。
+            选择上方项目，即可浏览文件并打开工作区。
           </div>
         )}
       </div>
 
-      <div className="shrink-0 space-y-1.5 border-t border-edge/70 p-2">
+      <div className="shrink-0 border-t border-edge/70 p-2">
         <div className="grid grid-cols-2 gap-1.5">
-          <Button size="sm" onClick={() => onOpenWorkflow('changes', active?.id)}>
-            <GitPullRequest size={11} /> 变更
+          <Button size="sm" onClick={() => onOpenTasks(active?.id)} title="把修复或功能交给 Nova 逐步推进">
+            <ListTodo size={11} /> 任务
           </Button>
-          <Button size="sm" onClick={() => onOpenWorkflow('tasks', active?.id)}>
-            <FlaskConical size={11} /> 修复任务
+          <Button size="sm" onClick={() => onOpenWorkspace(active?.id)} title="浏览代码、Git 与验证工具">
+            <FolderTree size={11} /> 工作区
           </Button>
         </div>
-        <button
-          onClick={() => onOpenWorkspace(active?.id)}
-          className="flex w-full items-center justify-center gap-1 rounded-md px-2 py-1 text-[10.5px] text-dim/70 transition-colors hover:text-ink"
-        >
-          <FolderTree size={11} /> 打开完整工作区
-        </button>
       </div>
 
       <ImportDialog

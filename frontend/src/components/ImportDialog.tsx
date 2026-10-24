@@ -61,6 +61,19 @@ async function zipDirectory(fileList: FileList): Promise<Blob> {
   return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
 }
 
+/** 直接从对话里导入：单个 zip 直接传；多文件（拖入的文件夹内容）浏览器内打包后传。 */
+export async function importDroppedFiles(files: FileList): Promise<void> {
+  const list = Array.from(files)
+  if (list.length === 0) throw new Error('未识别到可导入的文件')
+  if (list.length === 1 && list[0].name.toLowerCase().endsWith('.zip')) {
+    await useRepos.getState().uploadZip(list[0])
+    return
+  }
+  const blob = await zipDirectory(files)
+  const name = (list[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.split('/')[0] || list[0].name || 'local-folder'
+  await useRepos.getState().uploadZip(new File([blob], `${name}.zip`, { type: 'application/zip' }))
+}
+
 export function ImportDialog({
   open,
   onClose,
@@ -90,7 +103,7 @@ export function ImportDialog({
   const handleFile = async (file: File | undefined) => {
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.zip')) {
-      setError('请上传 .zip 压缩包（文件夹请用「上传文件夹」，git 仓库请用 Git URL）')
+      setError('请上传 .zip 压缩包（文件夹请用「上传文件夹」，公开项目可用 Git URL）')
       return
     }
     setBusy(true)
@@ -153,7 +166,7 @@ export function ImportDialog({
   ]
 
   return (
-    <Modal open={open} onClose={onClose} title="导入工作区">
+    <Modal open={open} onClose={onClose} title="导入项目">
       <div className="mb-4 flex gap-1 rounded-lg border border-edge bg-raised p-1">
         {tabs.map(({ key, label, icon: Icon }) => (
           <button
@@ -176,7 +189,7 @@ export function ImportDialog({
           onClick={() => folderInput.current?.click()}
         >
           <FolderUp size={26} className="text-accent" />
-          <p className="text-[13.5px]">点击选择本地项目文件夹</p>
+          <p className="text-[13.5px]">点击选择你的项目文件夹</p>
           <p className="text-[12px] leading-relaxed text-dim">
             自动跳过 node_modules / .git / 构建产物与二进制文件，浏览器内打包后上传；
             单文件 ≤ 4MB，最多 {MAX_FILES} 个
@@ -223,10 +236,10 @@ export function ImportDialog({
             value={gitUrl}
             onChange={(e) => setGitUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void handleGit()}
-            placeholder="https://github.com/user/repo（仅公开仓库）"
+            placeholder="https://github.com/user/repo（公开项目）"
             className="w-full rounded-lg border border-edge bg-raised px-3 py-2 font-mono text-[13px] outline-none placeholder:text-dim/60 focus:border-accentSoft"
           />
-          <p className="text-[12px] text-dim">服务端会执行 git clone --depth 1（浅克隆），仓库较大时请耐心等待。</p>
+          <p className="text-[12px] text-dim">服务端会浅克隆该公开项目，项目较大时请耐心等待。</p>
           <Button variant="primary" onClick={() => void handleGit()} disabled={busy || !gitUrl.trim()}>
             {busy ? <Spinner /> : <GitBranch size={13} />} 开始导入
           </Button>

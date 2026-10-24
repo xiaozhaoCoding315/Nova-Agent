@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  Activity, ArrowLeft, CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar,
-  RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
+  Activity, ArrowLeft, CheckCircle2, ChevronDown, FilePlus2, FlaskConical, GitBranch, GitCompare,
+  Radar, RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
@@ -22,8 +22,8 @@ import { useRepos } from '../stores/repos'
 
 const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
   pending: { label: '排队中', tone: 'dim' },
-  indexing: { label: '索引中', tone: 'warn' },
-  ready: { label: '就绪', tone: 'ok' },
+  indexing: { label: '阅读中', tone: 'warn' },
+  ready: { label: '可用', tone: 'ok' },
   failed: { label: '失败', tone: 'err' },
   planning: { label: '规划中', tone: 'warn' },
   plan_ready: { label: '待确认方案', tone: 'accent' },
@@ -31,6 +31,9 @@ const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'war
   generating: { label: '生成中', tone: 'warn' },
   review: { label: '待审阅代码', tone: 'accent' },
 }
+
+/** 收进「更多」菜单的低频页签（分析类能力仍在对话里作为工具自动使用）。 */
+const MORE_LABEL = { brain: '项目地图', impact: '影响分析', debt: '技术债', contract: '契约对齐', deploy: '预览部署' }
 
 function RepoCard({
   repo,
@@ -80,9 +83,9 @@ function RepoCard({
         <button
           className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-[11px] text-dim hover:text-ink"
           onClick={onReindex}
-          title="重建索引"
+          title="重新阅读项目代码，更新检索索引"
         >
-          <RefreshCw size={10} /> 重建索引
+          <RefreshCw size={10} /> 重新分析
         </button>
         {confirming ? (
           <button
@@ -126,6 +129,7 @@ export function WorkspaceView({
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   const [treeError, setTreeError] = useState<string | null>(null)
   const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'>('code')
+  const [moreOpen, setMoreOpen] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -283,7 +287,7 @@ export function WorkspaceView({
         <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
           {repos.length === 0 && (
             <p className="py-4 text-[12.5px] leading-relaxed text-dim">
-              导入一个代码仓库后，Nova 就能回答「X 在哪实现」、定位报错到具体文件行号，并在沙箱里跑代码验证。
+              导入你的项目后，Nova 就能回答「X 在哪实现」、定位报错到具体文件行号，并在沙箱里跑代码验证。
             </p>
           )}
           {repos.map((repo) => (
@@ -370,11 +374,6 @@ export function WorkspaceView({
                   [
                     ...(selected.kind === 'builder' ? ([['builder', '项目构建']] as const) : []),
                     ['code', '代码'],
-                    ['brain', '项目地图'],
-                    ['impact', '影响分析'],
-                    ...(selected.status === 'ready' ? ([['debt', '技术债']] as const) : []),
-                    ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
-                    ...(selected.status === 'ready' ? ([['deploy', '预览']] as const) : []),
                     ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
                   ] as const
                 ).map(([key, label]) => (
@@ -387,15 +386,57 @@ export function WorkspaceView({
                     )}
                   >
                     {key === 'builder' && <Sparkles size={12} />}
-                    {key === 'brain' && <Waypoints size={12} />}
-                    {key === 'impact' && <Radar size={12} />}
-                    {key === 'debt' && <Activity size={12} />}
-                    {key === 'contract' && <GitCompare size={12} />}
-                    {key === 'deploy' && <Rocket size={12} />}
                     {key === 'git' && <GitBranch size={12} />}
                     {label}
                   </button>
                 ))}
+                {selected.status === 'ready' && (
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setMoreOpen((value) => !value)}
+                      className={clsx(
+                        'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                        ['brain', 'impact', 'debt', 'contract', 'deploy'].includes(tab)
+                          ? 'bg-accentSoft/50 text-ink'
+                          : 'text-dim hover:bg-raised hover:text-ink',
+                      )}
+                    >
+                      <ChevronDown size={12} />
+                      {MORE_LABEL[tab as keyof typeof MORE_LABEL] ?? '更多'}
+                    </button>
+                    {moreOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
+                        <div className="absolute left-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-lg">
+                          {(
+                            [
+                              ['brain', '项目地图', <Waypoints key="i" size={12} />],
+                              ['impact', '影响分析', <Radar key="i" size={12} />],
+                              ['debt', '技术债', <Activity key="i" size={12} />],
+                              ['contract', '契约对齐', <GitCompare key="i" size={12} />],
+                              ['deploy', '预览部署', <Rocket key="i" size={12} />],
+                            ] as const
+                          ).map(([key, label, icon]) => (
+                            <button
+                              key={key}
+                              onClick={() => {
+                                setTab(key)
+                                setMoreOpen(false)
+                              }}
+                              className={clsx(
+                                'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors',
+                                tab === key ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
+                              )}
+                            >
+                              {icon}
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
               {selected.status === 'ready' && (
                 <div className="flex shrink-0 items-center gap-2">
@@ -534,7 +575,7 @@ export function WorkspaceView({
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="text-[14px] text-ink">选择一个仓库，或从 0 新建一个项目</p>
             <p className="max-w-md text-[12.5px] leading-relaxed text-dim">
-              导入已有仓库可以浏览代码、分析影响、让 Nova 修 bug；「新建项目」则会先给出方案，确认后生成完整代码提案，批准后写入并建立索引。
+              导入已有项目可以浏览代码、分析影响、让 Nova 修 bug；「新建项目」则会先给出方案，确认后生成完整代码提案，批准后写入并建立索引。
             </p>
             {repos.length > 0 && (
               <select

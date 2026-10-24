@@ -1,7 +1,7 @@
-import { Ban, CheckCircle2, Coins, Plus, RefreshCw, SlidersHorizontal, Trash2, Users } from 'lucide-react'
+import { Ban, CheckCircle2, Coins, Copy, Plus, RefreshCw, SlidersHorizontal, Ticket, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
-import type { AdminUser } from '../lib/types'
+import type { AdminUser, InviteCode } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { Badge, Button, Modal, Spinner } from './common'
 
@@ -46,15 +46,24 @@ export function AdminUsersPanel() {
   const [quotaForm, setQuotaForm] = useState<Record<string, string>>({})
   const [quotaError, setQuotaError] = useState<string | null>(null)
 
+  const [invites, setInvites] = useState<InviteCode[]>([])
+  const [inviteNote, setInviteNote] = useState('')
+  const [inviteMaxUses, setInviteMaxUses] = useState('1')
+  const [inviteExpiresDays, setInviteExpiresDays] = useState('30')
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
   const load = async () => {
     setLoading(true)
     try {
-      const [userList, sourceUsage] = await Promise.all([
+      const [userList, sourceUsage, inviteList] = await Promise.all([
         api.admin.users(),
         api.admin.usageSources().catch(() => []),
+        api.admin.invites.list().catch(() => [] as InviteCode[]),
       ])
       setUsers(userList)
       setSources(sourceUsage)
+      setInvites(inviteList)
       setError(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '加载用户失败')
@@ -128,6 +137,46 @@ export function AdminUsersPanel() {
     ))
   }
 
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopiedCode(code)
+      setTimeout(() => setCopiedCode(null), 1500)
+    } catch {
+      /* 剪贴板不可用时忽略，用户仍可手动选中复制 */
+    }
+  }
+
+  const createInvite = async () => {
+    setInviteBusy(true)
+    setError(null)
+    try {
+      await api.admin.invites.create(
+        inviteNote.trim(),
+        Math.max(1, Number(inviteMaxUses) || 1),
+        Math.max(0, Number(inviteExpiresDays) || 0),
+      )
+      setInviteNote('')
+      setInviteMaxUses('1')
+      setInviteExpiresDays('30')
+      setInvites(await api.admin.invites.list())
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '生成邀请码失败')
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  const removeInvite = async (id: number) => {
+    setError(null)
+    try {
+      await api.admin.invites.remove(id)
+      setInvites(await api.admin.invites.list())
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '删除邀请码失败')
+    }
+  }
+
   const saveQuota = () => {
     if (!quotaTarget) return
     const target = quotaTarget
@@ -182,6 +231,99 @@ export function AdminUsersPanel() {
           </table>
         </section>
       )}
+
+      <section className="rounded-xl border border-edge bg-panel p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Ticket size={14} className="text-accent" />
+          <h3 className="text-[13px] font-medium">注册邀请码</h3>
+          <span className="text-[10.5px] text-dim">当前部署注册需邀请码；游客体验不受影响</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[1fr,90px,90px,auto]">
+          <input
+            value={inviteNote}
+            onChange={(event) => setInviteNote(event.target.value)}
+            placeholder="备注（用途 / 发给谁）"
+            className={inputClass}
+          />
+          <input
+            value={inviteMaxUses}
+            onChange={(event) => setInviteMaxUses(event.target.value)}
+            placeholder="可用次数"
+            inputMode="numeric"
+            className={inputClass}
+          />
+          <input
+            value={inviteExpiresDays}
+            onChange={(event) => setInviteExpiresDays(event.target.value)}
+            placeholder="有效天数"
+            inputMode="numeric"
+            className={inputClass}
+          />
+          <Button size="sm" variant="primary" onClick={() => void createInvite()} disabled={inviteBusy}>
+            {inviteBusy ? <Spinner /> : <Plus size={12} />} 生成
+          </Button>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          {invites.length === 0 ? (
+            <p className="py-2 text-[11.5px] text-dim">
+              还没有邀请码。生成后把码发给需要注册的人，注册页输入即可创建账号。
+            </p>
+          ) : (
+            <table className="w-full border-collapse text-[11.5px]">
+              <thead>
+                <tr className="border-b border-edge text-left text-dim">
+                  <th className="py-1.5 pr-2 font-medium">邀请码</th>
+                  <th className="px-2 py-1.5 font-medium">备注</th>
+                  <th className="px-2 py-1.5 font-medium">已用 / 次数</th>
+                  <th className="px-2 py-1.5 font-medium">有效期至</th>
+                  <th className="px-2 py-1.5 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invites.map((invite) => {
+                  const exhausted = invite.used_count >= invite.max_uses
+                  const expired = invite.expires_at ? new Date(invite.expires_at) < new Date() : false
+                  return (
+                    <tr key={invite.id} className="border-b border-edge/50">
+                      <td className="py-1.5 pr-2">
+                        <span className="font-mono text-[11px] text-ink">{invite.code}</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-dim">{invite.note || '—'}</td>
+                      <td className="px-2 py-1.5 tabular-nums text-dim">
+                        {invite.used_count} / {invite.max_uses}
+                        {exhausted && <Badge tone="dim">已用完</Badge>}
+                        {!exhausted && expired && <Badge tone="err">已过期</Badge>}
+                      </td>
+                      <td className="px-2 py-1.5 text-dim">
+                        {invite.expires_at ? new Date(invite.expires_at).toLocaleDateString() : '永久'}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => void copyCode(invite.code)}
+                            className="flex items-center gap-1 rounded px-1.5 py-1 text-[10.5px] text-dim hover:bg-raised hover:text-ink"
+                            title="复制邀请码"
+                          >
+                            {copiedCode === invite.code ? <CheckCircle2 size={12} className="text-ok" /> : <Copy size={12} />}
+                            {copiedCode === invite.code ? '已复制' : '复制'}
+                          </button>
+                          <button
+                            onClick={() => void removeInvite(invite.id)}
+                            className="rounded p-1 text-dim hover:bg-err/10 hover:text-err"
+                            title="删除邀请码"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">

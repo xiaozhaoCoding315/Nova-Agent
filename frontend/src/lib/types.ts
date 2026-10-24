@@ -23,6 +23,29 @@ export type AdminUser = User & {
   quota_storage_mb?: number | null
 }
 
+export type InviteCode = {
+  id: number
+  code: string
+  note: string
+  max_uses: number
+  used_count: number
+  created_at?: string | null
+  expires_at?: string | null
+}
+
+export type LocalExecStatus = {
+  connected: boolean
+  last_seen_age?: number | null
+}
+
+/** 上下文计量（估算）：本轮提示用了多少 token、分布在哪里。 */
+export type ContextMeter = {
+  window: number
+  sections: Record<string, number>
+  total: number
+  actualPromptTokens?: number | null
+}
+
 export type AdminQuotaPatch = {
   status?: 'active' | 'disabled'
   role?: 'admin' | 'demo'
@@ -54,6 +77,7 @@ export type AuthConfig = {
   guest_enabled: boolean
   invite_required: boolean
   min_password_length: number
+  email_verification: boolean
 }
 
 export type RegisterResult = {
@@ -558,6 +582,8 @@ export type LlmSettings = {
   key_hint?: string | null
   server_model?: string | null
   allow_server_fallback: boolean
+  context_window?: number | null
+  reasoning_effort?: string | null
   providers: LlmProvider[]
   updated_at?: string | null
 }
@@ -567,6 +593,8 @@ export type LlmSettingsInput = {
   model: string
   base_url?: string | null
   api_key?: string | null
+  context_window?: number
+  reasoning_effort?: string
 }
 
 export type LlmTestResult = {

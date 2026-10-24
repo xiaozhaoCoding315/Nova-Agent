@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/v1/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin List Invites */
+        get: operations["admin_list_invites_api_v1_admin_invites_get"];
+        put?: never;
+        /** Admin Create Invite */
+        post: operations["admin_create_invite_api_v1_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Admin Delete Invite */
+        delete: operations["admin_delete_invite_api_v1_admin_invites__invite_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/usage/sources": {
         parameters: {
             query?: never;
@@ -88,6 +123,26 @@ export interface paths {
         get: operations["auth_config_api_v1_auth_config_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/email/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Code
+         * @description 发送邮箱验证码（注册 / 找回密码）。邮件服务未配置时明确报 503。
+         */
+        post: operations["email_code_api_v1_auth_email_code_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -190,6 +245,26 @@ export interface paths {
         put?: never;
         /** Reset Password */
         post: operations["reset_password_api_v1_auth_password_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/reset/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Password By Email
+         * @description 用户名 + 邮箱验证码找回密码（邮箱须与账号绑定一致）。
+         */
+        post: operations["reset_password_by_email_api_v1_auth_password_reset_email_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -739,6 +814,63 @@ export interface paths {
         put?: never;
         /** Retry Job */
         post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/local/exec/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Claim Pending
+         * @description 本地执行器长轮询：原子地把 pending 置为 claimed 并返回，避免重复领取。
+         */
+        get: operations["claim_pending_api_v1_local_exec_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/local/exec/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local Exec Status
+         * @description 对话界面显示本机执行器是否在线（基于轮询心跳，30 秒窗口）。
+         */
+        get: operations["local_exec_status_api_v1_local_exec_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/local/exec/{request_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Result */
+        post: operations["submit_result_api_v1_local_exec__request_id__result_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1687,6 +1819,11 @@ export interface components {
         };
         /** AuthConfigOut */
         AuthConfigOut: {
+            /**
+             * Email Verification
+             * @default false
+             */
+            email_verification: boolean;
             /** Guest Enabled */
             guest_enabled: boolean;
             /** Invite Required */
@@ -2368,6 +2505,28 @@ export interface components {
             /** Session Id */
             session_id?: string | null;
         };
+        /** EmailCodeRequest */
+        EmailCodeRequest: {
+            /** Email */
+            email: string;
+            /**
+             * Purpose
+             * @default register
+             * @enum {string}
+             */
+            purpose: "register" | "reset";
+        };
+        /** EmailResetRequest */
+        EmailResetRequest: {
+            /** Code */
+            code: string;
+            /** Email */
+            email: string;
+            /** New Password */
+            new_password: string;
+            /** Username */
+            username: string;
+        };
         /** FileContentOut */
         FileContentOut: {
             /** Content */
@@ -2637,6 +2796,44 @@ export interface components {
              */
             signature: string;
         };
+        /** InviteCodeCreateRequest */
+        InviteCodeCreateRequest: {
+            /**
+             * Expires Days
+             * @default 0
+             */
+            expires_days: number;
+            /**
+             * Max Uses
+             * @default 1
+             */
+            max_uses: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** InviteCodeOut */
+        InviteCodeOut: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /** Max Uses */
+            max_uses: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Used Count */
+            used_count: number;
+        };
         /** JobOut */
         JobOut: {
             /**
@@ -2708,6 +2905,8 @@ export interface components {
             base_url?: string | null;
             /** Configured */
             configured: boolean;
+            /** Context Window */
+            context_window?: number | null;
             /**
              * Has Key
              * @default false
@@ -2721,6 +2920,8 @@ export interface components {
             provider?: string | null;
             /** Providers */
             providers?: components["schemas"]["LlmProviderOut"][];
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
             /** Server Model */
             server_model?: string | null;
             /**
@@ -2737,10 +2938,14 @@ export interface components {
             api_key?: string | null;
             /** Base Url */
             base_url?: string | null;
+            /** Context Window */
+            context_window?: number | null;
             /** Model */
             model: string;
             /** Provider */
             provider: string;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
         };
         /** LlmTestOut */
         LlmTestOut: {
@@ -2758,6 +2963,42 @@ export interface components {
             model: string;
             /** Ok */
             ok: boolean;
+        };
+        /** LocalExecClaim */
+        LocalExecClaim: {
+            /** Command */
+            command: string;
+            /** Content */
+            content?: string | null;
+            /** Cwd */
+            cwd: string;
+            /** File Path */
+            file_path?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default shell
+             */
+            kind: string;
+        };
+        /** LocalExecResult */
+        LocalExecResult: {
+            /**
+             * Exit Code
+             * @default 0
+             */
+            exit_code: number;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -2975,6 +3216,10 @@ export interface components {
         RegisterRequest: {
             /** Display Name */
             display_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Email Code */
+            email_code?: string | null;
             /** Invite Code */
             invite_code?: string | null;
             /** Password */
@@ -3470,6 +3715,90 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    admin_list_invites_api_v1_admin_invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCodeOut"][];
+                };
+            };
+        };
+    };
+    admin_create_invite_api_v1_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCodeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCodeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_delete_invite_api_v1_admin_invites__invite_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_usage_sources_api_v1_admin_usage_sources_get: {
         parameters: {
             query?: {
@@ -3675,6 +4004,41 @@ export interface operations {
             };
         };
     };
+    email_code_api_v1_auth_email_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     guest_api_v1_auth_guest_post: {
         parameters: {
             query?: never;
@@ -3811,6 +4175,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_by_email_api_v1_auth_password_reset_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailResetRequest"];
             };
         };
         responses: {
@@ -4995,6 +5392,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_pending_api_v1_local_exec_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalExecClaim"][];
+                };
+            };
+        };
+    };
+    local_exec_status_api_v1_local_exec_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    submit_result_api_v1_local_exec__request_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalExecResult"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

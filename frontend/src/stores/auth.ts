@@ -17,7 +17,12 @@ type AuthState = {
   config: AuthConfig | null
   pendingRecoveryCode: string | null
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, password: string, displayName?: string, inviteCode?: string) => Promise<RegisterResult>
+  register: (username: string, password: string, options?: {
+    displayName?: string
+    inviteCode?: string
+    email?: string
+    emailCode?: string
+  }) => Promise<RegisterResult>
   guest: () => Promise<void>
   logout: () => Promise<void>
   check: () => Promise<void>
@@ -63,8 +68,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (username, password, displayName, inviteCode) => {
-    const result = await api.register(username, password, displayName, inviteCode)
+  register: async (username, password, options) => {
+    const opts = options ?? {}
+    const result = await api.register(username, password, opts.displayName, opts.inviteCode, opts.email, opts.emailCode)
     resetUserData()
     set({ user: result.user, pendingRecoveryCode: result.recovery_code })
     return result

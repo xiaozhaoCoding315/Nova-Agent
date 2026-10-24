@@ -1,21 +1,26 @@
+import clsx from 'clsx'
 import { ArrowUp, ChevronDown, Cpu, FileText, Loader2, Paperclip, Square, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent } from 'react'
-import type { FileAttachment, PermissionMode } from '../lib/types'
+import { ContextMeterChip } from './ContextMeterChip'
+import type { ContextMeter, FileAttachment, PermissionMode } from '../lib/types'
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
   readonly: '计划模式',
-  ask: '变更前确认',
-  auto: '自主模式',
+  ask: '每步问我',
+  auto: '自动执行',
   full: '完全访问',
 }
 
 const PERMISSION_HINT: Record<PermissionMode, string> = {
-  readonly: '只读研究与分析：可读码/检索/影响分析，所有写入与执行被拒绝，产出建议与计划',
-  ask: '改动先出 diff 提案，你批准后才写入；执行沙箱代码',
-  auto: '改动直接写入仓库（保留快照可撤销），执行沙箱代码；密钥与危险命令仍被拦截',
-  full: '自主模式 + 解锁联网装依赖等受限工具（需服务端开启联网）；安全底线（密钥、沙箱边界）不变',
+  readonly: '只读研究与分析：可读码/检索/影响分析，所有写入与执行被拒绝，产出建议与计划（命令面板可切换）',
+  ask: '改动先给你确认，批准后才写入；代码在沙箱里真实运行',
+  auto: '改动直接写入（保留快照可撤销）；密钥与危险命令仍被拦截',
+  full: '自动执行 + 解锁联网装依赖等受限工具（需服务端开启联网）；安全底线不变（命令面板可切换）',
 }
+
+/** 输入框直接暴露的两档；readonly/full 经命令面板或设置使用。 */
+const VISIBLE_PERMISSIONS: PermissionMode[] = ['ask', 'auto']
 
 export function Composer({
   disabled,
@@ -27,6 +32,7 @@ export function Composer({
   permissionMode,
   onPermissionChange,
   contextCount,
+  contextMeter,
   attachments,
   uploading,
   onAttach,
@@ -44,6 +50,7 @@ export function Composer({
   permissionMode: PermissionMode
   onPermissionChange: (mode: PermissionMode) => void
   contextCount: number
+  contextMeter: ContextMeter | null
   attachments: FileAttachment[]
   uploading: boolean
   onAttach: (file: File) => void
@@ -79,9 +86,9 @@ export function Composer({
 
   return (
     <div className="shrink-0 border-t border-edge/80 bg-base/70 px-4 py-3">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-5xl">
         <div
-          className="rounded-2xl border border-edge bg-panel shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition-all focus-within:border-accent/45 focus-within:ring-4 focus-within:ring-accent/5"
+          className="relative rounded-2xl border border-edge bg-panel shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition-all focus-within:border-accent/45 focus-within:ring-4 focus-within:ring-accent/5"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
@@ -129,7 +136,7 @@ export function Composer({
             className="max-h-48 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[13.5px] leading-relaxed outline-none placeholder:text-dim/60 disabled:opacity-60"
           />
 
-          <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-0.5">
+          <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -173,17 +180,25 @@ export function Composer({
               <select
                 value={permissionMode}
                 onChange={(event) => onPermissionChange(event.target.value as PermissionMode)}
-                className="cursor-pointer appearance-none bg-transparent pr-4 text-[11px] text-inherit outline-none"
+                className={clsx(
+                  'cursor-pointer appearance-none bg-transparent pr-4 text-[11px] text-inherit outline-none',
+                  !VISIBLE_PERMISSIONS.includes(permissionMode) && 'hidden',
+                )}
                 title={PERMISSION_HINT[permissionMode]}
               >
-                {(Object.keys(PERMISSION_LABEL) as PermissionMode[]).map((mode) => (
+                {VISIBLE_PERMISSIONS.map((mode) => (
                   <option key={mode} value={mode} className="bg-panel text-ink" title={PERMISSION_HINT[mode]}>
                     {PERMISSION_LABEL[mode]}
                   </option>
                 ))}
               </select>
-              <ChevronDown size={11} className="pointer-events-none absolute right-1.5 text-dim/70" />
+              {!VISIBLE_PERMISSIONS.includes(permissionMode) && (
+                <span className="py-0.5 text-[11px] text-inherit">{PERMISSION_LABEL[permissionMode]}</span>
+              )}
+              <ChevronDown size={11} className={clsx('pointer-events-none absolute right-1.5 text-dim/70', !VISIBLE_PERMISSIONS.includes(permissionMode) && 'hidden')} />
             </label>
+
+            <ContextMeterChip meter={contextMeter} />
 
             <span className="hidden text-[10.5px] text-dim/60 sm:inline">
               {contextCount > 0 ? `${contextCount} 个仓库` : '未关联仓库'}
@@ -213,9 +228,6 @@ export function Composer({
             </div>
           </div>
         </div>
-        <p className="mt-1.5 px-1 text-[10px] text-dim/50">
-          回答会附带文件行号与执行证据；写入类操作受权限模式约束。
-        </p>
       </div>
     </div>
   )

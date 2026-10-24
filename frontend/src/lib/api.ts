@@ -1,9 +1,9 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
   Change, ChangeListItem, ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
-  FileAttachment, FileList, FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput,
-  LlmTestResult, Memory, Message, Metrics, NightItem, RegisterResult, Repo, Review, SelfQuota,
-  Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus, LlmSettings,
+  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, NightItem, RegisterResult, Repo,
+  Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -14,6 +14,28 @@ export class ApiError extends Error {
   }
 }
 
+/** 常见状态码的友好解释；后端返回了具体 detail 时优先展示 detail。 */
+const FRIENDLY_HTTP: Record<number, string> = {
+  400: '请求参数有误，请检查后重试',
+  401: '登录已过期，请重新登录',
+  403: '没有权限执行此操作',
+  404: '请求的内容不存在，可能已被删除',
+  408: '请求超时，请重试',
+  413: '内容太大，请精简后重试',
+  422: '提交的内容格式不正确',
+  429: '操作太频繁或额度已用完，请稍后再试',
+  500: '服务器内部错误，请稍后重试；若持续出现请联系管理员',
+  502: '服务暂时不可用（网关错误），请稍后重试',
+  503: '服务正在维护或过载，请稍后重试',
+  504: '服务响应超时，请稍后重试',
+}
+
+export function friendlyHttpError(status: number, detail?: string): ApiError {
+  const text = detail?.trim()
+  if (text) return new ApiError(status, text)
+  return new ApiError(status, FRIENDLY_HTTP[status] ?? `请求失败（${status}），请稍后重试`)
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let res: Response
   try {
@@ -22,14 +44,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(0, '网络连接失败，请检查服务是否可用')
   }
   if (!res.ok) {
-    let detail = `请求失败（${res.status}）`
+    let detail: string | undefined
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') detail = body.detail
     } catch {
-      /* keep default */
+      /* 非 JSON 错误体（如网关 HTML 页），用状态码兜底文案 */
     }
-    throw new ApiError(res.status, detail)
+    throw friendlyHttpError(res.status, detail)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -46,9 +68,16 @@ function json(body: unknown): RequestInit {
 export const api = {
   authConfig: () => request<AuthConfig>('/auth/config'),
   login: (username: string, password: string) => request<User>('/auth/login', json({ username, password })),
-  register: (username: string, password: string, displayName?: string, inviteCode?: string) =>
+  register: (username: string, password: string, displayName?: string, inviteCode?: string, email?: string, emailCode?: string) =>
     request<RegisterResult>('/auth/register', json({
       username, password, display_name: displayName || null, invite_code: inviteCode || null,
+      email: email || null, email_code: emailCode || null,
+    })),
+  emailCode: (email: string, purpose: 'register' | 'reset') =>
+    request<{ ok: boolean; masked_email: string }>('/auth/email/code', json({ email, purpose })),
+  resetPasswordByEmail: (username: string, email: string, code: string, newPassword: string) =>
+    request<{ ok: boolean }>('/auth/password/reset/email', json({
+      username, email, code, new_password: newPassword,
     })),
   guest: () => request<User>('/auth/guest', { method: 'POST' }),
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
@@ -76,6 +105,12 @@ export const api = {
       request<{ ok: boolean }>(`/admin/users/${id}/password`, json({ new_password: newPassword })),
     removeUser: (id: number) =>
       request<{ ok: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
+    invites: {
+      list: () => request<InviteCode[]>('/admin/invites'),
+      create: (note: string, maxUses: number, expiresDays: number) =>
+        request<InviteCode>('/admin/invites', json({ note, max_uses: maxUses, expires_days: expiresDays })),
+      remove: (id: number) => request<{ ok: boolean }>(`/admin/invites/${id}`, { method: 'DELETE' }),
+    },
   },
 
   quota: {
@@ -193,6 +228,10 @@ export const api = {
     clear: () => request<LlmSettings>('/settings/llm', { method: 'DELETE' }),
     test: (input: LlmSettingsInput) =>
       request<LlmTestResult>('/settings/llm/test', json(input)),
+  },
+
+  local: {
+    status: () => request<LocalExecStatus>('/local/exec/status'),
   },
 
   memory: {

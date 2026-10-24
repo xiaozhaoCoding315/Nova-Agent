@@ -2,8 +2,8 @@ import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
 import { streamChat } from '../lib/sse'
 import type {
-  DeliveryReport, EditRef, Evidence, FileAttachment, Message, PermissionMode, RetrievalHit,
-  Session, StreamToolCard, StreamUsage, ToolCall, ToolResult,
+  ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, Message, PermissionMode,
+  RetrievalHit, Session, StreamToolCard, StreamUsage, ToolCall, ToolResult,
 } from '../lib/types'
 
 type ChatState = {
@@ -24,6 +24,8 @@ type ChatState = {
   evidence: Evidence | null
   report: DeliveryReport | null
   streamUsage: StreamUsage | null
+  contextMeter: ContextMeter | null
+  turnNotice: { kind: string; message: string } | null
   error: string | null
   setPermissionMode: (mode: PermissionMode) => void
   setModel: (model: string | null) => void
@@ -63,6 +65,8 @@ export const useChat = create<ChatState>((set, get) => ({
   evidence: null,
   report: null,
   streamUsage: null,
+  contextMeter: null,
+  turnNotice: null,
   error: null,
 
   setPermissionMode: (mode) => set({ permissionMode: mode }),
@@ -122,6 +126,7 @@ export const useChat = create<ChatState>((set, get) => ({
         model: session?.model ?? null,
         selectedRepoIds: session?.repo_ids ?? [],
         attachments: [],
+        contextMeter: null,
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
       })
     } catch (err) {
@@ -134,7 +139,7 @@ export const useChat = create<ChatState>((set, get) => ({
     const inherited = get().historyRepoId
     set({
       sessionId: null, messages: [], refs: [], model: null, error: null,
-      selectedRepoIds: inherited ? [inherited] : [], attachments: [],
+      selectedRepoIds: inherited ? [inherited] : [], attachments: [], contextMeter: null,
     })
   },
 
@@ -178,7 +183,7 @@ export const useChat = create<ChatState>((set, get) => ({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
       toolCards: [], streamEdits: [], permissionMode: 'ask', model: null,
       selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false, refs: [],
-      evidence: null, report: null, streamUsage: null, error: null,
+      evidence: null, report: null, streamUsage: null, contextMeter: null, turnNotice: null, error: null,
     })
   },
 
@@ -194,6 +199,8 @@ export const useChat = create<ChatState>((set, get) => ({
       refs: [],
       report: null,
       streamUsage: null,
+      contextMeter: null,
+      turnNotice: null,
       error: null,
       attachments: [],
       messages: [
@@ -244,6 +251,18 @@ export const useChat = create<ChatState>((set, get) => ({
             case 'retrieval':
               set({ refs: data.hits ?? [] })
               break
+            case 'context':
+              set({
+                contextMeter: {
+                  window: Number(data.window ?? 0),
+                  sections: (data.sections ?? {}) as Record<string, number>,
+                  total: Number(data.total ?? 0),
+                  actualPromptTokens: data.actual_prompt_tokens != null
+                    ? Number(data.actual_prompt_tokens)
+                    : null,
+                },
+              })
+              break
             case 'token':
               set((s) => ({ streamText: s.streamText + data.text }))
               break
@@ -258,6 +277,9 @@ export const useChat = create<ChatState>((set, get) => ({
                     : card,
                 ),
               }))
+              break
+            case 'notice':
+              set({ turnNotice: { kind: String(data.kind ?? ''), message: String(data.message ?? '') } })
               break
             case 'error':
               set({ error: data.message ?? '生成失败' })
@@ -300,7 +322,7 @@ export const useChat = create<ChatState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '请求失败，请重试' })
     } finally {
-      const { streamText, toolCards, messages, evidence, streamEdits, report } = get()
+      const { streamText, toolCards, messages, evidence, streamEdits, report, contextMeter } = get()
       const finishedEvents = toolCards.filter((card) => card.result)
       if (streamText || toolCards.length > 0 || streamEdits.length > 0) {
         set({
@@ -328,12 +350,18 @@ export const useChat = create<ChatState>((set, get) => ({
                 ...(evidence ? { evidence } : {}),
                 ...(streamEdits.length ? { edits: streamEdits } : {}),
                 ...(report ? { report } : {}),
+                ...(contextMeter ? { context: contextMeter } : {}),
               },
             },
           ],
         })
       }
-      set({ streaming: false, streamText: '', toolCards: [], streamEdits: [], evidence: null, report: null, streamUsage: null })
+      set((s) => ({
+        streaming: false, streamText: '', toolCards: [], streamEdits: [],
+        evidence: null, report: null, streamUsage: null,
+        // 只有「未完成」通知要留给用户继续按钮；retry/continued 是过程性提示
+        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+      }))
       abortController = null
       void get().loadSessions()
     }

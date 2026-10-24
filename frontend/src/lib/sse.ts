@@ -1,4 +1,4 @@
-import { ApiError } from './api'
+import { ApiError, friendlyHttpError } from './api'
 
 export type SSEPayload = Record<string, any>
 export type SSEHandler = (event: string, data: SSEPayload) => void
@@ -37,14 +37,14 @@ export async function streamChat(
   }
 
   if (!res.ok) {
-    let detail = `请求失败（${res.status}）`
+    let detail: string | undefined
     try {
       const parsed = await res.json()
       if (typeof parsed?.detail === 'string') detail = parsed.detail
     } catch {
-      /* keep default */
+      /* 非 JSON 错误体，用状态码兜底文案 */
     }
-    throw new ApiError(res.status, detail)
+    throw friendlyHttpError(res.status, detail)
   }
   if (!res.body) throw new ApiError(0, '浏览器不支持流式响应')
 
@@ -77,7 +77,10 @@ export async function streamChat(
     }
   } catch (err) {
     if ((err as Error).name === 'AbortError') return
-    throw err
+    throw new ApiError(
+      0,
+      '连接中断：网络不稳定或服务刚重启。已生成的内容已保存，请稍后重试。',
+    )
   } finally {
     reader.releaseLock()
   }

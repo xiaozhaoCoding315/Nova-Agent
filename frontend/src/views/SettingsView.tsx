@@ -198,6 +198,8 @@ function ModelSection({ settings, loading, onReload }: {
   const [customModel, setCustomModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
+  const [contextWindow, setContextWindow] = useState('')
+  const [reasoningEffort, setReasoningEffort] = useState('')
   const [busy, setBusy] = useState(false)
   const [testing, setTesting] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
@@ -215,6 +217,8 @@ function ModelSection({ settings, loading, onReload }: {
     setBaseUrl(saved && settings.base_url ? settings.base_url : preset.base_url)
     setModel(savedModel && !known ? '__custom__' : (savedModel || preset.models[0] || '__custom__'))
     setCustomModel(savedModel && !known ? savedModel : '')
+    setContextWindow(saved && settings.context_window ? String(settings.context_window) : '')
+    setReasoningEffort(saved ? settings.reasoning_effort || '' : '')
     setHydrated(true)
   }, [settings, hydrated])
 
@@ -245,6 +249,8 @@ function ModelSection({ settings, loading, onReload }: {
         model: effectiveModel,
         base_url: baseUrl.trim() || null,
         api_key: apiKey.trim() || null,
+        context_window: contextWindow.trim() ? Number(contextWindow.trim()) : 0,
+        reasoning_effort: reasoningEffort || '',
       }
       if (mode === 'save') {
         const saved = await save(input)
@@ -299,7 +305,7 @@ function ModelSection({ settings, loading, onReload }: {
             )}
             {settings.source === 'none' && !settings.allow_server_fallback && (
               <p className="mt-1 text-[11px] leading-relaxed text-warn">
-                服务端已关闭共享模型，必须配置个人 API Key 才能开始对话。
+                当前账号需使用个人 API Key：请在下方配置后即可开始对话（Key 加密存储，仅供你自己的对话使用）。
               </p>
             )}
           </div>
@@ -392,6 +398,31 @@ function ModelSection({ settings, loading, onReload }: {
             />
           )}
         </Field>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="上下文窗口（tokens）" hint="留空跟随部署默认；用于对话中的上下文占用估算">
+            <input
+              className={inputClass}
+              value={contextWindow}
+              onChange={(event) => setContextWindow(event.target.value.replace(/[^0-9]/g, ''))}
+              placeholder="例如 131072"
+              inputMode="numeric"
+              spellCheck={false}
+            />
+          </Field>
+          <Field label="推理强度" hint="对话主链路随请求携带；不支持的端点会自动忽略">
+            <select
+              className={inputClass}
+              value={reasoningEffort}
+              onChange={(event) => setReasoningEffort(event.target.value)}
+            >
+              <option value="">默认（不显式指定）</option>
+              <option value="low">低 · 响应更快</option>
+              <option value="medium">中</option>
+              <option value="high">高 · 深度思考</option>
+            </select>
+          </Field>
+        </div>
 
         {feedback && (
           <p className={`flex items-start gap-1.5 text-[11.5px] ${feedback.ok ? 'text-ok' : 'text-err'}`}>

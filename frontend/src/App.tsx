@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  ArrowLeft, Bot, Command, Cpu, GitPullRequest, LogOut, MessageSquarePlus, MessagesSquare,
-  PanelLeft, Plus, Settings, X,
+  ArrowLeft, Bot, Command, Cpu, ListTodo, LogOut, MessageSquarePlus, MessagesSquare,
+  MonitorDown, PanelLeft, Plus, Settings, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
@@ -17,28 +17,28 @@ import { useRepos } from './stores/repos'
 import { ChatView } from './views/ChatView'
 import { LoginView } from './views/LoginView'
 import { SettingsView } from './views/SettingsView'
+import { TasksView } from './views/TasksView'
 import { WorkspaceView } from './views/WorkspaceView'
-import { WorkflowsView, type WorkflowTab } from './views/WorkflowsView'
 
-type ViewKey = 'chat' | 'workflows' | 'workspace' | 'settings'
+type ViewKey = 'chat' | 'tasks' | 'workspace' | 'settings'
 
 const NAV: { key: ViewKey; label: string; icon: typeof Bot }[] = [
   { key: 'chat', label: '对话', icon: MessagesSquare },
-  { key: 'workflows', label: '工作流', icon: GitPullRequest },
+  { key: 'tasks', label: '任务', icon: ListTodo },
   { key: 'settings', label: '设置', icon: Settings },
 ]
 
 const VIEW_TITLE: Record<ViewKey, string> = {
   chat: '对话',
-  workflows: '工作流',
+  tasks: '任务',
   workspace: '工作区',
   settings: '设置',
 }
 
 const VIEW_SUBTITLE: Record<ViewKey, string> = {
   chat: '带着证据与仓库上下文对话',
-  workflows: '变更与修复任务，按需使用',
-  workspace: '浏览代码、项目地图与交付工具',
+  tasks: '修复与变更，统一推进、验证与审批',
+  workspace: '浏览代码与版本历史',
   settings: '模型、用量与账号',
 }
 
@@ -75,10 +75,11 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
   const [healthState, setHealthState] = useState<'ok' | 'warn' | 'err'>('warn')
+  const [guestBannerHidden, setGuestBannerHidden] = useState(
+    () => localStorage.getItem('nova.guest-banner') === 'dismissed',
+  )
   const [workspaceTarget, setWorkspaceTarget] = useState<{ repoId?: string; path?: string }>({})
-  const [workflowTarget, setWorkflowTarget] = useState<{ tab: WorkflowTab; repoId?: string }>({
-    tab: 'changes',
-  })
+  const [tasksTarget, setTasksTarget] = useState<{ repoId?: string }>({})
 
   useEffect(() => {
     void check()
@@ -191,9 +192,9 @@ export default function App() {
     setSidebarOpen(false)
   }
 
-  const openWorkflow = (tab: WorkflowTab, repoId?: string) => {
-    setWorkflowTarget({ tab, repoId })
-    setView('workflows')
+  const openTasks = (repoId?: string) => {
+    setTasksTarget({ repoId })
+    setView('tasks')
     setSidebarOpen(false)
   }
 
@@ -237,16 +238,10 @@ export default function App() {
       run: () => openWorkspace(),
     })
     items.push({
-      id: 'workflow-changes',
-      label: '变更工作流',
-      hint: '跨文件功能',
-      run: () => openWorkflow('changes'),
-    })
-    items.push({
-      id: 'workflow-tasks',
-      label: '修复任务',
-      hint: '单个 Bug',
-      run: () => openWorkflow('tasks'),
+      id: 'open-tasks',
+      label: '打开任务',
+      hint: '修复与变更',
+      run: () => openTasks(),
     })
     items.push({
       id: 'llm-settings',
@@ -314,7 +309,6 @@ export default function App() {
             <button
               key={key}
               onClick={() => {
-                if (key === 'workflows') setWorkflowTarget({ tab: 'changes' })
                 setView(key)
                 setSidebarOpen(false)
               }}
@@ -447,18 +441,39 @@ export default function App() {
         </header>
 
         <div className="min-h-0 flex-1">
+          {user.is_guest && !guestBannerHidden && (
+            <div className="flex shrink-0 items-center gap-2 border-b border-accentSoft/40 bg-accentSoft/15 px-3 py-1.5 text-[11.5px] text-ink">
+              <MonitorDown size={13} className="shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 truncate">
+                你在游客模式，数据 24 小时后清理。长期使用请注册账号；
+                <a href="/downloads/" target="_blank" rel="noreferrer" className="ml-1 text-accent underline underline-offset-2">
+                  下载桌面客户端
+                </a>
+                可从桌面直达。
+              </span>
+              <button
+                onClick={() => {
+                  setGuestBannerHidden(true)
+                  localStorage.setItem('nova.guest-banner', 'dismissed')
+                }}
+                className="shrink-0 text-dim hover:text-ink"
+                aria-label="关闭"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
           {view === 'chat' && (
             <ChatView
               onOpenSettings={() => setView('settings')}
               onOpenWorkspace={openWorkspace}
-              onOpenWorkflow={openWorkflow}
+              onOpenTasks={openTasks}
             />
           )}
-          {view === 'workflows' && (
-            <WorkflowsView
-              key={`${workflowTarget.tab}-${workflowTarget.repoId ?? 'any'}`}
-              initialTab={workflowTarget.tab}
-              initialRepoId={workflowTarget.repoId}
+          {view === 'tasks' && (
+            <TasksView
+              key={tasksTarget.repoId ?? 'any'}
+              initialRepoId={tasksTarget.repoId}
               onBackToChat={() => setView('chat')}
             />
           )}
