@@ -31,19 +31,20 @@
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。支持 Python 后端，以及**契约优先全栈**（OpenAPI → FastAPI + TypeScript Explorer + 双栈 Gate）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
-| **变更工作流（SPEC → 计划 → Gate → 审查 → 应用）** | 用自然语言提功能/重构需求：起草 SPEC（目标/In-Out/接口/验收）→ 人工冻结 → 拆成带依赖和可判定验收的任务 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
+| **任务流水线（修 Bug 红-绿 / 变更方案→计划→验证）** | 统一「任务」列表里描述需求即自动分流：修复任务先生成失败测试复现（红），再给最小补丁跑到通过（绿）；变更走 SPEC → 计划 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
 | **预览部署** | 管理员在工作区「预览」页签一键部署 **Python/FastAPI 或 Node** 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；超时自动下线；一键清理容器。 |
 | **MCP 外接工具** | 通过 stdio 接入本地 MCP server：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
 
 ## 界面结构
 
-- 左侧栏只有三个入口：**对话 / 工作流 / 设置**；会话历史直接挂在「对话」下。
+- 左侧栏只有三个入口：**对话 / 任务 / 设置**；会话历史直接挂在「对话」下。
 - 对话页右侧常驻 **项目 / 引用** 面板：项目面板可切换仓库上下文、浏览文件，并一键展开完整工作区；引用面板显示检索到的 `文件:行号`。
-- **工作区不是独立入口**：日常从对话右侧的项目面板打开；完整工作区保留代码、项目地图、影响分析、契约、预览、Git 与验证。
-- **工作流** 把两条确定性流水线放在一起并解释适用场景：
-  - **变更**：跨多个文件的新功能/重构，走 SPEC → 计划 → 逐任务 Gate → 审查 → 统一应用。
-  - **修复任务**：已定位的单个 Bug，走失败测试复现 → 最小补丁 → 跑绿 → 审查 → 批准写入。
-- 只是问答或小改动时不需要工作流，直接在对话里切换只读 / 确认 / 自动模式即可。
+- **工作区不是独立入口**：日常从对话右侧的项目面板打开；保留代码、项目地图、影响分析、Git 与验证（技术债 / 契约 / 预览收进「更多」菜单）。
+- **任务** 把修复与变更统一成一个列表：描述要做的事，Nova 自动选择流水线——
+  - **修 Bug**：失败测试复现（红）→ 最小补丁 → 跑到通过（绿）→ 审查 → 批准写入。
+  - **新功能 / 重构**：方案（SPEC）→ 计划 → 逐任务真实验证 → 统一 diff → 批准写入。
+  - 状态只有四种：**进行中 / 待确认 / 已完成 / 失败**；关键节点才需要你确认。
+- 只是问答或小改动时不需要任务，直接在对话里切换只读 / 确认 / 自动模式即可。
 
 ## 多用户与数据隔离
 
@@ -89,7 +90,7 @@
 - **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
 ### Agent 循环 + Function-Calling
-- **内置工具 + MCP**：11 个内置工具：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`run_code`（沙箱执行，可切换 builder 环境）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
+- **内置工具 + MCP**：12 个内置工具：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
 - 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
@@ -161,6 +162,18 @@ npm run dev                   # http://localhost:5173
 - 沙箱工具需要本机 Docker 在运行；未运行时设置页会如实显示「沙箱不可用」，其余功能不受影响
 - 首次启动设 `AUTO_INIT_DB=true` 自动建表，或手动执行 `python -m app.db.init_db`
 
+完整的服务器部署、HTTPS、备份与安全清单见 **[docs/DEPLOY.md](docs/DEPLOY.md)**。
+
+## 桌面客户端
+
+Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
+
+1. **桌面安装包（Electron 壳）**：`desktop/` 目录用 `npm install && npm run dist:win` 打包出
+   `Nova-Agent-Setup-<版本>.exe`（macOS / Linux 同理）。把安装包放进服务器 `data/downloads/`
+   目录，用户即可从登录页「下载桌面客户端」或 `http://<服务器>:8000/downloads` 下载；
+   安装后首次启动填服务器地址即可使用。也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
+2. **PWA**：用 Chrome / Edge 打开站点，地址栏点「安装」，无需任何下载。
+
 ## 配置项（.env 关键项）
 
 | 变量 | 说明 |
@@ -169,12 +182,14 @@ npm run dev                   # http://localhost:5173
 | `DASHSCOPE_MODEL` | 服务端默认模型名（默认 `qwen3.8-max`） |
 | `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
+| `LLM_SERVER_FALLBACK_REGISTERED` | 共享 Key 是否对注册用户开放（默认 `false`：仅游客与管理员可用，注册用户必须自带 Key） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
 | `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号；多用户部署建议改用注册/游客，不共享 demo 账号 |
 | `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
 | `REGISTRATION_INVITE_CODE` | `invite` 模式使用的邀请码 |
 | `MAX_USERS` | 实例账号总数上限（含游客） |
 | `GUEST_ENABLED` / `GUEST_TTL_HOURS` | 游客体验开关 / 有效期（默认 24 小时） |
+| `GUEST_TOTAL_MESSAGES` / `GUEST_ONCE_IP_DAYS` | 游客终身对话条数（默认 3）/ 同 IP 创建游客的最小间隔天数（默认 7，0 = 不限） |
 | `GUEST_HOURLY_MESSAGES` / `GUEST_DAILY_TOKENS` | 游客消息与 token 额度 |
 | `GUEST_SANDBOX_DAILY` / `GUEST_JOB_HOURLY` | 游客沙箱执行 / 后台任务额度 |
 | `SECRET_KEY` | JWT 签名密钥，同时派生用户 API Key 的加密密钥（≥32 位随机串；更换后已存 Key 需重填） |
@@ -194,6 +209,7 @@ npm run dev                   # http://localhost:5173
 | `PREVIEW_TTL_MINUTES` | 运行中预览自动下线时间（默认 120，0 = 不自动回收） |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 | `USER_DATA_DIR` | 每用户仓库/附件根目录（默认 `data/users`） |
+| `DOWNLOADS_DIR` | 桌面客户端安装包目录（默认 `data/downloads`），自动挂载到 `/downloads` 下载页 |
 | `ATTACHMENT_MAX_MB` / `MAX_ATTACHMENTS_PER_MESSAGE` | 单个附件大小 / 每条消息附件数 |
 | `USER_STORAGE_MB` / `GUEST_STORAGE_MB` | 正式用户 / 游客个人存储配额 |
 
@@ -272,7 +288,7 @@ backend/app/
 ├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
 └── models/            Pydantic 模型
 frontend/src/
-├── views/             登录 · 对话 · 工作流（变更/任务）· 工作区 · 设置
+├── views/             登录 · 对话 · 任务（修复/变更）· 工作区 · 设置
 ├── components/        消息/工具卡片/证据条/项目地图/影响分析/文件树/代码查看器…
 ├── stores/            auth · chat · repos（Zustand）
 └── lib/               API 客户端 · SSE 解析（含中断与错误处理）
@@ -332,7 +348,7 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
-## 本地桥接（nova bridge）
+## 本地桥接（nova bridge）与本地执行器（nova agent）
 
 让 Nova 直接工作在你电脑的真实项目目录上：本地改动推上去、agent 的产出拉回来。
 
@@ -343,11 +359,16 @@ export NOVA_URL=http://你的服务器:8000 NOVA_USERNAME=... NOVA_PASSWORD=...
 python nova.py bridge init ~/my-project   # 首次关联：打包上传并创建仓库
 python nova.py bridge watch ~/my-project  # 后台挂着：本地一改就自动推送
 python nova.py bridge pull ~/my-project   # agent 改完代码后拉回本地（不覆盖你本地已改的文件，--force 强制）
+
+python nova.py agent --dir ~/my-project   # 本地执行器：Agent 可派发命令到本机执行
 ```
 
 - 同步时自动跳过 `.git / node_modules / 构建产物`；关联信息存在目录下的 `.nova-bridge.json`
 - 生成项目想落到本地：网页里批准写入后点项目面板的下载图标，或 `nova.py export --repo <名字> --out 项目.zip`
 - 对话里的 `run_command` 工具在仓库上执行真实 shell（脚手架 / git 提交 / 移动文件），改动持久化在仓库中，`pull` 即可取回
+- **本地执行器**：挂着 `nova.py agent` 后，对话里的 `local_run_command` 工具会把命令派发到你的本机执行
+  （构建、装依赖、查系统环境……）。每条命令默认需要在终端按 `y` 确认（`--yes` 跳过），命令只能在
+  `--dir` 根目录内运行；只读权限模式下不可用，全部记录审计
 
 ## 技能系统（SKILL.md）
 
