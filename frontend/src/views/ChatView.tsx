@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Activity, AlertCircle, FolderTree, PanelRight, Sparkles, X } from 'lucide-react'
+import { Activity, AlertCircle, FolderTree, GitPullRequest, PanelRight, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Composer } from '../components/Composer'
 import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
@@ -9,6 +9,19 @@ import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
+import { useWorkflow } from '../stores/workflow'
+
+/** Cross-file / needs-verification requests: suggest the workflow once, dismissibly. */
+const WORKFLOW_SUGGESTION = new RegExp(
+  [
+    '(新增|实现|开发|加)(一个|个|新的?)?(功能|接口|页面|模块|端点)',
+    '重构',
+    '从零|从 0|全栈项目',
+    '前后端(一起|同时|都)',
+    '并(跑通|通过)(全量)?(测试|构建)',
+    '(写|补)(一套|完整)?.*(测试|单测).*(通过|跑通)',
+  ].join('|'),
+)
 
 const EXAMPLES = [
   {
@@ -45,6 +58,7 @@ export function ChatView({
   const [trajectoryOpen, setTrajectoryOpen] = useState(false)
   const [dockOpen, setDockOpen] = useState(true)
   const [dockTab, setDockTab] = useState<'project' | 'refs'>('project')
+  const [workflowHint, setWorkflowHint] = useState<{ text: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
@@ -182,6 +196,32 @@ export function ChatView({
           </div>
         )}
 
+        {workflowHint && (
+          <div className="mx-auto mb-1 flex w-full max-w-4xl items-start gap-2 rounded-lg border border-accent/30 bg-accentSoft/20 px-3 py-2 text-[11.5px] leading-relaxed text-ink">
+            <GitPullRequest size={13} className="mt-0.5 shrink-0 text-accent" />
+            <span className="flex-1">
+              这个需求适合走工作流（SPEC 冻结 → 逐任务验证门 → 只读审查 → 批准写入），比在对话里堆轮次更可靠。
+              <button
+                onClick={() => {
+                  useWorkflow.getState().setPendingRequirements(workflowHint.text)
+                  onOpenWorkflow('changes', selectedRepoIds[0])
+                  setWorkflowHint(null)
+                }}
+                className="ml-1.5 rounded border border-accent/50 px-1.5 py-0.5 text-[10.5px] text-accent transition-colors hover:bg-accent/10"
+              >
+                转入工作流并带入需求
+              </button>
+            </span>
+            <button
+              onClick={() => setWorkflowHint(null)}
+              className="text-dim hover:text-ink"
+              aria-label="关闭建议"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
         <Composer
           disabled={false}
           streaming={streaming}
@@ -197,7 +237,12 @@ export function ChatView({
           onAttach={(file) => void uploadAttachment(file)}
           onRemoveAttachment={(id) => void removeAttachment(id)}
           onConfigureModel={onOpenSettings}
-          onSend={(content) => void send(content, selectedRepoIds)}
+          onSend={(content) => {
+            if (WORKFLOW_SUGGESTION.test(content) && content.trim().length >= 12) {
+              setWorkflowHint({ text: content })
+            }
+            void send(content, selectedRepoIds)
+          }}
           onStop={stop}
         />
       </main>

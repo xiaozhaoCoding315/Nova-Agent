@@ -78,6 +78,7 @@ async def run_chat(
     rounds = 0
     sandbox_runs_ok = 0
     errors: list[str] = []
+    active_lesson_ids: list[str] = []
 
     yield _sse(
         "meta",
@@ -160,6 +161,18 @@ async def run_chat(
             system_content += f"\n\n{skill_prompt}"
     except Exception as exc:  # noqa: BLE001
         logger.warning("skills_inject_failed", error=str(exc))
+    try:
+        from app.core.reflection import lessons_for_context
+        lesson_list = await lessons_for_context(user["id"], repo_ids or [])
+        if lesson_list:
+            active_lesson_ids = [item["id"] for item in lesson_list]
+            lines = [f"- {item['content']}" for item in lesson_list]
+            system_content += (
+                "\n\n## 已吸取的教训（来自过往失败与返工，遵循可避免重复犯错）\n"
+                + "\n".join(lines)
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("lessons_inject_failed", error=str(exc))
     messages: list[dict] = [
         {"role": "system", "content": system_content},
         *history,
@@ -229,6 +242,12 @@ async def run_chat(
             completion_tokens=usage_total["completion_tokens"],
         )
         await _record_usage(user, session["id"], usage_total, len(tools_used))
+        if active_lesson_ids:
+            try:
+                from app.core.reflection import record_outcome
+                await record_outcome(active_lesson_ids, ok=not errors)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("lesson_outcome_failed", error=str(exc))
         await log_audit(
             AuditAction.CHAT_MESSAGE,
             user_id=str(user["id"]),

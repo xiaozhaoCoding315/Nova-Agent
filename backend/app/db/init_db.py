@@ -748,6 +748,28 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         """,
         "CREATE INDEX IF NOT EXISTS idx_debt_repo_time ON debt_snapshots (repo_id, created_at DESC)",
     ]),
+    (15, [
+        """
+        CREATE TABLE IF NOT EXISTS lessons (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            kind VARCHAR(16) NOT NULL DEFAULT 'practice',
+            content TEXT NOT NULL,
+            source_type VARCHAR(24) NOT NULL,
+            source_id VARCHAR(64) NOT NULL,
+            hits INT NOT NULL DEFAULT 0,
+            misses INT NOT NULL DEFAULT 0,
+            last_hit_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_lessons_source "
+        "ON lessons (user_id, source_type, source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lessons_context "
+        "ON lessons (user_id, repo_id, hits DESC, updated_at DESC)",
+    ]),
 ]
 
 

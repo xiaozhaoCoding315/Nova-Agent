@@ -10,6 +10,7 @@ import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { Change, ChangeListItem, Job } from '../lib/types'
 import { useRepos } from '../stores/repos'
+import { useWorkflow } from '../stores/workflow'
 
 const STATUS_META: Record<string, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
   drafting: { label: '起草 SPEC', tone: 'warn' },
@@ -180,6 +181,14 @@ export function ChangesView({ initialRepoId }: { initialRepoId?: string } = {}) 
   const [repoId, setRepoId] = useState(initialRepoId ?? '')
   const [title, setTitle] = useState('')
   const [requirements, setRequirements] = useState('')
+  const pendingRequirements = useWorkflow((s) => s.pendingRequirements)
+
+  useEffect(() => {
+    if (pendingRequirements) {
+      setRequirements(pendingRequirements)
+      useWorkflow.getState().setPendingRequirements(null)
+    }
+  }, [pendingRequirements])
 
   const readyRepos = repos.filter((repo) => repo.status === 'ready')
 

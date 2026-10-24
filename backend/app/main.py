@@ -44,6 +44,11 @@ async def _cleanup_loop() -> None:
                 summary["debt_scanned"] = await scan_stale_repos()
             except Exception:
                 logger.exception("debt_scan_failed")
+            try:
+                from app.core.reflection.service import extract_lessons
+                summary["lessons_extracted"] = await extract_lessons()
+            except Exception:
+                logger.exception("reflection_failed")
             logger.info("cleanup_done", **summary)
         except ImportError:
             pass
