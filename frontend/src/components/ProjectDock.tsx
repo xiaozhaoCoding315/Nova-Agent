@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Check, FilePlus2, FlaskConical, FolderTree, GitPullRequest, Sparkles,
+  Check, FilePlus2, FlaskConical, FolderTree, GitPullRequest, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
@@ -83,13 +83,19 @@ export function ProjectDock({
   onOpenWorkspace: (repoId?: string, path?: string) => void
   onOpenWorkflow: (tab: 'changes' | 'tasks', repoId?: string) => void
 }) {
-  const { repos, refresh } = useRepos()
+  const { repos, refresh, remove } = useRepos()
   const [importOpen, setImportOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(selectedRepos[0] ?? null)
   const [tree, setTree] = useState<FileNode[]>([])
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeError, setTreeError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    setConfirmDelete(false)
+  }, [activeId])
 
   useEffect(() => {
     void refresh()
@@ -138,6 +144,18 @@ export function ProjectDock({
   const selectRepo = (repo: Repo) => {
     setActiveId(repo.id)
     if (!selectedRepos.includes(repo.id)) onToggleRepo(repo.id)
+  }
+
+  const deleteActive = async () => {
+    if (!active) return
+    setDeleting(true)
+    try {
+      await remove(active.id)
+      setActiveId(null)
+      setConfirmDelete(false)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -204,6 +222,33 @@ export function ProjectDock({
               >
                 <FolderTree size={10} /> 展开
               </button>
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex shrink-0 items-center rounded-md p-1 text-dim/70 transition-colors hover:bg-err/10 hover:text-err"
+                  title="删除仓库（文件、索引与向量一并清理）"
+                >
+                  <Trash2 size={10} />
+                </button>
+              ) : (
+                <span className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => void deleteActive()}
+                    disabled={deleting}
+                    className="flex items-center gap-1 rounded-md border border-err/50 px-1.5 py-0.5 text-[10px] text-err transition-colors hover:bg-err/10 disabled:opacity-50"
+                    title="确认删除：会清理文件、索引、向量与预览"
+                  >
+                    {deleting ? <Spinner /> : null} 确认删除
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-dim/70 transition-colors hover:text-ink"
+                    title="取消"
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-1">
               {active.status !== 'ready' ? (

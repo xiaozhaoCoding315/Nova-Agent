@@ -1,13 +1,14 @@
 import clsx from 'clsx'
 import {
-  ArrowLeft, CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar, RefreshCw,
-  Rocket, Sparkles, Trash2, Waypoints, XCircle,
+  Activity, ArrowLeft, CheckCircle2, FilePlus2, FlaskConical, GitBranch, GitCompare, Radar,
+  RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
 import { BuilderPanel } from '../components/BuilderPanel'
 import { CodeViewer } from '../components/CodeViewer'
 import { ContractPanel } from '../components/ContractPanel'
+import { DebtPanel } from '../components/DebtPanel'
 import { DeployPanel } from '../components/DeployPanel'
 import { FileTree } from '../components/FileTree'
 import { GitPanel } from '../components/GitPanel'
@@ -124,7 +125,7 @@ export function WorkspaceView({
   const [treeLoading, setTreeLoading] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   const [treeError, setTreeError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git'>('code')
+  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'>('code')
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -371,6 +372,7 @@ export function WorkspaceView({
                     ['code', '代码'],
                     ['brain', '项目地图'],
                     ['impact', '影响分析'],
+                    ...(selected.status === 'ready' ? ([['debt', '技术债']] as const) : []),
                     ...(selected.status === 'ready' ? ([['contract', '契约']] as const) : []),
                     ...(selected.status === 'ready' ? ([['deploy', '预览']] as const) : []),
                     ...(selected.status === 'ready' ? ([['git', 'Git 交付']] as const) : []),
@@ -387,6 +389,7 @@ export function WorkspaceView({
                     {key === 'builder' && <Sparkles size={12} />}
                     {key === 'brain' && <Waypoints size={12} />}
                     {key === 'impact' && <Radar size={12} />}
+                    {key === 'debt' && <Activity size={12} />}
                     {key === 'contract' && <GitCompare size={12} />}
                     {key === 'deploy' && <Rocket size={12} />}
                     {key === 'git' && <GitBranch size={12} />}
@@ -507,6 +510,7 @@ export function WorkspaceView({
                   }}
                 />
               )}
+              {tab === 'debt' && <DebtPanel repoId={selected.id} />}
               {tab === 'contract' && (
                 <ContractPanel
                   repoId={selected.id}

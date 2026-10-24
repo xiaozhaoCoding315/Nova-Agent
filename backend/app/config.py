@@ -109,6 +109,13 @@ class Settings(BaseSettings):
     skills_enabled: bool = True
     skills_dir: str = "data/skills"   # <dir>/<skill-name>/SKILL.md, operator-provided
 
+    # ---------- Night queue ----------
+    night_queue_enabled: bool = True
+    night_window_start: int = 0       # local server hour, inclusive
+    night_window_end: int = 8         # exclusive; items run serially inside the window
+    night_max_per_hour: int = 3       # items dispatched per maintenance tick
+    night_budget_reserve: float = 0.2 # stop dispatching above 80% of the daily token budget
+
     # ---------- Tool hooks / policy ----------
     tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks
     tool_post_hook: str = ""      # best-effort post-tool audit hook

@@ -1,9 +1,9 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  Change, ChangeListItem, ContractStatus, Deployment, EditRecord, FileAttachment, FileList,
-  FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput, LlmTestResult, Memory,
-  Message, Metrics, RegisterResult, Repo, Review, SelfQuota, Session, Task, TaskListItem,
-  TraceEvent, Usage, User, VerifyResult,
+  Change, ChangeListItem, ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
+  FileAttachment, FileList, FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput,
+  LlmTestResult, Memory, Message, Metrics, NightItem, RegisterResult, Repo, Review, SelfQuota,
+  Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -87,6 +87,17 @@ export const api = {
     }) => request<SelfQuota>('/settings/quota', { ...json(values), method: 'PUT' }),
   },
 
+  night: {
+    list: () => request<NightItem[]>('/night-queue'),
+    add: (body: {
+      kind: 'change_execute' | 'task'
+      change_id?: string
+      repo_id?: string
+      bug_report?: string
+    }) => request<NightItem>('/night-queue', json(body)),
+    cancel: (id: string) => request<{ ok: boolean }>(`/night-queue/${id}`, { method: 'DELETE' }),
+  },
+
   sessions: {
     list: (repoId?: string) =>
       request<Session[]>(`/chat/sessions${repoId ? `?repo_id=${encodeURIComponent(repoId)}` : ''}`),
@@ -110,6 +121,8 @@ export const api = {
     search: (id: string, q: string) =>
       request<{ symbols: unknown[]; hits: unknown[] }>(`/repos/${id}/search?q=${encodeURIComponent(q)}`),
     brain: (id: string) => request<Brain>(`/repos/${id}/brain`),
+    debt: (id: string) => request<DebtReport>(`/repos/${id}/debt`),
+    debtScan: (id: string) => request<DebtSnapshot>(`/repos/${id}/debt/scan`, { method: 'POST' }),
     impact: (id: string, q: string, depth = 2) =>
       request<Impact>(`/repos/${id}/impact?q=${encodeURIComponent(q)}&depth=${depth}`),
     upload: async (file: File): Promise<Repo> => {

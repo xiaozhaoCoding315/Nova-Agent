@@ -717,6 +717,37 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_hourly_messages INT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_sandbox_daily INT",
     ]),
+    (14, [
+        """
+        CREATE TABLE IF NOT EXISTS night_queue (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            kind VARCHAR(20) NOT NULL,
+            target_id UUID,
+            payload JSONB DEFAULT '{}'::jsonb,
+            title VARCHAR(200),
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            job_id UUID,
+            error TEXT,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            started_at TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_night_queue_user ON night_queue (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_night_queue_status ON night_queue (status, created_at)",
+        """
+        CREATE TABLE IF NOT EXISTS debt_snapshots (
+            id BIGSERIAL PRIMARY KEY,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            score INT NOT NULL DEFAULT 0,
+            metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_debt_repo_time ON debt_snapshots (repo_id, created_at DESC)",
+    ]),
 ]
 
 

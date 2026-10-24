@@ -641,3 +641,37 @@ export type StreamUsage = {
   prompt_tokens: number
   completion_tokens: number
 }
+
+export type NightItem = {
+  id: string
+  kind: 'change_execute' | 'task'
+  target_id?: string | null
+  payload?: Record<string, unknown>
+  title: string
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
+  job_id?: string | null
+  error?: string | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+}
+
+export type DebtSnapshot = {
+  score: number
+  metrics: {
+    file_count?: number
+    test_file_count?: number
+    test_ratio?: number
+    symbol_count?: number
+    long_function_count?: number
+    long_functions?: { name: string; kind?: string; lines: number }[]
+    todo_chunk_count?: number
+    huge_files?: { path: string; lines: number }[]
+  }
+  created_at?: string | null
+}
+
+export type DebtReport = {
+  latest: DebtSnapshot | null
+  history: DebtSnapshot[]
+}

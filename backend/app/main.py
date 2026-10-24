@@ -34,6 +34,16 @@ async def _cleanup_loop() -> None:
                 summary["guests_expired"] = await cleanup_expired_guests()
             except Exception:
                 logger.exception("guest_cleanup_failed")
+            try:
+                from app.core.night.service import run_maintenance as night_maintenance
+                summary["night_queue"] = await night_maintenance()
+            except Exception:
+                logger.exception("night_queue_failed")
+            try:
+                from app.core.debt.service import scan_stale_repos
+                summary["debt_scanned"] = await scan_stale_repos()
+            except Exception:
+                logger.exception("debt_scan_failed")
             logger.info("cleanup_done", **summary)
         except ImportError:
             pass

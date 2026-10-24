@@ -28,6 +28,8 @@ from app.core.storage.user_storage import repo_container
 from app.db import query as db_query
 from app.models.schemas import (
     BrainOut,
+    DebtReportOut,
+    DebtSnapshotOut,
     FileContentOut,
     FileNodeOut,
     ImpactOut,
@@ -252,3 +254,25 @@ async def repo_brain(repo_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="仓库不存在")
     rows = await db_query("SELECT brain FROM repos WHERE id = %s", (repo_id,))
     return (rows[0][0] if rows else None) or {}
+
+
+@router.get("/repos/{repo_id}/debt", response_model=DebtReportOut)
+async def repo_debt(repo_id: str, user: dict = Depends(get_current_user)):
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    from app.core.debt.service import get_report
+    return await get_report(repo_id)
+
+
+@router.post("/repos/{repo_id}/debt/scan", response_model=DebtSnapshotOut)
+async def scan_repo_debt(repo_id: str, user: dict = Depends(get_current_user)):
+    """Debt scan is cheap deterministic SQL — run inline, no job needed."""
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    if repo["status"] != "ready":
+        raise HTTPException(status_code=400, detail="仓库尚未完成索引")
+    from app.core.debt.service import scan_repo
+    metrics = await scan_repo(repo_id, user_id=user["id"])
+    return DebtSnapshotOut(score=metrics["score"], metrics=metrics)

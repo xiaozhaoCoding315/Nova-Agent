@@ -1,6 +1,8 @@
 import clsx from 'clsx'
-import { ArrowLeft, FlaskConical, GitPullRequest, Info } from 'lucide-react'
+import { ArrowLeft, FlaskConical, GitPullRequest, Info, Moon } from 'lucide-react'
 import { useState } from 'react'
+import { NightQueuePanel } from '../components/NightQueuePanel'
+import { useRepos } from '../stores/repos'
 import { ChangesView } from './ChangesView'
 import { TasksView } from './TasksView'
 
@@ -31,6 +33,8 @@ export function WorkflowsView({
   onBackToChat?: () => void
 }) {
   const [tab, setTab] = useState<WorkflowTab>(initialTab)
+  const [nightOpen, setNightOpen] = useState(false)
+  const { repos } = useRepos()
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -52,6 +56,19 @@ export function WorkflowsView({
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setNightOpen(!nightOpen)}
+            className={clsx(
+              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors',
+              nightOpen
+                ? 'border-accent/60 bg-accentSoft/30 text-ink'
+                : 'border-edge/80 text-dim hover:text-ink',
+            )}
+            title="睡前排队，夜间窗口内自动执行，早上看报告批准"
+          >
+            <Moon size={12} className={nightOpen ? 'text-accent' : ''} />
+            夜间队列
+          </button>
           {onBackToChat && (
             <button
               onClick={onBackToChat}
@@ -77,6 +94,12 @@ export function WorkflowsView({
           </span>
         </div>
       </div>
+
+      {nightOpen && (
+        <div className="max-h-[45%] shrink-0 overflow-y-auto px-4 py-3">
+          <NightQueuePanel repos={repos} />
+        </div>
+      )}
 
       <div className="min-h-0 flex-1">
         {tab === 'changes'

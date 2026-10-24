@@ -796,6 +796,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/night-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Night Queue */
+        get: operations["list_night_queue_api_v1_night_queue_get"];
+        put?: never;
+        /** Add Night Item */
+        post: operations["add_night_item_api_v1_night_queue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/night-queue/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel Night Item */
+        delete: operations["cancel_night_item_api_v1_night_queue__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos": {
         parameters: {
             query?: never;
@@ -910,6 +945,43 @@ export interface paths {
         get: operations["contract_status_api_v1_repos__repo_id__contract_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repos/{repo_id}/debt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Repo Debt */
+        get: operations["repo_debt_api_v1_repos__repo_id__debt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repos/{repo_id}/debt/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Repo Debt
+         * @description Debt scan is cheap deterministic SQL — run inline, no job needed.
+         */
+        post: operations["scan_repo_debt_api_v1_repos__repo_id__debt_scan_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2091,6 +2163,26 @@ export interface components {
              */
             target_exists: boolean;
         };
+        /** DebtReportOut */
+        DebtReportOut: {
+            /**
+             * History
+             * @default []
+             */
+            history: components["schemas"]["DebtSnapshotOut"][];
+            latest?: components["schemas"]["DebtSnapshotOut"] | null;
+        };
+        /** DebtSnapshotOut */
+        DebtSnapshotOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Score */
+            score: number;
+        };
         /** DeployRequest */
         DeployRequest: {
             /**
@@ -2706,6 +2798,53 @@ export interface components {
              * @default 7
              */
             window_days: number;
+        };
+        /** NightItemOut */
+        NightItemOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Job Id */
+            job_id?: string | null;
+            /** Kind */
+            kind: string;
+            /**
+             * Payload
+             * @default {}
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at?: string | null;
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** NightQueueRequest */
+        NightQueueRequest: {
+            /** Bug Report */
+            bug_report?: string | null;
+            /** Change Id */
+            change_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "change_execute" | "task";
+            /** Repo Id */
+            repo_id?: string | null;
         };
         /** OkOut */
         OkOut: {
@@ -4857,6 +4996,92 @@ export interface operations {
             };
         };
     };
+    list_night_queue_api_v1_night_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightItemOut"][];
+                };
+            };
+        };
+    };
+    add_night_item_api_v1_night_queue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NightQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_night_item_api_v1_night_queue__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_repos_api_v1_repos_get: {
         parameters: {
             query?: never;
@@ -5087,6 +5312,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContractStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repo_debt_api_v1_repos__repo_id__debt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebtReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_repo_debt_api_v1_repos__repo_id__debt_scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebtSnapshotOut"];
                 };
             };
             /** @description Validation Error */

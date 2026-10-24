@@ -124,6 +124,42 @@ class SourceUsageOut(BaseModel):
     tokens: int
 
 
+# ---------- Night queue ----------
+
+class NightQueueRequest(BaseModel):
+    kind: Literal["change_execute", "task"]
+    change_id: Optional[str] = None
+    repo_id: Optional[str] = None
+    bug_report: Optional[str] = Field(default=None, max_length=8000)
+
+
+class NightItemOut(BaseModel):
+    id: str
+    kind: str
+    target_id: Optional[str] = None
+    payload: dict = {}
+    title: str = ""
+    status: str
+    job_id: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+# ---------- Debt radar ----------
+
+class DebtSnapshotOut(BaseModel):
+    score: int
+    metrics: dict
+    created_at: Optional[datetime] = None
+
+
+class DebtReportOut(BaseModel):
+    latest: Optional[DebtSnapshotOut] = None
+    history: list[DebtSnapshotOut] = []
+
+
 # ---------- Files ----------
 
 class FileOut(BaseModel):
