@@ -9,6 +9,7 @@ export type ChatStreamBody = {
   repo_ids: string[]
   permission_mode?: 'readonly' | 'ask' | 'auto'
   model?: string
+  file_ids?: string[]
 }
 
 /**

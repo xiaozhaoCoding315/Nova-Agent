@@ -14,6 +14,7 @@ from app.core.memory import session as session_mod
 from app.core.review.service import review_edit as review_edit_service
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_chat_quota, check_job_quota
+from app.core.storage.user_storage import get_file
 from app.core.trace import list_events, record as trace_record
 from app.db import execute
 from app.models.schemas import (
@@ -144,7 +145,19 @@ async def chat_message(
         session["repo_ids"] = effective_repo_ids
         session["primary_repo_id"] = effective_repo_ids[0] if effective_repo_ids else None
 
-    await session_mod.add_message(session["id"], "user", body.content)
+    attachments: list[dict] = []
+    for file_id in list(dict.fromkeys(body.file_ids))[:5]:
+        file = await get_file(file_id, user["id"])
+        if not file:
+            raise HTTPException(status_code=404, detail=f"附件不存在或无权访问：{file_id}")
+        attachments.append({
+            "id": file["id"], "filename": file["filename"],
+            "mime": file["mime"], "size": file["size"],
+        })
+
+    await session_mod.add_message(
+        session["id"], "user", body.content, attachments=attachments
+    )
     session["title"] = await session_mod.maybe_set_title(session["id"], body.content)
     turn_id = str(uuid.uuid4())
     await trace_record(session["id"], turn_id, "user", {
@@ -152,9 +165,13 @@ async def chat_message(
         "repo_ids": effective_repo_ids,
         "permission_mode": session.get("permission_mode", "ask"),
         "model": session.get("model"),
+        "file_ids": [item["id"] for item in attachments],
     })
 
-    generator = run_chat(user, session, body.content, effective_repo_ids, turn_id=turn_id)
+    generator = run_chat(
+        user, session, body.content, effective_repo_ids,
+        turn_id=turn_id, attachments=attachments,
+    )
 
     async def event_stream():
         try:

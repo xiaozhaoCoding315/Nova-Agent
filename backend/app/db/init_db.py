@@ -89,11 +89,13 @@ _DDL = [
         role VARCHAR(16) NOT NULL,
         content TEXT DEFAULT '',
         tool_json JSONB,
+        attachments JSONB DEFAULT '[]'::jsonb,
         prompt_tokens INT DEFAULT 0,
         completion_tokens INT DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb",
     "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, id)",
     """
     CREATE TABLE IF NOT EXISTS repos (
@@ -128,6 +130,24 @@ _DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_session_repos_repo ON session_repos (repo_id, session_id)",
+    """
+    CREATE TABLE IF NOT EXISTS user_files (
+        id UUID PRIMARY KEY,
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE SET NULL,
+        session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+        filename VARCHAR(255) NOT NULL,
+        mime VARCHAR(120),
+        size BIGINT NOT NULL DEFAULT 0,
+        sha256 VARCHAR(64),
+        storage_path TEXT NOT NULL,
+        purpose VARCHAR(20) DEFAULT 'attachment',
+        created_at TIMESTAMPTZ DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_user_files_user ON user_files (user_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_user_files_session ON user_files (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_files_repo ON user_files (repo_id)",
     """
     CREATE TABLE IF NOT EXISTS repo_files (
         id BIGSERIAL PRIMARY KEY,
@@ -640,6 +660,27 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         WHERE s.id = sr.session_id AND s.primary_repo_id IS NULL
         """,
     ]),
+    (11, [
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb",
+        """
+        CREATE TABLE IF NOT EXISTS user_files (
+            id UUID PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE SET NULL,
+            session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+            filename VARCHAR(255) NOT NULL,
+            mime VARCHAR(120),
+            size BIGINT NOT NULL DEFAULT 0,
+            sha256 VARCHAR(64),
+            storage_path TEXT NOT NULL,
+            purpose VARCHAR(20) DEFAULT 'attachment',
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_user_files_user ON user_files (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_user_files_session ON user_files (session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_user_files_repo ON user_files (repo_id)",
+    ]),
 ]
 
 
@@ -730,6 +771,13 @@ async def init_all() -> dict:
         return result
 
     result["postgres"] = await init_postgres()
+
+    try:
+        from app.core.storage.user_storage import migrate_legacy_repos
+        result["storage"] = await migrate_legacy_repos()
+    except Exception as exc:  # noqa: BLE001
+        result["storage"] = f"failed: {exc}"
+        logger.error("repo_storage_migration_failed", error=str(exc))
 
     try:
         result["qdrant"] = await init_qdrant()

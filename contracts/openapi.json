@@ -135,6 +135,47 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "Body_upload_file_api_v1_files_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "attachment",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_file_api_v1_files_post",
+        "type": "object"
+      },
       "Body_upload_repo_api_v1_repos_upload_post": {
         "properties": {
           "file": {
@@ -1298,6 +1339,14 @@
             "title": "Content",
             "type": "string"
           },
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "File Ids",
+            "type": "array"
+          },
           "model": {
             "anyOf": [
               {
@@ -1798,6 +1847,29 @@
         "title": "FileContentOut",
         "type": "object"
       },
+      "FileListOut": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "limit_bytes": {
+            "default": 0,
+            "title": "Limit Bytes",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "default": 0,
+            "title": "Used Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "FileListOut",
+        "type": "object"
+      },
       "FileNodeOut": {
         "properties": {
           "children": {
@@ -1836,6 +1908,73 @@
           "type"
         ],
         "title": "FileNodeOut",
+        "type": "object"
+      },
+      "FileOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mime": {
+            "default": "application/octet-stream",
+            "title": "Mime",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "attachment",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename"
+        ],
+        "title": "FileOut",
         "type": "object"
       },
       "GitCommitOut": {
@@ -2730,6 +2869,13 @@
       },
       "MessageOut": {
         "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FileOut"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
           "content": {
             "title": "Content",
             "type": "string"
@@ -5655,6 +5801,192 @@
         "summary": "Review Edit Endpoint",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/api/v1/files": {
+      "get": {
+        "operationId": "get_files_api_v1_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Files",
+        "tags": [
+          "files"
+        ]
+      },
+      "post": {
+        "operationId": "upload_file_api_v1_files_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_api_v1_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/api/v1/files/{file_id}": {
+      "delete": {
+        "operationId": "remove_file_api_v1_files__file_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/api/v1/files/{file_id}/download": {
+      "get": {
+        "operationId": "download_file_api_v1_files__file_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download File",
+        "tags": [
+          "files"
         ]
       }
     },

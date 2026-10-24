@@ -1,8 +1,8 @@
 """Tool package: registry singleton with all built-in tools registered."""
 from app.config import settings
 from app.core.tools import (
-    diagnose, fetch_url, impact, install_deps, json_tool, list_files, read_file,
-    run_code, search_code, sql_tool, write_files,
+    diagnose, fetch_url, impact, install_deps, json_tool, list_files, read_attachment,
+    read_file, run_code, search_code, sql_tool, write_files,
 )
 from app.core.tools.base import (  # noqa: F401  (re-exported for callers)
     ToolBusinessError,
@@ -17,6 +17,7 @@ def build_registry() -> ToolRegistry:
     registry.register(run_code.TOOL)
     registry.register(read_file.TOOL)
     registry.register(list_files.TOOL)
+    registry.register(read_attachment.TOOL)
     registry.register(search_code.TOOL)
     registry.register(impact.TOOL)
     registry.register(diagnose.TOOL)

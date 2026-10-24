@@ -75,8 +75,13 @@ class Settings(BaseSettings):
     max_repo_files: int = 5000
     max_file_kb: int = 2048
     git_clone_timeout: int = 120
-    repos_dir: str = "data/repos"
+    repos_dir: str = "data/repos"          # legacy path, migrated to user_data_dir
+    user_data_dir: str = "data/users"
     index_embed_max_chunks: int = 3000
+    attachment_max_mb: int = 25
+    user_storage_mb: int = 200
+    guest_storage_mb: int = 50
+    max_attachments_per_message: int = 5
 
     # ---------- Sandbox ----------
     sandbox_enabled: bool = True

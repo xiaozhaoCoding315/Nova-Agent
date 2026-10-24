@@ -1,8 +1,8 @@
 import type {
   AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem,
-  ContractStatus, Deployment, EditRecord, FileNode, GitInfo, Health, Impact, Job, LlmSettings,
-  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, RegisterResult, Repo, Review, Session,
-  Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  ContractStatus, Deployment, EditRecord, FileAttachment, FileList, FileNode, GitInfo, Health,
+  Impact, Job, LlmSettings, LlmSettingsInput, LlmTestResult, Memory, Message, Metrics,
+  RegisterResult, Repo, Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -129,6 +129,26 @@ export const api = {
     health: () => request<Health>('/status/health'),
     usage: () => request<Usage>('/status/usage'),
     metrics: (days = 7) => request<Metrics>(`/status/metrics?days=${days}`),
+  },
+
+  files: {
+    list: (params: { repoId?: string; sessionId?: string } = {}) => {
+      const query = new URLSearchParams()
+      if (params.repoId) query.set('repo_id', params.repoId)
+      if (params.sessionId) query.set('session_id', params.sessionId)
+      const suffix = query.toString()
+      return request<FileList>(`/files${suffix ? `?${suffix}` : ''}`)
+    },
+    upload: (file: File, options: { repoId?: string; sessionId?: string; purpose?: string } = {}) => {
+      const form = new FormData()
+      form.append('file', file)
+      if (options.repoId) form.append('repo_id', options.repoId)
+      if (options.sessionId) form.append('session_id', options.sessionId)
+      form.append('purpose', options.purpose ?? 'attachment')
+      return request<FileAttachment>('/files', { method: 'POST', body: form })
+    },
+    downloadUrl: (id: string) => `/api/v1/files/${id}/download`,
+    remove: (id: string) => request<{ ok: boolean }>(`/files/${id}`, { method: 'DELETE' }),
   },
 
   llm: {

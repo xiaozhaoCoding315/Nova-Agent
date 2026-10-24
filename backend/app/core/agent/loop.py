@@ -61,7 +61,7 @@ async def _record_usage(user: dict, session_id: str, usage: dict, tool_count: in
 
 async def run_chat(
     user: dict, session: dict, user_message: str, repo_ids: list[str],
-    turn_id: str | None = None,
+    turn_id: str | None = None, attachments: list[dict] | None = None,
 ):
     started = time.perf_counter()
     turn_id = turn_id or str(uuid.uuid4())
@@ -138,15 +138,22 @@ async def run_chat(
         except Exception:  # noqa: BLE001
             continue
     repo_rules = load_repo_rules(repo_meta)
+    system_content = build_system_prompt(
+        hits, fact_list, repo_selected=bool(repo_ids),
+        repos=repo_meta, rules=repo_rules,
+        summary=session.get("summary") or "",
+    )
+    if attachments:
+        lines = [
+            f"- {item['filename']}（id={item['id']}，{item['mime']}，{item['size']} bytes）"
+            for item in attachments[:5]
+        ]
+        system_content += (
+            "\n\n本轮用户上传了附件：\n" + "\n".join(lines)
+            + "\n如需读取附件内容，请调用 read_uploaded_file 工具，不要臆测内容。"
+        )
     messages: list[dict] = [
-        {
-            "role": "system",
-            "content": build_system_prompt(
-                hits, fact_list, repo_selected=bool(repo_ids),
-                repos=repo_meta, rules=repo_rules,
-                summary=session.get("summary") or "",
-            ),
-        },
+        {"role": "system", "content": system_content},
         *history,
     ]
 
@@ -156,6 +163,7 @@ async def run_chat(
         repo_roots={r["id"]: r["root_path"] for r in repo_meta if r.get("root_path")},
         session_id=session["id"],
         permission_mode=session.get("permission_mode", "ask"),
+        file_ids=[item["id"] for item in (attachments or [])][:5],
     )
     specs = registry.specs()
     holder: dict = {"message_id": 0, "evidence": None, "report": None}

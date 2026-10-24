@@ -37,6 +37,7 @@ export function ChatView({
   const {
     sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
     permissionMode, setPermissionMode, model, setModel, selectedRepoIds, toggleRepo,
+    attachments, uploading, uploadAttachment, removeAttachment,
     send, stop, clearError,
   } = useChat()
   const { repos, refresh } = useRepos()
@@ -191,6 +192,10 @@ export function ChatView({
           permissionMode={permissionMode}
           onPermissionChange={setPermissionMode}
           contextCount={selectedRepoIds.length}
+          attachments={attachments}
+          uploading={uploading}
+          onAttach={(file) => void uploadAttachment(file)}
+          onRemoveAttachment={(id) => void removeAttachment(id)}
           onConfigureModel={onOpenSettings}
           onSend={(content) => void send(content, selectedRepoIds)}
           onStop={stop}

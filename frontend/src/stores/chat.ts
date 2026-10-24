@@ -2,8 +2,8 @@ import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
 import { streamChat } from '../lib/sse'
 import type {
-  DeliveryReport, EditRef, Evidence, Message, PermissionMode, RetrievalHit, Session, StreamToolCard,
-  ToolCall, ToolResult,
+  DeliveryReport, EditRef, Evidence, FileAttachment, Message, PermissionMode, RetrievalHit,
+  Session, StreamToolCard, ToolCall, ToolResult,
 } from '../lib/types'
 
 type ChatState = {
@@ -18,6 +18,8 @@ type ChatState = {
   model: string | null
   selectedRepoIds: string[]
   historyRepoId: string | null
+  attachments: FileAttachment[]
+  uploading: boolean
   refs: RetrievalHit[]
   evidence: Evidence | null
   report: DeliveryReport | null
@@ -27,6 +29,8 @@ type ChatState = {
   setSelectedRepoIds: (ids: string[]) => void
   toggleRepo: (id: string) => void
   setHistoryRepoId: (id: string | null) => Promise<void>
+  uploadAttachment: (file: File) => Promise<void>
+  removeAttachment: (id: string) => Promise<void>
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
   newSession: () => void
@@ -52,6 +56,8 @@ export const useChat = create<ChatState>((set, get) => ({
   model: null,
   selectedRepoIds: [],
   historyRepoId: null,
+  attachments: [],
+  uploading: false,
   refs: [],
   evidence: null,
   report: null,
@@ -68,6 +74,29 @@ export const useChat = create<ChatState>((set, get) => ({
   setHistoryRepoId: async (id) => {
     set({ historyRepoId: id })
     await get().loadSessions()
+  },
+
+  uploadAttachment: async (file) => {
+    set({ uploading: true, error: null })
+    try {
+      const attachment = await api.files.upload(file, {
+        repoId: get().selectedRepoIds[0],
+      })
+      set((state) => ({ attachments: [...state.attachments, attachment].slice(0, 5) }))
+    } catch (err) {
+      set({ error: err instanceof ApiError ? err.message : '上传附件失败' })
+    } finally {
+      set({ uploading: false })
+    }
+  },
+
+  removeAttachment: async (id) => {
+    set((state) => ({ attachments: state.attachments.filter((item) => item.id !== id) }))
+    try {
+      await api.files.remove(id)
+    } catch {
+      /* the file library may already be cleaned */
+    }
   },
 
   loadSessions: async () => {
@@ -90,6 +119,7 @@ export const useChat = create<ChatState>((set, get) => ({
         error: null,
         model: session?.model ?? null,
         selectedRepoIds: session?.repo_ids ?? [],
+        attachments: [],
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
       })
     } catch (err) {
@@ -102,7 +132,7 @@ export const useChat = create<ChatState>((set, get) => ({
     const inherited = get().historyRepoId
     set({
       sessionId: null, messages: [], refs: [], model: null, error: null,
-      selectedRepoIds: inherited ? [inherited] : [],
+      selectedRepoIds: inherited ? [inherited] : [], attachments: [],
     })
   },
 
@@ -111,7 +141,9 @@ export const useChat = create<ChatState>((set, get) => ({
       await api.sessions.remove(id)
       set((s) => ({
         sessions: s.sessions.filter((x) => x.id !== id),
-        ...(s.sessionId === id ? { sessionId: null, messages: [], refs: [], selectedRepoIds: [] } : {}),
+        ...(s.sessionId === id
+          ? { sessionId: null, messages: [], refs: [], selectedRepoIds: [], attachments: [] }
+          : {}),
       }))
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '删除失败' })
@@ -143,13 +175,14 @@ export const useChat = create<ChatState>((set, get) => ({
     set({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
       toolCards: [], streamEdits: [], permissionMode: 'ask', model: null,
-      selectedRepoIds: [], historyRepoId: null, refs: [],
+      selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false, refs: [],
       evidence: null, report: null, error: null,
     })
   },
 
   send: async (content, repoIds) => {
-    if (get().streaming || !content.trim()) return
+    if (get().streaming || get().uploading || !content.trim()) return
+    const pendingAttachments = get().attachments
 
     set((s) => ({
       streaming: true,
@@ -159,7 +192,11 @@ export const useChat = create<ChatState>((set, get) => ({
       refs: [],
       report: null,
       error: null,
-      messages: [...s.messages, { id: Date.now(), role: 'user', content }],
+      attachments: [],
+      messages: [
+        ...s.messages,
+        { id: Date.now(), role: 'user', content, attachments: pendingAttachments },
+      ],
     }))
 
     const controller = new AbortController()
@@ -173,6 +210,7 @@ export const useChat = create<ChatState>((set, get) => ({
           repo_ids: repoIds,
           permission_mode: get().permissionMode,
           model: get().model ?? undefined,
+          file_ids: pendingAttachments.map((item) => item.id),
         },
         (event, data) => {
           switch (event) {

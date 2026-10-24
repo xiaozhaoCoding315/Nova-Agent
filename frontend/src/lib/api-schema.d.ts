@@ -605,6 +605,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Files */
+        get: operations["get_files_api_v1_files_get"];
+        put?: never;
+        /** Upload File */
+        post: operations["upload_file_api_v1_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove File */
+        delete: operations["remove_file_api_v1_files__file_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download File */
+        get: operations["download_file_api_v1_files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs": {
         parameters: {
             query?: never;
@@ -1422,6 +1474,23 @@ export interface components {
             /** Registration Mode */
             registration_mode: string;
         };
+        /** Body_upload_file_api_v1_files_post */
+        Body_upload_file_api_v1_files_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Purpose
+             * @default attachment
+             */
+            purpose: string;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
         /** Body_upload_repo_api_v1_repos_upload_post */
         Body_upload_repo_api_v1_repos_upload_post: {
             /**
@@ -1868,6 +1937,8 @@ export interface components {
         ChatRequest: {
             /** Content */
             content: string;
+            /** File Ids */
+            file_ids?: string[];
             /** Model */
             model?: string | null;
             /** Permission Mode */
@@ -2038,6 +2109,21 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** FileListOut */
+        FileListOut: {
+            /** Files */
+            files?: components["schemas"]["FileOut"][];
+            /**
+             * Limit Bytes
+             * @default 0
+             */
+            limit_bytes: number;
+            /**
+             * Used Bytes
+             * @default 0
+             */
+            used_bytes: number;
+        };
         /** FileNodeOut */
         FileNodeOut: {
             /** Children */
@@ -2058,6 +2144,34 @@ export interface components {
             size: number;
             /** Type */
             type: string;
+        };
+        /** FileOut */
+        FileOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /**
+             * Mime
+             * @default application/octet-stream
+             */
+            mime: string;
+            /**
+             * Purpose
+             * @default attachment
+             */
+            purpose: string;
+            /** Repo Id */
+            repo_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
         };
         /** GitCommitOut */
         GitCommitOut: {
@@ -2424,6 +2538,8 @@ export interface components {
         };
         /** MessageOut */
         MessageOut: {
+            /** Attachments */
+            attachments?: components["schemas"]["FileOut"][];
             /** Content */
             content: string;
             /** Created At */
@@ -4177,6 +4293,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_files_api_v1_files_get: {
+        parameters: {
+            query?: {
+                repo_id?: string | null;
+                session_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_file_api_v1_files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_file_api_v1_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_file_api_v1_files__file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_file_api_v1_files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

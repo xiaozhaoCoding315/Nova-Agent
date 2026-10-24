@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Wrench } from 'lucide-react'
+import { FileText, Wrench } from 'lucide-react'
 import type { EditRef, Message, StreamToolCard } from '../lib/types'
 import { DeliveryReport } from './DeliveryReport'
 import { EditCard } from './EditCard'
@@ -14,10 +14,26 @@ export function MessageBubble({ message }: { message: Message }) {
   const edits = message.tool_json?.edits ?? []
 
   if (isUser) {
+    const attachments = message.attachments ?? []
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accentSoft/55 px-4 py-2.5 text-[14px] leading-relaxed">
-          {message.content}
+        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accentSoft/55 px-4 py-2.5">
+          <p className="whitespace-pre-wrap text-[14px] leading-relaxed">{message.content}</p>
+          {attachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {attachments.map((file) => (
+                <a
+                  key={file.id}
+                  href={`/api/v1/files/${file.id}/download`}
+                  className="flex max-w-[220px] items-center gap-1 rounded-lg border border-white/15 bg-black/15 px-2 py-1 text-[10.5px] text-ink/90 hover:bg-black/25"
+                  title={`下载 ${file.filename}`}
+                >
+                  <FileText size={11} className="shrink-0" />
+                  <span className="truncate">{file.filename}</span>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )

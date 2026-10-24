@@ -73,6 +73,25 @@ class AdminPasswordResetRequest(BaseModel):
     new_password: str = Field(min_length=1, max_length=200)
 
 
+# ---------- Files ----------
+
+class FileOut(BaseModel):
+    id: str
+    filename: str
+    mime: str = "application/octet-stream"
+    size: int = 0
+    purpose: str = "attachment"
+    repo_id: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class FileListOut(BaseModel):
+    files: list[FileOut] = Field(default_factory=list)
+    used_bytes: int = 0
+    limit_bytes: int = 0
+
+
 # ---------- Chat ----------
 
 class SessionOut(BaseModel):
@@ -96,6 +115,7 @@ class MessageOut(BaseModel):
     role: str
     content: str
     tool_json: Optional[dict] = None
+    attachments: list[FileOut] = Field(default_factory=list)
     created_at: Optional[datetime] = None
 
 
@@ -110,6 +130,7 @@ class ChatRequest(BaseModel):
     repo_ids: Optional[list[str]] = None
     permission_mode: Optional[Literal["readonly", "ask", "auto"]] = None
     model: Optional[str] = Field(default=None, max_length=120)
+    file_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 # ---------- Workspace ----------

@@ -37,6 +37,7 @@ class ToolContext:
     repo_roots: dict[str, str] = field(default_factory=dict)
     session_id: str = ""
     permission_mode: str = "auto"   # readonly | ask | auto
+    file_ids: list[str] = field(default_factory=list)
 
 
 @dataclass

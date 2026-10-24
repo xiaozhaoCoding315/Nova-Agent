@@ -1,11 +1,12 @@
 import {
-  Activity, AlertCircle, Brain, CheckCircle2, Clock, Coins, Cpu, Eye, EyeOff, KeyRound,
-  RefreshCw, Server, Trash2, TrendingUp, Users, Zap,
+  Activity, AlertCircle, Brain, CheckCircle2, Clock, Coins, Cpu, Eye, EyeOff, FolderOpen,
+  KeyRound, RefreshCw, Server, Trash2, TrendingUp, Users, Zap,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AccountPanel } from '../components/AccountPanel'
 import { AdminUsersPanel } from '../components/AdminUsersPanel'
+import { FilesPanel } from '../components/FilesPanel'
 import { Badge, Button, Modal, Spinner, StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { Health, LlmSettings, Memory, Metrics, Usage } from '../lib/types'
@@ -81,12 +82,13 @@ function MetricTile({ label, value, hint }: { label: string; value: string; hint
   )
 }
 
-type SectionKey = 'model' | 'usage' | 'metrics' | 'memory' | 'system' | 'account' | 'admin'
+type SectionKey = 'model' | 'usage' | 'metrics' | 'files' | 'memory' | 'system' | 'account' | 'admin'
 
 const SECTIONS: { key: SectionKey; label: string; icon: typeof Cpu }[] = [
   { key: 'model', label: '模型与密钥', icon: Cpu },
   { key: 'usage', label: '用量与配额', icon: Activity },
   { key: 'metrics', label: '交付指标', icon: TrendingUp },
+  { key: 'files', label: '文件与存储', icon: FolderOpen },
   { key: 'memory', label: '长期记忆', icon: Brain },
   { key: 'system', label: '系统状态', icon: Server },
   { key: 'account', label: '账号与安全', icon: KeyRound },
@@ -486,7 +488,9 @@ export function SettingsView() {
                     ? '个人资料、密码与会话安全。'
                     : section === 'admin'
                       ? '管理系统账号、禁用账号与重置密码。'
-                      : '用量、交付指标与运行状态。'}
+                      : section === 'files'
+                        ? '聊天附件与手动上传的个人文件，计入存储配额。'
+                        : '用量、交付指标与运行状态。'}
               </p>
             </div>
             <Button size="sm" onClick={refresh} disabled={loading || llmLoading}>
@@ -557,6 +561,8 @@ export function SettingsView() {
               )}
             </section>
           )}
+
+          {section === 'files' && <FilesPanel />}
 
           {section === 'memory' && (
             <section className="rounded-xl border border-edge bg-panel p-4">

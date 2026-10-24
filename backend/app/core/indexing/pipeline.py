@@ -24,7 +24,10 @@ EMBEDDING_CHAR_LIMIT = 2000
 
 
 async def create_repo_row(user_id: int, name: str, source: str, repo_id: str) -> dict:
-    root_path = str(Path(settings.repos_dir) / repo_id)
+    from app.core.storage.user_storage import repo_container
+    root = repo_container(user_id, repo_id)
+    root.mkdir(parents=True, exist_ok=True)
+    root_path = str(root)
     await execute(
         "INSERT INTO repos (id, user_id, name, source, root_path, status) "
         "VALUES (%s, %s, %s, %s, %s, 'pending')",
@@ -77,7 +80,9 @@ async def delete_repo(repo_id: str, user_id: int) -> bool:
     if not repo:
         return False
     await execute("DELETE FROM repos WHERE id = %s AND user_id = %s", (repo_id, user_id))
-    shutil.rmtree(repo["root_path"], ignore_errors=True)
+    from app.core.storage.user_storage import repo_container
+    shutil.rmtree(repo_container(user_id, repo_id), ignore_errors=True)
+    shutil.rmtree(Path(settings.repos_dir) / repo_id, ignore_errors=True)
     try:
         from app.db.qdrant import delete_repo_points
         await delete_repo_points(repo_id)

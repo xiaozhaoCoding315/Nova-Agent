@@ -4,7 +4,6 @@ import re
 import shutil
 import uuid
 import zipfile
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
@@ -25,6 +24,7 @@ from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, check_search_quota
 from app.core.security.paths import UnsafePathError, normalize_relpath, resolve_repo_path
 from app.core.security.redaction import redact_text
+from app.core.storage.user_storage import repo_container
 from app.db import query as db_query
 from app.models.schemas import (
     BrainOut,
@@ -53,7 +53,7 @@ def _display_name(filename: str) -> str:
 async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     check_job_quota(user, "import")
     repo_id = str(uuid.uuid4())
-    dest_root = Path(settings.repos_dir) / repo_id
+    dest_root = repo_container(user["id"], repo_id)
     dest_root.mkdir(parents=True, exist_ok=True)
     tmp_zip = dest_root / "_upload.zip"
 
@@ -92,7 +92,7 @@ async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_cur
 async def import_git_repo(body: RepoImportGit, user: dict = Depends(get_current_user)):
     check_job_quota(user, "import")
     repo_id = str(uuid.uuid4())
-    dest = Path(settings.repos_dir) / repo_id
+    dest = repo_container(user["id"], repo_id)
     dest.mkdir(parents=True, exist_ok=True)
 
     try:

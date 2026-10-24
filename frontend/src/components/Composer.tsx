@@ -1,7 +1,7 @@
-import { ArrowUp, ChevronDown, Cpu, Square } from 'lucide-react'
+import { ArrowUp, ChevronDown, Cpu, FileText, Loader2, Paperclip, Square, X } from 'lucide-react'
 import { useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
-import type { PermissionMode } from '../lib/types'
+import type { DragEvent, KeyboardEvent } from 'react'
+import type { FileAttachment, PermissionMode } from '../lib/types'
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
   readonly: '只读',
@@ -19,6 +19,10 @@ export function Composer({
   permissionMode,
   onPermissionChange,
   contextCount,
+  attachments,
+  uploading,
+  onAttach,
+  onRemoveAttachment,
   onConfigureModel,
   onSend,
   onStop,
@@ -32,16 +36,21 @@ export function Composer({
   permissionMode: PermissionMode
   onPermissionChange: (mode: PermissionMode) => void
   contextCount: number
+  attachments: FileAttachment[]
+  uploading: boolean
+  onAttach: (file: File) => void
+  onRemoveAttachment: (id: string) => void
   onConfigureModel: () => void
   onSend: (content: string) => void
   onStop: () => void
 }) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const submit = () => {
     const content = value.trim()
-    if (!content || disabled || streaming) return
+    if (!content || disabled || streaming || uploading) return
     setValue('')
     onSend(content)
     requestAnimationFrame(() => ref.current?.focus())
@@ -54,10 +63,53 @@ export function Composer({
     }
   }
 
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const file = event.dataTransfer.files?.[0]
+    if (file) onAttach(file)
+  }
+
   return (
     <div className="shrink-0 border-t border-edge/80 bg-base/70 px-4 py-3">
       <div className="mx-auto max-w-4xl">
-        <div className="rounded-2xl border border-edge bg-panel shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition-all focus-within:border-accent/45 focus-within:ring-4 focus-within:ring-accent/5">
+        <div
+          className="rounded-2xl border border-edge bg-panel shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition-all focus-within:border-accent/45 focus-within:ring-4 focus-within:ring-accent/5"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={onDrop}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onAttach(file)
+              event.target.value = ''
+            }}
+          />
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {attachments.map((file) => (
+                <span
+                  key={file.id}
+                  className="flex max-w-[220px] items-center gap-1 rounded-lg border border-edge/80 bg-raised/70 px-2 py-1 text-[10.5px] text-dim"
+                  title={file.filename}
+                >
+                  <FileText size={11} className="shrink-0 text-accent/80" />
+                  <span className="truncate">{file.filename}</span>
+                  <span className="shrink-0 text-dim/60">{(file.size / 1024).toFixed(0)}K</span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttachment(file.id)}
+                    className="shrink-0 text-dim/60 hover:text-err"
+                    aria-label="移除附件"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             ref={ref}
             rows={Math.min(7, value.split('\n').length)}
@@ -70,6 +122,16 @@ export function Composer({
           />
 
           <div className="flex items-center gap-1.5 px-2.5 pb-2 pt-0.5">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || attachments.length >= 5}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-edge/80 bg-raised/70 text-dim transition-colors hover:text-ink disabled:opacity-40"
+              title="上传附件（最多 5 个，可拖拽）"
+              aria-label="上传附件"
+            >
+              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+            </button>
             {models.length > 0 ? (
               <label className="relative flex items-center gap-1.5 rounded-lg border border-edge/80 bg-raised/70 py-1 pl-2 pr-1.5 text-[11px] text-dim transition-colors hover:text-ink">
                 <Cpu size={12} className="text-accent/80" />
@@ -132,7 +194,7 @@ export function Composer({
               ) : (
                 <button
                   onClick={submit}
-                  disabled={disabled || !value.trim()}
+                  disabled={disabled || uploading || !value.trim()}
                   className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-white transition-all hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
                   title="发送"
                   aria-label="发送"

@@ -1,10 +1,8 @@
 """Builder endpoints: greenfield plan + file proposal with approval gates."""
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.config import settings
 from app.core.builder import engine
 from app.core.conflicts import ConflictError
 from app.core.indexing.pipeline import get_repo
@@ -45,7 +43,8 @@ async def create_builder_project(body: BuilderCreate, user: dict = Depends(get_c
     check_job_quota(user, "builder")
     await ensure_token_budget(user)
     repo_id = str(uuid.uuid4())
-    root = Path(settings.repos_dir) / repo_id
+    from app.core.storage.user_storage import repo_container
+    root = repo_container(user["id"], repo_id)
     root.mkdir(parents=True, exist_ok=True)
     await execute(
         "INSERT INTO repos (id, user_id, name, source, root_path, status, kind, stack_mode, brief, rules) "

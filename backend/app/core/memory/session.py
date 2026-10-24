@@ -125,12 +125,15 @@ async def rename_session(session_id: str, user_id: int, title: str) -> dict | No
 
 async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
     rows = await query(
-        "SELECT id, role, content, tool_json, created_at FROM messages "
+        "SELECT id, role, content, tool_json, attachments, created_at FROM messages "
         "WHERE session_id = %s ORDER BY id ASC LIMIT %s",
         (session_id, limit),
     )
     return [
-        {"id": r[0], "role": r[1], "content": r[2], "tool_json": r[3], "created_at": r[4]}
+        {
+            "id": r[0], "role": r[1], "content": r[2], "tool_json": r[3],
+            "attachments": r[4] or [], "created_at": r[5],
+        }
         for r in rows
     ]
 
@@ -178,16 +181,19 @@ async def add_message(
     tool_json: dict | None = None,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
+    attachments: list[dict] | None = None,
 ) -> int:
     import json
     rows = await execute(
         """
-        INSERT INTO messages (session_id, role, content, tool_json, prompt_tokens, completion_tokens)
-        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        INSERT INTO messages
+        (session_id, role, content, tool_json, attachments, prompt_tokens, completion_tokens)
+        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         (
             session_id, role, content,
             json.dumps(tool_json, ensure_ascii=False) if tool_json else None,
+            json.dumps(attachments or [], ensure_ascii=False, default=str),
             prompt_tokens, completion_tokens,
         ),
     )

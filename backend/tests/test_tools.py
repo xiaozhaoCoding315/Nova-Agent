@@ -18,8 +18,9 @@ def test_registry_has_all_tools_with_openai_specs():
     specs = get_registry().specs()
     names = {s["function"]["name"] for s in specs}
     assert names == {
-        "run_code", "read_file", "list_files", "search_code", "impact_analysis",
-        "diagnose_error", "write_files", "install_deps", "json_tool", "sql_tool", "fetch_url",
+        "run_code", "read_file", "list_files", "read_uploaded_file", "search_code",
+        "impact_analysis", "diagnose_error", "write_files", "install_deps", "json_tool",
+        "sql_tool", "fetch_url",
     }
     for spec in specs:
         assert spec["type"] == "function"

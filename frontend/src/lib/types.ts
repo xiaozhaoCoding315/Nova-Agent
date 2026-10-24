@@ -95,6 +95,23 @@ export type DeliveryReport = {
   generated_at?: string
 }
 
+export type FileAttachment = {
+  id: string
+  filename: string
+  mime: string
+  size: number
+  purpose?: string
+  repo_id?: string | null
+  session_id?: string | null
+  created_at?: string | null
+}
+
+export type FileList = {
+  files: FileAttachment[]
+  used_bytes: number
+  limit_bytes: number
+}
+
 export type Message = {
   id: number
   role: string
@@ -105,6 +122,7 @@ export type Message = {
     edits?: EditRef[]
     report?: DeliveryReport
   } | null
+  attachments?: FileAttachment[]
   created_at?: string
 }
 
