@@ -13,6 +13,25 @@ logger = structlog.get_logger()
 
 COOKIE_NAME = "nova_token"
 
+# Appended after the core user columns in every SELECT so the request-scoped
+# user dict carries per-user quota overrides (NULL = inherit role tier).
+QUOTA_SELECT = (
+    ", quota_daily_tokens, quota_hourly_messages, quota_sandbox_daily, "
+    "quota_job_hourly, quota_storage_mb, "
+    "self_daily_tokens, self_hourly_messages, self_sandbox_daily"
+)
+QUOTA_KEYS = (
+    "quota_daily_tokens", "quota_hourly_messages", "quota_sandbox_daily",
+    "quota_job_hourly", "quota_storage_mb",
+    "self_daily_tokens", "self_hourly_messages", "self_sandbox_daily",
+)
+
+
+def _with_quota(user: dict, row: tuple, offset: int) -> dict:
+    for i, key in enumerate(QUOTA_KEYS):
+        user[key] = row[offset + i] if len(row) > offset + i else None
+    return user
+
 
 def _active(user: dict) -> bool:
     if user.get("status", "active") != "active":
@@ -51,17 +70,17 @@ def create_token(user: dict) -> str:
 async def get_user_by_username(username: str) -> dict | None:
     rows = await query(
         "SELECT id, username, password_hash, display_name, role, status, is_guest, "
-        "expires_at, token_version FROM users WHERE username = %s",
+        f"expires_at, token_version{QUOTA_SELECT} FROM users WHERE username = %s",
         (username,),
     )
     if not rows:
         return None
     r = rows[0]
-    return {
+    return _with_quota({
         "id": r[0], "username": r[1], "password_hash": r[2],
         "display_name": r[3] or r[1], "role": r[4], "status": r[5] or "active",
         "is_guest": bool(r[6]), "expires_at": r[7], "token_version": int(r[8] or 0),
-    }
+    }, r, 9)
 
 
 async def authenticate(username: str, password: str) -> dict | None:
@@ -92,17 +111,17 @@ async def get_current_user(request: Request) -> dict:
 
     rows = await query(
         "SELECT id, username, display_name, role, status, is_guest, expires_at, "
-        "token_version, created_at FROM users WHERE id = %s",
+        f"token_version, created_at{QUOTA_SELECT} FROM users WHERE id = %s",
         (int(payload.get("sub", 0)),),
     )
     if not rows:
         raise HTTPException(status_code=401, detail="账号不存在")
     r = rows[0]
-    user = {
+    user = _with_quota({
         "id": r[0], "username": r[1], "display_name": r[2] or r[1], "role": r[3],
         "status": r[4] or "active", "is_guest": bool(r[5]), "expires_at": r[6],
         "token_version": int(r[7] or 0), "created_at": r[8],
-    }
+    }, r, 9)
     if not _active(user):
         raise HTTPException(status_code=401, detail="账号已禁用或体验已到期")
     if int(payload.get("ver", 0)) != user["token_version"]:

@@ -20,7 +20,9 @@ class MCPServerConfig:
     command: str
     args: tuple[str, ...]
     allow_tools: dict[str, list[str]] = field(default_factory=dict)
-    admin_only: bool = False
+    # None = follow the global MCP_ADMIN_ONLY default; True/False explicitly
+    # restricts to admins / opens to every user for this server only.
+    admin_only: bool | None = None
     timeout: int = 30
 
 
@@ -76,9 +78,10 @@ def load_server_configs() -> list[MCPServerConfig]:
             logger.warning("mcp_server_no_allowed_tools: %s", name)
             continue
         seen.add(name)
+        raw_admin_only = raw.get("admin_only")
         configs.append(MCPServerConfig(
             name=name, command=command, args=tuple(args), allow_tools=allow,
-            admin_only=bool(raw.get("admin_only", False)),
+            admin_only=None if raw_admin_only is None else bool(raw_admin_only),
             timeout=int(raw.get("timeout") or settings.mcp_timeout),
         ))
     return configs

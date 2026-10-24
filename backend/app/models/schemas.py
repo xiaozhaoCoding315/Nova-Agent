@@ -29,6 +29,11 @@ class AdminUserOut(UserOut):
     files: int = 0
     storage_bytes: int = 0
     tokens_total: int = 0
+    quota_daily_tokens: Optional[int] = None
+    quota_hourly_messages: Optional[int] = None
+    quota_sandbox_daily: Optional[int] = None
+    quota_job_hourly: Optional[int] = None
+    quota_storage_mb: Optional[int] = None
 
 
 class AuthConfigOut(BaseModel):
@@ -76,10 +81,47 @@ class AdminUserUpdateRequest(BaseModel):
     status: Optional[Literal["active", "disabled"]] = None
     role: Optional[Literal["admin", "demo"]] = None
     display_name: Optional[str] = Field(default=None, max_length=80)
+    # Per-user quota overrides; None = leave unchanged is not distinguishable
+    # from "inherit", so clients send explicit null to clear an override.
+    quota_daily_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    quota_hourly_messages: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    quota_sandbox_daily: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    quota_job_hourly: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    quota_storage_mb: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+
+
+class SelfQuotaUpdateRequest(BaseModel):
+    """Self-imposed budgets; only tighten the effective limit, never raise it."""
+    self_daily_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    self_hourly_messages: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+    self_sandbox_daily: Optional[int] = Field(default=None, ge=0, le=2_000_000_000)
+
+
+class SelfQuotaOut(BaseModel):
+    self_daily_tokens: Optional[int] = None
+    self_hourly_messages: Optional[int] = None
+    self_sandbox_daily: Optional[int] = None
+    today_tokens: int = 0
+    daily_token_budget: int = 0
+    tokens_remaining: Optional[int] = None
+    messages_last_hour: int = 0
+    hourly_message_limit: int = 0
+    sandbox_runs_today: int = 0
+    sandbox_daily_limit: int = 0
+    job_hourly_limit: int = 0
+    storage_limit_mb: int = 0
 
 
 class AdminPasswordResetRequest(BaseModel):
     new_password: str = Field(min_length=1, max_length=200)
+
+
+class SourceUsageOut(BaseModel):
+    """Token spend aggregated per (source, model) — cost attribution."""
+    source: str
+    model: str
+    calls: int
+    tokens: int
 
 
 # ---------- Files ----------

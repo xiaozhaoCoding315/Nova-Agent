@@ -10,6 +10,12 @@ from app.core.tools.base import ToolBusinessError, ToolDefinition
 
 logger = structlog.get_logger()
 
+# Pseudo-capability attached to MCP tools whose server is explicitly opened
+# to all users ("admin_only": false); tells the policy engine to skip the
+# global admin gate. Operators cannot inject it — config caps are validated
+# against KNOWN_CAPABILITIES before this is appended.
+OPEN_TO_USERS_CAP = "mcp.open"
+
 
 @dataclass(frozen=True)
 class MCPToolInfo:
@@ -19,7 +25,12 @@ class MCPToolInfo:
     description: str
     schema: dict
     capabilities: list[str]
-    admin_only: bool
+    admin_only: bool | None
+
+
+def server_admin_only_for(info: MCPToolInfo) -> bool | None:
+    """Server-level override wins over the global MCP_ADMIN_ONLY default."""
+    return settings.mcp_admin_only if info.admin_only is None else info.admin_only
 
 
 class MCPManager:
@@ -104,9 +115,11 @@ class MCPManager:
         definitions: list[ToolDefinition] = []
         for info in self._tools:
             async def _call(args: dict, ctx, _info: MCPToolInfo = info) -> dict:
-                if (settings.mcp_admin_only or _info.admin_only) and \
-                        (ctx.user or {}).get("role") != "admin":
+                is_admin = (ctx.user or {}).get("role") == "admin"
+                if server_admin_only_for(_info) and not is_admin:
                     raise ToolBusinessError("MCP 工具仅管理员可用")
+                if not is_admin and "secrets.read" in _info.capabilities:
+                    raise ToolBusinessError("该 MCP 工具涉及敏感凭据，仅管理员可用")
                 try:
                     result = await self.call(_info.server, _info.name, args)
                 except MCPError as exc:
@@ -115,13 +128,17 @@ class MCPManager:
                     raise ToolBusinessError(result.get("text") or "MCP 工具返回错误")
                 return result
 
+            opened = server_admin_only_for(info) is False
             definitions.append(ToolDefinition(
                 name=info.exposed_name,
                 description=f"[MCP:{info.server}] {info.description}",
                 parameters=info.schema,
                 func=_call,
                 category="execute",
-                capabilities=info.capabilities,
+                capabilities=(
+                    [*info.capabilities, OPEN_TO_USERS_CAP] if opened
+                    else list(info.capabilities)
+                ),
                 timeout=settings.mcp_timeout,
             ))
         return definitions

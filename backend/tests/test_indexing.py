@@ -1,6 +1,5 @@
 """Indexing unit tests: chunker line numbers, symbol extraction, zip safety."""
 import zipfile
-from pathlib import Path
 
 import pytest
 

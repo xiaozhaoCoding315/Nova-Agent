@@ -24,12 +24,23 @@ async def record(session_id: str, turn_id: str, kind: str, payload: dict | None 
         logger.warning("trace_record_failed", kind=kind, error=str(exc))
 
 
-async def list_events(session_id: str, limit: int = 500) -> list[dict]:
+async def list_events(
+    session_id: str, limit: int = 500, user_id: int | None = None
+) -> list[dict]:
     from app.db import query
+    owner = ""
+    params: list = []
+    if user_id is not None:
+        owner = (
+            "AND EXISTS (SELECT 1 FROM sessions s "
+            "WHERE s.id = trace_events.session_id AND s.user_id = %s)"
+        )
+        params.append(user_id)
+    params.extend([session_id, limit])
     rows = await query(
         "SELECT id, turn_id, kind, payload, created_at FROM trace_events "
-        "WHERE session_id = %s ORDER BY id ASC LIMIT %s",
-        (session_id, limit),
+        f"WHERE session_id = %s {owner} ORDER BY id ASC LIMIT %s",
+        tuple(params),
     )
     return [
         {

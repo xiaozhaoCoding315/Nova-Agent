@@ -8,6 +8,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchAny,
+    MatchValue,
     PointStruct,
     VectorParams,
 )
@@ -24,10 +25,14 @@ def get_client() -> QdrantClient:
     return _client
 
 
-def repo_filter(repo_ids: list[str] | None) -> Filter | None:
+def repo_filter(repo_ids: list[str] | None, user_id: int | None = None) -> Filter | None:
+    """Filter by repo ids, optionally also by owner for defense in depth."""
     if not repo_ids:
         return None
-    return Filter(must=[FieldCondition(key="repo_id", match=MatchAny(any=repo_ids))])
+    must = [FieldCondition(key="repo_id", match=MatchAny(any=repo_ids))]
+    if user_id is not None:
+        must.append(FieldCondition(key="user_id", match=MatchValue(value=user_id)))
+    return Filter(must=must)
 
 
 async def ensure_collection() -> str:

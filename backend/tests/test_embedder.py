@@ -1,4 +1,3 @@
-import pytest
 from app.core.embedding.embedder import Embedder, get_embedder
 
 
@@ -16,6 +15,5 @@ def test_embedder_returns_correct_dimensions():
 
 def test_factory_returns_embedder():
     # Will fail until factory is implemented
-    from app.core.embedding.embedder import get_embedder
     e = get_embedder()
     assert e is not None

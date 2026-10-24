@@ -15,12 +15,19 @@ def _search_sync(
     query: str,
     top_k: int,
     repo_ids: list[str] | None,
+    user_id: int | None = None,
 ) -> list[tuple]:
     repo_clause = ""
     repo_params: list = []
     if repo_ids:
         repo_clause = "AND c.repo_id = ANY(%s::uuid[])"
         repo_params = [repo_ids]
+    if user_id is not None:
+        repo_clause += (
+            " AND EXISTS (SELECT 1 FROM repos r "
+            "WHERE r.id = c.repo_id AND r.user_id = %s)"
+        )
+        repo_params.append(user_id)
 
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -53,12 +60,13 @@ async def keyword_search(
     query: str,
     top_k: int = 10,
     repo_ids: list[str] | None = None,
+    user_id: int | None = None,
 ) -> list[RetrievedChunk]:
     if not repo_ids:
         return []
     tsquery = make_tsquery(query)
     rows = await asyncio.to_thread(
-        _search_sync, settings.postgres_dsn, tsquery, query, top_k, repo_ids
+        _search_sync, settings.postgres_dsn, tsquery, query, top_k, repo_ids, user_id
     )
     return [
         RetrievedChunk(

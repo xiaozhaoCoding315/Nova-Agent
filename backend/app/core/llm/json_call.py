@@ -40,9 +40,11 @@ async def _collect(stream, parts: list[str]) -> tuple[str, dict | None]:
     return "".join(parts), usage
 
 
-async def _ask(prompt: str, timeout: int, user_id: int | None = None) -> tuple[str, dict | None]:
+async def _ask(
+    prompt: str, timeout: int, user_id: int | None = None, purpose: str | None = None
+) -> tuple[str, dict | None]:
     messages = [{"role": "user", "content": prompt}]
-    llm = await get_llm(user_id)
+    llm = await get_llm(user_id, purpose=purpose)
 
     # Prefer function-calling stream because it carries real token usage.
     # Degrade to plain text for providers that reject tools or extra_body.
@@ -73,16 +75,18 @@ async def llm_json(
     user_id: int | None = None,
     session_id: str | None = None,
     source: str = "json",
+    purpose: str | None = None,
 ) -> dict:
     timeout = timeout or settings.task_llm_timeout
 
-    text, usage = await _ask(prompt, timeout, user_id)
+    text, usage = await _ask(prompt, timeout, user_id, purpose)
     await record_usage(user_id, session_id, usage, source=source)
     data = extract_json(text)
 
     if data is None and attempts > 1:
         text, usage = await _ask(
-            prompt + "\n\n注意：只输出合法 JSON，不要任何解释文字。", timeout, user_id
+            prompt + "\n\n注意：只输出合法 JSON，不要任何解释文字。",
+            timeout, user_id, purpose,
         )
         await record_usage(user_id, session_id, usage, source=source)
         data = extract_json(text)

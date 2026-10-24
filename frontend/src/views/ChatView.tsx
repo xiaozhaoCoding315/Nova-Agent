@@ -38,7 +38,7 @@ export function ChatView({
     sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
     permissionMode, setPermissionMode, model, setModel, selectedRepoIds, toggleRepo,
     attachments, uploading, uploadAttachment, removeAttachment,
-    send, stop, clearError,
+    send, stop, clearError, streamUsage,
   } = useChat()
   const { repos, refresh } = useRepos()
   const { settings: llmSettings } = useLlm()
@@ -167,7 +167,7 @@ export function ChatView({
               <MessageBubble key={message.id} message={message} />
             ))}
             {streaming && (
-              <StreamingBubble text={streamText} toolCards={toolCards} editProposals={streamEdits} />
+              <StreamingBubble text={streamText} toolCards={toolCards} editProposals={streamEdits} usage={streamUsage} />
             )}
           </div>
         </div>

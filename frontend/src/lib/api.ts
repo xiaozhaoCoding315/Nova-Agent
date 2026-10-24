@@ -1,8 +1,9 @@
 import type {
-  AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem,
-  ContractStatus, Deployment, EditRecord, FileAttachment, FileList, FileNode, GitInfo, Health,
-  Impact, Job, LlmSettings, LlmSettingsInput, LlmTestResult, Memory, Message, Metrics,
-  RegisterResult, Repo, Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
+  Change, ChangeListItem, ContractStatus, Deployment, EditRecord, FileAttachment, FileList,
+  FileNode, GitInfo, Health, Impact, Job, LlmSettings, LlmSettingsInput, LlmTestResult, Memory,
+  Message, Metrics, RegisterResult, Repo, Review, SelfQuota, Session, Task, TaskListItem,
+  TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -63,14 +64,27 @@ export const api = {
 
   admin: {
     users: () => request<AdminUser[]>('/admin/users'),
+    usageSources: (days = 7) =>
+      request<{ source: string; model: string; calls: number; tokens: number }[]>(
+        `/admin/usage/sources?days=${days}`,
+      ),
     createUser: (username: string, password: string, displayName?: string, role: 'admin' | 'demo' = 'demo') =>
       request<User>('/admin/users', json({ username, password, display_name: displayName || null, role })),
-    updateUser: (id: number, patch: { status?: 'active' | 'disabled'; role?: 'admin' | 'demo'; display_name?: string }) =>
+    updateUser: (id: number, patch: AdminQuotaPatch) =>
       request<User>(`/admin/users/${id}`, { ...json(patch), method: 'PATCH' }),
     resetPassword: (id: number, newPassword: string) =>
       request<{ ok: boolean }>(`/admin/users/${id}/password`, json({ new_password: newPassword })),
     removeUser: (id: number) =>
       request<{ ok: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
+  },
+
+  quota: {
+    get: () => request<SelfQuota>('/settings/quota'),
+    update: (values: {
+      self_daily_tokens?: number | null
+      self_hourly_messages?: number | null
+      self_sandbox_daily?: number | null
+    }) => request<SelfQuota>('/settings/quota', { ...json(values), method: 'PUT' }),
   },
 
   sessions: {

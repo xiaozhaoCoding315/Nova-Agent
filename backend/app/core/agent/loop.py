@@ -93,7 +93,7 @@ async def run_chat(
     retrieval_started = time.perf_counter()
     try:
         hits = await asyncio.wait_for(
-            retrieve(user_message, top_k=8, repo_ids=repo_ids),
+            retrieve(user_message, top_k=8, repo_ids=repo_ids, user_id=user["id"]),
             timeout=TIMEOUTS.retrieval_timeout + 5,
         )
     except Exception as exc:  # noqa: BLE001
@@ -123,7 +123,8 @@ async def run_chat(
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history = await session_mod.recent_messages(
-        session["id"], after_id=int(session.get("summary_upto_id") or 0)
+        session["id"], after_id=int(session.get("summary_upto_id") or 0),
+        user_id=user["id"],
     )
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
@@ -152,6 +153,13 @@ async def run_chat(
             "\n\n本轮用户上传了附件：\n" + "\n".join(lines)
             + "\n如需读取附件内容，请调用 read_uploaded_file 工具，不要臆测内容。"
         )
+    try:
+        from app.core.skills import build_skill_prompt
+        skill_prompt = build_skill_prompt(user_message)
+        if skill_prompt:
+            system_content += f"\n\n{skill_prompt}"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("skills_inject_failed", error=str(exc))
     messages: list[dict] = [
         {"role": "system", "content": system_content},
         *history,
@@ -205,6 +213,10 @@ async def run_chat(
         tool_json: dict | None = None
         if tools_used or final_text:
             tool_json = {"tools_used": tools_used}
+            # Per-call details so historical messages can render the same
+            # collapsible tool cards seen while streaming.
+            if tool_events:
+                tool_json["tool_events"] = tool_events[-40:]
             if edits:
                 tool_json["edits"] = edits
             if final_text:
@@ -237,7 +249,9 @@ async def run_chat(
 
             if is_running():
                 upto_id = int(session.get("summary_upto_id") or 0)
-                pending = await session_mod.count_messages_since(session["id"], upto_id)
+                pending = await session_mod.count_messages_since(
+                    session["id"], upto_id, user_id=user["id"]
+                )
                 if pending >= SUMMARY_BATCH:
                     await enqueue_session_summary(session["id"], user["id"])
         except Exception as exc:  # noqa: BLE001
@@ -333,11 +347,13 @@ async def run_chat(
                     "name": name,
                     "ok": bool(result["ok"]),
                     "ms": int(result.get("ms") or 0),
+                    "round": round_no,
                     "command": redact_text(output.get("command")) if isinstance(output, dict) else None,
                     "exit_code": output.get("exit_code") if isinstance(output, dict) else None,
                     "timed_out": bool(output.get("timed_out")) if isinstance(output, dict) else False,
                     "args": redact_obj(_args_summary(args)),
                     "error": redact_text(result.get("error")) if not result["ok"] else None,
+                    "preview": _result_preview(result),
                 })
                 if isinstance(output, dict) and output.get("edit_id"):
                     edit_entry = {

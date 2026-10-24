@@ -10,10 +10,26 @@ from app.core.security.auth import hash_password, verify_password
 from app.db import execute, query
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,32}$")
+# Per-user quota overrides set by admins (quota_*) and self-imposed budgets
+# (self_*).  NULL = inherit the role-tier default; 0 = unlimited.
+QUOTA_COLUMNS = (
+    "quota_daily_tokens, quota_hourly_messages, quota_sandbox_daily, "
+    "quota_job_hourly, quota_storage_mb, "
+    "self_daily_tokens, self_hourly_messages, self_sandbox_daily"
+)
 USER_COLUMNS = (
     "id, username, display_name, role, status, is_guest, expires_at, "
-    "token_version, created_at"
+    f"token_version, created_at, {QUOTA_COLUMNS}"
 )
+
+
+def validate_quota_value(value: int, field: str) -> int:
+    value = int(value)
+    if value < 0:
+        raise ValueError(f"{field} 不能为负数（0 表示不限，留空表示跟随默认档）")
+    if value > 2_000_000_000:
+        raise ValueError(f"{field} 数值过大")
+    return value
 
 
 def validate_username(username: str) -> str:
@@ -33,7 +49,7 @@ def validate_password(password: str) -> str:
 
 
 def user_from_row(row: tuple) -> dict:
-    return {
+    user = {
         "id": row[0],
         "username": row[1],
         "display_name": row[2] or row[1],
@@ -44,6 +60,16 @@ def user_from_row(row: tuple) -> dict:
         "token_version": int(row[7] or 0),
         "created_at": row[8],
     }
+    # Quota columns are appended after the core nine; tolerate shorter rows
+    # from older callers/tests that only select the core columns.
+    quota_keys = (
+        "quota_daily_tokens", "quota_hourly_messages", "quota_sandbox_daily",
+        "quota_job_hourly", "quota_storage_mb",
+        "self_daily_tokens", "self_hourly_messages", "self_sandbox_daily",
+    )
+    for i, key in enumerate(quota_keys):
+        user[key] = row[9 + i] if len(row) > 9 + i else None
+    return user
 
 
 def is_expired(user: dict) -> bool:
@@ -200,9 +226,10 @@ async def list_users(limit: int = 200) -> list[dict]:
 
 async def list_users_with_usage(limit: int = 200) -> list[dict]:
     rows = await query(
-        """
+        f"""
         SELECT u.id, u.username, u.display_name, u.role, u.status, u.is_guest,
-               u.expires_at, u.token_version, u.created_at, u.last_login_at,
+               u.expires_at, u.token_version, u.created_at, {QUOTA_COLUMNS},
+               u.last_login_at,
                (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id),
                (SELECT COUNT(*) FROM repos r WHERE r.user_id = u.id),
                (SELECT COUNT(*) FROM user_files f WHERE f.user_id = u.id),
@@ -217,14 +244,14 @@ async def list_users_with_usage(limit: int = 200) -> list[dict]:
     )
     result = []
     for row in rows:
-        user = user_from_row(row[:9])
+        user = user_from_row(row[:9] + tuple(row[9:17]))
         user.update({
-            "last_login_at": row[9],
-            "sessions": int(row[10] or 0),
-            "repos": int(row[11] or 0),
-            "files": int(row[12] or 0),
-            "storage_bytes": int(row[13] or 0),
-            "tokens_total": int(row[14] or 0),
+            "last_login_at": row[17],
+            "sessions": int(row[18] or 0),
+            "repos": int(row[19] or 0),
+            "files": int(row[20] or 0),
+            "storage_bytes": int(row[21] or 0),
+            "tokens_total": int(row[22] or 0),
         })
         result.append(user)
     return result
@@ -236,6 +263,7 @@ async def admin_set_user_fields(
     status: str | None = None,
     role: str | None = None,
     display_name: str | None = None,
+    quotas: dict[str, int | None] | None = None,
 ) -> dict:
     sets: list[str] = []
     params: list = []
@@ -255,10 +283,43 @@ async def admin_set_user_fields(
             raise ValueError("显示名需为 1-80 个字符")
         sets.append("display_name = %s")
         params.append(display)
+    for field, value in (quotas or {}).items():
+        if value is not None:
+            value = validate_quota_value(value, field)
+        sets.append(f"{field} = %s")
+        params.append(value)
     if not sets:
         raise ValueError("没有需要修改的字段")
     if status is not None or role is not None:
         sets.append("token_version = token_version + 1")
+    params.append(user_id)
+    rows = await execute(
+        f"UPDATE users SET {', '.join(sets)} WHERE id = %s RETURNING {USER_COLUMNS}",
+        tuple(params),
+    )
+    if not rows:
+        raise ValueError("账号不存在")
+    return user_from_row(rows[0])
+
+
+SELF_QUOTA_FIELDS = ("self_daily_tokens", "self_hourly_messages", "self_sandbox_daily")
+
+
+async def set_self_quota(user_id: int, values: dict[str, int | None]) -> dict:
+    """Update the user's own budget caps. Self caps only tighten, never raise,
+    the effective limit (enforced at resolution time in limits.py)."""
+    sets: list[str] = []
+    params: list = []
+    for field in SELF_QUOTA_FIELDS:
+        if field not in values:
+            continue
+        value = values[field]
+        if value is not None:
+            value = validate_quota_value(value, field)
+        sets.append(f"{field} = %s")
+        params.append(value)
+    if not sets:
+        raise ValueError("没有需要修改的额度字段")
     params.append(user_id)
     rows = await execute(
         f"UPDATE users SET {', '.join(sets)} WHERE id = %s RETURNING {USER_COLUMNS}",

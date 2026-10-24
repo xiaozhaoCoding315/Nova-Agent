@@ -56,7 +56,9 @@ async def maybe_summarize(
         return 0
     previous, upto_id = rows
 
-    pending = await session_mod.messages_after(session_id, int(upto_id or 0))
+    pending = await session_mod.messages_after(
+        session_id, int(upto_id or 0), user_id=user_id
+    )
     if len(pending) < SUMMARY_BATCH:
         return 0
     if ctx:
@@ -84,7 +86,7 @@ async def maybe_summarize(
             timeout=settings.llm_timeout,
             user_id=user_id,
             session_id=session_id,
-            source="memory",
+            source="memory", purpose="utility",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("session_summary_failed", session=session_id, error=str(exc))

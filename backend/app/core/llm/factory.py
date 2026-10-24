@@ -95,19 +95,36 @@ def server_default_model() -> str | None:
     return None
 
 
-def _server_llm() -> LLMProvider:
+def _server_llm(model_override: str | None = None) -> LLMProvider:
+    """Build the shared server-key chain.
+
+    With ``model_override`` (purpose routing) the first provider that has a
+    key is used directly with that model name — routed models are provider
+    specific, so cross-provider fallback does not apply.
+    """
     providers = []
     for name in settings.llm_priority_list:
         name = name.lower()
         if name == "longcat" and settings.longcat_api_key:
+            if model_override:
+                return OpenAICompatibleLLM(
+                    settings.longcat_api_key, settings.longcat_base_url, model_override)
             providers.append(OpenAICompatibleLLM(
                 settings.longcat_api_key, settings.longcat_base_url, settings.longcat_model))
         elif name == "deepseek" and settings.deepseek_api_key:
+            if model_override:
+                return OpenAICompatibleLLM(
+                    settings.deepseek_api_key,
+                    "https://api.deepseek.com/v1", model_override)
             providers.append(OpenAICompatibleLLM(
                 settings.deepseek_api_key,
                 "https://api.deepseek.com/v1",
                 "deepseek-chat"))
         elif name == "dashscope" and settings.dashscope_api_key:
+            if model_override:
+                return OpenAICompatibleLLM(
+                    settings.dashscope_api_key,
+                    settings.dashscope_base_url, model_override)
             providers.append(OpenAICompatibleLLM(
                 settings.dashscope_api_key,
                 settings.dashscope_base_url,
@@ -118,12 +135,27 @@ def _server_llm() -> LLMProvider:
     return FallbackLLM(providers)
 
 
-async def get_llm(user_id: int | None = None, model: str | None = None) -> LLMProvider:
+def route_model_for(purpose: str | None) -> str | None:
+    """Configured model override for a purpose, if any."""
+    if purpose == "plan":
+        return settings.llm_route_plan or None
+    if purpose == "utility":
+        return settings.llm_route_utility or None
+    return None
+
+
+async def get_llm(
+    user_id: int | None = None,
+    model: str | None = None,
+    purpose: str | None = None,
+) -> LLMProvider:
     """Resolve the provider for one call.
 
     A user-saved key takes precedence and is used exclusively, so a bad personal
-    config never silently spends the server owner's quota. Without one, the
-    shared env-key chain is used unless the deployment disables that fallback.
+    config never silently spends the server owner's quota — and purpose routing
+    never overrides a BYOK user's own model choice. Without a personal key, the
+    shared env-key chain is used (routed by purpose when configured) unless the
+    deployment disables that fallback.
     """
     if user_id is not None:
         config = await get_user_config(user_id)
@@ -135,4 +167,4 @@ async def get_llm(user_id: int | None = None, model: str | None = None) -> LLMPr
 
     if not settings.llm_allow_server_fallback:
         raise RuntimeError("尚未配置个人模型 API Key，且服务端未开放共享模型")
-    return _server_llm()
+    return _server_llm(model_override=route_model_for(purpose))

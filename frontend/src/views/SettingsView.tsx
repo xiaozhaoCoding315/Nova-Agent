@@ -9,7 +9,7 @@ import { AdminUsersPanel } from '../components/AdminUsersPanel'
 import { FilesPanel } from '../components/FilesPanel'
 import { Badge, Button, Modal, Spinner, StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { Health, LlmSettings, Memory, Metrics, Usage } from '../lib/types'
+import type { Health, LlmSettings, Memory, Metrics, SelfQuota, Usage } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { useLlm } from '../stores/llm'
 
@@ -78,6 +78,81 @@ function MetricTile({ label, value, hint }: { label: string; value: string; hint
       <p className="text-[10px] uppercase tracking-wide text-dim">{label}</p>
       <p className="mt-1 text-[18px] font-semibold tabular-nums">{value}</p>
       {hint && <p className="mt-0.5 text-[10px] text-dim/70">{hint}</p>}
+    </div>
+  )
+}
+
+const BUDGET_FIELDS = [
+  { key: 'self_daily_tokens', label: '每日 token 预算', hint: '如 50000' },
+  { key: 'self_hourly_messages', label: '每小时消息数', hint: '如 20' },
+  { key: 'self_sandbox_daily', label: '每日沙箱执行', hint: '如 10' },
+] as const
+
+function SelfBudgetEditor({ quota, onSaved }: { quota: SelfQuota; onSaved: (q: SelfQuota) => void }) {
+  const [form, setForm] = useState<Record<string, string>>(() => Object.fromEntries(
+    BUDGET_FIELDS.map(({ key }) => [key, quota[key] == null ? '' : String(quota[key])]),
+  ))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    const values: Record<string, number | null> = {}
+    for (const { key } of BUDGET_FIELDS) {
+      const raw = (form[key] ?? '').trim()
+      if (raw === '') {
+        values[key] = null
+        continue
+      }
+      const value = Number(raw)
+      if (!Number.isInteger(value) || value < 0) {
+        setError('预算需为非负整数（留空表示不额外限制）')
+        setBusy(false)
+        return
+      }
+      values[key] = value
+    }
+    try {
+      const updated = await api.quota.update(values)
+      onSaved(updated)
+      setNotice('个人预算已更新')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-edge/70 bg-base/30 p-3">
+      <p className="text-[12px] text-ink">个人预算（自我约束）</p>
+      <p className="mt-0.5 text-[10.5px] leading-relaxed text-dim/80">
+        只会在管理员给你的上限之内进一步收紧，用于自我控制用量；留空表示不额外限制。
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        {BUDGET_FIELDS.map(({ key, label, hint }) => (
+          <label key={key} className="space-y-1">
+            <span className="text-[11px] text-dim">{label}</span>
+            <input
+              value={form[key] ?? ''}
+              onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+              placeholder={hint}
+              inputMode="numeric"
+              className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none transition-colors focus:border-accent/60"
+            />
+          </label>
+        ))}
+      </div>
+      {error && <p className="mt-2 text-[11.5px] text-err">{error}</p>}
+      {notice && <p className="mt-2 text-[11.5px] text-ok">{notice}</p>}
+      <div className="mt-3 flex justify-end">
+        <Button size="sm" variant="primary" onClick={() => void save()} disabled={busy}>
+          {busy && <Spinner />} 保存预算
+        </Button>
+      </div>
     </div>
   )
 }
@@ -373,6 +448,7 @@ export function SettingsView() {
   const [section, setSection] = useState<SectionKey>('model')
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
+  const [selfQuota, setSelfQuota] = useState<SelfQuota | null>(null)
   const [memory, setMemory] = useState<Memory | null>(null)
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [metricsDays, setMetricsDays] = useState(7)
@@ -382,14 +458,16 @@ export function SettingsView() {
   const load = async () => {
     setLoading(true)
     try {
-      const [h, u, m, mt] = await Promise.all([
+      const [h, u, sq, m, mt] = await Promise.all([
         api.status.health(),
         api.status.usage(),
+        api.quota.get(),
         api.memory.get(),
         api.status.metrics(metricsDays),
       ])
       setHealth(h)
       setUsage(u)
+      setSelfQuota(sq)
       setMemory(m)
       setMetrics(mt)
       setError(null)
@@ -516,8 +594,17 @@ export function SettingsView() {
               ) : (
                 <p className="flex items-center gap-2 text-[12px] text-dim">{loading && <Spinner />} 加载中…</p>
               )}
+              {selfQuota && (
+                <SelfBudgetEditor
+                  quota={selfQuota}
+                  onSaved={(updated) => {
+                    setSelfQuota(updated)
+                    void load()
+                  }}
+                />
+              )}
               <p className="mt-2 text-[10.5px] leading-relaxed text-dim/70">
-                使用个人密钥时仍会记录 token 用量与配额，便于审计；计费由你的服务商账户承担。
+                使用个人密钥时仍会记录 token 用量与配额，便于审计；计费由你的服务商账户承担。管理员可在用户管理里为每个账号单独配置上限。
               </p>
             </section>
           )}

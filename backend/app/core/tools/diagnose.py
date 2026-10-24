@@ -119,7 +119,7 @@ async def diagnose_error(args: dict, ctx: ToolContext) -> dict:
     query = " ".join(x for x in (parsed["error_type"], parsed["message"]) if x) or stack[:200]
     snippets = []
     try:
-        hits = await retrieve(query, top_k=5, repo_ids=repo_ids)
+        hits = await retrieve(query, top_k=5, repo_ids=repo_ids, user_id=ctx.user["id"])
         snippets = [
             {
                 "path": h.path,

@@ -16,6 +16,37 @@ export type AdminUser = User & {
   files: number
   storage_bytes: number
   tokens_total: number
+  quota_daily_tokens?: number | null
+  quota_hourly_messages?: number | null
+  quota_sandbox_daily?: number | null
+  quota_job_hourly?: number | null
+  quota_storage_mb?: number | null
+}
+
+export type AdminQuotaPatch = {
+  status?: 'active' | 'disabled'
+  role?: 'admin' | 'demo'
+  display_name?: string
+  quota_daily_tokens?: number | null
+  quota_hourly_messages?: number | null
+  quota_sandbox_daily?: number | null
+  quota_job_hourly?: number | null
+  quota_storage_mb?: number | null
+}
+
+export type SelfQuota = {
+  self_daily_tokens?: number | null
+  self_hourly_messages?: number | null
+  self_sandbox_daily?: number | null
+  today_tokens: number
+  daily_token_budget: number
+  tokens_remaining: number | null
+  messages_last_hour: number
+  hourly_message_limit: number
+  sandbox_runs_today: number
+  sandbox_daily_limit: number
+  job_hourly_limit: number
+  storage_limit_mb: number
 }
 
 export type AuthConfig = {
@@ -127,12 +158,26 @@ export type Message = {
   content: string
   tool_json?: {
     tools_used?: string[]
+    tool_events?: ToolEvent[]
     evidence?: Evidence
     edits?: EditRef[]
     report?: DeliveryReport
   } | null
   attachments?: FileAttachment[]
   created_at?: string
+}
+
+export type ToolEvent = {
+  name: string
+  ok: boolean
+  ms: number
+  round?: number
+  command?: string | null
+  exit_code?: number | null
+  timed_out?: boolean
+  args?: Record<string, unknown>
+  error?: string | null
+  preview?: string | null
 }
 
 export type Citation = {
@@ -586,4 +631,13 @@ export type Deployment = {
 export type StreamToolCard = {
   call: ToolCall
   result?: ToolResult
+  command?: string | null
+  exit_code?: number | null
+  timedOut?: boolean
+}
+
+export type StreamUsage = {
+  model?: string
+  prompt_tokens: number
+  completion_tokens: number
 }

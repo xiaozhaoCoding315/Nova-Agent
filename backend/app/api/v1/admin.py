@@ -1,5 +1,5 @@
 """Admin user management."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.security.accounts import (
     admin_delete_user,
@@ -10,16 +10,41 @@ from app.core.security.accounts import (
 )
 from app.core.security.audit import log_audit
 from app.core.security.auth import require_admin
+from app.db import query
 from app.models.schemas import (
     AdminPasswordResetRequest,
     AdminUserCreateRequest,
     AdminUserOut,
     AdminUserUpdateRequest,
     OkOut,
+    SourceUsageOut,
     UserOut,
 )
 
 router = APIRouter()
+
+
+@router.get("/admin/usage/sources", response_model=list[SourceUsageOut])
+async def admin_usage_sources(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_admin),
+):
+    """Token spend grouped by call source and model for cost attribution."""
+    rows = await query(
+        """
+        SELECT source, COALESCE(model, ''), COUNT(*),
+               COALESCE(SUM(prompt_tokens + completion_tokens), 0)
+        FROM usage_log
+        WHERE created_at >= now() - (%s * interval '1 day')
+        GROUP BY source, COALESCE(model, '')
+        ORDER BY 4 DESC
+        """,
+        (days,),
+    )
+    return [
+        SourceUsageOut(source=r[0], model=r[1], calls=int(r[2]), tokens=int(r[3]))
+        for r in rows
+    ]
 
 
 @router.get("/admin/users", response_model=list[AdminUserOut])
@@ -43,7 +68,7 @@ async def admin_create_user(body: AdminUserCreateRequest, user: dict = Depends(r
     return created
 
 
-@router.patch("/admin/users/{user_id}", response_model=UserOut)
+@router.patch("/admin/users/{user_id}", response_model=AdminUserOut)
 async def admin_update_user(
     user_id: int,
     body: AdminUserUpdateRequest,
@@ -53,17 +78,25 @@ async def admin_update_user(
         body.status == "disabled" or body.role == "demo"
     ):
         raise HTTPException(status_code=400, detail="不能禁用或降级当前登录的管理员")
+    quota_keys = (
+        "quota_daily_tokens", "quota_hourly_messages", "quota_sandbox_daily",
+        "quota_job_hourly", "quota_storage_mb",
+    )
+    sent = body.model_fields_set
+    quotas = {key: getattr(body, key) for key in quota_keys if key in sent}
     try:
         updated = await admin_set_user_fields(
             user_id,
             status=body.status,
             role=body.role,
             display_name=body.display_name,
+            quotas=quotas,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     await log_audit("admin_user_update", user_id=str(user["id"]),
-                    details={"target": user_id, "status": body.status, "role": body.role},
+                    details={"target": user_id, "status": body.status, "role": body.role,
+                             **{f"quota:{k}": v for k, v in quotas.items()}},
                     risk_level="warn")
     return updated
 

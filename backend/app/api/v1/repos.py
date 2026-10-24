@@ -218,7 +218,7 @@ async def search_in_repo(
 
     check_search_quota(user)
     symbols = await search_symbols(q, [repo_id], limit=8)
-    hits = await retrieve(q, top_k=8, repo_ids=[repo_id])
+    hits = await retrieve(q, top_k=8, repo_ids=[repo_id], user_id=user["id"])
     return {
         "symbols": symbols,
         "hits": [

@@ -14,6 +14,7 @@ async def dense_search(
     query: str,
     top_k: int = 10,
     repo_ids: list[str] | None = None,
+    user_id: int | None = None,
 ) -> list[RetrievedChunk]:
     if not repo_ids:
         return []
@@ -26,7 +27,7 @@ async def dense_search(
         settings.qdrant_collection,
         query=vector,
         limit=top_k,
-        query_filter=repo_filter(repo_ids),
+        query_filter=repo_filter(repo_ids, user_id=user_id),
         with_payload=True,
     )
     points = resp.points if hasattr(resp, "points") else resp.result.points

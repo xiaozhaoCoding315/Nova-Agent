@@ -16,6 +16,9 @@
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
 | **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / 自定义兼容端点）、填写自己的 API Key 和模型；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
+| **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
+| **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（SPEC/计划/审查/Builder/任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
+| **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
 | **多用户账号** | 开放注册 / 邀请码 / 关闭注册三种模式；注册后生成一次性恢复码；支持个人资料、改密与 token 失效；管理员可建号、禁用、重置密码、删除账号。 |
 | **游客体验** | 一键创建 24 小时独立游客账号，拥有自己的会话与文件；到期由小时级维护任务自动清理；有独立的消息、token、沙箱与存储额度。 |
 | **项目化对话历史** | 会话归属到项目（`session_repos` + primary project）；左侧栏可按项目筛选历史，新建对话自动继承当前项目。 |
@@ -39,7 +42,7 @@
 
 ## 多用户与数据隔离
 
-- **账号**：`REGISTRATION_MODE=open|invite|closed` 控制自助注册；登录后所有 API 都按 `user_id` 过滤。
+- **账号**：`REGISTRATION_MODE=open|invite|closed` 控制自助注册；登录后所有 API 都按 `user_id` 过滤；消息/轨迹读取在 SQL 层也强制 owner（JOIN sessions），RAG 检索在 Qdrant 与 PG 两路都带 `user_id` 过滤（纵深防御）。
 - **项目**：每个仓库只属于一个用户；会话通过 `session_repos` 关联项目；项目不可共享。
 - **文件**：仓库移动到 `data/users/<user_id>/repos/<repo_id>`，聊天附件在 `data/users/<user_id>/uploads/`；下载/删除都校验 owner。
 - **检索**：RAG 必须带授权 repo_ids，没选仓库时 fail-closed 返回空；Qdrant payload 写入 `user_id`。
@@ -82,7 +85,7 @@
 
 ### Agent 循环 + Function-Calling
 - **内置工具 + MCP**：11 个内置工具：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`run_code`（沙箱执行，可切换 builder 环境）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
-- 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染工具卡片（入参 / 结果 / 耗时）
+- 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
 - 每轮结束生成确定性交付报告（命令/退出码/改动/引用/未验证项），随消息持久化，不靠模型自述"完成了"
@@ -177,7 +180,9 @@ npm run dev                   # http://localhost:5173
 | `SANDBOX_BUILDER_IMAGE` / `SANDBOX_NODE_IMAGE` | Python 验证镜像 / Node 验证镜像（默认 nova-builder / nova-node） |
 | `TOOL_PRE_HOOK` / `TOOL_POST_HOOK` | 可选工具 Hook 命令；pre-hook 收到 JSON stdin，退出码 2 阻断工具 |
 | `MCP_ENABLED` / `MCP_CONFIG_PATH` | MCP 开关 / server allowlist 配置文件路径 |
-| `MCP_ADMIN_ONLY` / `MCP_SERVERS_JSON` | MCP 工具是否仅管理员 / 用内联 JSON 覆盖配置文件 |
+| `MCP_ADMIN_ONLY` / `MCP_SERVERS_JSON` | MCP 工具是否仅管理员 / 用内联 JSON 覆盖配置文件；单个 server 可写 `"admin_only": false` 显式开放给所有用户（`secrets.read` 能力仍对非管理员拒绝） |
+| `LLM_ROUTE_PLAN` / `LLM_ROUTE_UTILITY` | 服务端共享 Key 的按用途模型路由：规划/审查/生成用强模型，摘要/事实抽取用小模型（对 BYOK 用户不生效）；模型名需兼容 `LLM_MODEL_PRIORITY` 中第一个有 Key 的服务商 |
+| `SKILLS_ENABLED` / `SKILLS_DIR` | 技能系统开关 / 技能目录（`<dir>/<技能名>/SKILL.md`） |
 | `PREVIEW_TTL_MINUTES` | 运行中预览自动下线时间（默认 120，0 = 不自动回收） |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
 | `USER_DATA_DIR` | 每用户仓库/附件根目录（默认 `data/users`） |
@@ -191,7 +196,9 @@ npm run dev                   # http://localhost:5173
 | `POST /api/v1/auth/login` `register` `guest` `logout` · `GET me` | 登录 / 注册 / 游客体验 / 登出 / 当前用户 |
 | `GET /api/v1/auth/config` | 注册模式、游客开关、邀请码要求 |
 | `PATCH /api/v1/auth/profile` · `POST /auth/password` · `/auth/password/reset` | 资料 / 改密 / 恢复码重置 |
-| `GET /api/v1/admin/users` · `POST /admin/users` · `PATCH/DELETE /admin/users/{id}` | 管理员用户列表（含用量/存储）/ 建号 / 禁用 / 删除 |
+| `GET /api/v1/admin/users` · `POST /admin/users` · `PATCH/DELETE /admin/users/{id}` | 管理员用户列表（含用量/存储/限额）/ 建号 / 禁用 / 删除；PATCH 支持按用户覆盖五维限额 |
+| `GET /api/v1/admin/usage/sources?days=7` | 按 来源×模型 聚合的 token 用量（成本归因） |
+| `GET /api/v1/settings/quota` · `PUT /api/v1/settings/quota` | 查看（含有效限额与今日用量）/ 更新个人预算（自我约束） |
 | `GET/POST /api/v1/chat/sessions` | 会话列表（支持 `?repo_id=` 按项目过滤）/ 新建 |
 | `PATCH /api/v1/chat/sessions/{id}` | 重命名会话 |
 | `GET /api/v1/chat/sessions/{id}/messages` | 历史消息（含附件元数据） |
@@ -313,9 +320,37 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 
 - 只有 `capabilities` 中显式声明的工具会被注册，暴露名为 `mcp__<server>__<tool>`
 - MCP 工具走同一能力策略：`readonly` 拦截写能力，密钥路径拒绝，危险命令拒绝
-- 默认 `MCP_ADMIN_ONLY=true`，demo 账号不可调用
+- 默认 `MCP_ADMIN_ONLY=true`；单个 server 写 `"admin_only": false` 可开放给所有用户，`secrets.read` 能力除外
 - 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
+
+## 技能系统（SKILL.md）
+
+把技能目录放到 `SKILLS_DIR`（默认 `data/skills`），每个技能一个子目录 + `SKILL.md`：
+
+```
+data/skills/release-check/SKILL.md
+```
+
+```markdown
+---
+name: release-check
+description: 发布前的检查清单与审批流程
+triggers:
+  - 发布
+  - 上线检查
+---
+
+# 发布检查手册
+
+1. 跑全量测试并确认退出码为 0
+2. 确认契约检查通过（contract:check）
+3. 人工批准后才允许写入仓库
+```
+
+- 每轮对话注入全部技能的「名称 + 描述」索引（≤30 个技能）
+- 用户消息点名 `/技能名` 或命中 `triggers` 关键词时，注入完整手册正文（渐进披露，最多 2 个，每个 ≤4000 字符）
+- 技能由部署操作员提供（目录不在用户上传路径内）；文件变更 30 秒内自动重载
 
 ## 预览部署
 
@@ -408,7 +443,7 @@ cd frontend && npm run contract:check
 - 账号角色仍只有 admin/demo；支持自助注册与游客，但没有邮箱验证、邮件找回、组织/团队共享；密码找回依赖一次性恢复码或管理员重置
 - 项目（仓库）严格私有，不支持多人共享；旧会话若历史上没有 repo_ids，迁移后不会自动获得项目归属
 - BYOK 每个用户同时保存一套服务商配置；模型选择按会话持久化，但仅在使用个人 Key 时生效；Embedding 仍使用服务端 DashScope Key，因此混合检索需要服务端配置 embedding
-- 配额分为 admin/demo/游客三档，尚未提供按用户自定义额度；存储配额按 `user_files` 统计，不计仓库索引文件
+- 配额默认按 admin/demo/游客三档环境变量，管理员可对单个用户覆盖五维限额（users 表 `quota_*` 列，空=继承档位、0=不限），用户可另设只收紧的个人预算；存储配额按 `user_files` 统计，不计仓库索引文件
 - 游客到期由小时级维护任务清理；注册/登录限流是进程内滑动窗口，重启后归零，多副本部署前需要改为 PG/Redis
 - 删除账号会清理该用户的仓库目录、附件、向量、预览容器/卷、用量与审计；删除仓库会停止预览并删除依赖卷
 - 2C2G 建议单 worker、1–2 个并发 Job、游客不跑重沙箱；公开互联网部署还应加反向代理限流与验证码

@@ -95,6 +95,8 @@ async def test_tool_round_executes_registry_and_loops(monkeypatch):
     names = [e["event"] for e in events]
 
     assert "tool_call" in names and "tool_result" in names
+    tool_call = next(e for e in events if e["event"] == "tool_call")
+    assert tool_call["data"]["round"] == 1
     tool_result = next(e for e in events if e["event"] == "tool_result")
     assert tool_result["data"]["ok"] is True
     assert tool_result["data"]["name"] == "json_tool"
@@ -102,6 +104,15 @@ async def test_tool_round_executes_registry_and_loops(monkeypatch):
     done = events[-1]["data"]
     assert done["tools_used"] == ["json_tool"]
     assert done["rounds"] == 2
+
+    # Per-call details are persisted so history can re-render tool cards.
+    tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
+    persisted = tool_json.get("tool_events") or []
+    assert len(persisted) == 1
+    assert persisted[0]["name"] == "json_tool"
+    assert persisted[0]["ok"] is True
+    assert persisted[0]["round"] == 1
+    assert persisted[0]["preview"]
 
 
 @pytest.mark.asyncio

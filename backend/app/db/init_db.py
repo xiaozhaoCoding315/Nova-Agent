@@ -39,6 +39,14 @@ _DDL = [
         password_updated_at TIMESTAMPTZ,
         recovery_code_hash VARCHAR(200),
         last_login_at TIMESTAMPTZ,
+        quota_daily_tokens INT,
+        quota_hourly_messages INT,
+        quota_sandbox_daily INT,
+        quota_job_hourly INT,
+        quota_storage_mb INT,
+        self_daily_tokens INT,
+        self_hourly_messages INT,
+        self_sandbox_daily INT,
         created_at TIMESTAMPTZ DEFAULT now()
     )
     """,
@@ -50,6 +58,14 @@ _DDL = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash VARCHAR(200)",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_daily_tokens INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_hourly_messages INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_sandbox_daily INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_job_hourly INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_storage_mb INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_daily_tokens INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_hourly_messages INT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_sandbox_daily INT",
     "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status, expires_at)",
     """
     CREATE TABLE IF NOT EXISTS user_llm_settings (
@@ -688,6 +704,18 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "ALTER TABLE external_actions DROP CONSTRAINT IF EXISTS external_actions_idempotency_key_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_external_actions_user_key "
         "ON external_actions (user_id, idempotency_key)",
+    ]),
+    (13, [
+        # Per-user quota overrides (NULL = inherit the role-tier default from
+        # env) and self-imposed budgets (applied on top as a lower cap).
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_daily_tokens INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_hourly_messages INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_sandbox_daily INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_job_hourly INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_storage_mb INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_daily_tokens INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_hourly_messages INT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS self_sandbox_daily INT",
     ]),
 ]
 

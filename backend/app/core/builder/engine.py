@@ -523,7 +523,7 @@ async def generate_plan(repo_id: str, ctx=None) -> None:
                 requirements=repo["brief"][:6000],
                 rules=repo["rules"][:3000] or "（无）",
             ),
-            user_id=repo["user_id"], source="builder",
+            user_id=repo["user_id"], source="builder", purpose="plan",
         )
         if ctx:
             await ctx.check_cancel()
@@ -575,7 +575,7 @@ async def generate_files(repo_id: str, feedback: str = "", ctx=None) -> None:
                 feedback=f"上一轮审阅反馈（请针对性修改）：{feedback[:2000]}" if feedback else "",
                 max_files=MAX_FILES,
             ),
-            user_id=repo["user_id"], source="builder",
+            user_id=repo["user_id"], source="builder", purpose="plan",
         )
         if ctx:
             await ctx.check_cancel()
@@ -603,7 +603,7 @@ async def generate_files(repo_id: str, feedback: str = "", ctx=None) -> None:
                             backend=_repair_context(files),
                             max_files=MAX_FILES,
                         ),
-                        user_id=repo["user_id"], source="builder",
+                        user_id=repo["user_id"], source="builder", purpose="plan",
                     )
                     repaired = validate_files(repair_data.get("files"))
                     if not repaired:

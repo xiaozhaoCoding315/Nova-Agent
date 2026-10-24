@@ -177,7 +177,7 @@ async def test_search_code_merges_symbols_and_snippets(monkeypatch):
         return [{"name": "login", "kind": "function", "path": "auth.py",
                  "line_start": 10, "line_end": 20, "signature": "def login(...)"}]
 
-    async def fake_retrieve(query, top_k=8, repo_ids=None):
+    async def fake_retrieve(query, top_k=8, repo_ids=None, user_id=None):
         return [RetrievedChunk(id="1", content="def login()", path="auth.py",
                                line_start=10, line_end=20, score_type="dense")]
 

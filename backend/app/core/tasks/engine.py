@@ -162,7 +162,9 @@ def _read_repo_file(root: Path, rel: str) -> str:
         return ""
 
 
-async def _collect_context(repo: dict, bug_report: str) -> tuple[dict[str, str], list[str], str | None]:
+async def _collect_context(
+    repo: dict, bug_report: str, user_id: int | None = None
+) -> tuple[dict[str, str], list[str], str | None]:
     """Pick files likely involved in the bug, bounded in size."""
     root = Path(repo["root_path"])
     rows = await query(
@@ -174,7 +176,9 @@ async def _collect_context(repo: dict, bug_report: str) -> tuple[dict[str, str],
 
     selected: list[str] = []
     try:
-        hits = await retrieve(bug_report, top_k=8, repo_ids=[repo["id"]])
+        hits = await retrieve(
+            bug_report, top_k=8, repo_ids=[repo["id"]], user_id=user_id
+        )
         selected = [h.path for h in hits if h.path]
     except Exception as exc:  # noqa: BLE001
         logger.warning("task_retrieval_failed", error=str(exc))
@@ -305,7 +309,7 @@ async def run_task(task_id: str, ctx=None) -> None:
         root = Path(root_path)
 
         await _append_step(task_id, {"step": "locate", "status": "running"})
-        files, tree, root_prefix = await _collect_context(repo, bug_report)
+        files, tree, root_prefix = await _collect_context(repo, bug_report, user_id=user_id)
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.12, step="定位相关代码")
@@ -331,7 +335,7 @@ async def run_task(task_id: str, ctx=None) -> None:
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.22, step="生成复现测试与修复")
-        data = await llm_json(prompt, user_id=user["id"], source="task")
+        data = await llm_json(prompt, user_id=user["id"], source="task", purpose="plan")
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.32, step="准备红阶段")
@@ -377,7 +381,7 @@ async def run_task(task_id: str, ctx=None) -> None:
                 f"当前 fix_files：{json.dumps(fix_files, ensure_ascii=False)[:8000]}"
             )
             await ensure_token_budget(user)
-            data2 = await llm_json(repair_prompt, user_id=user["id"], source="task")
+            data2 = await llm_json(repair_prompt, user_id=user["id"], source="task", purpose="plan")
             fix_files = _validate_files(data2.get("fix_files") or fix_files) or fix_files
             green = await _sandbox_run(task_id, user, str(repo_id), repo_files, {**test_files, **fix_files}, green_command, ctx=ctx)
 

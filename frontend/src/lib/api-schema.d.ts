@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/admin/usage/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Usage Sources
+         * @description Token spend grouped by call source and model for cost attribution.
+         */
+        get: operations["admin_usage_sources_api_v1_admin_usage_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -1293,6 +1313,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quota */
+        get: operations["get_quota_api_v1_settings_quota_get"];
+        /** Update Quota */
+        put: operations["update_quota_api_v1_settings_quota_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status/health": {
         parameters: {
             query?: never;
@@ -1476,6 +1514,16 @@ export interface components {
             is_guest: boolean;
             /** Last Login At */
             last_login_at?: string | null;
+            /** Quota Daily Tokens */
+            quota_daily_tokens?: number | null;
+            /** Quota Hourly Messages */
+            quota_hourly_messages?: number | null;
+            /** Quota Job Hourly */
+            quota_job_hourly?: number | null;
+            /** Quota Sandbox Daily */
+            quota_sandbox_daily?: number | null;
+            /** Quota Storage Mb */
+            quota_storage_mb?: number | null;
             /**
              * Repos
              * @default 0
@@ -1510,6 +1558,16 @@ export interface components {
         AdminUserUpdateRequest: {
             /** Display Name */
             display_name?: string | null;
+            /** Quota Daily Tokens */
+            quota_daily_tokens?: number | null;
+            /** Quota Hourly Messages */
+            quota_hourly_messages?: number | null;
+            /** Quota Job Hourly */
+            quota_job_hourly?: number | null;
+            /** Quota Sandbox Daily */
+            quota_sandbox_daily?: number | null;
+            /** Quota Storage Mb */
+            quota_storage_mb?: number | null;
             /** Role */
             role?: ("admin" | "demo") | null;
             /** Status */
@@ -2789,6 +2847,69 @@ export interface components {
             /** Symbols */
             symbols?: components["schemas"]["SymbolOut"][];
         };
+        /** SelfQuotaOut */
+        SelfQuotaOut: {
+            /**
+             * Daily Token Budget
+             * @default 0
+             */
+            daily_token_budget: number;
+            /**
+             * Hourly Message Limit
+             * @default 0
+             */
+            hourly_message_limit: number;
+            /**
+             * Job Hourly Limit
+             * @default 0
+             */
+            job_hourly_limit: number;
+            /**
+             * Messages Last Hour
+             * @default 0
+             */
+            messages_last_hour: number;
+            /**
+             * Sandbox Daily Limit
+             * @default 0
+             */
+            sandbox_daily_limit: number;
+            /**
+             * Sandbox Runs Today
+             * @default 0
+             */
+            sandbox_runs_today: number;
+            /** Self Daily Tokens */
+            self_daily_tokens?: number | null;
+            /** Self Hourly Messages */
+            self_hourly_messages?: number | null;
+            /** Self Sandbox Daily */
+            self_sandbox_daily?: number | null;
+            /**
+             * Storage Limit Mb
+             * @default 0
+             */
+            storage_limit_mb: number;
+            /**
+             * Today Tokens
+             * @default 0
+             */
+            today_tokens: number;
+            /** Tokens Remaining */
+            tokens_remaining?: number | null;
+        };
+        /**
+         * SelfQuotaUpdateRequest
+         * @description Self-imposed budgets; only tighten the effective limit, never raise it.
+         */
+        SelfQuotaUpdateRequest: {
+            /** Self Daily Tokens */
+            self_daily_tokens?: number | null;
+            /** Self Hourly Messages */
+            self_hourly_messages?: number | null;
+            /** Self Sandbox Daily */
+            self_sandbox_daily?: number | null;
+        };
         /** SessionCreateRequest */
         SessionCreateRequest: {
             /** Repo Ids */
@@ -2825,6 +2946,20 @@ export interface components {
         SessionRenameRequest: {
             /** Title */
             title: string;
+        };
+        /**
+         * SourceUsageOut
+         * @description Token spend aggregated per (source, model) — cost attribution.
+         */
+        SourceUsageOut: {
+            /** Calls */
+            calls: number;
+            /** Model */
+            model: string;
+            /** Source */
+            source: string;
+            /** Tokens */
+            tokens: number;
         };
         /** StatusActionOut */
         StatusActionOut: {
@@ -3102,6 +3237,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    admin_usage_sources_api_v1_admin_usage_sources_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceUsageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_list_users_api_v1_admin_users_get: {
         parameters: {
             query?: never;
@@ -3207,7 +3373,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserOut"];
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */
@@ -5732,6 +5898,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quota_api_v1_settings_quota_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfQuotaOut"];
+                };
+            };
+        };
+    };
+    update_quota_api_v1_settings_quota_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfQuotaUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfQuotaOut"];
                 };
             };
             /** @description Validation Error */

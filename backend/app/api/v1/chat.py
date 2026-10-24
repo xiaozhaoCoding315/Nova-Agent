@@ -65,7 +65,7 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
     session = await session_mod.get_session(session_id, user["id"])
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    return await session_mod.get_messages(session_id)
+    return await session_mod.get_messages(session_id, user_id=user["id"])
 
 
 @router.patch("/chat/sessions/{session_id}", response_model=SessionOut)
@@ -209,7 +209,7 @@ async def session_trajectory(
     session = await session_mod.get_session(session_id, user["id"])
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    return await list_events(session_id, min(max(limit, 1), 1000))
+    return await list_events(session_id, min(max(limit, 1), 1000), user_id=user["id"])
 
 
 # ---------- Edit proposals (in-chat file changes) ----------

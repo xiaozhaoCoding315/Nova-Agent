@@ -119,14 +119,18 @@ def clean_spec(data: dict, fallback_title: str = "变更") -> dict:
     }
 
 
-async def _repo_context(repo: dict, query_text: str) -> tuple[str, str]:
+async def _repo_context(
+    repo: dict, query_text: str, user_id: int | None = None
+) -> tuple[str, str]:
     rows = await query(
         "SELECT path FROM repo_files WHERE repo_id = %s ORDER BY path LIMIT 120",
         (repo["id"],),
     )
     tree = "\n".join(r[0] for r in rows) or "（仓库尚未索引）"
     try:
-        hits = await retrieve(query_text, top_k=6, repo_ids=[str(repo["id"])])
+        hits = await retrieve(
+            query_text, top_k=6, repo_ids=[str(repo["id"])], user_id=user_id
+        )
     except Exception:  # noqa: BLE001
         hits = []
     blocks = []
@@ -162,7 +166,7 @@ async def draft_spec(change_id: str, ctx=None) -> dict:
         raise ValueError("仓库不存在")
     await _set_status(change_id, "drafting", error=None)
     await ensure_token_budget(user_id=change["user_id"])
-    tree, context = await _repo_context(repo, change["requirements"])
+    tree, context = await _repo_context(repo, change["requirements"], user_id=change["user_id"])
     if ctx:
         await ctx.check_cancel()
         await ctx.update(progress=0.2, step="起草 SPEC")
@@ -172,7 +176,7 @@ async def draft_spec(change_id: str, ctx=None) -> dict:
             tree=tree[:6000], context=context[:12000],
         ),
         user_id=change["user_id"],
-        source="change",
+        source="change", purpose="plan",
     )
     spec = clean_spec(data, fallback_title=change["title"])
     await execute(
@@ -252,7 +256,9 @@ async def generate_plan(change_id: str, ctx=None) -> dict:
         raise ValueError("仓库不存在")
     await _set_status(change_id, "planning", error=None)
     await ensure_token_budget(user_id=user_id)
-    tree, context = await _repo_context(repo, f"{change['title']} {change['goal']}")
+    tree, context = await _repo_context(
+        repo, f"{change['title']} {change['goal']}", user_id=user_id
+    )
     if ctx:
         await ctx.check_cancel()
         await ctx.update(progress=0.2, step="规划任务")
@@ -269,7 +275,7 @@ async def generate_plan(change_id: str, ctx=None) -> dict:
             f"- {kind}: {meta['planner_hint']}" for kind, meta in TEMPLATES.items()
         ),
     )
-    data = await llm_json(prompt, user_id=user_id, source="change")
+    data = await llm_json(prompt, user_id=user_id, source="change", purpose="plan")
     tasks, error = validate_plan(data)
     if error:
         await _set_status(change_id, "failed", error=error)

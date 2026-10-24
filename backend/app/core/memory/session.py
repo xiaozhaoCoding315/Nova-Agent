@@ -123,11 +123,22 @@ async def rename_session(session_id: str, user_id: int, title: str) -> dict | No
     return {"id": str(r[0]), "title": r[1], "created_at": r[2], "updated_at": r[3]}
 
 
-async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
+async def get_messages(
+    session_id: str, limit: int = 200, user_id: int | None = None
+) -> list[dict]:
+    owner = ""
+    params: list = []
+    if user_id is not None:
+        owner = (
+            "AND EXISTS (SELECT 1 FROM sessions s "
+            "WHERE s.id = messages.session_id AND s.user_id = %s)"
+        )
+        params.append(user_id)
+    params.extend([session_id, limit])
     rows = await query(
         "SELECT id, role, content, tool_json, attachments, created_at FROM messages "
-        "WHERE session_id = %s ORDER BY id ASC LIMIT %s",
-        (session_id, limit),
+        f"WHERE session_id = %s {owner} ORDER BY id ASC LIMIT %s",
+        tuple(params),
     )
     return [
         {
@@ -139,13 +150,20 @@ async def get_messages(session_id: str, limit: int = 200) -> list[dict]:
 
 
 async def recent_messages(
-    session_id: str, limit: int = HISTORY_LIMIT, after_id: int = 0
+    session_id: str, limit: int = HISTORY_LIMIT, after_id: int = 0,
+    user_id: int | None = None,
 ) -> list[dict]:
     sql = (
         "SELECT role, content FROM messages WHERE session_id = %s "
         "AND role IN ('user','assistant')"
     )
     params: list = [session_id]
+    if user_id is not None:
+        sql += (
+            " AND EXISTS (SELECT 1 FROM sessions s "
+            "WHERE s.id = messages.session_id AND s.user_id = %s)"
+        )
+        params.append(user_id)
     if after_id > 0:
         sql += " AND id > %s"
         params.append(after_id)
@@ -155,11 +173,22 @@ async def recent_messages(
     return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
 
 
-async def messages_after(session_id: str, after_id: int = 0) -> list[dict]:
+async def messages_after(
+    session_id: str, after_id: int = 0, user_id: int | None = None
+) -> list[dict]:
+    owner = ""
+    params: list = []
+    if user_id is not None:
+        owner = (
+            "AND EXISTS (SELECT 1 FROM sessions s "
+            "WHERE s.id = messages.session_id AND s.user_id = %s)"
+        )
+        params.append(user_id)
+    params.extend([session_id, after_id])
     rows = await query(
         "SELECT id, role, content FROM messages WHERE session_id = %s AND id > %s "
-        "AND role IN ('user','assistant') ORDER BY id ASC",
-        (session_id, after_id),
+        f"AND role IN ('user','assistant') {owner} ORDER BY id ASC",
+        tuple(params),
     )
     return [{"id": int(r[0]), "role": r[1], "content": r[2]} for r in rows]
 
@@ -256,11 +285,22 @@ async def count_messages(session_id: str) -> int:
     return int(rows[0][0]) if rows else 0
 
 
-async def count_messages_since(session_id: str, after_id: int = 0) -> int:
+async def count_messages_since(
+    session_id: str, after_id: int = 0, user_id: int | None = None
+) -> int:
+    owner = ""
+    params: list = []
+    if user_id is not None:
+        owner = (
+            "AND EXISTS (SELECT 1 FROM sessions s "
+            "WHERE s.id = messages.session_id AND s.user_id = %s)"
+        )
+        params.append(user_id)
+    params.extend([session_id, after_id])
     rows = await query(
         "SELECT COUNT(*) FROM messages WHERE session_id = %s AND id > %s "
-        "AND role IN ('user','assistant')",
-        (session_id, after_id),
+        f"AND role IN ('user','assistant') {owner}",
+        tuple(params),
     )
     return int(rows[0][0]) if rows else 0
 

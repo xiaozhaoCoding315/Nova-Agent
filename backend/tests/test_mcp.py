@@ -78,6 +78,49 @@ async def test_mcp_tools_are_admin_only(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_opt_in_opens_mcp_to_regular_users(monkeypatch):
+    """`admin_only: false` on one server overrides the global admin-only default."""
+    config = _config()
+    config["servers"][0]["admin_only"] = False
+    monkeypatch.setattr(settings, "mcp_servers_json", json.dumps(config))
+    monkeypatch.setattr(tools_base, "log_audit", AsyncMock())
+    manager = MCPManager()
+    await manager.start()
+    try:
+        registry = ToolRegistry()
+        for tool in manager.tool_definitions():
+            registry.register(tool)
+        ctx = ToolContext(user={"id": 2, "role": "demo"}, permission_mode="auto")
+        result = await registry.execute("mcp__demo__echo", {"text": "hi"}, ctx)
+        assert result["ok"] is True
+        assert result["output"]["text"] == "echo: hi"
+    finally:
+        await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_secrets_capability_stays_admin_only_even_when_open(monkeypatch):
+    config = _config(capabilities={"echo": ["secrets.read"]})
+    config["servers"][0]["admin_only"] = False
+    monkeypatch.setattr(settings, "mcp_servers_json", json.dumps(config))
+    monkeypatch.setattr(tools_base, "log_audit", AsyncMock())
+    manager = MCPManager()
+    await manager.start()
+    try:
+        registry = ToolRegistry()
+        for tool in manager.tool_definitions():
+            registry.register(tool)
+        ctx = ToolContext(user={"id": 2, "role": "demo"}, permission_mode="auto")
+        result = await registry.execute("mcp__demo__echo", {"text": "hi"}, ctx)
+        assert result["ok"] is False and result["business"] is True
+        # Either the policy engine (secrets are blanket-denied) or the manager
+        # closure stops it; both mean the capability never reaches users.
+        assert "密钥" in result["error"] or "敏感凭据" in result["error"]
+    finally:
+        await manager.stop()
+
+
+@pytest.mark.asyncio
 async def test_non_allowlisted_tool_is_not_exposed(monkeypatch):
     monkeypatch.setattr(
         settings, "mcp_servers_json",

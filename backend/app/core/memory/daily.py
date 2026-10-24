@@ -73,7 +73,7 @@ async def rollup_day(user_id: int, day: date | None = None, force: bool = False,
             _PROMPT.format(day=day.isoformat(), conversation=conversation[:30000]),
             timeout=settings.llm_timeout,
             user_id=user_id,
-            source="memory",
+            source="memory", purpose="utility",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("daily_summary_failed", user_id=user_id, day=str(day), error=str(exc))

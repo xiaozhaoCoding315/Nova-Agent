@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     max_rounds: int = 5            # agent tool-calling rounds
     # Deployment switch: false forces every user to bring their own key.
     llm_allow_server_fallback: bool = True
+    # Model routing by purpose, applies to the shared server key only (BYOK
+    # users' own model choice is never overridden). plan = SPEC/plan/review/
+    # build/task generation (strong model); utility = summaries/fact
+    # extraction (small, cheap model). Model name must be usable with the
+    # first provider in LLM_MODEL_PRIORITY that has a key.
+    llm_route_plan: str = ""
+    llm_route_utility: str = ""
 
     @property
     def llm_configured(self) -> bool:
@@ -97,6 +104,10 @@ class Settings(BaseSettings):
     # ---------- Tools ----------
     enable_fetch_url: bool = True
     fetch_url_max_kb: int = 512
+
+    # ---------- Skills ----------
+    skills_enabled: bool = True
+    skills_dir: str = "data/skills"   # <dir>/<skill-name>/SKILL.md, operator-provided
 
     # ---------- Tool hooks / policy ----------
     tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks

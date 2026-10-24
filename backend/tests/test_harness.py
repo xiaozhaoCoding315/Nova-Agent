@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from app.core.harness.retry import is_retryable_error, retry_with_backoff, with_timeout
-from app.core.harness.circuit import CircuitBreaker, CircuitState, get_breaker
+from app.core.harness.circuit import CircuitBreaker, CircuitState
 from app.core.harness.runtime import execute_with_harness
 
 

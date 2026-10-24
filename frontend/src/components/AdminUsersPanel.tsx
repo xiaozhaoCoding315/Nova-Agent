@@ -1,4 +1,4 @@
-import { Ban, CheckCircle2, Plus, RefreshCw, Trash2, Users } from 'lucide-react'
+import { Ban, CheckCircle2, Coins, Plus, RefreshCw, SlidersHorizontal, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { AdminUser } from '../lib/types'
@@ -8,6 +8,18 @@ import { Badge, Button, Modal, Spinner } from './common'
 const inputClass =
   'w-full rounded-lg border border-edge bg-base/60 px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60'
 
+const QUOTA_FIELDS: { key: keyof AdminUser & string; label: string; hint: string }[] = [
+  { key: 'quota_daily_tokens', label: '每日 token 上限', hint: '如 200000' },
+  { key: 'quota_hourly_messages', label: '每小时消息数', hint: '如 30' },
+  { key: 'quota_sandbox_daily', label: '每日沙箱执行', hint: '如 10' },
+  { key: 'quota_job_hourly', label: '每小时后台任务', hint: '如 5' },
+  { key: 'quota_storage_mb', label: '存储（MB）', hint: '如 500' },
+]
+
+function hasCustomQuota(user: AdminUser): boolean {
+  return QUOTA_FIELDS.some(({ key }) => user[key] != null)
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -16,6 +28,7 @@ function formatBytes(bytes: number): string {
 export function AdminUsersPanel() {
   const current = useAuth((state) => state.user)
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [sources, setSources] = useState<{ source: string; model: string; calls: number; tokens: number }[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<number | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -29,11 +42,19 @@ export function AdminUsersPanel() {
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [quotaTarget, setQuotaTarget] = useState<AdminUser | null>(null)
+  const [quotaForm, setQuotaForm] = useState<Record<string, string>>({})
+  const [quotaError, setQuotaError] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      setUsers(await api.admin.users())
+      const [userList, sourceUsage] = await Promise.all([
+        api.admin.users(),
+        api.admin.usageSources().catch(() => []),
+      ])
+      setUsers(userList)
+      setSources(sourceUsage)
       setError(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '加载用户失败')
@@ -99,8 +120,69 @@ export function AdminUsersPanel() {
     }, `已删除 ${target.username}`)
   }
 
+  const openQuota = (user: AdminUser) => {
+    setQuotaTarget(user)
+    setQuotaError(null)
+    setQuotaForm(Object.fromEntries(
+      QUOTA_FIELDS.map(({ key }) => [key, user[key] == null ? '' : String(user[key])]),
+    ))
+  }
+
+  const saveQuota = () => {
+    if (!quotaTarget) return
+    const target = quotaTarget
+    const patch: Record<string, number | null> = {}
+    for (const { key } of QUOTA_FIELDS) {
+      const raw = (quotaForm[key] ?? '').trim()
+      if (raw === '') {
+        patch[key] = null
+        continue
+      }
+      const value = Number(raw)
+      if (!Number.isInteger(value) || value < 0) {
+        setQuotaError('限额需为非负整数（0 表示不限，留空表示跟随默认档）')
+        return
+      }
+      patch[key] = value
+    }
+    void run(target.id, async () => {
+      await api.admin.updateUser(target.id, patch)
+      setQuotaTarget(null)
+    }, `已更新 ${target.username} 的限额`)
+  }
+
   return (
     <div className="space-y-4">
+      {sources.length > 0 && (
+        <section className="rounded-xl border border-edge bg-panel p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Coins size={14} className="text-accent" />
+            <h3 className="text-[13px] font-medium">用量来源（近 7 天）</h3>
+            <span className="text-[10.5px] text-dim">按调用来源与模型聚合，用于成本归因</span>
+          </div>
+          <table className="w-full border-collapse text-[11.5px]">
+            <thead>
+              <tr className="border-b border-edge text-left text-dim">
+                <th className="py-1.5 pr-2 font-medium">来源</th>
+                <th className="px-2 py-1.5 font-medium">模型</th>
+                <th className="px-2 py-1.5 font-medium">次数</th>
+                <th className="px-2 py-1.5 text-right font-medium">tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sources.map((row) => (
+                <tr key={`${row.source}:${row.model}`} className="border-b border-edge/50">
+                  <td className="py-1.5 pr-2 font-mono text-[10.5px]">{row.source}</td>
+                  <td className="px-2 py-1.5 font-mono text-[10.5px] text-dim">{row.model || '—'}</td>
+                  <td className="px-2 py-1.5 tabular-nums text-dim">{row.calls}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{row.tokens.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <Users size={14} className="text-accent" />
@@ -145,6 +227,9 @@ export function AdminUsersPanel() {
                     <p className="text-[10px] text-dim/70">
                       {item.sessions} 会话 · {item.repos} 项目 · {item.files} 文件 · {formatBytes(item.storage_bytes)}
                     </p>
+                    {hasCustomQuota(item) && (
+                      <p className="mt-0.5"><Badge tone="accent">自定义限额</Badge></p>
+                    )}
                   </td>
                   <td className="px-2 py-2 text-[10.5px] text-dim">
                     {item.last_login_at ? new Date(item.last_login_at).toLocaleString() : '—'}
@@ -158,6 +243,14 @@ export function AdminUsersPanel() {
                         title={item.status === 'disabled' ? '启用账号' : '禁用账号'}
                       >
                         {item.status === 'disabled' ? <CheckCircle2 size={13} /> : <Ban size={13} />}
+                      </button>
+                      <button
+                        onClick={() => openQuota(item)}
+                        disabled={busy === item.id}
+                        className="rounded p-1 text-dim hover:bg-raised hover:text-ink disabled:opacity-30"
+                        title="配置限额"
+                      >
+                        <SlidersHorizontal size={13} />
                       </button>
                       <button
                         onClick={() => setResetTarget(item)}
@@ -265,6 +358,38 @@ export function AdminUsersPanel() {
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" onClick={() => setDeleteTarget(null)}>取消</Button>
           <Button size="sm" variant="danger" onClick={deleteUser}>确认删除</Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(quotaTarget)}
+        onClose={() => setQuotaTarget(null)}
+        title={`配置限额：${quotaTarget?.username ?? ''}`}
+        width="max-w-md"
+      >
+        <p className="mb-3 text-[11px] leading-relaxed text-dim">
+          留空表示跟随角色默认档；填 0 表示不限制；填正数则覆盖默认档。用户自己设置的「个人预算」只会在这些上限之内进一步收紧。
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {QUOTA_FIELDS.map(({ key, label, hint }) => (
+            <label key={key} className="space-y-1">
+              <span className="text-[11px] text-dim">{label}</span>
+              <input
+                value={quotaForm[key] ?? ''}
+                onChange={(event) => setQuotaForm({ ...quotaForm, [key]: event.target.value })}
+                placeholder={hint}
+                className={inputClass}
+                inputMode="numeric"
+              />
+            </label>
+          ))}
+        </div>
+        {quotaError && <p className="mt-2 text-[11.5px] text-err">{quotaError}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button size="sm" onClick={() => setQuotaTarget(null)}>取消</Button>
+          <Button size="sm" variant="primary" onClick={saveQuota}>
+            {busy === quotaTarget?.id ? <Spinner /> : null} 保存限额
+          </Button>
         </div>
       </Modal>
     </div>

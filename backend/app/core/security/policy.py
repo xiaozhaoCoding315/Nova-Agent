@@ -87,7 +87,10 @@ def decide_tool(
     if "secrets.read" in cap_set:
         return PolicyDecision(False, "禁止读取密钥/凭据", caps)
 
-    if name.startswith("mcp__") and settings.mcp_admin_only and user.get("role") != "admin":
+    if name.startswith("mcp__") and settings.mcp_admin_only \
+            and user.get("role") != "admin" and "mcp.open" not in cap_set:
+        # "mcp.open" marks servers explicitly opened to all users
+        # ("admin_only": false in the MCP config).
         return PolicyDecision(False, "MCP 工具仅管理员可用", caps)
 
     if mode == "readonly" and cap_set & WRITE_CAPABILITIES:

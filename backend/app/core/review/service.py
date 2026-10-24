@@ -129,7 +129,7 @@ async def review_diff(
         files=file_blocks,
         evidence=json.dumps(evidence or {"note": "未提供额外验证"}, ensure_ascii=False)[:3000],
     )
-    data = await llm_json(prompt, user_id=user_id, source="review")
+    data = await llm_json(prompt, user_id=user_id, source="review", purpose="plan")
     return clean_review(data)
 
 

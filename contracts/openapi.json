@@ -122,6 +122,61 @@
             ],
             "title": "Last Login At"
           },
+          "quota_daily_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Daily Tokens"
+          },
+          "quota_hourly_messages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Hourly Messages"
+          },
+          "quota_job_hourly": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Job Hourly"
+          },
+          "quota_sandbox_daily": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Sandbox Daily"
+          },
+          "quota_storage_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Storage Mb"
+          },
           "repos": {
             "default": 0,
             "title": "Repos",
@@ -177,6 +232,71 @@
               }
             ],
             "title": "Display Name"
+          },
+          "quota_daily_tokens": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Daily Tokens"
+          },
+          "quota_hourly_messages": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Hourly Messages"
+          },
+          "quota_job_hourly": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Job Hourly"
+          },
+          "quota_sandbox_daily": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Sandbox Daily"
+          },
+          "quota_storage_mb": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Storage Mb"
           },
           "role": {
             "anyOf": [
@@ -3479,6 +3599,142 @@
         "title": "SearchResponseOut",
         "type": "object"
       },
+      "SelfQuotaOut": {
+        "properties": {
+          "daily_token_budget": {
+            "default": 0,
+            "title": "Daily Token Budget",
+            "type": "integer"
+          },
+          "hourly_message_limit": {
+            "default": 0,
+            "title": "Hourly Message Limit",
+            "type": "integer"
+          },
+          "job_hourly_limit": {
+            "default": 0,
+            "title": "Job Hourly Limit",
+            "type": "integer"
+          },
+          "messages_last_hour": {
+            "default": 0,
+            "title": "Messages Last Hour",
+            "type": "integer"
+          },
+          "sandbox_daily_limit": {
+            "default": 0,
+            "title": "Sandbox Daily Limit",
+            "type": "integer"
+          },
+          "sandbox_runs_today": {
+            "default": 0,
+            "title": "Sandbox Runs Today",
+            "type": "integer"
+          },
+          "self_daily_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Daily Tokens"
+          },
+          "self_hourly_messages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Hourly Messages"
+          },
+          "self_sandbox_daily": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Sandbox Daily"
+          },
+          "storage_limit_mb": {
+            "default": 0,
+            "title": "Storage Limit Mb",
+            "type": "integer"
+          },
+          "today_tokens": {
+            "default": 0,
+            "title": "Today Tokens",
+            "type": "integer"
+          },
+          "tokens_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Remaining"
+          }
+        },
+        "title": "SelfQuotaOut",
+        "type": "object"
+      },
+      "SelfQuotaUpdateRequest": {
+        "description": "Self-imposed budgets; only tighten the effective limit, never raise it.",
+        "properties": {
+          "self_daily_tokens": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Daily Tokens"
+          },
+          "self_hourly_messages": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Hourly Messages"
+          },
+          "self_sandbox_daily": {
+            "anyOf": [
+              {
+                "maximum": 2000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Sandbox Daily"
+          }
+        },
+        "title": "SelfQuotaUpdateRequest",
+        "type": "object"
+      },
       "SessionCreateRequest": {
         "properties": {
           "repo_ids": {
@@ -3587,6 +3843,35 @@
           "title"
         ],
         "title": "SessionRenameRequest",
+        "type": "object"
+      },
+      "SourceUsageOut": {
+        "description": "Token spend aggregated per (source, model) — cost attribution.",
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "model",
+          "calls",
+          "tokens"
+        ],
+        "title": "SourceUsageOut",
         "type": "object"
       },
       "StatusActionOut": {
@@ -4211,6 +4496,56 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/usage/sources": {
+      "get": {
+        "description": "Token spend grouped by call source and model for cost attribution.",
+        "operationId": "admin_usage_sources_api_v1_admin_usage_sources_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceUsageOut"
+                  },
+                  "title": "Response Admin Usage Sources Api V1 Admin Usage Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Usage Sources",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "admin_list_users_api_v1_admin_users_get",
@@ -4344,7 +4679,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserOut"
+                  "$ref": "#/components/schemas/AdminUserOut"
                 }
               }
             },
@@ -7843,6 +8178,66 @@
           }
         },
         "summary": "Test Llm Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/quota": {
+      "get": {
+        "operationId": "get_quota_api_v1_settings_quota_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfQuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Quota",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_quota_api_v1_settings_quota_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfQuotaUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfQuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Quota",
         "tags": [
           "settings"
         ]

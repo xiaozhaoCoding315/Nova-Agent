@@ -174,6 +174,7 @@ async def _task_files(
             f"{change['title']} {task['title']} {task['acceptance']}",
             top_k=6,
             repo_ids=[str(repo["id"])],
+            user_id=int(change["user_id"]),
         )
     except Exception:  # noqa: BLE001
         hits = []
@@ -321,7 +322,7 @@ async def execute_change(change_id: str, user_id: int, ctx=None) -> dict:
             if ctx:
                 await ctx.check_cancel()
             await ensure_token_budget(user_id=user_id)
-            data = await llm_json(prompt, user_id=user_id, source="change")
+            data = await llm_json(prompt, user_id=user_id, source="change", purpose="plan")
             notes = str(data.get("notes") or "")[:2000]
             raw_files = data.get("files")
             if not raw_files and task["kind"] == "test":

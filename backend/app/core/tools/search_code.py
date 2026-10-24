@@ -31,7 +31,7 @@ async def search_code(args: dict, ctx: ToolContext) -> dict:
     symbols = await search_symbols(query, repo_ids, limit=6)
 
     snippets = []
-    hits = await retrieve(query, top_k=8, repo_ids=repo_ids)
+    hits = await retrieve(query, top_k=8, repo_ids=repo_ids, user_id=ctx.user["id"])
     for h in hits:
         snippets.append({
             "path": h.path,

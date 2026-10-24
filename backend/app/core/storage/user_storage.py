@@ -157,8 +157,10 @@ async def used_bytes(user_id: int) -> int:
 
 
 def storage_limit_bytes(user: dict) -> int:
-    mb = settings.guest_storage_mb if user.get("is_guest") else settings.user_storage_mb
-    return mb * 1024 * 1024
+    mb = user.get("quota_storage_mb")
+    if mb is None:
+        mb = settings.guest_storage_mb if user.get("is_guest") else settings.user_storage_mb
+    return int(mb) * 1024 * 1024
 
 
 async def read_text(file_id: str, user_id: int, max_chars: int = 50_000) -> dict:

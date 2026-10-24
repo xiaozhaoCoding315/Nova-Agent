@@ -21,8 +21,10 @@ async def retrieve(
     query: str,
     top_k: int = 10,
     repo_ids: list[str] | None = None,
+    user_id: int | None = None,
 ) -> list[RetrievedChunk]:
-    # Fail closed: retrieval is always scoped to explicitly authorized repos.
+    # Fail closed: retrieval is always scoped to explicitly authorized repos,
+    # and (when known) additionally filtered by owner at the storage layer.
     if not repo_ids:
         return []
     legs = [
@@ -35,6 +37,7 @@ async def retrieve(
             query,
             top_k,
             repo_ids,
+            user_id,
             context=f"retrieval/{name}",
             timeout=TIMEOUTS.retrieval_timeout,
             use_retry=True,
