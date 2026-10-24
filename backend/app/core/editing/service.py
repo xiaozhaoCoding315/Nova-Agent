@@ -24,7 +24,7 @@ MAX_FILES = 20
 MAX_FILE_CHARS = 120_000
 MAX_TOTAL_CHARS = 300_000
 
-PERMISSION_MODES = ("readonly", "ask", "auto")
+PERMISSION_MODES = ("readonly", "ask", "auto", "full")
 
 
 def validate_changes(files: dict) -> dict[str, str]:
@@ -110,7 +110,7 @@ async def create_edit(
     assert_changes_preserve_tests(changes, base)
     diff = build_diff(base, changes)
     edit_id = str(uuid.uuid4())
-    applied = mode == "auto"
+    applied = mode in ("auto", "full")
 
     await execute(
         "INSERT INTO edits (id, user_id, session_id, repo_id, status, files, base_files, diff, note, applied_at) "

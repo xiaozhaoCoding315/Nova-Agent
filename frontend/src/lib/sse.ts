@@ -7,7 +7,7 @@ export type ChatStreamBody = {
   session_id?: string
   content: string
   repo_ids: string[]
-  permission_mode?: 'readonly' | 'ask' | 'auto'
+  permission_mode?: 'readonly' | 'ask' | 'auto' | 'full'
   model?: string
   file_ids?: string[]
 }

@@ -62,3 +62,32 @@ async def test_ask_still_allows_execute_and_read():
         result = await registry.execute("t", {}, ctx)
         assert result["ok"] is True
         assert func.await_count == 1
+
+@pytest.mark.asyncio
+async def test_full_mode_writes_immediately(tmp_path, monkeypatch):
+    from app.core.editing import service as editing
+
+    async def fake_get_repo(repo_id, user_id):
+        return {"root_path": str(tmp_path), "name": "r"}
+
+    async def fake_execute(sql, params):
+        return None
+
+    monkeypatch.setattr(editing, "get_repo", fake_get_repo)
+    monkeypatch.setattr(editing, "execute", fake_execute)
+
+    edit = await editing.create_edit(
+        1, None, "repo-1", {"app/x.py": "print(1)"}, mode="full"
+    )
+    assert edit["staged"] is False and edit["status"] == "applied"
+    assert (tmp_path / "app" / "x.py").read_text(encoding="utf-8") == "print(1)"
+
+
+@pytest.mark.asyncio
+async def test_full_mode_allows_write_category():
+    for category in ("write", "execute"):
+        registry, func = _registry_with(category)
+        ctx = ToolContext(user={"id": 1}, permission_mode="full")
+        result = await registry.execute("t", {}, ctx)
+        assert result["ok"] is True
+        assert func.await_count == 1

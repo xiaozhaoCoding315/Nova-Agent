@@ -32,8 +32,11 @@ def _read_repo_file(root: Path, rel: str) -> str | None:
 
 
 async def install_deps(args: dict, ctx: ToolContext) -> dict:
-    if ctx.user.get("role") != "admin":
-        raise ToolBusinessError("只有管理员可以联网安装依赖（demo 账号不允许）")
+    is_admin = ctx.user.get("role") == "admin"
+    # Admins can always install; regular users may opt in per-session via the
+    # "full access" permission mode (the server-side network flag still applies).
+    if not is_admin and ctx.permission_mode != "full":
+        raise ToolBusinessError("联网安装依赖需要管理员，或在会话中切换到「完全访问」模式")
     if not settings.sandbox_allow_network:
         raise ToolBusinessError("联网安装未开启：请在服务端 .env 设置 SANDBOX_ALLOW_NETWORK=true 后重启")
 

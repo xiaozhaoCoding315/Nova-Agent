@@ -96,7 +96,7 @@ def decide_tool(
     if mode == "readonly" and cap_set & WRITE_CAPABILITIES:
         return PolicyDecision(
             False,
-            f"当前为只读模式，已阻止 {name}；请切换权限模式（需确认 / 自动）后再试",
+            f"当前为计划（只读）模式，已阻止 {name}；请切换权限模式（变更前确认 / 自主 / 完全访问）后再试",
             caps,
         )
 
@@ -111,8 +111,9 @@ def decide_tool(
         return PolicyDecision(False, "联网抓取已关闭（ENABLE_FETCH_URL=false）", caps)
 
     if name == "install_deps":
-        if user.get("role") != "admin":
-            return PolicyDecision(False, "只有管理员可以联网安装依赖（demo 账号不允许）", caps)
+        if user.get("role") != "admin" and mode != "full":
+            return PolicyDecision(
+                False, "联网安装依赖需要管理员，或在会话中切换到「完全访问」模式", caps)
         if not settings.sandbox_allow_network:
             return PolicyDecision(
                 False,

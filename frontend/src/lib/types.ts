@@ -73,7 +73,7 @@ export type Session = {
   updated_at?: string
 }
 
-export type PermissionMode = 'readonly' | 'ask' | 'auto'
+export type PermissionMode = 'readonly' | 'ask' | 'auto' | 'full'
 
 export type EditRef = {
   id: string

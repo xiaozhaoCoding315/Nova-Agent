@@ -2052,7 +2052,7 @@ export interface components {
             /** Model */
             model?: string | null;
             /** Permission Mode */
-            permission_mode?: ("readonly" | "ask" | "auto") | null;
+            permission_mode?: ("readonly" | "ask" | "auto" | "full") | null;
             /** Repo Ids */
             repo_ids?: string[] | null;
             /** Session Id */

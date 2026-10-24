@@ -4,9 +4,17 @@ import type { DragEvent, KeyboardEvent } from 'react'
 import type { FileAttachment, PermissionMode } from '../lib/types'
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
-  readonly: '只读',
-  ask: '确认写入',
-  auto: '自动执行',
+  readonly: '计划模式',
+  ask: '变更前确认',
+  auto: '自主模式',
+  full: '完全访问',
+}
+
+const PERMISSION_HINT: Record<PermissionMode, string> = {
+  readonly: '只读研究与分析：可读码/检索/影响分析，所有写入与执行被拒绝，产出建议与计划',
+  ask: '改动先出 diff 提案，你批准后才写入；执行沙箱代码',
+  auto: '改动直接写入仓库（保留快照可撤销），执行沙箱代码；密钥与危险命令仍被拦截',
+  full: '自主模式 + 解锁联网装依赖等受限工具（需服务端开启联网）；安全底线（密钥、沙箱边界）不变',
 }
 
 export function Composer({
@@ -166,10 +174,10 @@ export function Composer({
                 value={permissionMode}
                 onChange={(event) => onPermissionChange(event.target.value as PermissionMode)}
                 className="cursor-pointer appearance-none bg-transparent pr-4 text-[11px] text-inherit outline-none"
-                title="权限模式：只读 / 确认写入 / 自动执行"
+                title={PERMISSION_HINT[permissionMode]}
               >
                 {(Object.keys(PERMISSION_LABEL) as PermissionMode[]).map((mode) => (
-                  <option key={mode} value={mode} className="bg-panel text-ink">
+                  <option key={mode} value={mode} className="bg-panel text-ink" title={PERMISSION_HINT[mode]}>
                     {PERMISSION_LABEL[mode]}
                   </option>
                 ))}

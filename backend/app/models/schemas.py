@@ -179,7 +179,7 @@ class ChatRequest(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
     # None = keep the session's saved selection; [] = explicitly clear it.
     repo_ids: Optional[list[str]] = None
-    permission_mode: Optional[Literal["readonly", "ask", "auto"]] = None
+    permission_mode: Optional[Literal["readonly", "ask", "auto", "full"]] = None
     model: Optional[str] = Field(default=None, max_length=120)
     file_ids: list[str] = Field(default_factory=list, max_length=5)
 

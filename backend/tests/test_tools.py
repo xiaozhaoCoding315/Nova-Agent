@@ -399,3 +399,15 @@ async def test_fetch_url_rejects_bad_scheme():
 async def test_fetch_url_blocks_private_host():
     r = await build_registry().execute("fetch_url", {"url": "http://192.168.150.128:8000/"}, CTX)
     assert r["ok"] is False and "内网" in r["error"]
+
+@pytest.mark.asyncio
+async def test_install_deps_full_mode_bypasses_admin_gate():
+    """Non-admins may install deps when the session is in full-access mode;
+    the server-side network switch still gates the actual run."""
+    ctx = ToolContext(user={"id": 2, "role": "demo"}, permission_mode="full")
+    r = await build_registry().execute("install_deps", {}, ctx)
+    assert r["ok"] is False and r["business"] is True
+    # Past the admin gate: the failure comes from a later check (network
+    # switch or missing repo), never from the admin-only rule.
+    assert "需要管理员" not in r["error"]
+    assert "SANDBOX_ALLOW_NETWORK" in r["error"] or "repo_id" in r["error"]

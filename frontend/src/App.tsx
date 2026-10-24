@@ -43,9 +43,10 @@ const VIEW_SUBTITLE: Record<ViewKey, string> = {
 }
 
 const PERMISSION_LABEL: Record<string, string> = {
-  readonly: '只读',
-  ask: '确认写入',
-  auto: '自动执行',
+  readonly: '计划模式',
+  ask: '变更前确认',
+  auto: '自主模式',
+  full: '完全访问',
 }
 
 function guestHoursLeft(expiresAt?: string | null): number | null {
@@ -253,7 +254,7 @@ export default function App() {
       hint: llmSettings?.source === 'user' ? '个人密钥' : '服务端',
       run: () => setView('settings'),
     })
-    for (const mode of ['readonly', 'ask', 'auto'] as const) {
+    for (const mode of ['readonly', 'ask', 'auto', 'full'] as const) {
       items.push({
         id: `perm-${mode}`,
         label: `权限模式：${PERMISSION_LABEL[mode]}`,
