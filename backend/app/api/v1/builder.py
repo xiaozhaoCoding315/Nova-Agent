@@ -126,7 +126,19 @@ async def approve_proposal(repo_id: str, user: dict = Depends(get_current_user))
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     await enqueue_index(repo_id, reindex=True, user_id=user["id"])
-    return {"ok": True, "applied": applied, "status": "indexing"}
+    # Smoke boot: once written and indexed, the project must actually run.
+    from app.config import settings as app_settings
+    smoke_job_id = None
+    if app_settings.builder_smoke_enabled:
+        from app.core.jobs.runner import runner
+        if runner.has("builder_smoke"):
+            smoke_job_id = await runner.enqueue(
+                "builder_smoke",
+                {"repo_id": repo_id, "user_id": user["id"]},
+                user_id=user["id"],
+                idempotency_key=f"smoke:{repo_id}:{applied and len(applied)}",
+            )
+    return {"ok": True, "applied": applied, "status": "indexing", "smoke_job_id": smoke_job_id}
 
 
 @router.post("/repos/{repo_id}/proposal/reject", response_model=BuilderActionOut)

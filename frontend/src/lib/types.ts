@@ -308,6 +308,7 @@ export type Repo = {
   error?: string | null
   stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number; dependencies?: number }
   created_at?: string
+  smoke?: { ok: boolean; status: string; note?: string; elapsed_ms?: number } | null
 }
 
 export type BuilderPlan = {

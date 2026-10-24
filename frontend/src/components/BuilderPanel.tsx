@@ -44,6 +44,39 @@ export function BuilderPanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
   const [openFiles, setOpenFiles] = useState<Record<string, boolean>>({})
+  const [smoke, setSmoke] = useState<{ ok: boolean; status: string; note?: string } | null>(null)
+
+  useEffect(() => {
+    setLocalStatus(status)
+  }, [status])
+
+  // After approval the backend boots the project in a throwaway container;
+  // poll the repo until the smoke result lands.
+  useEffect(() => {
+    if (!['indexing', 'ready'].includes(localStatus)) return
+    let cancelled = false
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout>
+    const tick = async () => {
+      try {
+        const repo = await api.repos.get(repoId)
+        if (repo.smoke) {
+          if (!cancelled) setSmoke(repo.smoke as { ok: boolean; status: string; note?: string })
+          return
+        }
+      } catch {
+        /* keep polling */
+      }
+      tries += 1
+      if (!cancelled && tries < 40) timer = setTimeout(tick, 8000)
+    }
+    timer = setTimeout(tick, 6000)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStatus, repoId])
 
   useEffect(() => {
     setLocalStatus(status)
@@ -150,6 +183,23 @@ export function BuilderPanel({
 
       {error && (
         <p className="mt-3 rounded-lg border border-err/40 bg-err/5 p-2.5 text-[12.5px] text-err">{error}</p>
+      )}
+
+      {smoke && (
+        <div
+          className={`mt-3 rounded-lg border p-2.5 text-[12px] leading-relaxed ${
+            smoke.ok
+              ? 'border-ok/40 bg-ok/5 text-ok'
+              : 'border-warn/40 bg-warn/5 text-ink'
+          }`}
+        >
+          <b>冒烟启动：</b>
+          {smoke.ok
+            ? '通过 —— 项目在隔离容器中成功启动并通过健康检查，容器已回收。'
+            : smoke.status === 'skipped'
+              ? `跳过（${smoke.note ?? '沙箱不可用'}）`
+              : `未通过（${smoke.status}${smoke.note ? '：' + String(smoke.note).slice(0, 300) : ''}）`}
+        </div>
       )}
 
       {['planning', 'generating'].includes(localStatus) && (

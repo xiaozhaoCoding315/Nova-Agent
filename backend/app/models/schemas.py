@@ -127,10 +127,18 @@ class SourceUsageOut(BaseModel):
 # ---------- Night queue ----------
 
 class NightQueueRequest(BaseModel):
-    kind: Literal["change_execute", "task"]
+    kind: Literal["change_execute", "task", "chat", "builder"]
     change_id: Optional[str] = None
     repo_id: Optional[str] = None
     bug_report: Optional[str] = Field(default=None, max_length=8000)
+    # chat kind: unattended prompt; session_id optional (new session otherwise)
+    content: Optional[str] = Field(default=None, max_length=8000)
+    session_id: Optional[str] = None
+    repo_ids: list[str] = Field(default_factory=list, max_length=5)
+    # builder kind: generate a project from scratch overnight
+    name: Optional[str] = Field(default=None, max_length=80)
+    requirements: Optional[str] = Field(default=None, max_length=6000)
+    stack: Literal["python", "fullstack"] = "python"
 
 
 class NightItemOut(BaseModel):
@@ -259,6 +267,7 @@ class RepoOut(BaseModel):
     error: Optional[str] = None
     stats: dict = Field(default_factory=dict)
     created_at: Optional[datetime] = None
+    smoke: Optional[dict] = None  # builder smoke-boot result (boot + health + teardown)
 
 
 class FileNodeOut(BaseModel):
@@ -715,6 +724,7 @@ class BuilderApplyOut(BaseModel):
     ok: bool = True
     applied: list[str] = Field(default_factory=list)
     status: str = "indexing"
+    smoke_job_id: Optional[str] = None
 
 
 # ---------- Edits ----------

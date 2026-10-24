@@ -181,6 +181,47 @@ async def _verify(ctx: JobContext) -> dict:
     }
 
 
+async def _builder_smoke(ctx: JobContext) -> dict:
+    from app.core.builder.smoke import run_smoke
+    from app.core.security.accounts import get_user_by_id
+
+    repo_id = str(ctx.payload["repo_id"])
+    user_id = int(ctx.payload["user_id"])
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise RuntimeError("账号不存在")
+    await ctx.check_cancel()
+    await ctx.update(progress=0.1, step="冒烟启动")
+    result = await run_smoke(repo_id, user)
+    if not result.get("ok") and result.get("status") not in ("skipped",):
+        raise RuntimeError(f"冒烟未通过：{result.get('note') or result.get('status')}")
+    return result
+
+
+async def _night_chat(ctx: JobContext) -> dict:
+    """Run one unattended chat turn (night queue 'chat' kind)."""
+    from app.core.agent.loop import run_chat
+    from app.core.memory import session as session_mod
+    from app.core.security.accounts import get_user_by_id
+
+    payload = ctx.payload
+    user = await get_user_by_id(int(payload["user_id"]))
+    if not user:
+        raise RuntimeError("账号不存在")
+    session = await session_mod.get_session(str(payload["session_id"]), user["id"])
+    if not session:
+        raise RuntimeError("会话不存在")
+    await ctx.check_cancel()
+    await ctx.update(progress=0.1, step="执行夜间对话")
+    rounds = 0
+    async for event in run_chat(
+        user, session, str(payload["content"]), list(payload.get("repo_ids") or []),
+    ):
+        if event.get("event") == "done":
+            rounds = event["data"].get("rounds", rounds)
+    return {"session_id": session["id"], "rounds": rounds}
+
+
 def register_all(runner) -> None:
     """Idempotently register the built-in handlers."""
     if not runner.has("index"):
@@ -193,6 +234,10 @@ def register_all(runner) -> None:
         runner.register("builder_files", _builder_files, concurrency=1)
     if not runner.has("session_summary"):
         runner.register("session_summary", _session_summary, concurrency=2)
+    if not runner.has("builder_smoke"):
+        runner.register("builder_smoke", _builder_smoke, concurrency=1)
+    if not runner.has("night_chat"):
+        runner.register("night_chat", _night_chat, concurrency=1)
     if not runner.has("verify"):
         runner.register("verify", _verify, concurrency=1)
     if not runner.has("change_spec"):

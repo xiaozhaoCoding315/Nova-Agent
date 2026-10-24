@@ -87,3 +87,26 @@ async def test_finalize_fullstack_adds_generated_frontend(monkeypatch):
     assert files["package.json"] != "{}"
     assert "source: contracts/openapi.json" in files["nova.yaml"]
     assert json.loads(files["frontend/src/endpoints.json"]) == ["/items"]
+
+def test_quality_files_are_deterministic():
+    from app.core.builder.engine import _quality_files
+
+    plan = {"api": ["POST /api/tasks 创建任务", "GET /api/tasks/{id} 查询任务"]}
+    files = _quality_files({"app/main.py": "x"}, plan, "python")
+    assert ".github/workflows/ci.yml" in files
+    assert "pyproject.toml" in files
+    assert "pytest -q" in files[".github/workflows/ci.yml"]
+    smoke = files["tests/test_smoke.py"]
+    assert '"/api/tasks"' in smoke and '"/api/tasks/{id}"' in smoke
+    assert "TestClient" in smoke
+
+    full = _quality_files({"app/main.py": "x", "pyproject.toml": "exists"}, plan, "fullstack")
+    assert "pyproject.toml" not in full or full.get("pyproject.toml") == "exists"
+    assert "npm run build" in full[".github/workflows/ci.yml"]
+
+
+def test_smoke_test_falls_back_to_health():
+    from app.core.builder.engine import _smoke_test_source
+
+    source = _smoke_test_source([])
+    assert '"/health"' in source

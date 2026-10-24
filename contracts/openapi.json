@@ -644,6 +644,17 @@
             "title": "Ok",
             "type": "boolean"
           },
+          "smoke_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smoke Job Id"
+          },
           "status": {
             "default": "indexing",
             "title": "Status",
@@ -3404,13 +3415,39 @@
             ],
             "title": "Change Id"
           },
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
           "kind": {
             "enum": [
               "change_execute",
-              "task"
+              "task",
+              "chat",
+              "builder"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "repo_id": {
             "anyOf": [
@@ -3422,6 +3459,46 @@
               }
             ],
             "title": "Repo Id"
+          },
+          "repo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Repo Ids",
+            "type": "array"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "maxLength": 6000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "stack": {
+            "default": "python",
+            "enum": [
+              "python",
+              "fullstack"
+            ],
+            "title": "Stack",
+            "type": "string"
           }
         },
         "required": [
@@ -3631,6 +3708,18 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "smoke": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smoke"
           },
           "source": {
             "default": "",

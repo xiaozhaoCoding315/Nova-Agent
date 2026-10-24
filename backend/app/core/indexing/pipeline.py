@@ -45,8 +45,8 @@ async def set_status(repo_id: str, status: str, error: str | None = None) -> Non
 
 
 async def get_repo(repo_id: str, user_id: int | None = None) -> dict | None:
-    sql = ("SELECT id, user_id, name, source, root_path, status, error, stats, created_at, kind, rules "
-           "FROM repos WHERE id = %s")
+    sql = ("SELECT id, user_id, name, source, root_path, status, error, stats, created_at, kind, rules, "
+           "stack_mode, brief, smoke FROM repos WHERE id = %s")
     params: tuple = (repo_id,)
     if user_id is not None:
         sql += " AND user_id = %s"
@@ -59,6 +59,7 @@ async def get_repo(repo_id: str, user_id: int | None = None) -> dict | None:
         "id": str(r[0]), "user_id": r[1], "name": r[2], "source": r[3],
         "root_path": r[4], "status": r[5], "error": r[6], "stats": r[7] or {},
         "created_at": r[8], "kind": r[9] or "import", "rules": r[10] or "",
+        "stack_mode": r[11] or "python", "brief": r[12] or "", "smoke": r[13],
     }
 
 

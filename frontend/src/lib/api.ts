@@ -90,10 +90,16 @@ export const api = {
   night: {
     list: () => request<NightItem[]>('/night-queue'),
     add: (body: {
-      kind: 'change_execute' | 'task'
+      kind: 'change_execute' | 'task' | 'chat' | 'builder'
       change_id?: string
       repo_id?: string
       bug_report?: string
+      content?: string
+      session_id?: string
+      repo_ids?: string[]
+      name?: string
+      requirements?: string
+      stack?: 'python' | 'fullstack'
     }) => request<NightItem>('/night-queue', json(body)),
     cancel: (id: string) => request<{ ok: boolean }>(`/night-queue/${id}`, { method: 'DELETE' }),
   },

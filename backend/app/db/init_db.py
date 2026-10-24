@@ -770,6 +770,10 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_lessons_context "
         "ON lessons (user_id, repo_id, hits DESC, updated_at DESC)",
     ]),
+    (16, [
+        # Builder smoke-boot result (boot container + health check + teardown).
+        "ALTER TABLE repos ADD COLUMN IF NOT EXISTS smoke JSONB",
+    ]),
 ]
 
 

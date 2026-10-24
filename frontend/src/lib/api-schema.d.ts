@@ -1819,6 +1819,8 @@ export interface components {
              * @default true
              */
             ok: boolean;
+            /** Smoke Job Id */
+            smoke_job_id?: string | null;
             /**
              * Status
              * @default indexing
@@ -2838,13 +2840,29 @@ export interface components {
             bug_report?: string | null;
             /** Change Id */
             change_id?: string | null;
+            /** Content */
+            content?: string | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "change_execute" | "task";
+            kind: "change_execute" | "task" | "chat" | "builder";
+            /** Name */
+            name?: string | null;
             /** Repo Id */
             repo_id?: string | null;
+            /** Repo Ids */
+            repo_ids?: string[];
+            /** Requirements */
+            requirements?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * Stack
+             * @default python
+             * @enum {string}
+             */
+            stack: "python" | "fullstack";
         };
         /** OkOut */
         OkOut: {
@@ -2914,6 +2932,10 @@ export interface components {
             kind: string;
             /** Name */
             name: string;
+            /** Smoke */
+            smoke?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Source
              * @default

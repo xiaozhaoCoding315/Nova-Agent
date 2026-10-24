@@ -23,6 +23,12 @@ async def add_night_item(body: NightQueueRequest, user: dict = Depends(get_curre
             change_id=body.change_id,
             repo_id=body.repo_id,
             bug_report=body.bug_report,
+            content=body.content,
+            session_id=body.session_id,
+            repo_ids=body.repo_ids,
+            name=body.name,
+            requirements=body.requirements,
+            stack=body.stack,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

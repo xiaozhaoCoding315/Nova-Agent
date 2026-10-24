@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     guest_storage_mb: int = 50
     max_attachments_per_message: int = 5
 
+    # ---------- Builder ----------
+    # Boot generated projects in a throwaway container after approval
+    # (health check, then immediate teardown) — "runs" beats "compiles".
+    builder_smoke_enabled: bool = True
+
     # ---------- Sandbox ----------
     sandbox_enabled: bool = True
     sandbox_image: str = "nova-sandbox:latest"

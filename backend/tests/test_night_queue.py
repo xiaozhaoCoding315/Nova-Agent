@@ -98,3 +98,79 @@ async def test_dispatch_marks_budget_failure(monkeypatch):
     dispatched = await night._dispatch_pending()
     assert dispatched == 0
     assert any("预算" in sql for sql in executed)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_chat_and_builder_kinds(monkeypatch):
+    async def fake_query(sql, params):
+        if "FROM sessions" in sql:
+            return [(1,)]
+        return []
+
+    async def fake_execute(sql, params=None):
+        return None
+
+    monkeypatch.setattr(night, "query", fake_query)
+    monkeypatch.setattr(night, "execute", fake_execute)
+
+    chat = await night.enqueue_item(
+        1, "chat", content="分析鉴权链路并给出风险清单", session_id="s1",
+    )
+    assert chat["status"] == "pending"
+    assert chat["title"].startswith("分析鉴权链路")
+
+    with pytest.raises(ValueError):
+        await night.enqueue_item(1, "chat", content="")
+
+    proj = await night.enqueue_item(
+        1, "builder", name="blog-api", requirements="一个博客 API", stack="fullstack",
+    )
+    assert proj["title"] == "生成项目：blog-api"
+
+    with pytest.raises(ValueError):
+        await night.enqueue_item(1, "builder", name="x", requirements="y", stack="bogus")
+
+
+@pytest.mark.asyncio
+async def test_reconcile_builder_stage_chain(monkeypatch):
+    """Plan-job success must approve the plan and enqueue the files job."""
+
+    async def fake_query(sql, params=None):
+        if "FROM night_queue" in sql and "kind" in sql:
+            return [("item-1", 1, "job-plan", "builder",
+                     {"repo_id": "r1", "stage": "plan"})]
+        return []
+
+    execute_calls = []
+
+    async def fake_execute(sql, params=None):
+        execute_calls.append((sql, params))
+
+    async def fake_get(job_id, user_id=None):
+        return {"status": "succeeded"}
+
+    async def fake_approve(repo_id):
+        return None
+
+    async def fake_enqueue_files(repo_id, user_id):
+        return "job-files"
+
+    class FakeRunner:
+        async def get(self, job_id, user_id=None):
+            return await fake_get(job_id, user_id)
+
+    import sys
+    import app.core.jobs.service as jobs_service
+    import app.core.builder.engine as engine_mod
+    runner_mod = sys.modules["app.core.jobs.runner"]
+    monkeypatch.setattr(night, "query", fake_query)
+    monkeypatch.setattr(night, "execute", fake_execute)
+    monkeypatch.setattr(engine_mod, "approve_plan", fake_approve)
+    monkeypatch.setattr(jobs_service, "enqueue_builder_files", fake_enqueue_files)
+    monkeypatch.setattr(runner_mod, "runner", FakeRunner())
+
+    await night._reconcile_running()
+    update = next(sql for sql, _ in execute_calls if "UPDATE night_queue" in sql)
+    assert "job_id" in update
+    params = next(p for sql, p in execute_calls if "UPDATE night_queue" in sql and p)
+    assert "job-files" in params
