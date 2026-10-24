@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Check, FilePlus2, FlaskConical, FolderTree, GitPullRequest, Sparkles, Trash2, X,
+  Check, Download, FilePlus2, FlaskConical, FolderTree, GitPullRequest, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
@@ -222,6 +222,13 @@ export function ProjectDock({
               >
                 <FolderTree size={10} /> 展开
               </button>
+              <a
+                href={`/api/v1/repos/${active.id}/export`}
+                className="flex shrink-0 items-center rounded-md p-1 text-dim/70 transition-colors hover:bg-raised hover:text-ink"
+                title="下载仓库 ZIP 到本地"
+              >
+                <Download size={10} />
+              </a>
               {!confirmDelete ? (
                 <button
                   onClick={() => setConfirmDelete(true)}

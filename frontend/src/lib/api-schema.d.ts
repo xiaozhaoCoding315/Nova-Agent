@@ -1076,6 +1076,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/{repo_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Repo Files
+         * @description Replace the whole workspace from a zip (local bridge push). Re-indexes.
+         */
+        put: operations["replace_repo_files_api_v1_repos__repo_id__files_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/{repo_id}/generate": {
         parameters: {
             query?: never;
@@ -1675,6 +1695,14 @@ export interface components {
             min_password_length: number;
             /** Registration Mode */
             registration_mode: string;
+        };
+        /** Body_replace_repo_files_api_v1_repos__repo_id__files_put */
+        Body_replace_repo_files_api_v1_repos__repo_id__files_put: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
         };
         /** Body_upload_file_api_v1_files_post */
         Body_upload_file_api_v1_files_post: {
@@ -5605,6 +5633,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileContentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_repo_files_api_v1_repos__repo_id__files_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_replace_repo_files_api_v1_repos__repo_id__files_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoOut"];
                 };
             };
             /** @description Validation Error */

@@ -332,6 +332,23 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
+## 本地桥接（nova bridge）
+
+让 Nova 直接工作在你电脑的真实项目目录上：本地改动推上去、agent 的产出拉回来。
+
+```bash
+cd backend
+export NOVA_URL=http://你的服务器:8000 NOVA_USERNAME=... NOVA_PASSWORD=...
+
+python nova.py bridge init ~/my-project   # 首次关联：打包上传并创建仓库
+python nova.py bridge watch ~/my-project  # 后台挂着：本地一改就自动推送
+python nova.py bridge pull ~/my-project   # agent 改完代码后拉回本地（不覆盖你本地已改的文件，--force 强制）
+```
+
+- 同步时自动跳过 `.git / node_modules / 构建产物`；关联信息存在目录下的 `.nova-bridge.json`
+- 生成项目想落到本地：网页里批准写入后点项目面板的下载图标，或 `nova.py export --repo <名字> --out 项目.zip`
+- 对话里的 `run_command` 工具在仓库上执行真实 shell（脚手架 / git 提交 / 移动文件），改动持久化在仓库中，`pull` 即可取回
+
 ## 技能系统（SKILL.md）
 
 把技能目录放到 `SKILLS_DIR`（默认 `data/skills`），每个技能一个子目录 + `SKILL.md`：

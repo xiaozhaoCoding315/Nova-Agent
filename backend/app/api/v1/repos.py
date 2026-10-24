@@ -3,6 +3,7 @@ import asyncio
 import re
 import shutil
 import uuid
+from pathlib import Path
 import zipfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -88,6 +89,48 @@ async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_cur
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "zip", "name": repo["name"]})
     return repo
+
+
+@router.put("/repos/{repo_id}/files", response_model=RepoOut)
+async def replace_repo_files(
+    repo_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Replace the whole workspace from a zip (local bridge push). Re-indexes."""
+    repo = await get_repo(repo_id, user["id"])
+    if not repo:
+        raise HTTPException(status_code=404, detail="仓库不存在")
+    if repo["kind"] == "builder":
+        raise HTTPException(status_code=400, detail="Builder 项目不能整仓替换")
+    check_job_quota(user, "reindex")
+    root = Path(repo["root_path"]).resolve()
+    src_dir = root / "src"
+    tmp_zip = root / "_bridge.zip"
+    total = 0
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    try:
+        with open(tmp_zip, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(status_code=413, detail=f"压缩包超过上限（{settings.max_upload_mb}MB）")
+                out.write(chunk)
+        shutil.rmtree(src_dir, ignore_errors=True)
+        src_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            safe_extract_zip,
+            str(tmp_zip), str(src_dir),
+            settings.max_repo_files, settings.max_file_kb * 1024,
+        )
+    except (zipfile.BadZipFile, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"压缩包无效：{exc}")
+    finally:
+        tmp_zip.unlink(missing_ok=True)
+    await enqueue_index(repo_id, reindex=True, user_id=user["id"])
+    await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
+                    details={"repo_id": repo_id, "source": "bridge", "name": repo["name"]})
+    return await get_repo(repo_id, user["id"]) or repo
 
 
 @router.post("/repos/git", response_model=RepoOut)

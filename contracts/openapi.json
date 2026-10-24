@@ -360,6 +360,20 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "Body_replace_repo_files_api_v1_repos__repo_id__files_put": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_replace_repo_files_api_v1_repos__repo_id__files_put",
+        "type": "object"
+      },
       "Body_upload_file_api_v1_files_post": {
         "properties": {
           "file": {
@@ -7803,6 +7817,59 @@
           }
         },
         "summary": "Get File",
+        "tags": [
+          "repos"
+        ]
+      }
+    },
+    "/api/v1/repos/{repo_id}/files": {
+      "put": {
+        "description": "Replace the whole workspace from a zip (local bridge push). Re-indexes.",
+        "operationId": "replace_repo_files_api_v1_repos__repo_id__files_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_replace_repo_files_api_v1_repos__repo_id__files_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Repo Files",
         "tags": [
           "repos"
         ]

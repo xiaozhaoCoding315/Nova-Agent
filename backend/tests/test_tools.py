@@ -18,9 +18,9 @@ def test_registry_has_all_tools_with_openai_specs():
     specs = get_registry().specs()
     names = {s["function"]["name"] for s in specs}
     assert names == {
-        "run_code", "read_file", "list_files", "read_uploaded_file", "search_code",
-        "impact_analysis", "diagnose_error", "write_files", "install_deps", "json_tool",
-        "sql_tool", "fetch_url",
+        "run_code", "run_command", "read_file", "list_files", "read_uploaded_file",
+        "search_code", "impact_analysis", "diagnose_error", "write_files", "install_deps",
+        "json_tool", "sql_tool", "fetch_url",
     }
     for spec in specs:
         assert spec["type"] == "function"
@@ -411,3 +411,21 @@ async def test_install_deps_full_mode_bypasses_admin_gate():
     # switch or missing repo), never from the admin-only rule.
     assert "需要管理员" not in r["error"]
     assert "SANDBOX_ALLOW_NETWORK" in r["error"] or "repo_id" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_command_blocked_in_readonly_mode():
+    ctx = ToolContext(user={"id": 1}, repo_ids=["11111111-1111-1111-1111-111111111111"],
+                      permission_mode="readonly")
+    r = await build_registry().execute("run_command", {"command": "ls"}, ctx)
+    assert r["ok"] is False and r["business"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_command_requires_command_and_repo():
+    ctx = ToolContext(user={"id": 1}, permission_mode="auto")
+    r = await build_registry().execute("run_command", {"command": "  "}, ctx)
+    assert r["ok"] is False and "command" in r["error"]
+    r2 = await build_registry().execute(
+        "run_command", {"command": "ls"}, ctx)
+    assert r2["ok"] is False and "仓库" in r2["error"]

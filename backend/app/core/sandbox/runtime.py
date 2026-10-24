@@ -127,6 +127,8 @@ async def execute(
     deps_mount: str | None = None,
     as_root: bool = False,
     job_id: str | None = None,
+    workspace_dir: str | None = None,
+    user: str | None = None,
 ) -> dict:
     """Run ``files`` in the sandbox container.
 
@@ -134,6 +136,10 @@ async def execute(
     ``deps_volume`` mounts a per-repo named volume at /deps (PYTHONPATH) so
     packages installed with ``pip --target`` persist across runs.
     ``as_root`` is only used for the admin-only dependency installer.
+    ``workspace_dir`` mounts an existing host directory at /workspace instead
+    of copying ``files`` — container changes persist (used by run_command).
+    ``user`` overrides the container uid:gid (needed when the mounted
+    workspace belongs to another uid, e.g. the app account).
     """
     timeout = timeout or settings.sandbox_timeout
     status = await sandbox_status()
@@ -147,7 +153,7 @@ async def execute(
             "command": "",
         }
 
-    if not files:
+    if not files and not workspace_dir:
         return {
             "stdout": "", "stderr": "no files provided", "exit_code": -1,
             "timed_out": False, "sandboxed": False, "command": "",
@@ -162,7 +168,10 @@ async def execute(
     container_name = f"nova-sbx-{uuid.uuid4().hex[:12]}"
     tmp_dir = None
     try:
-        tmp_dir = tempfile.mkdtemp(prefix="nova_sandbox_")
+        if workspace_dir:
+            tmp_dir = workspace_dir
+        else:
+            tmp_dir = tempfile.mkdtemp(prefix="nova_sandbox_")
         for relpath, content in files.items():
             rel = _safe_relpath(relpath)
             target = f"{tmp_dir}/{rel}"
@@ -195,6 +204,8 @@ async def execute(
             extra += ["-e", "npm_config_update_notifier=false"]
         if as_root:
             extra += ["--user", "0:0"]
+        elif user:
+            extra += ["--user", user]
         else:
             extra += ["--user", "65534:65534"]
 
@@ -255,7 +266,7 @@ async def execute(
             "timed_out": False, "sandboxed": True, "command": command,
         }
     finally:
-        if tmp_dir:
+        if tmp_dir and not workspace_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
