@@ -33,3 +33,11 @@ resume.html
 
 # Operator-local MCP server config
 backend/mcp_servers.json
+
+# Desktop installer artifacts served at /downloads
+data/
+
+# Desktop build artifacts
+desktop/out/
+desktop/release/
+deploy/*.log
