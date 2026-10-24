@@ -1,0 +1,62 @@
+{
+  "name": "nova-desktop",
+  "productName": "Nova Agent",
+  "version": "2.0.0",
+  "description": "Nova Agent 桌面客户端：连接你的自托管 Nova 服务器",
+  "main": "main.js",
+  "author": "Nova Agent",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist": "electron-builder --win nsis --mac dmg --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "40.10.2",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.nova.agent",
+    "productName": "Nova Agent",
+    "directories": {
+      "output": "out",
+      "buildResources": "."
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "first-run.html",
+      "icon.png",
+      "icon.ico"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nova Agent",
+      "artifactName": "Nova-Agent-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "artifactName": "Nova-Agent-${version}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "icon.png",
+      "category": "Development",
+      "artifactName": "Nova-Agent-${version}.${ext}"
+    }
+  }
+}

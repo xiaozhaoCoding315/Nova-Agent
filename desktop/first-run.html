@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>连接 Nova 服务器</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #101014; color: #e8e8ee;
+      font: 14px/1.6 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+      padding: 24px;
+    }
+    .card { width: 100%; max-width: 420px; }
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .logo .mark {
+      width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      background: rgba(76, 111, 255, 0.18); color: #7d95ff; font-size: 17px; font-weight: 700;
+    }
+    h1 { font-size: 16px; margin: 0; }
+    p.sub { color: #9a9aa8; font-size: 12px; margin: 2px 0 0; }
+    label { display: block; font-size: 12px; color: #9a9aa8; margin: 0 0 6px; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #26262e;
+      background: #16161c; color: #e8e8ee; font-size: 13.5px; outline: none;
+    }
+    input:focus { border-color: #4c6fff; }
+    button {
+      width: 100%; margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: none;
+      background: #4c6fff; color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    }
+    button:hover { background: #3d5ce6; }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .error {
+      margin-top: 12px; padding: 9px 12px; border-radius: 8px; font-size: 12px; display: none;
+      border: 1px solid rgba(232, 84, 84, 0.4); background: rgba(232, 84, 84, 0.08); color: #f08c8c;
+    }
+    .hint { margin-top: 16px; color: #77778a; font-size: 11.5px; line-height: 1.7; }
+    code { background: #1a1a22; border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="mark">N</div>
+      <div>
+        <h1>Nova Agent</h1>
+        <p class="sub">先连接你的 Nova 服务器，登录后即可使用</p>
+      </div>
+    </div>
+    <label for="server">服务器地址</label>
+    <input id="server" placeholder="http://192.168.1.10:8000" spellcheck="false" />
+    <button id="connect">连接</button>
+    <div id="error" class="error"></div>
+    <p class="hint">
+      地址就是你在浏览器里打开 Nova 的地址，例如 <code>http://your-server:8000</code>。
+      所有数据都保存在服务器上，本机只做界面。
+    </p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search)
+    let saved = { savedUrl: '', warning: '' }
+    try { saved = JSON.parse(decodeURIComponent(params.get('config') || '{}')) } catch {}
+
+    const input = document.getElementById('server')
+    const button = document.getElementById('connect')
+    const errorBox = document.getElementById('error')
+
+    if (saved.savedUrl) input.value = saved.savedUrl
+    if (saved.warning) {
+      errorBox.textContent = saved.warning
+      errorBox.style.display = 'block'
+    }
+
+    async function connect() {
+      errorBox.style.display = 'none'
+      button.disabled = true
+      button.textContent = '连接中…'
+      try {
+        const result = await window.novaDesktop.connect(input.value)
+        if (result.ok) return // 主窗口已创建，本窗口会被关闭
+        errorBox.textContent = result.error || '连接失败'
+        errorBox.style.display = 'block'
+      } catch (err) {
+        errorBox.textContent = '连接失败：' + (err && err.message ? err.message : '未知错误')
+        errorBox.style.display = 'block'
+      } finally {
+        button.disabled = false
+        button.textContent = '连接'
+      }
+    }
+
+    button.addEventListener('click', () => void connect())
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void connect()
+    })
+    input.focus()
+  </script>
+</body>
+</html>
