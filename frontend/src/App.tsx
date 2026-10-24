@@ -13,6 +13,7 @@ import type { Health, Usage } from './lib/types'
 import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { useLlm } from './stores/llm'
+import { useRepos } from './stores/repos'
 import { ChatView } from './views/ChatView'
 import { LoginView } from './views/LoginView'
 import { SettingsView } from './views/SettingsView'
@@ -58,10 +59,11 @@ export default function App() {
     user, checked, check, logout, pendingRecoveryCode, clearRecoveryCode,
   } = useAuth()
   const {
-    sessions, sessionId, messages, loadSessions, selectSession, newSession, deleteSession,
-    renameSession, permissionMode, setPermissionMode,
+    sessions, sessionId, messages, historyRepoId, loadSessions, setHistoryRepoId, selectSession,
+    newSession, deleteSession, renameSession, permissionMode, setPermissionMode,
   } = useChat()
   const { settings: llmSettings, load: loadLlm } = useLlm()
+  const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos()
 
   const [view, setView] = useState<ViewKey>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -86,7 +88,15 @@ export default function App() {
     if (!user) return
     void loadSessions()
     void loadLlm()
-  }, [user, loadSessions, loadLlm])
+    void refreshRepos()
+  }, [user, loadSessions, loadLlm, refreshRepos])
+
+  useEffect(() => {
+    if (!historyRepoId || reposLoading) return
+    if (!repos.some((repo) => repo.id === historyRepoId)) {
+      void setHistoryRepoId(null)
+    }
+  }, [historyRepoId, repos, reposLoading, setHistoryRepoId])
 
   useEffect(() => {
     localStorage.setItem('nova.sidebar.collapsed', sidebarCollapsed ? '1' : '0')
@@ -184,6 +194,14 @@ export default function App() {
     setWorkflowTarget({ tab, repoId })
     setView('workflows')
     setSidebarOpen(false)
+  }
+
+  const changeHistoryFilter = async (repoId: string) => {
+    await setHistoryRepoId(repoId || null)
+    const state = useChat.getState()
+    if (state.sessionId && !state.sessions.some((session) => session.id === state.sessionId)) {
+      state.newSession()
+    }
   }
 
   const startNewChat = () => {
@@ -331,6 +349,9 @@ export default function App() {
         <div className={clsx('min-h-0 flex-1 pt-2', sidebarCollapsed && 'md:hidden')}>
           <SessionList
             sessions={sessions}
+            projects={repos}
+            projectFilter={historyRepoId ?? ''}
+            onProjectFilterChange={(repoId) => void changeHistoryFilter(repoId)}
             activeId={sessionId}
             onSelect={(id) => void openSession(id)}
             onNew={startNewChat}

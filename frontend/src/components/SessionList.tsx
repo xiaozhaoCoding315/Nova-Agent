@@ -3,7 +3,7 @@ import {
   MessageSquarePlus, MoreHorizontal, Pencil, Search, Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { Session } from '../lib/types'
+import type { Repo, Session } from '../lib/types'
 import { Button, Modal } from './common'
 
 function sessionDate(session: Session): Date | null {
@@ -39,6 +39,9 @@ function relativeTime(date: Date | null): string {
 
 export function SessionList({
   sessions,
+  projects,
+  projectFilter,
+  onProjectFilterChange,
   activeId,
   onSelect,
   onNew,
@@ -46,6 +49,9 @@ export function SessionList({
   onRename,
 }: {
   sessions: Session[]
+  projects: Repo[]
+  projectFilter: string
+  onProjectFilterChange: (repoId: string) => void
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
@@ -53,6 +59,14 @@ export function SessionList({
   onRename: (id: string, title: string) => void
 }) {
   const [search, setSearch] = useState('')
+  const repoNames = useMemo(
+    () => new Map(projects.map((repo) => [repo.id, repo.name])),
+    [projects],
+  )
+  const projectName = (session: Session) =>
+    session.primary_repo_id
+      ? repoNames.get(session.primary_repo_id) ?? ''
+      : (session.repo_ids ?? []).map((id) => repoNames.get(id)).find(Boolean) ?? ''
   const [menuId, setMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -61,7 +75,11 @@ export function SessionList({
   const groups = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     const filtered = keyword
-      ? sessions.filter((session) => session.title.toLowerCase().includes(keyword))
+      ? sessions.filter((session) => {
+          const name = projectName(session)
+          return session.title.toLowerCase().includes(keyword)
+            || name.toLowerCase().includes(keyword)
+        })
       : sessions
     const buckets = new Map<string, Session[]>()
     for (const session of filtered) {
@@ -74,7 +92,7 @@ export function SessionList({
     return order
       .filter((label) => buckets.has(label))
       .map((label) => ({ label, items: buckets.get(label) as Session[] }))
-  }, [sessions, search])
+  }, [sessions, search, repoNames])
 
   const startRename = (session: Session) => {
     setMenuId(null)
@@ -105,6 +123,17 @@ export function SessionList({
       </div>
 
       <div className="px-3 pb-2">
+        <select
+          value={projectFilter}
+          onChange={(event) => onProjectFilterChange(event.target.value)}
+          className="mb-2 w-full rounded-md border border-edge bg-base/60 px-2 py-1.5 text-[11.5px] text-dim outline-none focus:border-accentSoft"
+          title="按项目筛选会话；新建对话会继承当前项目"
+        >
+          <option value="">全部项目</option>
+          {projects.map((repo) => (
+            <option key={repo.id} value={repo.id}>{repo.name}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-1.5 rounded-md border border-edge bg-base/60 px-2 py-1.5 focus-within:border-accentSoft">
           <Search size={12} className="shrink-0 text-dim" />
           <input
@@ -129,6 +158,7 @@ export function SessionList({
               const date = sessionDate(session)
               const active = session.id === activeId
               const renaming = renamingId === session.id
+              const project = projectName(session)
               return (
                 <div
                   key={session.id}
@@ -167,9 +197,10 @@ export function SessionList({
                     ) : (
                       <p className="truncate text-[12.5px]" title={session.title}>{session.title}</p>
                     )}
-                    <p className="mt-0.5 flex items-center gap-1 text-[10px] text-dim/70">
-                      <span>{session.message_count} 条</span>
-                      {date && <span>· {relativeTime(date)}</span>}
+                    <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-dim/70">
+                      {project && <span className="truncate text-accent/70">{project}</span>}
+                      <span className="shrink-0">{session.message_count} 条</span>
+                      {date && <span className="shrink-0">· {relativeTime(date)}</span>}
                     </p>
                   </div>
                   {!renaming && (

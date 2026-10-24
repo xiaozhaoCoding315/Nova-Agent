@@ -3228,6 +3228,20 @@
         "title": "SearchResponseOut",
         "type": "object"
       },
+      "SessionCreateRequest": {
+        "properties": {
+          "repo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Repo Ids",
+            "type": "array"
+          }
+        },
+        "title": "SessionCreateRequest",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "created_at": {
@@ -3266,6 +3280,17 @@
             "default": "ask",
             "title": "Permission Mode",
             "type": "string"
+          },
+          "primary_repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Repo Id"
           },
           "repo_ids": {
             "items": {
@@ -5049,6 +5074,24 @@
     "/api/v1/chat/sessions": {
       "get": {
         "operationId": "list_sessions_api_v1_chat_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5063,6 +5106,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Sessions",
@@ -5072,6 +5125,23 @@
       },
       "post": {
         "operationId": "create_session_api_v1_chat_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SessionCreateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -5082,6 +5152,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Create Session",

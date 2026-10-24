@@ -81,9 +81,14 @@ class SessionOut(BaseModel):
     message_count: int = 0
     permission_mode: str = "ask"
     repo_ids: list[str] = Field(default_factory=list)
+    primary_repo_id: Optional[str] = None
     model: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class SessionCreateRequest(BaseModel):
+    repo_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 class MessageOut(BaseModel):

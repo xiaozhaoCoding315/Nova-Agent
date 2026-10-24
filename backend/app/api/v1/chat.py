@@ -2,7 +2,7 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.agent.loop import run_chat
@@ -24,6 +24,7 @@ from app.models.schemas import (
     MessageOut,
     OkOut,
     ReviewOut,
+    SessionCreateRequest,
     SessionOut,
     SessionRenameRequest,
     TraceEventOut,
@@ -33,14 +34,29 @@ router = APIRouter()
 
 
 @router.get("/chat/sessions", response_model=list[SessionOut])
-async def list_sessions(user: dict = Depends(get_current_user)):
-    return await session_mod.list_sessions(user["id"])
+async def list_sessions(
+    repo_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
+):
+    return await session_mod.list_sessions(user["id"], repo_id=repo_id)
 
 
 @router.post("/chat/sessions", response_model=SessionOut)
-async def create_session(user: dict = Depends(get_current_user)):
-    session = await session_mod.create_session(user["id"])
-    return {"id": session["id"], "title": session["title"], "message_count": 0}
+async def create_session(
+    body: SessionCreateRequest | None = None,
+    user: dict = Depends(get_current_user),
+):
+    repo_ids = list(dict.fromkeys((body.repo_ids if body else []) or []))[:5]
+    for repo_id in repo_ids:
+        if not await get_repo(repo_id, user["id"]):
+            raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
+    session = await session_mod.create_session(user["id"], repo_ids=repo_ids)
+    return {
+        "id": session["id"], "title": session["title"], "message_count": 0,
+        "repo_ids": repo_ids,
+        "primary_repo_id": repo_ids[0] if repo_ids else None,
+        "model": session.get("model"),
+    }
 
 
 @router.get("/chat/sessions/{session_id}/messages", response_model=list[MessageOut])
@@ -71,6 +87,7 @@ async def rename_session(
         "message_count": await session_mod.count_messages(session_id),
         "permission_mode": session.get("permission_mode", "ask"),
         "repo_ids": session.get("repo_ids", []),
+        "primary_repo_id": session.get("primary_repo_id"),
         "model": session.get("model"),
         "created_at": renamed["created_at"], "updated_at": renamed["updated_at"],
     }
@@ -118,8 +135,14 @@ async def chat_message(
         if not await get_repo(repo_id, user["id"]):
             raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
     if body.repo_ids is not None:
-        await session_mod.set_repo_ids(session["id"], effective_repo_ids)
+        try:
+            await session_mod.set_repo_ids(
+                session["id"], effective_repo_ids, user_id=user["id"]
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
         session["repo_ids"] = effective_repo_ids
+        session["primary_repo_id"] = effective_repo_ids[0] if effective_repo_ids else None
 
     await session_mod.add_message(session["id"], "user", body.content)
     session["title"] = await session_mod.maybe_set_title(session["id"], body.content)

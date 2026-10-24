@@ -2621,6 +2621,11 @@ export interface components {
             /** Symbols */
             symbols?: components["schemas"]["SymbolOut"][];
         };
+        /** SessionCreateRequest */
+        SessionCreateRequest: {
+            /** Repo Ids */
+            repo_ids?: string[];
+        };
         /** SessionOut */
         SessionOut: {
             /** Created At */
@@ -2639,6 +2644,8 @@ export interface components {
              * @default ask
              */
             permission_mode: string;
+            /** Primary Repo Id */
+            primary_repo_id?: string | null;
             /** Repo Ids */
             repo_ids?: string[];
             /** Title */
@@ -3774,7 +3781,9 @@ export interface operations {
     };
     list_sessions_api_v1_chat_sessions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                repo_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3790,6 +3799,15 @@ export interface operations {
                     "application/json": components["schemas"]["SessionOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_session_api_v1_chat_sessions_post: {
@@ -3799,7 +3817,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SessionCreateRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3808,6 +3830,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

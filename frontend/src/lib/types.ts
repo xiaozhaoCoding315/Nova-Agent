@@ -27,6 +27,7 @@ export type Session = {
   message_count: number
   permission_mode?: PermissionMode
   repo_ids?: string[]
+  primary_repo_id?: string | null
   model?: string | null
   created_at?: string
   updated_at?: string

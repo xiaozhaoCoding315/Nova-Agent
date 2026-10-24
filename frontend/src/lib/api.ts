@@ -74,8 +74,9 @@ export const api = {
   },
 
   sessions: {
-    list: () => request<Session[]>('/chat/sessions'),
-    create: () => request<Session>('/chat/sessions', { method: 'POST' }),
+    list: (repoId?: string) =>
+      request<Session[]>(`/chat/sessions${repoId ? `?repo_id=${encodeURIComponent(repoId)}` : ''}`),
+    create: (repoIds: string[] = []) => request<Session>('/chat/sessions', json({ repo_ids: repoIds })),
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),

@@ -71,6 +71,7 @@ _DDL = [
         permission_mode VARCHAR(12) DEFAULT 'ask',
         repo_ids JSONB DEFAULT '[]'::jsonb,
         model VARCHAR(120),
+        primary_repo_id UUID,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
     )
@@ -79,6 +80,7 @@ _DDL = [
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo_ids JSONB DEFAULT '[]'::jsonb",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT DEFAULT 0",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model VARCHAR(120)",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS primary_repo_id UUID",
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id, updated_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS messages (
@@ -117,6 +119,15 @@ _DDL = [
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS plan JSONB",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS proposal JSONB",
     "ALTER TABLE repos ADD COLUMN IF NOT EXISTS last_check JSONB",
+    """
+    CREATE TABLE IF NOT EXISTS session_repos (
+        session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+        repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (session_id, repo_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_session_repos_repo ON session_repos (repo_id, session_id)",
     """
     CREATE TABLE IF NOT EXISTS repo_files (
         id BIGSERIAL PRIMARY KEY,
@@ -594,6 +605,40 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
         "UPDATE users SET display_name = username WHERE display_name IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status, expires_at)",
+    ]),
+    (10, [
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS primary_repo_id UUID",
+        """
+        CREATE TABLE IF NOT EXISTS session_repos (
+            session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (session_id, repo_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_session_repos_repo ON session_repos (repo_id, session_id)",
+        """
+        DO $$ BEGIN
+            ALTER TABLE sessions ADD CONSTRAINT fk_sessions_primary_repo
+            FOREIGN KEY (primary_repo_id) REFERENCES repos(id) ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+        """,
+        """
+        INSERT INTO session_repos (session_id, repo_id)
+        SELECT s.id, r.id
+        FROM sessions s
+        CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(s.repo_ids, '[]'::jsonb)) AS elem(value)
+        JOIN repos r ON r.id::text = elem.value AND r.user_id = s.user_id
+        ON CONFLICT DO NOTHING
+        """,
+        """
+        UPDATE sessions s SET primary_repo_id = sr.repo_id
+        FROM (
+            SELECT DISTINCT ON (session_id) session_id, repo_id
+            FROM session_repos ORDER BY session_id, created_at, repo_id
+        ) sr
+        WHERE s.id = sr.session_id AND s.primary_repo_id IS NULL
+        """,
     ]),
 ]
 

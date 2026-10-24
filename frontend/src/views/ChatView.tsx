@@ -35,12 +35,12 @@ export function ChatView({
   onOpenWorkflow: (tab: 'changes' | 'tasks', repoId?: string) => void
 }) {
   const {
-    sessions, sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
-    permissionMode, setPermissionMode, model, setModel, send, stop, clearError,
+    sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
+    permissionMode, setPermissionMode, model, setModel, selectedRepoIds, toggleRepo,
+    send, stop, clearError,
   } = useChat()
   const { repos, refresh } = useRepos()
   const { settings: llmSettings } = useLlm()
-  const [selectedRepos, setSelectedRepos] = useState<string[]>([])
   const [trajectoryOpen, setTrajectoryOpen] = useState(false)
   const [dockOpen, setDockOpen] = useState(true)
   const [dockTab, setDockTab] = useState<'project' | 'refs'>('project')
@@ -51,16 +51,6 @@ export function ChatView({
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    if (!sessionId) {
-      setSelectedRepos([])
-      return
-    }
-    const current = sessions.find((session) => session.id === sessionId)
-    setSelectedRepos(current?.repo_ids ?? [])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -86,10 +76,6 @@ export function ChatView({
       ? `服务端默认${llmSettings.server_model ? ` · ${llmSettings.server_model}` : ''}`
       : '未配置模型 · 点击设置'
 
-  const toggleRepo = (id: string) => {
-    setSelectedRepos((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
-
   return (
     <div className="flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col">
@@ -105,7 +91,7 @@ export function ChatView({
                   onClick={() => toggleRepo(repo.id)}
                   className={clsx(
                     'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
-                    selectedRepos.includes(repo.id)
+                    selectedRepoIds.includes(repo.id)
                       ? 'border-accent/70 bg-accentSoft/45 text-ink'
                       : 'border-edge/80 text-dim hover:border-accentSoft hover:text-ink',
                   )}
@@ -125,7 +111,7 @@ export function ChatView({
             <Activity size={12} /> 轨迹
           </button>
           <button
-            onClick={() => onOpenWorkspace(selectedRepos[0])}
+            onClick={() => onOpenWorkspace(selectedRepoIds[0])}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-edge/80 text-dim transition-colors hover:text-ink"
             title="打开完整工作区"
             aria-label="打开完整工作区"
@@ -163,7 +149,7 @@ export function ChatView({
                     <button
                       key={example.title}
                       className="rounded-xl border border-edge bg-panel/60 p-3 text-left transition-colors hover:border-accentSoft hover:bg-panel"
-                      onClick={() => void send(example.text, selectedRepos)}
+                      onClick={() => void send(example.text, selectedRepoIds)}
                     >
                       <p className="text-[12.5px] font-medium text-ink">{example.title}</p>
                       <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-dim">{example.text}</p>
@@ -204,9 +190,9 @@ export function ChatView({
           onModelChange={setModel}
           permissionMode={permissionMode}
           onPermissionChange={setPermissionMode}
-          contextCount={selectedRepos.length}
+          contextCount={selectedRepoIds.length}
           onConfigureModel={onOpenSettings}
-          onSend={(content) => void send(content, selectedRepos)}
+          onSend={(content) => void send(content, selectedRepoIds)}
           onStop={stop}
         />
       </main>
@@ -247,7 +233,7 @@ export function ChatView({
           <div className="min-h-0 flex-1">
             {dockTab === 'project' ? (
               <ProjectDock
-                selectedRepos={selectedRepos}
+                selectedRepos={selectedRepoIds}
                 onToggleRepo={toggleRepo}
                 onOpenWorkspace={onOpenWorkspace}
                 onOpenWorkflow={onOpenWorkflow}

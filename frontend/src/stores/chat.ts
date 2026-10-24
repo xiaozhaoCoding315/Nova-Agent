@@ -16,12 +16,17 @@ type ChatState = {
   streamEdits: EditRef[]
   permissionMode: PermissionMode
   model: string | null
+  selectedRepoIds: string[]
+  historyRepoId: string | null
   refs: RetrievalHit[]
   evidence: Evidence | null
   report: DeliveryReport | null
   error: string | null
   setPermissionMode: (mode: PermissionMode) => void
   setModel: (model: string | null) => void
+  setSelectedRepoIds: (ids: string[]) => void
+  toggleRepo: (id: string) => void
+  setHistoryRepoId: (id: string | null) => Promise<void>
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
   newSession: () => void
@@ -45,6 +50,8 @@ export const useChat = create<ChatState>((set, get) => ({
   streamEdits: [],
   permissionMode: 'ask',
   model: null,
+  selectedRepoIds: [],
+  historyRepoId: null,
   refs: [],
   evidence: null,
   report: null,
@@ -52,10 +59,20 @@ export const useChat = create<ChatState>((set, get) => ({
 
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setModel: (model) => set({ model }),
+  setSelectedRepoIds: (ids) => set({ selectedRepoIds: Array.from(new Set(ids)).slice(0, 5) }),
+  toggleRepo: (id) => set((state) => ({
+    selectedRepoIds: state.selectedRepoIds.includes(id)
+      ? state.selectedRepoIds.filter((item) => item !== id)
+      : [...state.selectedRepoIds, id].slice(0, 5),
+  })),
+  setHistoryRepoId: async (id) => {
+    set({ historyRepoId: id })
+    await get().loadSessions()
+  },
 
   loadSessions: async () => {
     try {
-      set({ sessions: await api.sessions.list() })
+      set({ sessions: await api.sessions.list(get().historyRepoId ?? undefined) })
     } catch {
       /* session list failures are non-fatal */
     }
@@ -72,6 +89,7 @@ export const useChat = create<ChatState>((set, get) => ({
         refs: [],
         error: null,
         model: session?.model ?? null,
+        selectedRepoIds: session?.repo_ids ?? [],
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
       })
     } catch (err) {
@@ -81,7 +99,11 @@ export const useChat = create<ChatState>((set, get) => ({
 
   newSession: () => {
     if (get().streaming) return
-    set({ sessionId: null, messages: [], refs: [], model: null, error: null })
+    const inherited = get().historyRepoId
+    set({
+      sessionId: null, messages: [], refs: [], model: null, error: null,
+      selectedRepoIds: inherited ? [inherited] : [],
+    })
   },
 
   deleteSession: async (id) => {
@@ -89,7 +111,7 @@ export const useChat = create<ChatState>((set, get) => ({
       await api.sessions.remove(id)
       set((s) => ({
         sessions: s.sessions.filter((x) => x.id !== id),
-        ...(s.sessionId === id ? { sessionId: null, messages: [], refs: [] } : {}),
+        ...(s.sessionId === id ? { sessionId: null, messages: [], refs: [], selectedRepoIds: [] } : {}),
       }))
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '删除失败' })
@@ -120,7 +142,8 @@ export const useChat = create<ChatState>((set, get) => ({
     abortController = null
     set({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
-      toolCards: [], streamEdits: [], permissionMode: 'ask', model: null, refs: [],
+      toolCards: [], streamEdits: [], permissionMode: 'ask', model: null,
+      selectedRepoIds: [], historyRepoId: null, refs: [],
       evidence: null, report: null, error: null,
     })
   },
@@ -157,6 +180,7 @@ export const useChat = create<ChatState>((set, get) => ({
               set((s) => ({
                 sessionId: s.sessionId ?? data.session_id,
                 ...(data.model ? { model: data.model as string } : {}),
+                ...(Array.isArray(data.repo_ids) ? { selectedRepoIds: data.repo_ids as string[] } : {}),
                 sessions: data.title
                   ? s.sessions.some((x) => x.id === data.session_id)
                     ? s.sessions.map((x) =>
