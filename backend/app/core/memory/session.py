@@ -127,18 +127,17 @@ async def get_messages(
     session_id: str, limit: int = 200, user_id: int | None = None
 ) -> list[dict]:
     owner = ""
-    params: list = []
+    owner_params: list = []
     if user_id is not None:
         owner = (
             "AND EXISTS (SELECT 1 FROM sessions s "
             "WHERE s.id = messages.session_id AND s.user_id = %s)"
         )
-        params.append(user_id)
-    params.extend([session_id, limit])
+        owner_params.append(user_id)
     rows = await query(
         "SELECT id, role, content, tool_json, attachments, created_at FROM messages "
         f"WHERE session_id = %s {owner} ORDER BY id ASC LIMIT %s",
-        tuple(params),
+        (session_id, *owner_params, limit),
     )
     return [
         {
@@ -177,18 +176,17 @@ async def messages_after(
     session_id: str, after_id: int = 0, user_id: int | None = None
 ) -> list[dict]:
     owner = ""
-    params: list = []
+    owner_params: list = []
     if user_id is not None:
         owner = (
             "AND EXISTS (SELECT 1 FROM sessions s "
             "WHERE s.id = messages.session_id AND s.user_id = %s)"
         )
-        params.append(user_id)
-    params.extend([session_id, after_id])
+        owner_params.append(user_id)
     rows = await query(
         "SELECT id, role, content FROM messages WHERE session_id = %s AND id > %s "
         f"AND role IN ('user','assistant') {owner} ORDER BY id ASC",
-        tuple(params),
+        (session_id, after_id, *owner_params),
     )
     return [{"id": int(r[0]), "role": r[1], "content": r[2]} for r in rows]
 
@@ -289,18 +287,17 @@ async def count_messages_since(
     session_id: str, after_id: int = 0, user_id: int | None = None
 ) -> int:
     owner = ""
-    params: list = []
+    owner_params: list = []
     if user_id is not None:
         owner = (
             "AND EXISTS (SELECT 1 FROM sessions s "
             "WHERE s.id = messages.session_id AND s.user_id = %s)"
         )
-        params.append(user_id)
-    params.extend([session_id, after_id])
+        owner_params.append(user_id)
     rows = await query(
         "SELECT COUNT(*) FROM messages WHERE session_id = %s AND id > %s "
         f"AND role IN ('user','assistant') {owner}",
-        tuple(params),
+        (session_id, after_id, *owner_params),
     )
     return int(rows[0][0]) if rows else 0
 

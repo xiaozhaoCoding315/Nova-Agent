@@ -29,18 +29,17 @@ async def list_events(
 ) -> list[dict]:
     from app.db import query
     owner = ""
-    params: list = []
+    owner_params: list = []
     if user_id is not None:
         owner = (
             "AND EXISTS (SELECT 1 FROM sessions s "
             "WHERE s.id = trace_events.session_id AND s.user_id = %s)"
         )
-        params.append(user_id)
-    params.extend([session_id, limit])
+        owner_params.append(user_id)
     rows = await query(
         "SELECT id, turn_id, kind, payload, created_at FROM trace_events "
         f"WHERE session_id = %s {owner} ORDER BY id ASC LIMIT %s",
-        tuple(params),
+        (session_id, *owner_params, limit),
     )
     return [
         {

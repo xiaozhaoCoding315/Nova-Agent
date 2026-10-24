@@ -22,19 +22,13 @@ def provider_presets() -> list[dict]:
             "id": "dashscope",
             "label": "阿里云百炼 / DashScope",
             "base_url": settings.dashscope_base_url,
-            "models": ["qwen3.8-max", "qwen3.5-plus", "qwen3-coder-plus"],
+            "models": ["qwen3.8-max", "qwen3.8-flash", "deepseek-v4-flash-0731"],
         },
         {
             "id": "deepseek",
             "label": "DeepSeek",
             "base_url": "https://api.deepseek.com/v1",
             "models": ["deepseek-chat", "deepseek-reasoner"],
-        },
-        {
-            "id": "longcat",
-            "label": "LongCat",
-            "base_url": settings.longcat_base_url,
-            "models": [settings.longcat_model],
         },
         {
             "id": "openai",

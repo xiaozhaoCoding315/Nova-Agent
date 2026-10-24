@@ -100,14 +100,18 @@ async def test_get_messages_enforces_owner_in_sql(monkeypatch):
 
     await session_mod.get_messages(SID, user_id=2)
     sql, params = query.await_args.args
+    # Placeholder order in the SQL must match the param tuple order exactly
+    # (a mismatch binds user_id to the session uuid and 500s at runtime).
     assert "s.user_id = %s" in sql
-    assert 2 in params
+    assert params[0] == SID and params[1] == 2 and isinstance(params[2], int)
+    assert sql.index("session_id = %s") < sql.index("s.user_id = %s") < sql.index("LIMIT")
 
     # Without user_id the clause is absent (internal trusted callers only).
     query.reset_mock()
     await session_mod.get_messages(SID)
-    sql, _params = query.await_args.args
+    sql, params = query.await_args.args
     assert "s.user_id" not in sql
+    assert params == (SID, 200)
 
 
 @pytest.mark.asyncio
@@ -115,16 +119,16 @@ async def test_recent_messages_and_messages_after_enforce_owner(monkeypatch):
     query = AsyncMock(return_value=[])
     monkeypatch.setattr(session_mod, "query", query)
 
-    await session_mod.recent_messages(SID, user_id=3)
+    await session_mod.recent_messages(SID, after_id=10, user_id=3)
     sql, params = query.await_args.args
-    assert "s.user_id = %s" in sql
-    assert 3 in params
+    assert params == (SID, 3, 10, 12)
+    assert sql.index("session_id = %s") < sql.index("s.user_id = %s")
 
     query.reset_mock()
     await session_mod.messages_after(SID, 10, user_id=3)
     sql, params = query.await_args.args
-    assert "s.user_id = %s" in sql
-    assert 3 in params
+    assert params == (SID, 10, 3)
+    assert sql.index("session_id = %s") < sql.index("id > %s") < sql.index("s.user_id = %s")
 
 
 @pytest.mark.asyncio
@@ -134,8 +138,8 @@ async def test_count_messages_since_enforces_owner(monkeypatch):
 
     await session_mod.count_messages_since(SID, 5, user_id=4)
     sql, params = query.await_args.args
-    assert "s.user_id = %s" in sql
-    assert 4 in params
+    assert params == (SID, 5, 4)
+    assert sql.index("session_id = %s") < sql.index("id > %s") < sql.index("s.user_id = %s")
 
 
 @pytest.mark.asyncio
@@ -148,8 +152,8 @@ async def test_list_events_enforces_owner(monkeypatch):
     from app.core import trace as trace_refetch
     await trace_refetch.list_events(SID, user_id=5)
     sql, params = query.await_args.args
-    assert "s.user_id = %s" in sql
-    assert 5 in params
+    assert params == (SID, 5, 500)
+    assert sql.index("session_id = %s") < sql.index("s.user_id = %s") < sql.index("LIMIT")
 
 
 @pytest.mark.asyncio
