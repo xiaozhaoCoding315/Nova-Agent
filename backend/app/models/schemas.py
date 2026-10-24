@@ -22,6 +22,15 @@ class UserOut(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class AdminUserOut(UserOut):
+    last_login_at: Optional[datetime] = None
+    sessions: int = 0
+    repos: int = 0
+    files: int = 0
+    storage_bytes: int = 0
+    tokens_total: int = 0
+
+
 class AuthConfigOut(BaseModel):
     registration_mode: str
     guest_enabled: bool

@@ -29,6 +29,11 @@ async def _cleanup_loop() -> None:
                 summary["previews_expired"] = await cleanup_expired()
             except Exception:
                 logger.exception("preview_cleanup_failed")
+            try:
+                from app.core.account_cleanup import cleanup_expired_guests
+                summary["guests_expired"] = await cleanup_expired_guests()
+            except Exception:
+                logger.exception("guest_cleanup_failed")
             logger.info("cleanup_done", **summary)
         except ImportError:
             pass

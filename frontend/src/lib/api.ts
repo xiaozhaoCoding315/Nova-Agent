@@ -1,5 +1,5 @@
 import type {
-  AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem,
+  AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse, Change, ChangeListItem,
   ContractStatus, Deployment, EditRecord, FileAttachment, FileList, FileNode, GitInfo, Health,
   Impact, Job, LlmSettings, LlmSettingsInput, LlmTestResult, Memory, Message, Metrics,
   RegisterResult, Repo, Review, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
@@ -62,7 +62,7 @@ export const api = {
     })),
 
   admin: {
-    users: () => request<User[]>('/admin/users'),
+    users: () => request<AdminUser[]>('/admin/users'),
     createUser: (username: string, password: string, displayName?: string, role: 'admin' | 'demo' = 'demo') =>
       request<User>('/admin/users', json({ username, password, display_name: displayName || null, role })),
     updateUser: (id: number, patch: { status?: 'active' | 'disabled'; role?: 'admin' | 'demo'; display_name?: string }) =>

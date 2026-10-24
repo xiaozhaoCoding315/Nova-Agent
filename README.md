@@ -16,6 +16,10 @@
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
 | **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / 自定义兼容端点）、填写自己的 API Key 和模型；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
+| **多用户账号** | 开放注册 / 邀请码 / 关闭注册三种模式；注册后生成一次性恢复码；支持个人资料、改密与 token 失效；管理员可建号、禁用、重置密码、删除账号。 |
+| **游客体验** | 一键创建 24 小时独立游客账号，拥有自己的会话与文件；到期由小时级维护任务自动清理；有独立的消息、token、沙箱与存储额度。 |
+| **项目化对话历史** | 会话归属到项目（`session_repos` + primary project）；左侧栏可按项目筛选历史，新建对话自动继承当前项目。 |
+| **聊天附件与文件库** | 对话支持回形针/拖拽上传，最多 5 个附件；文本附件可通过 `read_uploaded_file` 工具读取；设置页「文件与存储」管理个人文件与配额。 |
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。支持 Python 后端，以及**契约优先全栈**（OpenAPI → FastAPI + TypeScript Explorer + 双栈 Gate）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
@@ -32,6 +36,28 @@
   - **变更**：跨多个文件的新功能/重构，走 SPEC → 计划 → 逐任务 Gate → 审查 → 统一应用。
   - **修复任务**：已定位的单个 Bug，走失败测试复现 → 最小补丁 → 跑绿 → 审查 → 批准写入。
 - 只是问答或小改动时不需要工作流，直接在对话里切换只读 / 确认 / 自动模式即可。
+
+## 多用户与数据隔离
+
+- **账号**：`REGISTRATION_MODE=open|invite|closed` 控制自助注册；登录后所有 API 都按 `user_id` 过滤。
+- **项目**：每个仓库只属于一个用户；会话通过 `session_repos` 关联项目；项目不可共享。
+- **文件**：仓库移动到 `data/users/<user_id>/repos/<repo_id>`，聊天附件在 `data/users/<user_id>/uploads/`；下载/删除都校验 owner。
+- **检索**：RAG 必须带授权 repo_ids，没选仓库时 fail-closed 返回空；Qdrant payload 写入 `user_id`。
+- **后台任务**：Job、变更、修复任务、Reviewer、部署、幂等账本全部按用户隔离。
+- **删除**：删除仓库会停预览容器、删依赖卷和向量；删除账号会清理该用户的文件、仓库、向量、用量与审计。
+- **游客**：独立临时账号，24 小时过期后自动清理，额度低于正式用户。
+
+## 轻量服务器（2C2G）建议
+
+2 核 2G 可以跑单用户/小团队演示，但不要把它当多人并发沙箱集群：
+
+- 后端保持 **单 worker**；同时只跑 1–2 个后台 Job。
+- 沙箱限制 `256MB / 0.5 CPU`，保持 `SANDBOX_ALLOW_NETWORK=false`。
+- Docker 镜像在本地或 CI 预构建，服务器只 pull，不 build。
+- 游客默认每日 5 条消息、5 万 token、1 次沙箱执行、50MB 存储。
+- 正式用户建议 100–200MB 存储、3–5 个项目；`MAX_USERS` 先控制在 50 以内。
+- 生产环境用前端构建产物由 FastAPI 托管，不运行 Vite dev server。
+- 设置 `APP_ENV=prod` 后，弱 `SECRET_KEY` 或默认密码会直接阻止启动。
 
 ## 解决什么问题
 
@@ -136,9 +162,15 @@ npm run dev                   # http://localhost:5173
 | `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
-| `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号（可公开给面试官/朋友使用） |
+| `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号；多用户部署建议改用注册/游客，不共享 demo 账号 |
+| `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
+| `REGISTRATION_INVITE_CODE` | `invite` 模式使用的邀请码 |
+| `MAX_USERS` | 实例账号总数上限（含游客） |
+| `GUEST_ENABLED` / `GUEST_TTL_HOURS` | 游客体验开关 / 有效期（默认 24 小时） |
+| `GUEST_HOURLY_MESSAGES` / `GUEST_DAILY_TOKENS` | 游客消息与 token 额度 |
+| `GUEST_SANDBOX_DAILY` / `GUEST_JOB_HOURLY` | 游客沙箱执行 / 后台任务额度 |
 | `SECRET_KEY` | JWT 签名密钥，同时派生用户 API Key 的加密密钥（≥32 位随机串；更换后已存 Key 需重填） |
-| `COOKIE_SECURE` | 启用 HTTPS 后设为 true |
+| `COOKIE_SECURE` | 启用 HTTPS 后设为 true；`APP_ENV=prod` 时会校验弱密钥与默认密码 |
 | `DEMO_DAILY_TOKENS` / `DEMO_HOURLY_MESSAGES` / `DEMO_SANDBOX_DAILY` | 演示账号限额（0 = 不限） |
 | `ADMIN_JOB_HOURLY` / `DEMO_JOB_HOURLY` | 导入 / 重建索引 / 验证 / 红绿任务 / Builder / 只读审查每小时次数（0 = 不限） |
 | `SANDBOX_ENABLED` | 沙箱总开关 |
@@ -148,16 +180,23 @@ npm run dev                   # http://localhost:5173
 | `MCP_ADMIN_ONLY` / `MCP_SERVERS_JSON` | MCP 工具是否仅管理员 / 用内联 JSON 覆盖配置文件 |
 | `PREVIEW_TTL_MINUTES` | 运行中预览自动下线时间（默认 120，0 = 不自动回收） |
 | `MAX_UPLOAD_MB` / `MAX_REPO_FILES` | 仓库导入上限 |
+| `USER_DATA_DIR` | 每用户仓库/附件根目录（默认 `data/users`） |
+| `ATTACHMENT_MAX_MB` / `MAX_ATTACHMENTS_PER_MESSAGE` | 单个附件大小 / 每条消息附件数 |
+| `USER_STORAGE_MB` / `GUEST_STORAGE_MB` | 正式用户 / 游客个人存储配额 |
 
 ## API 概览
 
 | 端点 | 说明 |
 |---|---|
-| `POST /api/v1/auth/login` `logout` `GET me` | 登录 / 登出 / 当前用户 |
-| `GET/POST /api/v1/chat/sessions` | 会话列表 / 新建 |
+| `POST /api/v1/auth/login` `register` `guest` `logout` · `GET me` | 登录 / 注册 / 游客体验 / 登出 / 当前用户 |
+| `GET /api/v1/auth/config` | 注册模式、游客开关、邀请码要求 |
+| `PATCH /api/v1/auth/profile` · `POST /auth/password` · `/auth/password/reset` | 资料 / 改密 / 恢复码重置 |
+| `GET /api/v1/admin/users` · `POST /admin/users` · `PATCH/DELETE /admin/users/{id}` | 管理员用户列表（含用量/存储）/ 建号 / 禁用 / 删除 |
+| `GET/POST /api/v1/chat/sessions` | 会话列表（支持 `?repo_id=` 按项目过滤）/ 新建 |
 | `PATCH /api/v1/chat/sessions/{id}` | 重命名会话 |
-| `GET /api/v1/chat/sessions/{id}/messages` | 历史消息 |
+| `GET /api/v1/chat/sessions/{id}/messages` | 历史消息（含附件元数据） |
 | `POST /api/v1/chat/message` | 对话（SSE：`meta/retrieval/token/tool_call/tool_result/usage/error/done`） |
+| `GET/POST /api/v1/files` · `GET /files/{id}/download` · `DELETE /files/{id}` | 个人文件库列表 / 上传 / 下载 / 删除 |
 | `POST /api/v1/repos/upload` / `POST /api/v1/repos/git` | 导入仓库（ZIP / 公开 Git URL） |
 | `GET /api/v1/repos` `/{id}` `/{id}/tree` `/{id}/file` `/{id}/search` | 仓库列表 / 详情 / 文件树 / 文件内容 / 仓库内搜索 |
 | `GET /api/v1/repos/{id}/brain` | 项目大脑（地图/入口/阅读顺序/依赖图/术语表） |
@@ -190,7 +229,7 @@ npm run dev                   # http://localhost:5173
 
 ```
 backend/app/
-├── api/v1/            auth · chat · repos · tasks · builder · changes · git · jobs · status · settings_llm
+├── api/v1/            auth · admin · chat · files · repos · tasks · builder · changes · git · jobs · status · settings_llm
 ├── core/
 │   ├── agent/loop.py  Agent 主循环（检索→工具轮次→证据校验→持久化）
 │   ├── agent/evidence.py  引用校验（文件/行号/越界）
@@ -212,7 +251,8 @@ backend/app/
 │   ├── tools/         11 个工具 + 注册表（校验/容错/审计）
 │   ├── sandbox/       Docker 一次性容器执行器
 │   ├── harness/       超时 / 重试 / 熔断
-│   ├── security/      认证 / 限流配额 / 风险规则 / 审计
+│   ├── security/      认证 / 账号生命周期 / 限流配额 / 风险规则 / 审计
+│   ├── storage/       每用户仓库与附件存储、配额、旧路径迁移
 │   └── llm/           多厂商降级链 + 用户 BYOK（加密存储）+ 工具流式（真实 token 统计）
 ├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
 └── models/            Pydantic 模型
@@ -304,7 +344,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 加密/掩码/服务端回退开关
+- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 加密/掩码/服务端回退开关、用户文件存储/配额/附件工具、幂等键与删除清理隔离
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -347,7 +387,11 @@ cd frontend && npm run contract:check
 - 测试保护：修改已有测试文件时禁止删除测试或新增 skip 标记；红绿任务必须新建测试文件
 - `fetch_url` 有 SSRF 防护：仅公网 http(s)、逐跳校验重定向、拒绝内网地址、限制响应大小与类型
 - ZIP 导入有路径穿越防护、文件数与大小上限；Git 仅支持公开仓库浅克隆
-- 部署暴露公网前请务必：改 `SECRET_KEY`、改两个账号密码、按需收紧 `CORS_ORIGINS`
+- 用户附件按 `user_id` 存目录并做 owner 校验；附件工具只能读取本轮上传的文件
+- RAG 未关联仓库时 fail-closed；显式 repo_id 必须校验归属；Qdrant payload 带 `user_id`
+- 改密/禁用/管理员改角色会递增 `token_version`，旧 JWT 立即失效；删除用户后 token 也会被拒绝
+- 注册与游客入口有 IP 级小时限流和账号总数上限；生产环境弱 `SECRET_KEY`/默认密码会阻止启动
+- 部署暴露公网前请务必：设 `APP_ENV=prod`、改 `SECRET_KEY`、改两个账号密码、按需收紧 `CORS_ORIGINS`
 
 ## 已知边界
 
@@ -361,9 +405,13 @@ cd frontend && npm run contract:check
 - Builder 的 `python` 模板只生成 FastAPI 后端；`fullstack` 模板生成 OpenAPI + FastAPI + 无框架 TypeScript API Explorer（便于离线双栈 Gate），React/Vite 脚手架待后续
 - 全栈 Builder 会立即在未落盘的 overrides 上运行 Python + Node + 契约 Gate；失败自动回喂修复 1 次，仍未通过则禁止写入，需要退回重做
 - 全栈 Builder 依赖 `nova-builder` 与 `nova-node` 镜像；契约类型由 `openapi-typescript` 生成
-- 账号体系为 admin/demo 两级，不开放自助注册
+- 账号角色仍只有 admin/demo；支持自助注册与游客，但没有邮箱验证、邮件找回、组织/团队共享；密码找回依赖一次性恢复码或管理员重置
+- 项目（仓库）严格私有，不支持多人共享；旧会话若历史上没有 repo_ids，迁移后不会自动获得项目归属
 - BYOK 每个用户同时保存一套服务商配置；模型选择按会话持久化，但仅在使用个人 Key 时生效；Embedding 仍使用服务端 DashScope Key，因此混合检索需要服务端配置 embedding
-- 用户配额仍按角色（admin/demo）固定，尚未提供按用户的额度/成本上限；BYOK 的 token 仍会计入用量审计
+- 配额分为 admin/demo/游客三档，尚未提供按用户自定义额度；存储配额按 `user_files` 统计，不计仓库索引文件
+- 游客到期由小时级维护任务清理；注册/登录限流是进程内滑动窗口，重启后归零，多副本部署前需要改为 PG/Redis
+- 删除账号会清理该用户的仓库目录、附件、向量、预览容器/卷、用量与审计；删除仓库会停止预览并删除依赖卷
+- 2C2G 建议单 worker、1–2 个并发 Job、游客不跑重沙箱；公开互联网部署还应加反向代理限流与验证码
 - Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
 - 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入

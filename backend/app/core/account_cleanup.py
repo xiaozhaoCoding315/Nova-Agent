@@ -34,3 +34,22 @@ async def purge_user_resources(user_id: int) -> dict:
         "repos": len(repos), "containers": containers,
         "workspaces": workspaces, "volumes": volumes, "vectors": vectors,
     }
+
+
+async def cleanup_expired_guests(limit: int = 50) -> int:
+    rows = await query(
+        "SELECT id FROM users WHERE is_guest = TRUE AND expires_at IS NOT NULL "
+        "AND expires_at < now() ORDER BY expires_at LIMIT %s",
+        (limit,),
+    )
+    removed = 0
+    for (user_id,) in rows:
+        try:
+            await purge_user_resources(int(user_id))
+            await execute("DELETE FROM users WHERE id = %s", (user_id,))
+            removed += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("guest_cleanup_failed", user_id=user_id, error=str(exc))
+    if removed:
+        logger.info("expired_guests_removed", count=removed)
+    return removed

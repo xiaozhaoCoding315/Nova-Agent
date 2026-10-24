@@ -9,6 +9,15 @@ export type User = {
   created_at?: string | null
 }
 
+export type AdminUser = User & {
+  last_login_at?: string | null
+  sessions: number
+  repos: number
+  files: number
+  storage_bytes: number
+  tokens_total: number
+}
+
 export type AuthConfig = {
   registration_mode: 'open' | 'invite' | 'closed'
   guest_enabled: boolean

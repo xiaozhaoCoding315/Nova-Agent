@@ -1,16 +1,21 @@
 import { Ban, CheckCircle2, Plus, RefreshCw, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
-import type { User } from '../lib/types'
+import type { AdminUser } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { Badge, Button, Modal, Spinner } from './common'
 
 const inputClass =
   'w-full rounded-lg border border-edge bg-base/60 px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60'
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 export function AdminUsersPanel() {
   const current = useAuth((state) => state.user)
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<number | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -21,9 +26,9 @@ export function AdminUsersPanel() {
   const [newDisplayName, setNewDisplayName] = useState('')
   const [newRole, setNewRole] = useState<'admin' | 'demo'>('demo')
 
-  const [resetTarget, setResetTarget] = useState<User | null>(null)
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -69,7 +74,7 @@ export function AdminUsersPanel() {
     setNewRole('demo')
   }, '账号已创建')
 
-  const toggleStatus = (user: User) => run(
+  const toggleStatus = (user: AdminUser) => run(
     user.id,
     () => api.admin.updateUser(user.id, { status: user.status === 'disabled' ? 'active' : 'disabled' }),
     user.status === 'disabled' ? '账号已启用' : '账号已禁用，旧登录立即失效',
@@ -108,13 +113,14 @@ export function AdminUsersPanel() {
         {error && <p className="mb-2 text-[11.5px] text-err">{error}</p>}
         {notice && <p className="mb-2 text-[11.5px] text-ok">{notice}</p>}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-[11.5px]">
+          <table className="w-full min-w-[760px] border-collapse text-[11.5px]">
             <thead>
               <tr className="border-b border-edge text-left text-dim">
                 <th className="py-1.5 pr-2 font-medium">用户</th>
                 <th className="px-2 py-1.5 font-medium">角色</th>
                 <th className="px-2 py-1.5 font-medium">状态</th>
-                <th className="px-2 py-1.5 font-medium">创建时间</th>
+                <th className="px-2 py-1.5 font-medium">用量 / 存储</th>
+                <th className="px-2 py-1.5 font-medium">最近登录</th>
                 <th className="px-2 py-1.5 text-right font-medium">操作</th>
               </tr>
             </thead>
@@ -135,7 +141,13 @@ export function AdminUsersPanel() {
                     </Badge>
                   </td>
                   <td className="px-2 py-2 text-dim">
-                    {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
+                    <p>{item.tokens_total.toLocaleString()} tokens</p>
+                    <p className="text-[10px] text-dim/70">
+                      {item.sessions} 会话 · {item.repos} 项目 · {item.files} 文件 · {formatBytes(item.storage_bytes)}
+                    </p>
+                  </td>
+                  <td className="px-2 py-2 text-[10.5px] text-dim">
+                    {item.last_login_at ? new Date(item.last_login_at).toLocaleString() : '—'}
                   </td>
                   <td className="px-2 py-2">
                     <div className="flex justify-end gap-1">

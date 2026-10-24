@@ -66,3 +66,21 @@ async def test_purge_user_resources_cleans_vectors_storage_and_usage(monkeypatch
     cleanup_storage.assert_awaited_once_with(7)
     assert result["containers"] == 1
     assert execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cleanup_expired_guests_purges_then_deletes(monkeypatch):
+    async def fake_query(_sql, _params):
+        return [(5,), (6,)]
+
+    purge = AsyncMock()
+    execute = AsyncMock()
+    monkeypatch.setattr(account_cleanup, "query", fake_query)
+    monkeypatch.setattr(account_cleanup, "purge_user_resources", purge)
+    monkeypatch.setattr(account_cleanup, "execute", execute)
+
+    removed = await account_cleanup.cleanup_expired_guests()
+
+    assert removed == 2
+    assert purge.await_count == 2
+    assert execute.await_count == 2

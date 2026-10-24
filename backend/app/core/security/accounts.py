@@ -198,6 +198,38 @@ async def list_users(limit: int = 200) -> list[dict]:
     return [user_from_row(row) for row in rows]
 
 
+async def list_users_with_usage(limit: int = 200) -> list[dict]:
+    rows = await query(
+        """
+        SELECT u.id, u.username, u.display_name, u.role, u.status, u.is_guest,
+               u.expires_at, u.token_version, u.created_at, u.last_login_at,
+               (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id),
+               (SELECT COUNT(*) FROM repos r WHERE r.user_id = u.id),
+               (SELECT COUNT(*) FROM user_files f WHERE f.user_id = u.id),
+               (SELECT COALESCE(SUM(f.size), 0) FROM user_files f WHERE f.user_id = u.id),
+               (SELECT COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0)
+                FROM usage_log l WHERE l.user_id = u.id)
+        FROM users u
+        ORDER BY u.created_at DESC
+        LIMIT %s
+        """,
+        (limit,),
+    )
+    result = []
+    for row in rows:
+        user = user_from_row(row[:9])
+        user.update({
+            "last_login_at": row[9],
+            "sessions": int(row[10] or 0),
+            "repos": int(row[11] or 0),
+            "files": int(row[12] or 0),
+            "storage_bytes": int(row[13] or 0),
+            "tokens_total": int(row[14] or 0),
+        })
+        result.append(user)
+    return result
+
+
 async def admin_set_user_fields(
     user_id: int,
     *,

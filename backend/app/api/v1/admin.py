@@ -6,13 +6,14 @@ from app.core.security.accounts import (
     admin_reset_password,
     admin_set_user_fields,
     create_user,
-    list_users,
+    list_users_with_usage,
 )
 from app.core.security.audit import log_audit
 from app.core.security.auth import require_admin
 from app.models.schemas import (
     AdminPasswordResetRequest,
     AdminUserCreateRequest,
+    AdminUserOut,
     AdminUserUpdateRequest,
     OkOut,
     UserOut,
@@ -21,9 +22,9 @@ from app.models.schemas import (
 router = APIRouter()
 
 
-@router.get("/admin/users", response_model=list[UserOut])
+@router.get("/admin/users", response_model=list[AdminUserOut])
 async def admin_list_users(user: dict = Depends(require_admin)):
-    return await list_users()
+    return await list_users_with_usage()
 
 
 @router.post("/admin/users", response_model=UserOut)

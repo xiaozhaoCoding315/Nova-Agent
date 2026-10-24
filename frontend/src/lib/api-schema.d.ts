@@ -1454,6 +1454,58 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** AdminUserOut */
+        AdminUserOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Files
+             * @default 0
+             */
+            files: number;
+            /** Id */
+            id: number;
+            /**
+             * Is Guest
+             * @default false
+             */
+            is_guest: boolean;
+            /** Last Login At */
+            last_login_at?: string | null;
+            /**
+             * Repos
+             * @default 0
+             */
+            repos: number;
+            /** Role */
+            role: string;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Storage Bytes
+             * @default 0
+             */
+            storage_bytes: number;
+            /**
+             * Tokens Total
+             * @default 0
+             */
+            tokens_total: number;
+            /** Username */
+            username: string;
+        };
         /** AdminUserUpdateRequest */
         AdminUserUpdateRequest: {
             /** Display Name */
@@ -3065,7 +3117,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserOut"][];
+                    "application/json": components["schemas"]["AdminUserOut"][];
                 };
             };
         };

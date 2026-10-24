@@ -1124,3 +1124,55 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 ### 37.5 已知边界
 - 右侧 Dock 宽度固定 380px，不支持拖拽调整；完整工作区仍保留独立的三层侧栏。
 - 未做主题切换与国际化；移动端不展示项目 Dock，只保留完整工作区入口。
+
+---
+
+## 38. v6.0 增量：P6 多用户账号、项目历史与文件隔离
+
+### 38.1 账号与开户
+- `users` 增加 `display_name/status/is_guest/expires_at/token_version/password_updated_at/recovery_code_hash/last_login_at`（迁移 9）。
+- `REGISTRATION_MODE=open|invite|closed`；注册返回一次性恢复码，密码重置后恢复码失效。
+- 游客：`/auth/guest` 创建 24 小时临时账号，独立 user_id；小时级维护任务清理过期游客及其仓库、附件、向量、容器与用量。
+- JWT 带 `token_version`；改密、管理员改状态/角色会递增版本，旧 token 立即失效。
+- `APP_ENV=prod` 时弱 SECRET_KEY、默认 admin/demo 密码直接阻止启动。
+
+### 38.2 项目化会话
+- 新增 `session_repos(session_id, repo_id)` 与 `sessions.primary_repo_id`（迁移 10），从旧 JSONB `repo_ids` 回填。
+- `GET /chat/sessions?repo_id=` 按项目过滤；新建对话继承侧栏当前项目；会话行显示所属项目。
+- 仓库/客户端状态统一到 chat store：`selectedRepoIds`、`historyRepoId`、`attachments`。
+- 删除仓库时 `session_repos` 级联清理，不再留下失效上下文。
+
+### 38.3 用户文件与附件
+- 仓库存储迁移为 `data/users/<uid>/repos/<repo_id>`；旧 `data/repos/<id>` 在启动时幂等迁移。
+- `user_files`（迁移 11）：用户、项目、会话、文件名、MIME、大小、sha256、存储路径、purpose。
+- 文件 API：上传（大小/配额/owner 校验）、列表、下载、删除；聊天最多 5 个附件。
+- 消息持久化附件元数据；`read_uploaded_file` 工具只允许读取本轮附件，避免 Agent 遍历个人文件库。
+- 设置页「文件与存储」提供上传、下载、删除和配额条。
+
+### 38.4 隔离加固
+- Qdrant payload 写入 `user_id`，启动时对已有 repo 做 payload 回填；检索必须带授权 repo_ids，未选仓库 fail-closed。
+- `jobs` 幂等键改为 `(user_id, idempotency_key)`；`external_actions` 同样按用户唯一，ledger 读写全部带 user_id。
+- 删除仓库：先停预览容器、删 `nova_preview_*` 工作区与 `nova-deps`/`nova-node-deps` 卷，再删 DB 与 Qdrant 点。
+- 删除账号：清理用户目录、每个仓库的 Qdrant 点/容器/卷、`usage_log` 与审计，再级联删除 DB 行。
+- 预览历史列表补 repo owner 校验。
+
+### 38.5 管理员与轻量部署
+- 管理员用户列表带会话/项目/文件/存储/token 汇总；支持建号、禁用、重置密码、删除。
+- 游客与正式用户分别有消息、token、沙箱、Job、存储额度。
+- 2C2G 建议：单 worker、1–2 个并发 Job、沙箱 256MB/0.5 CPU、镜像预构建、游客低额度、静态前端由 FastAPI 托管。
+
+### 38.6 验证记录（2026-10-24）
+- 真实 DB 迁移 9–12 幂等应用；旧仓库迁移到 `data/users/1/repos`，Qdrant payload 回填 `user_id=1`。
+- 注册 → 资料 → 改密（旧 token 401）→ 恢复码重置 → 登录；游客创建、文件上传、文件库、管理员禁用/删除全部通过。
+- 项目会话：创建带 repo 的会话、按项目过滤、跨用户附加仓库/读取会话均 404。
+- 文件隔离：A 上传的文件 B 下载 404；管理员删除账号后用户目录消失。
+- 幂等账本：同一 key 在两个用户下生成两条独立记录。
+- 无头 Chrome 1440×900 验证登录/注册/游客/文件库界面。
+- 后端 **268 passed**，ruff、前端构建、契约检查全绿。
+
+### 38.7 已知边界
+- 无邮箱验证/邮件找回；密码恢复依赖恢复码或管理员。
+- 项目严格私有，不支持团队共享；账号角色仍只有 admin/demo。
+- 注册/消息限流为进程内滑动窗口，单实例；多副本需迁移到 PG/Redis。
+- 存储配额只统计用户上传文件，不计仓库索引副本。
+- 2C2G 不适合多人同时跑 Docker 验证；公开互联网还需反代限流/验证码。
