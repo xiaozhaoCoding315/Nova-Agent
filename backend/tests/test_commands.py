@@ -36,6 +36,8 @@ from app.core.security.commands import CommandClass, classify_command
     "echo 'a; b'",
     'echo "a; b"',
     "git grep -c pattern",
+    "git diff --text",
+    "git grep --text pattern",
 ])
 def test_readonly_commands(command):
     assert classify_command(command)[0] is CommandClass.READONLY

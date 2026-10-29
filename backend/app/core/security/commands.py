@@ -331,6 +331,8 @@ _GIT_EXEC_LONG_OPTS = ("--open-files-in-pager", "--ext-diff", "--textconv")
 def _git_exec_option(arg: str) -> bool:
     """True for an exec-capable long option, including git's abbreviations."""
     name = arg.split("=", 1)[0]
+    if name == "--text":  # exact read-only option, not an abbreviation
+        return False
     if len(name) < 3 or not name.startswith("--"):
         return False
     return any(option.startswith(name) for option in _GIT_EXEC_LONG_OPTS)

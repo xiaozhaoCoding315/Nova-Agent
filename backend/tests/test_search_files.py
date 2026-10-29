@@ -204,6 +204,15 @@ async def test_grep_path_dot_means_repo_root(repo):
 
 
 @pytest.mark.asyncio
+async def test_grep_rejects_absolute_path(repo):
+    result = await build_registry().execute(
+        "grep", {"pattern": "login", "path": "/"}, ctx()
+    )
+    assert result["ok"] is False and result["business"] is True
+    assert "路径不安全" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_search_tools_skip_symlink_to_secret(repo):
     link = repo / "secret_link"
     try:
