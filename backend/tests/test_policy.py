@@ -47,3 +47,51 @@ def test_fetch_can_be_disabled(monkeypatch):
     monkeypatch.setattr(settings, "enable_fetch_url", False)
     decision = decide_tool("fetch_url", "network", None, {"url": "https://example.com"}, ctx())
     assert not decision.allowed and "ENABLE_FETCH_URL" in decision.reason
+
+
+def test_ask_blocks_mutating_shell_but_allows_readonly():
+    decision = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "git diff"}, ctx("ask"),
+    )
+    assert decision.allowed
+
+    denied = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "rm -rf build"}, ctx("ask"),
+    )
+    assert not denied.allowed
+    assert "不允许执行会改动仓库的命令" in denied.reason
+    assert "run_code" in denied.reason
+
+
+def test_readonly_allows_readonly_shell():
+    decision = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "git status"}, ctx("readonly"),
+    )
+    assert decision.allowed
+
+
+def test_readonly_still_blocks_mutating_shell():
+    decision = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "rm -rf build"}, ctx("readonly"),
+    )
+    assert not decision.allowed
+
+
+def test_shell_allowlist_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "shell_readonly_allowlist", False)
+
+    blocked = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "git status"}, ctx("readonly"),
+    )
+    assert not blocked.allowed
+
+    allowed = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "rm -rf build"}, ctx("ask"),
+    )
+    assert allowed.allowed

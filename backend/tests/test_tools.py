@@ -417,8 +417,9 @@ async def test_install_deps_full_mode_bypasses_admin_gate():
 async def test_run_command_blocked_in_readonly_mode():
     ctx = ToolContext(user={"id": 1}, repo_ids=["11111111-1111-1111-1111-111111111111"],
                       permission_mode="readonly")
-    r = await build_registry().execute("run_command", {"command": "ls"}, ctx)
+    r = await build_registry().execute("run_command", {"command": "touch marker.txt"}, ctx)
     assert r["ok"] is False and r["business"] is True
+    assert "不允许执行会改动仓库的命令" in r["error"]
 
 
 @pytest.mark.asyncio

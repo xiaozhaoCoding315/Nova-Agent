@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 
 from app.config import settings
+from app.core.security.commands import CommandClass, classify_command
 from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.security.risk import RiskLevel, grade_risk
 
@@ -39,6 +40,11 @@ DENY_COMMANDS = (
     re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE),
     re.compile(r"\bterraform\s+apply\b", re.IGNORECASE),
     re.compile(r"\bkubectl\s+(apply|delete)\b", re.IGNORECASE),
+)
+
+_SHELL_HINT = (
+    "修改文件请改用 edit_file / write_files；跑测试或构建请在非只读模式下用 run_code"
+    "（沙箱副本，不落盘）；或切换到「自动执行」后重试。"
 )
 
 
@@ -93,19 +99,33 @@ def decide_tool(
         # ("admin_only": false in the MCP config).
         return PolicyDecision(False, "MCP 工具仅管理员可用", caps)
 
-    if mode == "readonly" and cap_set & WRITE_CAPABILITIES:
-        return PolicyDecision(
-            False,
-            f"当前为计划（只读）模式，已阻止 {name}；请切换权限模式（变更前确认 / 自主 / 完全访问）后再试",
-            caps,
-        )
-
     for value in _path_values(args):
         rel = try_normalize_relpath(value)
         if not rel:
             return PolicyDecision(False, f"路径不安全：{value}", caps)
         if is_secret_path(rel):
             return PolicyDecision(False, f"拒绝访问密钥/凭据文件：{rel}", caps)
+
+    readonly_shell = False
+    if name == "run_command" and settings.shell_readonly_allowlist:
+        command = str(args.get("command") or "")
+        command_class, reason = classify_command(command)
+        if command_class is CommandClass.READONLY:
+            readonly_shell = True
+        elif mode in ("readonly", "ask"):
+            return PolicyDecision(
+                False,
+                f"当前模式（{mode}）不允许执行会改动仓库的命令："
+                f"{command[:120]}（{reason}）。" + _SHELL_HINT,
+                caps,
+            )
+
+    if mode == "readonly" and cap_set & WRITE_CAPABILITIES and not readonly_shell:
+        return PolicyDecision(
+            False,
+            f"当前为计划（只读）模式，已阻止 {name}；请切换权限模式（变更前确认 / 自主 / 完全访问）后再试",
+            caps,
+        )
 
     if "net.fetch" in cap_set and name == "fetch_url" and not settings.enable_fetch_url:
         return PolicyDecision(False, "联网抓取已关闭（ENABLE_FETCH_URL=false）", caps)
