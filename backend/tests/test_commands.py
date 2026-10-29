@@ -69,6 +69,10 @@ def test_readonly_commands(command):
     "hostname evil",
     "git reflog expire --all",
     "git tag -l -d v1",
+    "sed -i -n '1p' file.py",
+    "sed --in-place -n '1p' file.py",
+    "tree -oout.txt",
+    "date -s2020-01-01",
 ])
 def test_mutating_commands(command):
     assert classify_command(command)[0] is CommandClass.MUTATING

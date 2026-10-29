@@ -157,6 +157,12 @@ def _has_option(args: list[str], names: set[str]) -> bool:
 
 
 def _classify_sed(args: list[str]) -> tuple[CommandClass, str]:
+    if any(
+        arg.startswith("--in-place")
+        or (arg.startswith("-") and not arg.startswith("--") and "i" in arg[1:])
+        for arg in args
+    ):
+        return CommandClass.MUTATING, "sed -i 会写文件"
     if not any(arg in ("-n", "--quiet", "--silent") for arg in args):
         return CommandClass.MUTATING, "sed 未使用 -n，可能打印或改写文件"
     if any(arg in ("-f", "--file") or arg.startswith("--file=") for arg in args):
@@ -238,11 +244,18 @@ def _classify_segment(segment: str) -> tuple[CommandClass, str]:
             return CommandClass.MUTATING, "file -C 会写文件"
         return CommandClass.READONLY, "file 只读"
     if head == "tree":
-        if any(arg == "-o" or arg.startswith("--output") for arg in args):
+        if any(
+            arg.startswith("-o") or arg.startswith("--output")
+            for arg in args
+        ):
             return CommandClass.MUTATING, "tree -o 会写文件"
         return CommandClass.READONLY, "tree 只读"
     if head == "date":
-        if _has_option(args, {"-s", "--set"}):
+        if any(
+            (arg.startswith("-s") and not arg.startswith("--"))
+            or arg == "--set" or arg.startswith("--set=")
+            for arg in args
+        ):
             return CommandClass.MUTATING, "date -s 会修改系统时间"
         return CommandClass.READONLY, "date 只读"
     if head == "hostname":
