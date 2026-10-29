@@ -23,7 +23,14 @@ from app.core.security.commands import CommandClass, classify_command
     "grep -rn x src",
     "find . -name '*.py'",
     "sed -n '1,20p' file.py",
+    "file README.md",
+    "tree",
+    "date",
+    "hostname",
     "sort -n file.txt",
+    "rg pattern",
+    "git reflog",
+    "git reflog show",
     "git status 2>&1",
     "git diff >&2",
 ])
@@ -53,6 +60,15 @@ def test_readonly_commands(command):
     "find . -delete",
     "echo x >& out.txt",
     "git status &> out.txt",
+    "sort -oout.txt in.txt",
+    "sort --compress-program=cat in.txt",
+    "sed -n 'w out.txt' file.py",
+    "tree -o out.txt",
+    "file -C",
+    "date -s 2020-01-01",
+    "hostname evil",
+    "git reflog expire --all",
+    "git tag -l -d v1",
 ])
 def test_mutating_commands(command):
     assert classify_command(command)[0] is CommandClass.MUTATING
@@ -68,6 +84,12 @@ def test_mutating_commands(command):
     "timeout 10 git status",
     "FOO=1 bash -c x",
     "echo $(rm x)",
+    "cat <(rm -rf build)",
+    "grep x >(rm -rf build)",
+    "cat file <<EOF",
+    "echo 'unterminated",
+    "git status &",
+    "rg --pre 'rm x' pattern",
 ])
 def test_unknown_commands(command):
     assert classify_command(command)[0] is CommandClass.UNKNOWN

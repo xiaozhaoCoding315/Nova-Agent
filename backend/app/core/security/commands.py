@@ -17,9 +17,9 @@ class CommandClass(str, Enum):
 
 
 _SIMPLE_READONLY = {
-    "ls", "cat", "head", "tail", "wc", "stat", "file", "du", "df", "tree",
-    "which", "type", "pwd", "date", "whoami", "id", "uname", "hostname",
-    "true", "false", ":", "test", "[", "cd", "grep", "rg", "jq",
+    "ls", "cat", "head", "tail", "wc", "stat", "du", "df",
+    "which", "type", "pwd", "whoami", "id", "uname",
+    "true", "false", ":", "test", "[", "cd", "jq",
     "basename", "dirname", "realpath", "readlink", "nl", "column", "uniq",
     "cut", "tr",
 }
@@ -53,8 +53,8 @@ def classify_command(command: str) -> tuple[CommandClass, str]:
     raw = (command or "").strip()
     if not raw:
         return CommandClass.UNKNOWN, "空命令"
-    if "$(" in raw or "`" in raw:
-        return CommandClass.UNKNOWN, "包含命令替换"
+    if "$(" in raw or "`" in raw or "<(" in raw or ">(" in raw:
+        return CommandClass.UNKNOWN, "包含命令替换/进程替换"
     try:
         segments = _split_segments(raw)
     except ValueError as exc:
@@ -144,6 +144,49 @@ def _redirect_kind(segment: str) -> str | None:
     return None
 
 
+_SAFE_SED_SCRIPT = re.compile(r"^(?:\d+|\$)?(?:,\s*(?:\d+|\$))?p$")
+
+
+def _has_option(args: list[str], names: set[str]) -> bool:
+    for arg in args:
+        if arg in names:
+            return True
+        if any(arg.startswith(name + "=") for name in names):
+            return True
+    return False
+
+
+def _classify_sed(args: list[str]) -> tuple[CommandClass, str]:
+    if not any(arg in ("-n", "--quiet", "--silent") for arg in args):
+        return CommandClass.MUTATING, "sed 未使用 -n，可能打印或改写文件"
+    if any(arg in ("-f", "--file") or arg.startswith("--file=") for arg in args):
+        return CommandClass.MUTATING, "sed -f 可执行任意脚本"
+
+    scripts: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-e", "--expression"):
+            if i + 1 < len(args):
+                scripts.append(args[i + 1])
+            i += 2
+            continue
+        if arg.startswith("--expression="):
+            scripts.append(arg.split("=", 1)[1])
+            i += 1
+            continue
+        if arg.startswith("-"):
+            i += 1
+            continue
+        if not scripts:
+            scripts.append(arg)
+        i += 1
+
+    if not scripts or not all(_SAFE_SED_SCRIPT.match(script) for script in scripts):
+        return CommandClass.MUTATING, "sed 脚本包含非打印命令"
+    return CommandClass.READONLY, "sed 只读打印"
+
+
 def _classify_segment(segment: str) -> tuple[CommandClass, str]:
     redirect = _redirect_kind(segment)
     if redirect == "heredoc":
@@ -176,17 +219,36 @@ def _classify_segment(segment: str) -> tuple[CommandClass, str]:
             return CommandClass.MUTATING, "find 带有删除/执行动作"
         return CommandClass.READONLY, "find 只读查询"
     if head == "sed":
+        return _classify_sed(args)
+    if head == "sort":
+        if _has_option(args, {"-o", "--output", "--compress-program"}):
+            return CommandClass.MUTATING, "sort 会写文件或执行外部程序"
         if any(
-            token.startswith("--in-place")
-            or (token.startswith("-") and not token.startswith("--") and "i" in token[1:])
+            token.startswith("-") and not token.startswith("--") and "o" in token[1:]
             for token in args
         ):
-            return CommandClass.MUTATING, "sed -i 会写文件"
-        return CommandClass.READONLY, "sed 只读输出"
-    if head == "sort":
-        if any(token == "-o" or token.startswith("--output") for token in args):
             return CommandClass.MUTATING, "sort -o 会写文件"
         return CommandClass.READONLY, "sort 只读"
+    if head in ("grep", "rg"):
+        if _has_option(args, {"--pre", "--pager"} if head == "rg" else {"--pager"}):
+            return CommandClass.UNKNOWN, f"{head} 会执行外部程序"
+        return CommandClass.READONLY, f"{head} 只读"
+    if head == "file":
+        if any(arg in ("-C", "--compile") for arg in args):
+            return CommandClass.MUTATING, "file -C 会写文件"
+        return CommandClass.READONLY, "file 只读"
+    if head == "tree":
+        if any(arg == "-o" or arg.startswith("--output") for arg in args):
+            return CommandClass.MUTATING, "tree -o 会写文件"
+        return CommandClass.READONLY, "tree 只读"
+    if head == "date":
+        if _has_option(args, {"-s", "--set"}):
+            return CommandClass.MUTATING, "date -s 会修改系统时间"
+        return CommandClass.READONLY, "date 只读"
+    if head == "hostname":
+        if args:
+            return CommandClass.MUTATING, "hostname 带参数可能修改主机名"
+        return CommandClass.READONLY, "hostname 只读"
     if head in _ECHO:
         return CommandClass.READONLY, "无重定向的输出命令"
     if head in _SIMPLE_READONLY:
@@ -227,6 +289,11 @@ def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
     sub_args = rest[1:]
     if sub in ("--version", "-v", "--help", "-h"):
         return CommandClass.READONLY, f"git {sub}"
+
+    if sub == "reflog":
+        if sub_args and sub_args[0] in ("expire", "delete", "drop"):
+            return CommandClass.MUTATING, "git reflog 会改写引用日志"
+        return CommandClass.READONLY, "git reflog 只读"
 
     if sub in _READONLY_GIT:
         if _git_writes_output(sub_args):
@@ -272,9 +339,18 @@ def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
         return CommandClass.MUTATING, "git stash 会修改状态"
 
     if sub == "tag":
+        mutation_flags = {
+            "-a", "-d", "-m", "-f", "-s",
+            "--delete", "--annotate", "--message", "--force", "--sign",
+        }
+        if any(arg in mutation_flags for arg in sub_args):
+            return CommandClass.MUTATING, "git tag 会创建/删除标签"
         if not sub_args or any(arg in ("-l", "--list") for arg in sub_args):
             return CommandClass.READONLY, "git tag 列表"
-        if all(arg in ("-n", "--contains", "--points-at", "--merged", "--no-merged") for arg in sub_args):
+        if all(
+            arg in ("-n", "--contains", "--points-at", "--merged", "--no-merged")
+            for arg in sub_args
+        ):
             return CommandClass.READONLY, "git tag 列表"
         return CommandClass.MUTATING, "git tag 可能创建标签"
 
