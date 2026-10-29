@@ -35,6 +35,7 @@ from app.core.security.commands import CommandClass, classify_command
     "git diff >&2",
     "echo 'a; b'",
     'echo "a; b"',
+    "git grep -c pattern",
 ])
 def test_readonly_commands(command):
     assert classify_command(command)[0] is CommandClass.READONLY
@@ -76,6 +77,7 @@ def test_readonly_commands(command):
     "tree -oout.txt",
     "date -s2020-01-01",
     r"echo 'a\' ; mv build build2 'b\'",
+    r'echo "a\\" ; touch PWNED \\""',
 ])
 def test_mutating_commands(command):
     assert classify_command(command)[0] is CommandClass.MUTATING
@@ -102,6 +104,11 @@ def test_mutating_commands(command):
     "git log --ext-diff",
     "git -c core.pager=less status",
     "PATH=/tmp git status",
+    "git grep --op='touch PWNED' pattern",
+    "git grep -nO pattern",
+    "git log --ext pattern",
+    "git diff --textcon pattern",
+    "git --exec-path=/tmp status",
 ])
 def test_unknown_commands(command):
     assert classify_command(command)[0] is CommandClass.UNKNOWN

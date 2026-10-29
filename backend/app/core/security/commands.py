@@ -78,7 +78,15 @@ def _split_segments(command: str) -> list[str]:
         if quote:
             buf.append(ch)
             if ch == quote:
-                escaped = quote == '"' and i > 0 and command[i - 1] == "\\"
+                if quote == '"':
+                    backslashes = 0
+                    j = i - 1
+                    while j >= 0 and command[j] == "\\":
+                        backslashes += 1
+                        j -= 1
+                    escaped = backslashes % 2 == 1
+                else:
+                    escaped = False
                 if not escaped:
                     quote = None
             i += 1
@@ -294,9 +302,46 @@ def _git_writes_output(args: list[str]) -> bool:
     return any(arg == "--output" or arg.startswith("--output=") or arg == "-o" for arg in args)
 
 
+def _git_global_options(tokens: list[str]) -> list[tuple[str, str]]:
+    """Collect git global options before the subcommand."""
+    options: list[tuple[str, str]] = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
+            value = tokens[i + 1] if i + 1 < len(tokens) else ""
+            options.append((token, value))
+            i += 2
+            continue
+        if any(token.startswith(option + "=") for option in _GIT_EQUALS_OPTS):
+            name, value = token.split("=", 1)
+            options.append((name, value))
+            i += 1
+            continue
+        if token in ("--no-pager", "--paginate", "-P"):
+            i += 1
+            continue
+        break
+    return options
+
+
+_GIT_EXEC_LONG_OPTS = ("--open-files-in-pager", "--ext-diff", "--textconv")
+
+
+def _git_exec_option(arg: str) -> bool:
+    """True for an exec-capable long option, including git's abbreviations."""
+    name = arg.split("=", 1)[0]
+    if len(name) < 3 or not name.startswith("--"):
+        return False
+    return any(option.startswith(name) for option in _GIT_EXEC_LONG_OPTS)
+
+
 def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
-    if any(arg == "-c" or arg.startswith("-c=") for arg in args):
+    globals_ = _git_global_options(args)
+    if any(name == "-c" for name, _ in globals_):
         return CommandClass.UNKNOWN, "git -c 可注入可执行配置"
+    if any(name == "--exec-path" for name, _ in globals_):
+        return CommandClass.UNKNOWN, "--exec-path 会改变可执行程序路径"
     rest = _strip_git_globals(args)
     if not rest:
         return CommandClass.READONLY, "git 帮助"
@@ -305,13 +350,12 @@ def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
     if sub in ("--version", "-v", "--help", "-h"):
         return CommandClass.READONLY, f"git {sub}"
 
-    exec_opts = ("--open-files-in-pager", "--ext-diff", "--textconv")
-    if any(
-        arg == opt or arg.startswith(opt + "=")
-        for arg in sub_args for opt in exec_opts
-    ):
+    if any(_git_exec_option(arg) for arg in sub_args):
         return CommandClass.UNKNOWN, "git 选项会执行外部程序"
-    if sub == "grep" and any(arg == "-O" or arg.startswith("-O") for arg in sub_args):
+    if sub == "grep" and any(
+        arg.startswith("-") and not arg.startswith("--") and "O" in arg[1:]
+        for arg in sub_args
+    ):
         return CommandClass.UNKNOWN, "git grep -O 会执行外部程序"
 
     if sub == "reflog":

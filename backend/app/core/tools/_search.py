@@ -98,7 +98,7 @@ async def resolve_scope(args: dict, ctx) -> tuple[Path, Path, str]:
         raise ToolBusinessError("仓库文件已不存在，请重新导入")
 
     raw_prefix = str(args.get("path") or "").strip().replace("\\", "/")
-    if raw_prefix in ("", "."):
+    if raw_prefix.rstrip("/") in ("", "."):
         return root, root, repo["name"]
     try:
         rel = normalize_relpath(raw_prefix)

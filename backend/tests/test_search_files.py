@@ -195,11 +195,12 @@ async def test_grep_invalid_glob_filter_is_business_error(repo):
 
 @pytest.mark.asyncio
 async def test_grep_path_dot_means_repo_root(repo):
-    result = await build_registry().execute(
-        "grep", {"pattern": "login", "path": "."}, ctx()
-    )
-    assert result["ok"] is True
-    assert result["output"]["match_count"] >= 1
+    for prefix in (".", "./"):
+        result = await build_registry().execute(
+            "grep", {"pattern": "login", "path": prefix}, ctx()
+        )
+        assert result["ok"] is True
+        assert result["output"]["match_count"] >= 1
 
 
 @pytest.mark.asyncio

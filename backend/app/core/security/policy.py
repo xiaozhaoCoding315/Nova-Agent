@@ -103,7 +103,7 @@ def decide_tool(
         return PolicyDecision(False, "MCP 工具仅管理员可用", caps)
 
     for value in _path_values(args):
-        if str(value).strip() in ("", "."):
+        if str(value).strip().rstrip("/") in ("", "."):
             continue
         rel = try_normalize_relpath(value)
         if not rel:
