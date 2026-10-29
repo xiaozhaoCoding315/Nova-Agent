@@ -166,8 +166,8 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         payload["repo_copy"] = copy_stats
         if copy_stats.get("truncated"):
             payload["repo_copy_truncated"] = True
-            payload["hint"] = (
-                "仓库文件超过沙箱复制上限，部分文件未进入沙箱；"
+            payload["hint"] += (
+                " 仓库文件超过沙箱复制上限，部分文件未进入沙箱；"
                 "测试结果可能不完整，请缩小测试范围或分批验证。"
             )
     return payload

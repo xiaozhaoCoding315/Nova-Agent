@@ -178,6 +178,52 @@ async def test_glob_skips_secret_files(repo):
 
 
 @pytest.mark.asyncio
+async def test_glob_invalid_pattern_is_business_error(repo):
+    result = await build_registry().execute("glob", {"pattern": "[z-a]"}, ctx())
+    assert result["ok"] is False and result["business"] is True
+    assert "glob" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_grep_invalid_glob_filter_is_business_error(repo):
+    result = await build_registry().execute(
+        "grep", {"pattern": "login", "glob": "[z-a]"}, ctx()
+    )
+    assert result["ok"] is False and result["business"] is True
+    assert "glob" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_grep_path_dot_means_repo_root(repo):
+    result = await build_registry().execute(
+        "grep", {"pattern": "login", "path": "."}, ctx()
+    )
+    assert result["ok"] is True
+    assert result["output"]["match_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_search_tools_skip_symlink_to_secret(repo):
+    link = repo / "secret_link"
+    try:
+        link.symlink_to(repo / ".env")
+    except OSError:
+        pytest.skip("symlinks are not available on this platform")
+
+    grep_result = await build_registry().execute(
+        "grep", {"pattern": "SECRET"}, ctx()
+    )
+    assert "secret_link" not in {
+        item["path"] for item in grep_result["output"]["matches"]
+    }
+
+    glob_result = await build_registry().execute("glob", {"pattern": "**/*"}, ctx())
+    assert "secret_link" not in {
+        item["path"] for item in glob_result["output"]["files"]
+    }
+
+
+@pytest.mark.asyncio
 async def test_glob_requires_repo_context():
     result = await build_registry().execute(
         "glob", {"pattern": "*.py"},

@@ -23,7 +23,11 @@ def _collect(
             rel = path.relative_to(root).as_posix()
         except ValueError:
             continue
-        if is_secret_path(rel):
+        try:
+            resolved_rel = path.resolve().relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        if is_secret_path(rel) or is_secret_path(resolved_rel):
             continue
         name = path.name
         if not (regex.match(rel) or regex.match(name)):

@@ -100,7 +100,12 @@ async def edit_file(args: dict, ctx: ToolContext) -> dict:
     if len(edits) > MAX_EDITS:
         raise ToolBusinessError(f"单次最多 {MAX_EDITS} 条 edit")
 
-    content = target.read_text(encoding="utf-8", errors="replace")
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise ToolBusinessError("文件不是 UTF-8 编码，edit_file 不支持；请人工处理编码")
+    except OSError as exc:
+        raise ToolBusinessError(f"读取失败：{exc}")
     updated, occurrences = _apply_edits(content, edits)
     if updated == content:
         raise ToolBusinessError("没有实际改动")

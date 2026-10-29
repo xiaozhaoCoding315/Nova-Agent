@@ -351,6 +351,7 @@ async def test_run_code_node_env_uses_node_image(monkeypatch):
     assert r["output"]["repo_copy"] == {"files": 1, "truncated": True}
     assert r["output"]["repo_copy_truncated"] is True
     assert "部分文件未进入沙箱" in r["output"]["hint"]
+    assert "退出码 0 表示成功" in r["output"]["hint"]
 
 
 @pytest.mark.asyncio

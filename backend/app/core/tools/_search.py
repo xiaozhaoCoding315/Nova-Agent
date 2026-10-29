@@ -8,6 +8,7 @@ from app.core.indexing.languages import SKIP_DIRS
 from app.core.security.paths import (
     UnsafePathError, normalize_relpath, resolve_repo_path,
 )
+from app.core.tools.base import ToolBusinessError
 
 MAX_FILE_BYTES = 1_000_000
 MAX_SCANNED_FILES = 5000
@@ -50,7 +51,10 @@ def glob_to_regex(pattern: str) -> re.Pattern:
         out.append(re.escape(ch))
         i += 1
     out.append("$")
-    return re.compile("".join(out))
+    try:
+        return re.compile("".join(out))
+    except re.error as exc:
+        raise ToolBusinessError(f"glob 模式不合法：{exc}")
 
 
 def matches_patterns(rel: str, patterns: list[re.Pattern]) -> bool:
@@ -94,7 +98,7 @@ async def resolve_scope(args: dict, ctx) -> tuple[Path, Path, str]:
         raise ToolBusinessError("仓库文件已不存在，请重新导入")
 
     raw_prefix = str(args.get("path") or "").strip().replace("\\", "/")
-    if not raw_prefix:
+    if raw_prefix in ("", "."):
         return root, root, repo["name"]
     try:
         rel = normalize_relpath(raw_prefix)

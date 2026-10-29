@@ -20,7 +20,7 @@ _SIMPLE_READONLY = {
     "ls", "cat", "head", "tail", "wc", "stat", "du", "df",
     "which", "type", "pwd", "whoami", "id", "uname",
     "true", "false", ":", "test", "[", "cd", "jq",
-    "basename", "dirname", "realpath", "readlink", "nl", "column", "uniq",
+    "basename", "dirname", "realpath", "readlink", "nl", "column",
     "cut", "tr",
 }
 _ECHO = {"echo", "printf"}
@@ -77,8 +77,10 @@ def _split_segments(command: str) -> list[str]:
         ch = command[i]
         if quote:
             buf.append(ch)
-            if ch == quote and (i == 0 or command[i - 1] != "\\"):
-                quote = None
+            if ch == quote:
+                escaped = quote == '"' and i > 0 and command[i - 1] == "\\"
+                if not escaped:
+                    quote = None
             i += 1
             continue
         if ch in ("'", '"'):
@@ -205,10 +207,8 @@ def _classify_segment(segment: str) -> tuple[CommandClass, str]:
         return CommandClass.UNKNOWN, f"无法解析：{exc}"
     if not tokens:
         return CommandClass.READONLY, "空段"
-    while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
-        tokens.pop(0)
-    if not tokens:
-        return CommandClass.READONLY, "仅环境变量赋值"
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
+        return CommandClass.UNKNOWN, "包含环境变量前缀，无法静态判定"
 
     head = tokens[0]
     args = tokens[1:]
@@ -295,6 +295,8 @@ def _git_writes_output(args: list[str]) -> bool:
 
 
 def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
+    if any(arg == "-c" or arg.startswith("-c=") for arg in args):
+        return CommandClass.UNKNOWN, "git -c 可注入可执行配置"
     rest = _strip_git_globals(args)
     if not rest:
         return CommandClass.READONLY, "git 帮助"
@@ -302,6 +304,15 @@ def _classify_git(args: list[str]) -> tuple[CommandClass, str]:
     sub_args = rest[1:]
     if sub in ("--version", "-v", "--help", "-h"):
         return CommandClass.READONLY, f"git {sub}"
+
+    exec_opts = ("--open-files-in-pager", "--ext-diff", "--textconv")
+    if any(
+        arg == opt or arg.startswith(opt + "=")
+        for arg in sub_args for opt in exec_opts
+    ):
+        return CommandClass.UNKNOWN, "git 选项会执行外部程序"
+    if sub == "grep" and any(arg == "-O" or arg.startswith("-O") for arg in sub_args):
+        return CommandClass.UNKNOWN, "git grep -O 会执行外部程序"
 
     if sub == "reflog":
         if sub_args and sub_args[0] in ("expire", "delete", "drop"):

@@ -33,6 +33,8 @@ from app.core.security.commands import CommandClass, classify_command
     "git reflog show",
     "git status 2>&1",
     "git diff >&2",
+    "echo 'a; b'",
+    'echo "a; b"',
 ])
 def test_readonly_commands(command):
     assert classify_command(command)[0] is CommandClass.READONLY
@@ -73,6 +75,7 @@ def test_readonly_commands(command):
     "sed --in-place -n '1p' file.py",
     "tree -oout.txt",
     "date -s2020-01-01",
+    r"echo 'a\' ; mv build build2 'b\'",
 ])
 def test_mutating_commands(command):
     assert classify_command(command)[0] is CommandClass.MUTATING
@@ -94,6 +97,11 @@ def test_mutating_commands(command):
     "echo 'unterminated",
     "git status &",
     "rg --pre 'rm x' pattern",
+    "uniq a.txt out.txt",
+    "git grep --open-files-in-pager=rm pattern",
+    "git log --ext-diff",
+    "git -c core.pager=less status",
+    "PATH=/tmp git status",
 ])
 def test_unknown_commands(command):
     assert classify_command(command)[0] is CommandClass.UNKNOWN

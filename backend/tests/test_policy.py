@@ -81,6 +81,13 @@ def test_readonly_still_blocks_mutating_shell():
     assert not decision.allowed
 
 
+def test_dot_path_is_repo_root():
+    decision = decide_tool(
+        "grep", "read", None, {"pattern": "x", "path": "."}, ctx("readonly")
+    )
+    assert decision.allowed
+
+
 def test_shell_allowlist_can_be_disabled(monkeypatch):
     monkeypatch.setattr(settings, "shell_readonly_allowlist", False)
 

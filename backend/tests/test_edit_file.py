@@ -147,6 +147,18 @@ async def test_secret_path_is_denied(repo, captured):
 
 
 @pytest.mark.asyncio
+async def test_non_utf8_file_is_rejected(repo):
+    (repo / "src" / "app.py").write_bytes(b"\xff\xfe\x00\x00")
+    result = await build_registry().execute("edit_file", {
+        "path": "src/app.py",
+        "edits": [{"old_string": "x", "new_string": "y"}],
+    }, ctx())
+
+    assert result["ok"] is False and result["business"] is True
+    assert "UTF-8" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_replace_all_must_be_boolean(repo, captured):
     (repo / "src" / "app.py").write_text("x\nx\n", encoding="utf-8")
     result = await build_registry().execute("edit_file", {

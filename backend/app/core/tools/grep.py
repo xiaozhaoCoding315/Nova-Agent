@@ -42,7 +42,15 @@ def _scan(
             rel = path.relative_to(root).as_posix()
         except ValueError:
             continue
-        if is_secret_path(rel) or not matches_patterns(rel, patterns):
+        try:
+            resolved_rel = path.resolve().relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        if (
+            is_secret_path(rel)
+            or is_secret_path(resolved_rel)
+            or not matches_patterns(rel, patterns)
+        ):
             continue
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
