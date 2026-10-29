@@ -19,6 +19,8 @@ CAPABILITIES_BY_TOOL = {
     "search_code": ["fs.read"],
     "impact_analysis": ["fs.read"],
     "diagnose_error": ["fs.read"],
+    "grep": ["fs.read"],
+    "glob": ["fs.read"],
     "write_files": ["fs.write"],
     "edit_file": ["fs.write"],
     "run_code": ["proc.exec"],
