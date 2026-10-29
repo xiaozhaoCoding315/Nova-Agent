@@ -330,7 +330,10 @@ async def test_run_code_node_env_uses_node_image(monkeypatch):
 
     monkeypatch.setattr("app.core.tools.run_code.sandbox_status", available)
     monkeypatch.setattr("app.core.tools.run_code.sandbox_execute", fake_execute)
-    monkeypatch.setattr("app.core.tools.run_code._collect_repo_files", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        "app.core.tools.run_code._collect_repo_files_with_stats",
+        AsyncMock(return_value=({}, {"files": 0, "truncated": False})),
+    )
     monkeypatch.setattr("app.core.tools.run_code.check_sandbox_quota", AsyncMock())
     monkeypatch.setattr("app.core.tools.run_code.log_audit", AsyncMock())
 
@@ -450,3 +453,36 @@ async def test_write_files_rejects_too_many_files():
     result = await build_registry().execute("write_files", {"files": files}, ctx)
     assert result["ok"] is False and result["business"] is True
     assert "20" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_collect_repo_files_reports_truncation(tmp_path, monkeypatch):
+    from app.core.tools import run_code as run_code_mod
+
+    for index in range(301):
+        (tmp_path / f"f{index}.py").write_text("x = 1\n", encoding="utf-8")
+
+    async def fake_get_repo(repo_id, user_id):
+        return {"id": repo_id, "name": "demo", "root_path": str(tmp_path)}
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+
+    files, stats = await run_code_mod._collect_repo_files_with_stats("repo-1", USER)
+    assert len(files) <= run_code_mod.REPO_COPY_MAX_FILES
+    assert stats["truncated"] is True
+    assert stats["files"] == len(files)
+
+
+@pytest.mark.asyncio
+async def test_collect_repo_files_keeps_legacy_signature(tmp_path, monkeypatch):
+    from app.core.tools import run_code as run_code_mod
+
+    (tmp_path / "main.py").write_text("print(1)\n", encoding="utf-8")
+
+    async def fake_get_repo(repo_id, user_id):
+        return {"id": repo_id, "name": "demo", "root_path": str(tmp_path)}
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+
+    files = await run_code_mod._collect_repo_files("repo-1", USER)
+    assert files == {"main.py": "print(1)\n"}

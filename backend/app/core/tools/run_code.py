@@ -19,9 +19,15 @@ REPO_COPY_MAX_BYTES = 2_000_000
 REPO_COPY_MAX_FILE_BYTES = 200_000
 
 
-async def _collect_repo_files(repo_id: str, user: dict) -> dict[str, str]:
+async def _collect_repo_files_with_stats(
+    repo_id: str, user: dict
+) -> tuple[dict[str, str], dict]:
     """Copy the indexed repo workspace into the sandbox (bounded), so the
-    model can run tests without pasting every source file."""
+    model can run tests without pasting every source file.
+
+    Returns the file map and copy statistics. When the caps are hit the
+    caller must tell the model that coverage is partial.
+    """
     from app.core.indexing.pipeline import get_repo
 
     repo = await get_repo(repo_id, user["id"])
@@ -49,8 +55,14 @@ async def _collect_repo_files(repo_id: str, user: dict) -> dict[str, str]:
                 continue
             total += len(content)
             if len(files) >= REPO_COPY_MAX_FILES or total > REPO_COPY_MAX_BYTES:
-                return files
+                return files, {"files": len(files), "truncated": True}
             files[rel] = content
+    return files, {"files": len(files), "truncated": False}
+
+
+async def _collect_repo_files(repo_id: str, user: dict) -> dict[str, str]:
+    """Backward-compatible wrapper for executor/deploy/verify/tasks."""
+    files, _ = await _collect_repo_files_with_stats(repo_id, user)
     return files
 
 
@@ -61,12 +73,14 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
 
     files: dict[str, str] = {}
     repo_id = args.get("repo_id")
+    copy_stats: dict | None = None
     if repo_id:
         try:
             uuid.UUID(str(repo_id))
         except ValueError:
             raise ToolBusinessError("repo_id 必须是 UUID")
-        files.update(await _collect_repo_files(str(repo_id), ctx.user))
+        copied, copy_stats = await _collect_repo_files_with_stats(str(repo_id), ctx.user)
+        files.update(copied)
     files.update({str(k): str(v) for k, v in provided.items()})
 
     if not files:
@@ -139,7 +153,7 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         },
     )
 
-    return {
+    payload = {
         "exit_code": result["exit_code"],
         "timed_out": result["timed_out"],
         "stdout": result["stdout"],
@@ -148,6 +162,15 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         "env": "node" if use_node else ("builder" if use_builder else "slim"),
         "hint": "退出码 0 表示成功" if result["exit_code"] == 0 else "执行失败：请阅读 stderr，修正后重试",
     }
+    if copy_stats is not None:
+        payload["repo_copy"] = copy_stats
+        if copy_stats.get("truncated"):
+            payload["repo_copy_truncated"] = True
+            payload["hint"] = (
+                "仓库文件超过沙箱复制上限，部分文件未进入沙箱；"
+                "测试结果可能不完整，请缩小测试范围或分批验证。"
+            )
+    return payload
 
 
 TOOL = ToolDefinition(
