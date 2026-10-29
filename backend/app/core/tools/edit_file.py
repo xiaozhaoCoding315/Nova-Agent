@@ -41,7 +41,9 @@ def _apply_edits(content: str, edits: list[dict]) -> tuple[str, int]:
             raise ToolBusinessError(f"第 {index} 条 edit 必须是对象")
         old = edit.get("old_string")
         new = edit.get("new_string")
-        replace_all = bool(edit.get("replace_all"))
+        replace_all = edit.get("replace_all", False)
+        if not isinstance(replace_all, bool):
+            raise ToolBusinessError(f"第 {index} 条 edit 的 replace_all 必须是布尔值")
         if not isinstance(old, str) or not old:
             raise ToolBusinessError(f"第 {index} 条 edit 的 old_string 必须是非空字符串")
         if not isinstance(new, str):
@@ -84,6 +86,13 @@ async def edit_file(args: dict, ctx: ToolContext) -> dict:
         raise ToolBusinessError(str(exc))
     if not target.is_file():
         raise ToolBusinessError(f"文件不存在：{rel}；新建文件请用 write_files")
+    try:
+        if target.stat().st_size > MAX_FILE_CHARS * 4:
+            raise ToolBusinessError(
+                f"文件超过 {MAX_FILE_CHARS * 4} 字节，edit_file 不支持超大文件"
+            )
+    except OSError as exc:
+        raise ToolBusinessError(f"读取失败：{exc}")
 
     edits = args.get("edits")
     if not isinstance(edits, list) or not edits:

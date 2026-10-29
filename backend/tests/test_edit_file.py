@@ -147,6 +147,18 @@ async def test_secret_path_is_denied(repo, captured):
 
 
 @pytest.mark.asyncio
+async def test_replace_all_must_be_boolean(repo, captured):
+    (repo / "src" / "app.py").write_text("x\nx\n", encoding="utf-8")
+    result = await build_registry().execute("edit_file", {
+        "path": "src/app.py",
+        "edits": [{"old_string": "x", "new_string": "y", "replace_all": "false"}],
+    }, ctx())
+
+    assert result["ok"] is False and result["business"] is True
+    assert "布尔值" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_oversized_result_is_rejected(repo, captured):
     (repo / "src" / "app.py").write_text("a" * 120_000, encoding="utf-8")
     result = await build_registry().execute("edit_file", {
