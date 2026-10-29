@@ -20,6 +20,7 @@ CAPABILITIES_BY_TOOL = {
     "impact_analysis": ["fs.read"],
     "diagnose_error": ["fs.read"],
     "write_files": ["fs.write"],
+    "edit_file": ["fs.write"],
     "run_code": ["proc.exec"],
     "install_deps": ["proc.exec", "net.fetch", "fs.write"],
     "fetch_url": ["net.fetch"],
