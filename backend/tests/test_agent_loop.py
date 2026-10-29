@@ -241,3 +241,56 @@ async def test_llm_failure_without_output_auto_continues(monkeypatch):
     kinds = [e["data"].get("kind") for e in events if e["event"] == "notice"]
     assert "continued" in kinds
     assert any(e["event"] == "token" and e["data"]["text"] == "续上了" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_tool_result_is_truncated_in_llm_messages(monkeypatch):
+    class CapturingLLM(FakeLLM):
+        def __init__(self, scripts):
+            super().__init__(scripts)
+            self.seen: list[list[dict]] = []
+
+        async def astream_with_tools(self, messages, tools):
+            self.seen.append([dict(message) for message in messages])
+            async for event in super().astream_with_tools(messages, tools):
+                yield event
+
+    class HugeRegistry:
+        def specs(self):
+            return []
+
+        async def execute(self, name, args, ctx):
+            return {
+                "ok": True,
+                "output": {
+                    "stdout": "A" * 30_000 + "END",
+                    "stderr": "",
+                    "exit_code": 1,
+                    "command": "pytest",
+                },
+                "ms": 1,
+                "business": False,
+            }
+
+    llm = CapturingLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t1", "name": "run_command", "arguments": json.dumps({"command": "pytest"})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "完成"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: HugeRegistry())
+
+    await _collect(loop_mod.run_chat(USER, SESSION, "跑测试", []))
+
+    second_round = llm.seen[1]
+    tool_message = second_round[-1]
+    assert tool_message["role"] == "tool"
+    assert "_truncated" in tool_message["content"]
+    assert "END" in tool_message["content"]

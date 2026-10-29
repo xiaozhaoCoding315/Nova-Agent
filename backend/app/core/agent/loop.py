@@ -17,6 +17,7 @@ from app.config import settings
 from app.core.agent.context_meter import estimate_messages, estimate_tokens
 from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
+from app.core.agent.tool_output import build_preview, serialize_tool_result
 from app.core.harness.config import TIMEOUTS
 from app.core.llm.factory import get_llm, resolve_context_window
 from app.core.llm.usage import record_usage
@@ -32,29 +33,14 @@ from app.core.tools import ToolContext, get_registry
 
 logger = structlog.get_logger()
 
-MAX_TOOL_RESULT_CHARS = 6000
-
-
 def _sse(event: str, **data) -> dict:
     return {"event": event, "data": data}
 
 
-def _tool_message(result: dict) -> str:
-    payload = {"ok": result["ok"]}
-    if result["ok"]:
-        payload["output"] = result.get("output")
-    else:
-        payload["error"] = result.get("error", "unknown error")
-    payload["ms"] = result.get("ms", 0)
-    return json.dumps(payload, ensure_ascii=False, default=str)[:MAX_TOOL_RESULT_CHARS]
-
-
-def _result_preview(result: dict, limit: int = 400) -> str:
-    text = json.dumps(
-        result.get("output") if result["ok"] else {"error": result.get("error")},
-        ensure_ascii=False, default=str,
-    )
-    return text[:limit]
+def _output_tail(output, key: str, limit: int = 1000) -> str | None:
+    if isinstance(output, dict) and isinstance(output.get(key), str):
+        return redact_text(output[key][-limit:])
+    return None
 
 
 async def _record_usage(user: dict, session_id: str, usage: dict, tool_count: int) -> None:
@@ -451,7 +437,9 @@ async def run_chat(
                     "timed_out": bool(output.get("timed_out")) if isinstance(output, dict) else False,
                     "args": redact_obj(_args_summary(args)),
                     "error": redact_text(result.get("error")) if not result["ok"] else None,
-                    "preview": _result_preview(result),
+                    "preview": build_preview(name, result),
+                    "stdout_tail": _output_tail(output, "stdout"),
+                    "stderr_tail": _output_tail(output, "stderr"),
                 })
                 if isinstance(output, dict) and output.get("edit_id"):
                     edit_entry = {
@@ -472,15 +460,15 @@ async def run_chat(
                     )
                 await trace_record(session["id"], turn_id, "tool_result", {
                     "name": name, "ok": result["ok"], "ms": result["ms"],
-                    "preview": _result_preview(result)[:800],
+                    "preview": build_preview(name, result)[:800],
                 })
                 yield _sse(
                     "tool_result", id=tc.get("id", ""), name=name, ok=result["ok"],
-                    ms=result["ms"], preview=_result_preview(result),
+                    ms=result["ms"], preview=build_preview(name, result),
                 )
                 messages.append({
                     "role": "tool", "tool_call_id": tc.get("id", ""),
-                    "name": name, "content": _tool_message(result),
+                    "name": name, "content": serialize_tool_result(name, result),
                 })
 
             # 段触顶：注入继续指令接着跑（主流 driver 续跑模式）
