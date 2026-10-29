@@ -96,6 +96,10 @@ def _split_segments(command: str) -> list[str]:
                 buf = []
                 i += 2
                 continue
+            if i > 0 and command[i - 1] == ">":
+                buf.append(ch)
+                i += 1
+                continue
             if i + 1 < len(command) and command[i + 1] in "12>":
                 buf.append(ch)
                 i += 1
@@ -132,9 +136,9 @@ def _redirect_kind(segment: str) -> str | None:
     text = _strip_quotes(segment)
     if "<<" in text:
         return "heredoc"
-    for match in re.finditer(r"(>>?)(\s*)([^\s|;&]*)", text):
+    for match in re.finditer(r"(>>?)(\s*)([^\s|;]*)", text):
         target = match.group(3)
-        if target.startswith("&"):
+        if re.fullmatch(r"&\d+", target):
             continue
         return "file"
     return None

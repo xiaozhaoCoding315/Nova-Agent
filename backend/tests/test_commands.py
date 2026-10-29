@@ -24,6 +24,8 @@ from app.core.security.commands import CommandClass, classify_command
     "find . -name '*.py'",
     "sed -n '1,20p' file.py",
     "sort -n file.txt",
+    "git status 2>&1",
+    "git diff >&2",
 ])
 def test_readonly_commands(command):
     assert classify_command(command)[0] is CommandClass.READONLY
@@ -49,6 +51,8 @@ def test_readonly_commands(command):
     "sort -o out.txt in.txt",
     "find . -exec rm {} \\;",
     "find . -delete",
+    "echo x >& out.txt",
+    "git status &> out.txt",
 ])
 def test_mutating_commands(command):
     assert classify_command(command)[0] is CommandClass.MUTATING
