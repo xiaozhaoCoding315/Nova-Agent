@@ -73,7 +73,8 @@ async def write_files(args: dict, ctx: ToolContext) -> dict:
 TOOL = ToolDefinition(
     name="write_files",
     description=(
-        "创建或修改仓库文件：{相对路径: 完整文件内容}（不是 diff，必须给整份文件）。"
+        "创建或整文件重写仓库文件：{相对路径: 完整文件内容}（不是 diff，必须给整份文件）。"
+        "已存在文件的小改动请优先用 edit_file，避免整文件重写。"
         "会自动生成 diff 并保存修改前快照；「变更前确认」模式只生成待审批提案，批准后才写入；"
         "「自主 / 完全访问」模式直接写入；「计划」模式会被拒绝。"
     ),

@@ -101,8 +101,9 @@ TOOL = ToolDefinition(
     name="run_command",
     description=(
         "在仓库工作区里执行真实 shell 命令（隔离容器内，无网络），改动直接保留在仓库中。"
-        "适合：脚手架（npm create vite@latest）、git init/commit、移动/删除文件、跑构建脚本、"
-        "批量文本处理。只读模式会被拒绝；git push 等危险命令会被策略拦截。"
+        "适合：脚手架、安装依赖、跑构建脚本、批量文本处理。"
+        "只读/确认模式下只放行只读命令（git status/diff/log、ls、grep 等）；"
+        "会改动仓库的命令会被拒绝，请改用 edit_file/write_files 或 run_code。"
         "与 run_code 的区别：run_code 在一次性副本里验证代码，本工具的修改会持久化。"
     ),
     parameters={
@@ -113,7 +114,11 @@ TOOL = ToolDefinition(
                 "description": "要执行的 shell 命令，工作目录为仓库根，如 'git init && git add -A && git commit -m init'",
             },
             "repo_id": {"type": "string", "description": "仓库 UUID（可选，默认取会话关联仓库）"},
-            "env": {"type": "string", "description": "运行环境镜像：builder（Python 工具链，默认）或 node（Node 20）"},
+            "env": {
+                "type": "string",
+                "enum": ["builder", "node"],
+                "description": "运行环境镜像：builder（Python 工具链，默认）或 node（Node 20）",
+            },
             "timeout": {"type": "integer", "description": "超时秒数（默认 120，最大 300）"},
         },
         "required": ["command"],

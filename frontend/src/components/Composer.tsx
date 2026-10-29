@@ -13,8 +13,8 @@ const PERMISSION_LABEL: Record<PermissionMode, string> = {
 }
 
 const PERMISSION_HINT: Record<PermissionMode, string> = {
-  readonly: '只读研究与分析：可读码/检索/影响分析，所有写入与执行被拒绝，产出建议与计划（命令面板可切换）',
-  ask: '改动先给你确认，批准后才写入；代码在沙箱里真实运行',
+  readonly: '只读研究与分析：可读码/检索/影响分析/只读命令（如 git diff），所有写入与改动被拒绝，产出建议与计划（命令面板可切换）',
+  ask: '改动先给你确认，批准后才写入；会改动仓库的 shell 命令会被拦截，只读命令可直接执行',
   auto: '改动直接写入（保留快照可撤销）；密钥与危险命令仍被拦截',
   full: '自动执行 + 解锁联网装依赖等受限工具（需服务端开启联网）；安全底线不变（命令面板可切换）',
 }

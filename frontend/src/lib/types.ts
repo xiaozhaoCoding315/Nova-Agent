@@ -202,6 +202,8 @@ export type ToolEvent = {
   args?: Record<string, unknown>
   error?: string | null
   preview?: string | null
+  stdout_tail?: string | null
+  stderr_tail?: string | null
 }
 
 export type Citation = {
