@@ -148,6 +148,8 @@ class Settings(BaseSettings):
     # ---------- Tool hooks / policy ----------
     tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks
     tool_post_hook: str = ""      # best-effort post-tool audit hook
+    shell_readonly_allowlist: bool = True   # readonly/ask 下放行只读 shell 命令
+    tool_result_max_chars: int = 12_000     # 单条工具结果的字符预算
 
     # ---------- MCP ----------
     mcp_enabled: bool = True
