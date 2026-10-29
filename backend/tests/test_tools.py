@@ -431,3 +431,22 @@ async def test_run_command_requires_command_and_repo():
     r2 = await build_registry().execute(
         "run_command", {"command": "ls"}, ctx)
     assert r2["ok"] is False and "仓库" in r2["error"]
+
+
+@pytest.mark.asyncio
+async def test_write_files_rejects_oversized_content():
+    ctx = ToolContext(user=USER, repo_ids=["repo-1"], permission_mode="auto")
+    result = await build_registry().execute(
+        "write_files", {"files": {"big.py": "a" * 120_001}}, ctx
+    )
+    assert result["ok"] is False and result["business"] is True
+    assert "120000" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_write_files_rejects_too_many_files():
+    ctx = ToolContext(user=USER, repo_ids=["repo-1"], permission_mode="auto")
+    files = {f"f{i}.py": "x" for i in range(21)}
+    result = await build_registry().execute("write_files", {"files": files}, ctx)
+    assert result["ok"] is False and result["business"] is True
+    assert "20" in result["error"]

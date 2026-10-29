@@ -5,7 +5,9 @@ Permission semantics:
 - ask: staged as a pending edit; nothing is written until the user approves
 - auto: written immediately, with the pre-write snapshot kept for revert
 """
-from app.core.editing.service import create_edit
+from app.core.editing.service import (
+    MAX_FILES, MAX_FILE_CHARS, MAX_TOTAL_CHARS, create_edit,
+)
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
 
@@ -17,6 +19,24 @@ async def write_files(args: dict, ctx: ToolContext) -> dict:
     files = args.get("files")
     if not isinstance(files, dict) or not files:
         raise ToolBusinessError("files 必须是非空对象：{相对路径: 完整文件内容}")
+
+    if len(files) > MAX_FILES:
+        raise ToolBusinessError(f"单次最多写入 {MAX_FILES} 个文件，收到 {len(files)} 个")
+
+    total_chars = 0
+    for path, content in files.items():
+        if not isinstance(content, str):
+            raise ToolBusinessError(f"文件 {path} 的内容必须是字符串")
+        if len(content) > MAX_FILE_CHARS:
+            raise ToolBusinessError(
+                f"文件 {path} 超过 {MAX_FILE_CHARS} 字符上限（{len(content)}）；"
+                "write_files 不支持超大文件，请拆分或改用 edit_file"
+            )
+        total_chars += len(content)
+    if total_chars > MAX_TOTAL_CHARS:
+        raise ToolBusinessError(
+            f"总内容超过 {MAX_TOTAL_CHARS} 字符上限（{total_chars}），请分批写入"
+        )
 
     try:
         edit = await create_edit(
