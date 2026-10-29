@@ -332,7 +332,7 @@ async def test_run_code_node_env_uses_node_image(monkeypatch):
     monkeypatch.setattr("app.core.tools.run_code.sandbox_execute", fake_execute)
     monkeypatch.setattr(
         "app.core.tools.run_code._collect_repo_files_with_stats",
-        AsyncMock(return_value=({}, {"files": 0, "truncated": False})),
+        AsyncMock(return_value=({"repo.py": "x = 1"}, {"files": 1, "truncated": True})),
     )
     monkeypatch.setattr("app.core.tools.run_code.check_sandbox_quota", AsyncMock())
     monkeypatch.setattr("app.core.tools.run_code.log_audit", AsyncMock())
@@ -348,6 +348,9 @@ async def test_run_code_node_env_uses_node_image(monkeypatch):
     )
     assert r["ok"] and r["output"]["env"] == "node"
     assert r["output"]["command"] == "node main.js"
+    assert r["output"]["repo_copy"] == {"files": 1, "truncated": True}
+    assert r["output"]["repo_copy_truncated"] is True
+    assert "部分文件未进入沙箱" in r["output"]["hint"]
 
 
 @pytest.mark.asyncio
