@@ -4,6 +4,7 @@ Preset base URLs are server-controlled: a client-supplied base_url is ignored
 for every provider except ``custom`` and ``ollama``. This prevents a saved
 credential from being redirected to an arbitrary host.
 """
+import ipaddress
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -33,15 +34,12 @@ class ProviderSpec:
     base_url_setting: str = ""    # read the actual URL from Settings at runtime
 
     def public(self) -> dict:
-        base_url = self.base_url
-        if self.base_url_setting:
-            base_url = str(getattr(settings, self.base_url_setting, base_url) or base_url)
         return {
             "id": self.id,
             "label": self.label,
             "group": self.group,
             "kind": self.kind,
-            "base_url": base_url,
+            "base_url": effective_base_url(self),
             "models": list(self.models),
             "docs_url": self.docs_url,
             "free_tier": self.free_tier,
@@ -53,6 +51,18 @@ class ProviderSpec:
             "env_key": self.env_key,
             "icon": self.icon,
         }
+
+
+def effective_base_url(spec: ProviderSpec) -> str:
+    """Return the catalog URL a provider actually uses, normalized.
+
+    Settings may override a preset URL at runtime; the trailing slash is
+    stripped so the UI and the resolver agree on the same value.
+    """
+    base_url = spec.base_url
+    if spec.base_url_setting:
+        base_url = str(getattr(settings, spec.base_url_setting, base_url) or base_url)
+    return base_url.strip().rstrip("/")
 
 
 PROVIDERS: tuple[ProviderSpec, ...] = (
@@ -213,13 +223,22 @@ def provider_list() -> list[dict]:
 
 def resolve_base_url(spec: ProviderSpec, requested: str | None = None) -> str:
     if spec.base_url_locked:
-        value = spec.public()["base_url"]
+        value = effective_base_url(spec)
     else:
-        value = (requested or spec.base_url or "").strip()
-    value = value.rstrip("/")
+        value = (requested or spec.base_url or "").strip().rstrip("/")
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError("Base URL 必须是 http(s) 地址")
-    if parsed.hostname.lower() in BLOCKED_HOSTS:
+    host = parsed.hostname.rstrip(".").lower()
+    if host in BLOCKED_HOSTS:
+        raise ValueError("不允许使用该地址")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return value
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    # Loopback stays allowed: the local ollama provider legitimately uses it.
+    if address.is_link_local or address.is_unspecified:
         raise ValueError("不允许使用该地址")
     return value
