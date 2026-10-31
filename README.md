@@ -15,14 +15,14 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
-| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / 自定义兼容端点等 16 家厂商）、填写自己的 API Key 和模型；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
+| **多用户模型接入（BYOK）** | 每个用户可在设置页为 16 家厂商分别保存 API Key 与模型（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
-| **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（SPEC/计划/审查/Builder/任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
+| **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（计划/审查/Builder/修复任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
 | **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
 | **多用户账号** | 开放注册 / 邀请码 / 关闭注册三种模式；注册后生成一次性恢复码；支持个人资料、改密与 token 失效；管理员可建号、禁用、重置密码、删除账号。 |
 | **技术债雷达** | 每周确定性扫描：超长函数、TODO 密度、测试占比、巨型文件 → 0-100 债务分与趋势图；工作区「技术债」页签可手动扫描，纯索引表计算可复现。 |
 | **反思教训（越用越聪明）** | 维护循环从结果信号（Gate 重试、用户拒绝的提案）提炼 ≤80 字教训，注入后续对话；命中/失手记账，失效教训自动遗忘。按用户与仓库隔离。 |
-| **四档权限模式** | 计划（只读）/ 变更前确认 / 自主 / 完全访问（解锁联网装依赖等受限工具；密钥、路径逃逸、沙箱边界任何档位不放开）。跨文件需求在对话中主动建议转工作流并带入需求。 |
+| **四档权限模式** | 计划（只读）/ 变更前确认 / 自主 / 完全访问（解锁联网装依赖等受限工具；密钥、路径逃逸、沙箱边界任何档位不放开）。 |
 | **生成项目自带质量系统** | Builder 产出的项目内置 ruff/mypy 配置、每端点冒烟测试与 GitHub Actions CI；Python 栈也过真实 Gate；批准写入后自动冒烟启动（容器→健康检查→回收）。 |
 | **游客体验** | 一键创建 24 小时独立游客账号，拥有自己的会话与文件；到期由小时级维护任务自动清理；有独立的消息、token、沙箱与存储额度。 |
 | **项目化对话历史** | 会话归属到项目（`session_repos` + primary project）；左侧栏可按项目筛选历史，新建对话自动继承当前项目。 |
@@ -30,7 +30,7 @@
 | **对话内改代码（权限 + 快照）** | 在对话里直接读文件、改文件：只读 / 确认 / 自动三档权限；确认模式先生成 diff 提案，批准后才写入；每次写入保存快照，可一键撤销。 |
 | **从 0→1 建项目（Builder）** | 描述需求 → 生成结构化方案（技术栈/目录/数据模型/API/里程碑/风险）→ 确认后生成完整项目文件提案 → 逐文件审阅 → 批准写入并自动索引。支持 Python 后端，以及**契约优先全栈**（OpenAPI → FastAPI + TypeScript Explorer + 双栈 Gate）。 |
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
-| **任务流水线（修 Bug 红-绿 / 变更方案→计划→验证）** | 统一「任务」列表里描述需求即自动分流：修复任务先生成失败测试复现（红），再给最小补丁跑到通过（绿）；变更走 SPEC → 计划 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
+| **修复任务流水线（红-绿）** | 在「任务」里描述一个 bug：自动生成失败测试复现（红，校验测试确实运行且失败）→ 产出最小补丁 → 全量测试复跑（绿，失败摘要回喂，最多自动修复 3 次）→ 只读审查 → 人工批准后写入并重建索引；文件在生成后被改动会拒绝覆盖。 |
 | **预览部署** | 管理员在工作区「预览」页签一键部署 **Python/FastAPI 或 Node** 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；超时自动下线；一键清理容器。 |
 | **MCP 外接工具** | 通过 stdio 或 streamable HTTP 接入 MCP server（HTTP 支持静态鉴权头）：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
 
@@ -39,9 +39,8 @@
 - 左侧栏只有三个入口：**对话 / 任务 / 设置**；会话历史直接挂在「对话」下。
 - 对话页右侧常驻 **项目 / 引用** 面板：项目面板可切换仓库上下文、浏览文件，并一键展开完整工作区；引用面板显示检索到的 `文件:行号`。
 - **工作区不是独立入口**：日常从对话右侧的项目面板打开；保留代码、项目地图、影响分析、Git 与验证（技术债 / 契约 / 预览收进「更多」菜单）。
-- **任务** 把修复与变更统一成一个列表：描述要做的事，Nova 自动选择流水线——
-  - **修 Bug**：失败测试复现（红）→ 最小补丁 → 跑到通过（绿）→ 审查 → 批准写入。
-  - **新功能 / 重构**：方案（SPEC）→ 计划 → 逐任务真实验证 → 统一 diff → 批准写入。
+- **任务** 是红-绿修复流水线：描述一个 bug，Nova 自动推进——
+  - **复现 → 补丁 → 验证**：失败测试复现（红）→ 最小补丁 → 全量测试跑到通过（绿）→ 只读审查 → 批准写入并重建索引。
   - 状态只有四种：**进行中 / 待确认 / 已完成 / 失败**；关键节点才需要你确认。
 - 只是问答或小改动时不需要任务，直接在对话里切换只读 / 确认 / 自动模式即可。
 
@@ -51,7 +50,7 @@
 - **项目**：每个仓库只属于一个用户；会话通过 `session_repos` 关联项目；项目不可共享。
 - **文件**：仓库移动到 `data/users/<user_id>/repos/<repo_id>`，聊天附件在 `data/users/<user_id>/uploads/`；下载/删除都校验 owner。
 - **检索**：RAG 必须带授权 repo_ids，没选仓库时 fail-closed 返回空；Qdrant payload 写入 `user_id`。
-- **后台任务**：Job、变更、修复任务、Reviewer、部署、幂等账本全部按用户隔离。
+- **后台任务**：Job、修复任务、Reviewer、部署、幂等账本全部按用户隔离。
 - **删除**：删除仓库会停预览容器、删依赖卷和向量；删除账号会清理该用户的文件、仓库、向量、用量与审计。
 - **游客**：独立临时账号，24 小时过期后自动清理，额度低于正式用户。
 
@@ -122,7 +121,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | 服务端默认智谱 GLM-4.7-Flash（免费），可切换 16 家厂商；用户可自带任意 OpenAI 兼容 Key 与模型 |
+| LLM | 默认智谱 GLM-4.7-Flash（免费）；内置 16 家厂商目录（智谱 / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），预设 Base URL 固定；每个用户可保存多家凭据并设默认，会话级可切换厂商 / 模型 / 推理强度 / 上下文窗口；真实 GLM 流式调用已验证 |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -179,7 +178,7 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 | 变量 | 说明 |
 |---|---|
 | `ZHIPU_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
-| `ZHIPU_MODEL` / `DASHSCOPE_MODEL` | 服务端默认模型名（智谱默认 `glm-4.7-flash`；DashScope 默认 `qwen3.8-max`） |
+| `ZHIPU_MODEL` / `ZHIPU_BASE_URL` / `DASHSCOPE_MODEL` | 服务端默认模型与智谱服务地址（智谱默认 `glm-4.7-flash`，地址 `https://open.bigmodel.cn/api/paas/v4`；DashScope 默认 `qwen3.8-max`） |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic 原生通道（tool use + prompt caching）；`ANTHROPIC_PROMPT_CACHING=true` 默认开启 |
 | `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `zhipu,dashscope,deepseek,anthropic` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
@@ -223,7 +222,7 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 | `GET /api/v1/admin/usage/sources?days=7` | 按 来源×模型 聚合的 token 用量（成本归因） |
 | `GET /api/v1/settings/quota` · `PUT /api/v1/settings/quota` | 查看（含有效限额与今日用量）/ 更新个人预算（自我约束） |
 | `GET/POST /api/v1/chat/sessions` | 会话列表（支持 `?repo_id=` 按项目过滤）/ 新建 |
-| `PATCH /api/v1/chat/sessions/{id}` | 重命名会话 |
+| `PATCH /api/v1/chat/sessions/{id}` | 重命名会话 / 保存会话级模型覆盖（`llm_overrides`：厂商 / 模型 / 推理强度 / 上下文窗口） |
 | `GET /api/v1/chat/sessions/{id}/messages` | 历史消息（含附件元数据） |
 | `POST /api/v1/chat/message` | 对话（SSE：`meta/retrieval/token/tool_call/tool_result/usage/error/done`） |
 | `GET/POST /api/v1/files` · `GET /files/{id}/download` · `DELETE /files/{id}` | 个人文件库列表 / 上传 / 下载 / 删除 |
@@ -239,10 +238,7 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 | `POST /api/v1/repos/{id}/proposal/approve` · `/reject` | 批准写入并索引 / 退回重做 |
 | `GET /api/v1/edits/{id}` · `POST .../approve` `.../reject` `.../revert` `.../review` | 对话内修改：查看提案 / 批准 / 拒绝 / 快照撤销 / 只读审查 |
 | `POST /api/v1/tasks/{id}/review` | 对红绿任务 diff 做只读审查（pass / warn / block + 依据） |
-| `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、变更、会话摘要） |
-| `POST /api/v1/changes` · `GET /changes` `/{id}` · `PATCH /changes/{id}` | 创建变更（自动起草 SPEC）/ 列表 / 详情 / 编辑 SPEC |
-| `POST /changes/{id}/approve` · `/plan` · `/plan/approve` · `/execute` | 冻结 SPEC / 生成计划 / 批准计划 / 执行计划 |
-| `POST /changes/{id}/apply` · `/reject` · `/cancel` · `GET /changes/{id}/report` | 应用提案（先切到 `nova/change-<id>` 分支；含 Gate/Review 证据）/ 拒绝 / 取消 / 交付报告 |
+| `GET /api/v1/jobs` · `GET /jobs/{id}` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` | 后台任务：列表 / 详情 / 取消 / 重试（索引、红绿、Builder、会话摘要） |
 | `POST /api/v1/repos/{id}/verify` · `GET .../verify` | **异步入队**多栈验证（Python/Node/契约，逐项结果）/ 查看上次结果 |
 | `GET /api/v1/repos/{id}/contract` | 契约源/目标、文件存在性与最近一次契约检查结果 |
 | `POST /api/v1/repos/{id}/deploy` · `GET .../deployments` | 管理员启动预览部署 / 查看部署历史 |
@@ -251,7 +247,9 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
 | `GET /api/v1/status/health` / `usage` / `metrics?days=7` | 依赖探活 / 用量配额 / 交付指标 |
-| `GET` · `PUT` · `DELETE /api/v1/settings/llm` | 查看 / 保存 / 移除个人模型服务商、模型与 API Key（响应只含掩码） |
+| `GET /api/v1/settings/llm/providers` | 服务商目录（16 家，含预设 Base URL、默认模型与能力标记） |
+| `GET /api/v1/settings/llm/credentials` · `PUT/DELETE /credentials/{provider}` · `POST /credentials/{provider}/default` | 个人凭据列表 / 保存或删除单个厂商 / 设为默认（响应只含掩码） |
+| `GET/PUT/DELETE /api/v1/settings/llm` | 当前生效配置汇总 / 保存为默认凭据 / 清空 |
 | `POST /api/v1/settings/llm/test` | 用当前或待保存配置做一次真实连通性测试 |
 | `GET /api/v1/memory` · `DELETE /memory/facts/{id}` · `DELETE /memory/daily/{day}` | 查看 / 删除长期事实与日摘要 |
 
@@ -259,7 +257,7 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 
 ```
 backend/app/
-├── api/v1/            auth · admin · chat · files · repos · tasks · builder · changes · git · jobs · status · settings_llm
+├── api/v1/            auth · admin · chat · files · repos · tasks · builder · git · jobs · status · settings_llm
 ├── core/
 │   ├── agent/loop.py  Agent 主循环（检索→工具轮次→证据校验→持久化）
 │   ├── agent/evidence.py  引用校验（文件/行号/越界）
@@ -267,7 +265,6 @@ backend/app/
 │   ├── indexing/      仓库索引：walker / symbols / chunker / imports / brain / pipeline
 │   ├── impact/        变更影响分析（依赖图 + 符号引用）
 │   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
-│   ├── changes/       SPEC / Planner / 串行执行器 / Gate / 任务模板
 │   ├── deploy/        预览部署：幂等账本、容器启动、健康检查、teardown
 │   ├── mcp/           MCP stdio + HTTP 客户端 / server allowlist / 工具注册
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
@@ -278,7 +275,7 @@ backend/app/
 │   ├── git_ops/       Git 交付：初始化/提交/diff/回滚/导出
 │   ├── trace.py       轨迹事件记录（回放 / CI 审计）
 │   ├── memory/        会话摘要 + 日摘要 + 长期事实（晋升/语义召回/衰减）
-│   ├── tools/         11 个工具 + 注册表（校验/容错/审计）
+│   ├── tools/         19 个工具 + 注册表（校验/容错/审计）
 │   ├── sandbox/       Docker 一次性容器执行器
 │   ├── harness/       超时 / 重试 / 熔断
 │   ├── security/      认证 / 账号生命周期 / 限流配额 / 风险规则 / 审计
@@ -287,7 +284,7 @@ backend/app/
 ├── db/                PostgreSQL 连接 · Qdrant · 幂等初始化
 └── models/            Pydantic 模型
 frontend/src/
-├── views/             登录 · 对话 · 任务（修复/变更）· 工作区 · 设置
+├── views/             登录 · 对话 · 任务（红-绿修复）· 工作区 · 设置
 ├── components/        消息/工具卡片/证据条/项目地图/影响分析/文件树/代码查看器…
 ├── stores/            auth · chat · repos（Zustand）
 └── lib/               API 客户端 · SSE 解析（含中断与错误处理）
@@ -419,7 +416,7 @@ cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、变更工作流、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、Git 变更分支、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 加密/掩码/服务端回退开关、用户文件存储/配额/附件工具、幂等键与删除清理隔离
+- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 多厂商目录/多凭据加密/掩码/服务端回退开关、会话级模型覆盖、用户文件存储/配额/附件工具、幂等键与删除清理隔离
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -482,14 +479,13 @@ cd frontend && npm run contract:check
 - 全栈 Builder 依赖 `nova-builder` 与 `nova-node` 镜像；契约类型由 `openapi-typescript` 生成
 - 账号角色仍只有 admin/demo；支持自助注册与游客，但没有邮箱验证、邮件找回、组织/团队共享；密码找回依赖一次性恢复码或管理员重置
 - 项目（仓库）严格私有，不支持多人共享；旧会话若历史上没有 repo_ids，迁移后不会自动获得项目归属
-- BYOK 每个用户同时保存一套服务商配置；模型选择按会话持久化，但仅在使用个人 Key 时生效；Embedding 仍使用服务端 DashScope Key，因此混合检索需要服务端配置 embedding
+- BYOK 允许每个用户为多家厂商分别保存凭据并指定默认；会话级模型覆盖按会话持久化，但仅在使用个人 Key 时生效；Embedding 仍使用服务端 DashScope Key，因此混合检索需要服务端配置 embedding
 - 配额默认按 admin/demo/游客三档环境变量，管理员可对单个用户覆盖五维限额（users 表 `quota_*` 列，空=继承档位、0=不限），用户可另设只收紧的个人预算；存储配额按 `user_files` 统计，不计仓库索引文件
 - 游客到期由小时级维护任务清理；注册/登录限流是进程内滑动窗口，重启后归零，多副本部署前需要改为 PG/Redis
 - 删除账号会清理该用户的仓库目录、附件、向量、预览容器/卷、用量与审计；删除仓库会停止预览并删除依赖卷
 - 2C2G 建议单 worker、1–2 个并发 Job、游客不跑重沙箱；公开互联网部署还应加反向代理限流与验证码
-- Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）；变更应用会先切到 `nova/change-<id>` 分支，要求工作区干净，合并回主分支需手动操作
+- Git 回滚使用 `git reset --hard`，会丢弃未提交改动（前端有二次确认）
 - 轨迹目前记录对话链路与审批事件，不支持按任意历史步骤“从中间重放执行”
-- 变更工作流当前按任务**串行**执行，生成完整文件而非 patch；Gate 已支持 Python/Node 与契约检查；已接入每变更分支，但每任务 worktree 尚未接入
 - 能力权限是应用层策略，最终隔离边界仍是容器/宿主机；Hook 命令由运维配置，必须使用可信脚本
 - 预览部署支持 **Python/FastAPI**（`app/main.py`）与 **Node**（`package.json` 的 start 脚本）；fullstack 项目可用 `nova.yaml` 的 `preview.runtime: node` + command 指定前端/静态服务
 - 预览使用 bridge 网络以支持本地端口映射；域名反代尚未接入；Node 依赖需先安装到 `nova-node-deps-<repo>` 卷
