@@ -1,60 +1,37 @@
 """Per-user LLM credentials, encrypted at rest.
 
-Users can point Nova at any OpenAI-compatible endpoint. Keys are encrypted
-with a key derived from ``SECRET_KEY`` and are never returned by the API.
+A user can save one credential per provider. Exactly one row is the default
+(partial unique index); the chat composer may override provider/model for a
+single session without changing the default.
 """
 import base64
 import hashlib
-from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.config import settings
+from app.core.llm.providers import (
+    get_provider, provider_list, resolve_base_url,
+)
 from app.db import execute, query
 
 MAX_MODEL_LENGTH = 120
-BLOCKED_HOSTS = {"169.254.169.254", "metadata.google.internal"}
 REASONING_EFFORTS = {"", "low", "medium", "high"}
 MAX_CONTEXT_WINDOW = 10_000_000
 
+_SELECT = (
+    "SELECT provider, base_url, model, api_key_enc, context_window, "
+    "reasoning_effort, is_default, updated_at FROM user_llm_providers"
+)
+
 
 def provider_presets() -> list[dict]:
-    return [
-        {
-            "id": "dashscope",
-            "label": "阿里云百炼 / DashScope",
-            "base_url": settings.dashscope_base_url,
-            "models": ["qwen3.8-max", "qwen3.8-flash", "deepseek-v4-flash-0731"],
-        },
-        {
-            "id": "deepseek",
-            "label": "DeepSeek",
-            "base_url": "https://api.deepseek.com/v1",
-            "models": ["deepseek-chat", "deepseek-reasoner"],
-        },
-        {
-            "id": "openai",
-            "label": "OpenAI / 兼容网关",
-            "base_url": "https://api.openai.com/v1",
-            "models": ["gpt-4o", "gpt-4o-mini"],
-        },
-        {
-            "id": "anthropic",
-            "label": "Anthropic 原生（tool use + 缓存）",
-            "base_url": "https://api.anthropic.com",
-            "models": ["claude-sonnet-4-5", "claude-haiku-4-5"],
-        },
-        {
-            "id": "custom",
-            "label": "自定义 OpenAI 兼容端点",
-            "base_url": "",
-            "models": [],
-        },
-    ]
+    """Backward-compatible alias for the old settings endpoint."""
+    return provider_list()
 
 
-def provider_by_id(provider_id: str) -> dict | None:
-    return next((item for item in provider_presets() if item["id"] == provider_id), None)
+def provider_by_id(provider_id: str):
+    return get_provider(provider_id)
 
 
 def _fernet() -> Fernet:
@@ -73,16 +50,6 @@ def decrypt_key(token: str) -> str:
         raise ValueError("API Key 无法解密，请重新保存")
 
 
-def _clean_base_url(provider: dict, base_url: str | None) -> str:
-    value = (base_url or provider.get("base_url") or "").strip().rstrip("/")
-    parsed = urlparse(value)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise ValueError("Base URL 必须是 http(s) 地址")
-    if parsed.hostname.lower() in BLOCKED_HOSTS:
-        raise ValueError("不允许使用该地址")
-    return value
-
-
 def _clean_model(model: str) -> str:
     value = (model or "").strip()
     if not value:
@@ -92,36 +59,7 @@ def _clean_model(model: str) -> str:
     return value
 
 
-async def get_user_config(user_id: int) -> dict | None:
-    rows = await query(
-        "SELECT provider, base_url, model, api_key_enc, context_window, reasoning_effort, updated_at "
-        "FROM user_llm_settings WHERE user_id = %s",
-        (user_id,),
-    )
-    if not rows:
-        return None
-    provider, base_url, model, encrypted, context_window, reasoning_effort, updated_at = rows[0]
-    api_key = ""
-    key_error = ""
-    try:
-        api_key = decrypt_key(encrypted)
-    except ValueError as exc:
-        key_error = str(exc)
-    return {
-        "provider": provider,
-        "base_url": base_url,
-        "model": model,
-        "api_key": api_key,
-        "key_hint": f"••••{api_key[-4:]}" if len(api_key) >= 8 else ("••••" if api_key else ""),
-        "key_error": key_error,
-        "context_window": int(context_window) if context_window else None,
-        "reasoning_effort": reasoning_effort or "",
-        "updated_at": updated_at,
-    }
-
-
 def clean_context_window(value: int | None) -> int | None:
-    """None/0 = 未指定（用部署默认窗口）；否则必须是合理的 token 数。"""
     if value is None or int(value) <= 0:
         return None
     value = int(value)
@@ -137,6 +75,70 @@ def clean_reasoning_effort(value: str | None) -> str:
     return effort
 
 
+def _row_to_config(row) -> dict:
+    provider, base_url, model, encrypted, context_window, effort, is_default, updated_at = row
+    api_key = ""
+    key_error = ""
+    try:
+        api_key = decrypt_key(encrypted) if encrypted else ""
+    except ValueError as exc:
+        key_error = str(exc)
+    return {
+        "provider": provider,
+        "base_url": base_url,
+        "model": model,
+        "api_key": api_key,
+        "key_hint": f"••••{api_key[-4:]}" if len(api_key) >= 8 else ("••••" if api_key else ""),
+        "key_error": key_error,
+        "context_window": int(context_window) if context_window else None,
+        "reasoning_effort": effort or "",
+        "is_default": bool(is_default),
+        "updated_at": updated_at,
+    }
+
+
+async def list_user_configs(user_id: int) -> list[dict]:
+    rows = await query(
+        f"{_SELECT} WHERE user_id = %s ORDER BY is_default DESC, updated_at DESC",
+        (user_id,),
+    )
+    return [_row_to_config(row) for row in rows]
+
+
+async def get_user_config(user_id: int, provider: str | None = None) -> dict | None:
+    if provider:
+        rows = await query(
+            f"{_SELECT} WHERE user_id = %s AND provider = %s LIMIT 1",
+            (user_id, provider),
+        )
+    else:
+        rows = await query(
+            f"{_SELECT} WHERE user_id = %s ORDER BY is_default DESC, updated_at DESC LIMIT 1",
+            (user_id,),
+        )
+    return _row_to_config(rows[0]) if rows else None
+
+
+async def _raw_key(user_id: int, provider: str) -> str:
+    rows = await query(
+        "SELECT api_key_enc FROM user_llm_providers WHERE user_id = %s AND provider = %s",
+        (user_id, provider),
+    )
+    if not rows or not rows[0][0]:
+        return ""
+    # The stored value is ciphertext; save_user_config re-encrypts whatever it
+    # receives, so decrypt here to keep a retained key from being wrapped twice.
+    return decrypt_key(rows[0][0])
+
+
+async def _has_default(user_id: int) -> bool:
+    rows = await query(
+        "SELECT 1 FROM user_llm_providers WHERE user_id = %s AND is_default LIMIT 1",
+        (user_id,),
+    )
+    return bool(rows)
+
+
 async def save_user_config(
     user_id: int,
     *,
@@ -146,30 +148,33 @@ async def save_user_config(
     api_key: str | None = None,
     context_window: int | None = None,
     reasoning_effort: str | None = None,
+    is_default: bool = False,
 ) -> dict:
-    preset = provider_by_id(provider)
-    if not preset:
+    spec = get_provider(provider)
+    if not spec:
         raise ValueError("不支持的模型服务商")
 
-    clean_base = _clean_base_url(preset, base_url)
+    clean_base = resolve_base_url(spec, base_url)
     clean_model = _clean_model(model)
 
     key = (api_key or "").strip()
     if not key:
-        existing = await get_user_config(user_id)
-        key = existing["api_key"] if existing else ""
-    if not key:
+        key = await _raw_key(user_id, spec.id)
+    if not key and spec.id != "ollama":
         raise ValueError("请填写 API Key")
     if len(key) > 4000:
         raise ValueError("API Key 过长")
 
+    encrypted = encrypt_key(key) if key else ""
+    make_default = bool(is_default) or not await _has_default(user_id)
+
     await execute(
         """
-        INSERT INTO user_llm_settings
-            (user_id, provider, base_url, model, api_key_enc, context_window, reasoning_effort, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, now())
-        ON CONFLICT (user_id) DO UPDATE SET
-            provider = EXCLUDED.provider,
+        INSERT INTO user_llm_providers
+            (user_id, provider, base_url, model, api_key_enc,
+             context_window, reasoning_effort, is_default, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, now())
+        ON CONFLICT (user_id, provider) DO UPDATE SET
             base_url = EXCLUDED.base_url,
             model = EXCLUDED.model,
             api_key_enc = EXCLUDED.api_key_enc,
@@ -177,18 +182,65 @@ async def save_user_config(
             reasoning_effort = EXCLUDED.reasoning_effort,
             updated_at = now()
         """,
-        (user_id, provider, clean_base, clean_model, encrypt_key(key),
-         clean_context_window(context_window), clean_reasoning_effort(reasoning_effort)),
+        (
+            user_id, spec.id, clean_base, clean_model, encrypted,
+            clean_context_window(context_window),
+            clean_reasoning_effort(reasoning_effort),
+        ),
     )
-    saved = await get_user_config(user_id)
+    if make_default:
+        # Two statements on purpose: the partial unique index checks per row,
+        # so flipping several rows in one UPDATE can fail transiently.
+        await execute(
+            "UPDATE user_llm_providers SET is_default = FALSE WHERE user_id = %s",
+            (user_id,),
+        )
+        await execute(
+            "UPDATE user_llm_providers SET is_default = TRUE "
+            "WHERE user_id = %s AND provider = %s",
+            (user_id, spec.id),
+        )
+    saved = await get_user_config(user_id, spec.id)
     if saved is None:
         raise RuntimeError("保存模型配置失败")
     return saved
 
 
-async def delete_user_config(user_id: int) -> bool:
+async def set_default_provider(user_id: int, provider: str) -> dict | None:
+    if not await get_user_config(user_id, provider):
+        return None
+    await execute(
+        "UPDATE user_llm_providers SET is_default = FALSE WHERE user_id = %s",
+        (user_id,),
+    )
+    await execute(
+        "UPDATE user_llm_providers SET is_default = TRUE "
+        "WHERE user_id = %s AND provider = %s",
+        (user_id, provider),
+    )
+    return await get_user_config(user_id, provider)
+
+
+async def delete_user_config(user_id: int, provider: str | None = None) -> bool:
+    if provider:
+        rows = await execute(
+            "DELETE FROM user_llm_providers WHERE user_id = %s AND provider = %s "
+            "RETURNING is_default",
+            (user_id, provider),
+        )
+        if not rows:
+            return False
+        if rows[0][0]:
+            await execute(
+                "UPDATE user_llm_providers SET is_default = TRUE "
+                "WHERE user_id = %s AND provider = ("
+                "  SELECT provider FROM user_llm_providers WHERE user_id = %s "
+                "  ORDER BY updated_at DESC LIMIT 1)",
+                (user_id, user_id),
+            )
+        return True
     rows = await execute(
-        "DELETE FROM user_llm_settings WHERE user_id = %s RETURNING user_id",
+        "DELETE FROM user_llm_providers WHERE user_id = %s RETURNING user_id",
         (user_id,),
     )
     return bool(rows)

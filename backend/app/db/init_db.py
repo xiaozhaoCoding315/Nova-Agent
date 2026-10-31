@@ -132,6 +132,22 @@ _DDL = [
     "ALTER TABLE user_llm_settings ADD COLUMN IF NOT EXISTS context_window INT",
     "ALTER TABLE user_llm_settings ADD COLUMN IF NOT EXISTS reasoning_effort VARCHAR(12)",
     """
+    CREATE TABLE IF NOT EXISTS user_llm_providers (
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider VARCHAR(32) NOT NULL,
+        base_url TEXT NOT NULL,
+        model VARCHAR(120) NOT NULL,
+        api_key_enc TEXT NOT NULL DEFAULT '',
+        context_window INT,
+        reasoning_effort VARCHAR(12),
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, provider)
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_llm_default "
+    "ON user_llm_providers (user_id) WHERE is_default",
+    """
     CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY,
         user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -151,6 +167,7 @@ _DDL = [
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto_id BIGINT DEFAULT 0",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model VARCHAR(120)",
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS primary_repo_id UUID",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS llm_overrides JSONB NOT NULL DEFAULT '{}'::jsonb",
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id, updated_at DESC)",
     """
     CREATE TABLE IF NOT EXISTS messages (
@@ -828,6 +845,35 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
     (16, [
         # Builder smoke-boot result (boot container + health check + teardown).
         "ALTER TABLE repos ADD COLUMN IF NOT EXISTS smoke JSONB",
+    ]),
+    (17, [
+        """
+        CREATE TABLE IF NOT EXISTS user_llm_providers (
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            provider VARCHAR(32) NOT NULL,
+            base_url TEXT NOT NULL,
+            model VARCHAR(120) NOT NULL,
+            api_key_enc TEXT NOT NULL DEFAULT '',
+            context_window INT,
+            reasoning_effort VARCHAR(12),
+            is_default BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, provider)
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_llm_default "
+        "ON user_llm_providers (user_id) WHERE is_default",
+        """
+        INSERT INTO user_llm_providers
+            (user_id, provider, base_url, model, api_key_enc,
+             context_window, reasoning_effort, is_default)
+        SELECT user_id, provider, base_url, model, api_key_enc,
+               context_window, reasoning_effort, TRUE
+        FROM user_llm_settings
+        WHERE provider IN ('dashscope', 'deepseek', 'openai', 'anthropic', 'custom')
+        ON CONFLICT (user_id, provider) DO NOTHING
+        """,
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS llm_overrides JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]),
 ]
 

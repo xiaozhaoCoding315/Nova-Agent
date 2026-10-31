@@ -16,25 +16,44 @@ def test_key_encryption_roundtrip_and_tamper_detection():
         user_settings.decrypt_key(token[:-4] + "AAAA")
 
 
-def test_base_url_validation_rejects_non_http_and_metadata():
-    preset = user_settings.provider_by_id("custom")
-    with pytest.raises(ValueError):
-        user_settings._clean_base_url(preset, "ftp://example.com")
-    with pytest.raises(ValueError):
-        user_settings._clean_base_url(preset, "http://169.254.169.254/v1")
+def test_provider_alias_returns_spec():
+    spec = user_settings.provider_by_id("zhipu")
+    assert spec is not None
+    assert spec.default_model == "glm-4.7-flash"
+    assert user_settings.provider_by_id("longcat") is None
 
 
 @pytest.mark.asyncio
 async def test_save_keeps_existing_key_when_not_retyped(monkeypatch):
-    stored: dict[int, tuple] = {}
+    stored: dict[tuple[int, str], tuple] = {}
 
-    async def fake_query(_sql, params):
-        row = stored.get(params[0])
-        return [row] if row else []
+    async def fake_query(sql, params):
+        if "api_key_enc FROM user_llm_providers" in sql:
+            row = stored.get((params[0], params[1]))
+            return [(row[3],)] if row else []
+        if "is_default LIMIT 1" in sql:
+            return [("1",)] if any(row[6] for row in stored.values()) else []
+        if "AND provider = %s" in sql:
+            row = stored.get((params[0], params[1]))
+            return [row] if row else []
+        return [row for (user_id, _), row in stored.items() if user_id == params[0]]
 
-    async def fake_execute(_sql, params):
-        user_id, provider, base_url, model, encrypted = params[:5]
-        stored[user_id] = (provider, base_url, model, encrypted, None, "", None)
+    async def fake_execute(sql, params):
+        if sql.lstrip().upper().startswith("INSERT"):
+            user_id, provider, base_url, model, encrypted, context_window, effort = params
+            stored[(user_id, provider)] = (
+                provider, base_url, model, encrypted,
+                context_window, effort, False, None,
+            )
+        elif "SET is_default = FALSE" in sql:
+            for key, row in list(stored.items()):
+                if key[0] == params[0]:
+                    stored[key] = row[:6] + (False, row[7])
+        elif "SET is_default = TRUE" in sql:
+            key = (params[0], params[1])
+            if key in stored:
+                row = stored[key]
+                stored[key] = row[:6] + (True, row[7])
         return []
 
     monkeypatch.setattr(user_settings, "query", fake_query)
@@ -63,6 +82,9 @@ def test_public_view_never_returns_the_raw_key():
         "model": "qwen3.8-max",
         "api_key": "sk-very-secret",
         "key_hint": "••••cret",
+        "is_default": True,
+        "context_window": None,
+        "reasoning_effort": "",
         "updated_at": None,
     }, {"role": "demo", "is_guest": False})
     payload = view.model_dump()
