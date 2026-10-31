@@ -8,17 +8,24 @@ Security invariants (do not weaken):
   timeouts can reliably kill the exact container.
 """
 import asyncio
+import json
 import os
+import queue
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
+from pathlib import Path
+from typing import Callable
 
 import structlog
 
 from app.config import settings
+from app.core.security.paths import is_secret_path
 
 logger = structlog.get_logger()
 
@@ -27,6 +34,157 @@ _docker_checked_at: float = 0.0
 _DOCKER_NEGATIVE_TTL_S = 30
 
 _SAFE_PATH = re.compile(r"^[\w./\-]+$")
+
+# Heavy directories are skipped when building a sanitized copy: a read-only
+# command does not need node_modules/.venv, and traversing them is expensive.
+_SANITIZE_SKIP_DIRS = {
+    "node_modules", ".venv", "venv", "__pycache__", "dist", "build", "out",
+    ".next", ".nuxt", "target", "vendor", ".pytest_cache", ".mypy_cache",
+    ".ruff_cache", ".tox", "coverage", "site-packages",
+}
+_SANITIZE_MAX_FILES = 50_000
+_MASK_MAX_ENTRIES = 200
+
+_self_mounts_cache: dict[str, str] | None = None
+
+
+def _in_container() -> bool:
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/self/cgroup").read_text(encoding="utf-8", errors="ignore")
+        return "docker" in cgroup or "containerd" in cgroup
+    except OSError:
+        return False
+
+
+def _self_mounts() -> dict[str, str]:
+    """Map container mount destinations to host sources (empty when unknown).
+
+    The app talks to the host Docker daemon.  Paths passed to ``docker run -v``
+    are resolved on the **host**, so a container path such as ``/app/data/...``
+    must be translated to the backing host mount (named volume or bind mount).
+    """
+    global _self_mounts_cache
+    if _self_mounts_cache is not None:
+        return _self_mounts_cache
+    _self_mounts_cache = {}
+    if not _in_container() or shutil.which("docker") is None:
+        return _self_mounts_cache
+    try:
+        hostname = socket.gethostname()
+        result = subprocess.run(
+            ["docker", "inspect", hostname, "--format", "{{json .Mounts}}"],
+            capture_output=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return _self_mounts_cache
+        for mount in json.loads(result.stdout.decode("utf-8", "replace") or "[]"):
+            destination = str(mount.get("Destination") or "").rstrip("/")
+            source = str(mount.get("Source") or "").rstrip("/")
+            if destination and source:
+                _self_mounts_cache[destination or "/"] = source
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("self_mount_inspect_failed", error=str(exc))
+    return _self_mounts_cache
+
+
+def _host_visible_path(path: str) -> str:
+    """Translate an in-container data path to the host path Docker needs."""
+    p = Path(path).resolve()
+    explicit = (settings.sandbox_host_data_dir or "").strip()
+    if explicit:
+        container_root = Path(settings.user_data_dir).resolve().parent
+        try:
+            return str(Path(explicit) / p.relative_to(container_root))
+        except ValueError:
+            pass
+
+    best: tuple[str, str, Path] | None = None
+    for destination, source in _self_mounts().items():
+        try:
+            relative = p.relative_to(Path(destination))
+        except ValueError:
+            continue
+        if best is None or len(str(destination)) > len(best[0]):
+            best = (str(destination), source, relative)
+    if best is None:
+        return str(p)
+    _, source, relative = best
+    return str(Path(source) / relative) if str(relative) != "." else source
+
+
+def _sandbox_tmp_root() -> str:
+    """Temp files must live on a host-visible mount, not the container layer."""
+    base = Path(settings.user_data_dir).resolve().parent / "sandbox_tmp"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        return str(base)
+    except OSError:
+        return tempfile.gettempdir()
+
+
+def _build_secret_masks(root: str) -> tuple[list[tuple[str, str]], str | None]:
+    """Create bind-mount masks that hide secret files from a rw workspace.
+
+    Returns ``[(mask_source, workspace_relative_path)]`` plus the temp dir to
+    clean up.  Secret directories are masked with an empty directory, secret
+    files with an empty file; ``.git/config`` is replaced only when it embeds
+    URL credentials.
+    """
+    base = Path(root)
+    if not base.is_dir():
+        return [], None
+    mask_root = Path(tempfile.mkdtemp(prefix="nova_mask_", dir=_sandbox_tmp_root()))
+    empty_file = mask_root / "empty"
+    empty_file.write_bytes(b"")
+    empty_dir = mask_root / "empty_dir"
+    empty_dir.mkdir()
+    masks: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(rel: str, source: Path) -> None:
+        if rel in seen or len(masks) >= _MASK_MAX_ENTRIES or ":" in rel:
+            return
+        seen.add(rel)
+        masks.append((str(source), rel))
+
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        rel_dir = Path(dirpath).relative_to(base).as_posix()
+        keep: list[str] = []
+        for name in dirnames:
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            if name in _SANITIZE_SKIP_DIRS:
+                continue
+            if name == ".git":
+                continue  # handled separately; don't mask the repo metadata
+            if is_secret_path(rel):
+                _add(rel, empty_dir)
+                continue
+            if os.path.islink(os.path.join(dirpath, name)):
+                continue
+            keep.append(name)
+        dirnames[:] = keep
+        for name in filenames:
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            if is_secret_path(rel):
+                _add(rel, empty_file)
+
+    git_config = base / ".git" / "config"
+    if git_config.is_file():
+        try:
+            text = git_config.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if re.search(r"(https?://)[^/\s@]+@", text):
+            scrubbed = re.sub(r"(https?://)[^/\s@]+@", r"\1***@", text)
+            config_copy = mask_root / "git_config"
+            config_copy.write_text(scrubbed, encoding="utf-8")
+            _add(".git/config", config_copy)
+
+    if len(masks) >= _MASK_MAX_ENTRIES:
+        logger.warning("secret_masks_truncated", root=root, limit=_MASK_MAX_ENTRIES)
+    return masks, str(mask_root)
 
 
 def is_docker_available() -> bool:
@@ -116,6 +274,111 @@ def _safe_relpath(path: str) -> str:
     return path
 
 
+def _scrub_git_config(config_path: Path) -> None:
+    """Remove credentials embedded in remote URLs from a copied .git/config."""
+    try:
+        text = config_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    scrubbed = re.sub(r"(https?://)[^/\s@]+@", r"\1***@", text)
+    if scrubbed != text:
+        try:
+            # Break the hardlink first: writing in place would also modify the
+            # original repo's .git/config.
+            config_path.unlink(missing_ok=True)
+            config_path.write_text(scrubbed, encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _copy_sanitized_workspace(root: str, include_git: bool) -> str:
+    """Hard-link a workspace copy without secret files.
+
+    Used for read-only/ask shell commands so a classification miss cannot
+    read credentials (a read-only bind mount still allows reads).  Heavy
+    directories are skipped; ``.git`` is only copied for git commands and
+    its config is scrubbed of embedded URL credentials.
+    """
+    src = Path(root)
+    # Prefer the repo's filesystem so hardlinks work (the app's /tmp is often
+    # a different volume from the repo data volume, which would force a full
+    # content copy on every read-only command).
+    try:
+        dest = Path(tempfile.mkdtemp(prefix=".nova_ro_ws_", dir=str(src.parent)))
+    except OSError:
+        dest = Path(tempfile.mkdtemp(prefix="nova_ro_ws_"))
+    copied = 0
+    try:
+        os.chmod(dest, 0o755)
+    except OSError:
+        pass
+
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        rel_dir = Path(dirpath).relative_to(src).as_posix()
+        keep: list[str] = []
+        for name in dirnames:
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            if name in _SANITIZE_SKIP_DIRS:
+                continue
+            if name == ".git":
+                if include_git:
+                    keep.append(name)
+                continue
+            if is_secret_path(rel):
+                continue
+            if os.path.islink(os.path.join(dirpath, name)):
+                continue
+            keep.append(name)
+        dirnames[:] = keep
+
+        for name in filenames:
+            rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+            if rel.startswith(".git/"):
+                if not include_git:
+                    continue
+            elif is_secret_path(rel):
+                continue
+            source = os.path.join(dirpath, name)
+            if os.path.islink(source):
+                continue
+            if copied >= _SANITIZE_MAX_FILES:
+                logger.warning("sanitized_workspace_truncated", root=root,
+                               limit=_SANITIZE_MAX_FILES)
+                if include_git:
+                    _scrub_git_config(dest / ".git" / "config")
+                return str(dest)
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(source, target)
+            except OSError:
+                try:
+                    shutil.copy2(source, target, follow_symlinks=False)
+                except OSError:
+                    continue
+            copied += 1
+
+    if include_git:
+        _scrub_git_config(dest / ".git" / "config")
+    return str(dest)
+
+
+async def _kill_container(container_name: str) -> None:
+    def _kill() -> None:
+        for cmd in (["docker", "kill", container_name],
+                    ["docker", "rm", "-f", container_name]):
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=15)
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        # The task may already be cancelled; shield the cleanup so it still runs.
+        await asyncio.shield(asyncio.to_thread(_kill))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def execute(
     files: dict[str, str],
     command: str | None = None,
@@ -129,6 +392,11 @@ async def execute(
     job_id: str | None = None,
     workspace_dir: str | None = None,
     user: str | None = None,
+    sanitized_workspace: bool = False,
+    include_git: bool = False,
+    mask_secrets: bool = False,
+    on_output: Callable[[str, str], None] | None = None,
+    user_label: str | None = None,
 ) -> dict:
     """Run ``files`` in the sandbox container.
 
@@ -167,11 +435,19 @@ async def execute(
     command = command or "python main.py"
     container_name = f"nova-sbx-{uuid.uuid4().hex[:12]}"
     tmp_dir = None
+    mask_tmp = None
+    ephemeral_dir = False
     try:
-        if workspace_dir:
+        if workspace_dir and sanitized_workspace:
+            tmp_dir = await asyncio.to_thread(
+                _copy_sanitized_workspace, workspace_dir, include_git
+            )
+            ephemeral_dir = True
+        elif workspace_dir:
             tmp_dir = workspace_dir
         else:
-            tmp_dir = tempfile.mkdtemp(prefix="nova_sandbox_")
+            tmp_dir = tempfile.mkdtemp(prefix="nova_sandbox_", dir=_sandbox_tmp_root())
+            ephemeral_dir = True
         for relpath, content in files.items():
             rel = _safe_relpath(relpath)
             target = f"{tmp_dir}/{rel}"
@@ -208,11 +484,23 @@ async def execute(
             extra += ["--user", user]
         else:
             extra += ["--user", "65534:65534"]
+        if workspace_dir and sanitized_workspace:
+            # Sanitized copies are hardlinked; read-only mount prevents a
+            # command from writing through a link into the real repo.
+            extra += ["-e", "GIT_OPTIONAL_LOCKS=0"]
+        mask_args: list[str] = []
+        if workspace_dir and mask_secrets and not sanitized_workspace:
+            masks, mask_tmp = await asyncio.to_thread(_build_secret_masks, workspace_dir)
+            for source, rel in masks:
+                mask_args += ["-v", f"{_host_visible_path(source)}:/workspace/{rel}:ro"]
 
         labels = []
         if job_id:
             safe_job = "".join(ch for ch in str(job_id) if ch.isalnum() or ch in "-_")
-            labels = ["--label", f"nova.job_id={safe_job}"]
+            labels += ["--label", f"nova.job_id={safe_job}"]
+        if user_label:
+            safe_user = "".join(ch for ch in str(user_label) if ch.isalnum() or ch in "-_")
+            labels += ["--label", f"nova.user_id={safe_user}"]
 
         cmd = [
             "docker", "run", "--rm",
@@ -227,34 +515,46 @@ async def execute(
             "--cpus", settings.sandbox_cpus,
             "--tmpfs", "/tmp:rw,size=64m",
             *extra,
-            "-v", f"{tmp_dir}:/workspace:rw",
+            "-v", f"{_host_visible_path(str(tmp_dir))}:/workspace:"
+                  f"{'ro' if workspace_dir and sanitized_workspace else 'rw'}",
+            *mask_args,
             "-w", "/workspace",
             image or settings.sandbox_image,
             "sh", "-c", inner,
         ]
 
-        proc_result = await asyncio.to_thread(
-            _run_docker, cmd, stdin.encode("utf-8") if stdin else None, timeout + 10
-        )
+        stream_timed_out = False
+        try:
+            if on_output is not None:
+                proc_result, stream_timed_out = await asyncio.to_thread(
+                    _run_docker_streaming,
+                    cmd,
+                    stdin.encode("utf-8") if stdin else None,
+                    timeout, on_output,
+                )
+                if stream_timed_out:
+                    await _kill_container(container_name)
+            else:
+                proc_result = await asyncio.to_thread(
+                    _run_docker, cmd, stdin.encode("utf-8") if stdin else None, timeout + 10
+                )
+        except asyncio.CancelledError:
+            # Stop button: the worker thread cannot be interrupted, so kill the
+            # exact container instead of letting it run until its own timeout.
+            await _kill_container(container_name)
+            raise
         return {
             "stdout": proc_result.stdout.decode("utf-8", errors="replace")[:100_000],
             "stderr": proc_result.stderr.decode("utf-8", errors="replace")[:10_000],
             "exit_code": proc_result.returncode,
-            "timed_out": False,
+            "timed_out": stream_timed_out,
             "sandboxed": True,
             "command": command,
         }
     except (subprocess.TimeoutExpired, TimeoutError):
         # `subprocess.run` timeout kills the docker CLI; the container itself
         # is stopped by its exact --name (the name is real this time).
-        for kill_cmd in (["docker", "kill", container_name],
-                         ["docker", "rm", "-f", container_name]):
-            try:
-                await asyncio.to_thread(
-                    subprocess.run, kill_cmd, capture_output=True, timeout=15
-                )
-            except Exception:  # noqa: BLE001
-                pass
+        await _kill_container(container_name)
         return {
             "stdout": "", "stderr": f"execution timed out after {timeout}s",
             "exit_code": -1, "timed_out": True, "sandboxed": True, "command": command,
@@ -266,24 +566,31 @@ async def execute(
             "timed_out": False, "sandboxed": True, "command": command,
         }
     finally:
-        if tmp_dir and not workspace_dir:
+        if tmp_dir and ephemeral_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+        if mask_tmp:
+            shutil.rmtree(mask_tmp, ignore_errors=True)
 
 
-async def kill_job_containers(job_id: str) -> int:
-    """Stop sandbox containers labelled with ``job_id``.
+async def kill_job_containers(job_id: str, user_id: int | str | None = None) -> int:
+    """Stop sandbox containers labelled with ``job_id`` (optionally per user).
 
-    Used by the job runner when a user cancels a long-running task.  The
-    sandbox still has its own timeout as a backstop; this makes cancellation
-    take effect immediately instead of waiting for the command to finish.
+    Used by the job runner when a user cancels a long-running task, and by the
+    chat tool-cancel endpoint.  The sandbox still has its own timeout as a
+    backstop; this makes cancellation take effect immediately.
     """
     safe_job = "".join(ch for ch in str(job_id) if ch.isalnum() or ch in "-_")
     if not safe_job or shutil.which("docker") is None:
         return 0
+    filters = ["--filter", f"label=nova.job_id={safe_job}"]
+    if user_id is not None:
+        safe_user = "".join(ch for ch in str(user_id) if ch.isalnum() or ch in "-_")
+        if safe_user:
+            filters += ["--filter", f"label=nova.user_id={safe_user}"]
 
     def _run() -> int:
         listed = subprocess.run(
-            ["docker", "ps", "-q", "--filter", f"label=nova.job_id={safe_job}"],
+            ["docker", "ps", "-q", *filters],
             capture_output=True,
             timeout=15,
         )
@@ -317,6 +624,103 @@ def _run_docker(cmd: list[str], stdin_bytes: bytes | None, timeout: int) -> "sub
         input=stdin_bytes,
         capture_output=True,
         timeout=timeout,
+    )
+
+
+def _run_docker_streaming(
+    cmd: list[str],
+    stdin_bytes: bytes | None,
+    timeout: int,
+    on_output: Callable[[str, str], None],
+) -> tuple["subprocess.CompletedProcess", bool]:
+    """Run docker with live stdout/stderr callbacks (worker-thread safe)."""
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE if stdin_bytes is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
+    )
+    if stdin_bytes is not None and proc.stdin:
+        try:
+            proc.stdin.write(stdin_bytes)
+            proc.stdin.close()
+        except OSError:
+            pass
+
+    chunks: "queue.Queue[tuple[str, str]]" = queue.Queue()
+
+    def _reader(pipe, name: str) -> None:
+        try:
+            for line in iter(pipe.readline, b""):
+                chunks.put((name, line.decode("utf-8", "replace")))
+        finally:
+            try:
+                pipe.close()
+            except OSError:
+                pass
+
+    readers = [
+        threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True),
+        threading.Thread(target=_reader, args=(proc.stderr, "stderr"), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+
+    out: list[str] = []
+    err: list[str] = []
+    timed_out = False
+    deadline = time.monotonic() + timeout
+
+    def _emit(name: str, text: str) -> None:
+        try:
+            on_output(name, text)
+        except Exception:  # noqa: BLE001 - streaming must not break execution
+            pass
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            break
+        try:
+            name, text = chunks.get(timeout=min(0.2, remaining))
+        except queue.Empty:
+            if proc.poll() is not None and not any(t.is_alive() for t in readers):
+                break
+            continue
+        (out if name == "stdout" else err).append(text)
+        _emit(name, text)
+
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        proc.wait()
+
+    while True:
+        try:
+            name, text = chunks.get_nowait()
+        except queue.Empty:
+            break
+        (out if name == "stdout" else err).append(text)
+        _emit(name, text)
+
+    return (
+        subprocess.CompletedProcess(
+            cmd,
+            -1 if timed_out else proc.returncode,
+            "".join(out).encode("utf-8"),
+            "".join(err).encode("utf-8"),
+        ),
+        timed_out,
     )
 
 

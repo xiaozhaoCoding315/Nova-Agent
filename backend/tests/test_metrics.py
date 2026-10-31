@@ -14,6 +14,7 @@ async def test_compute_metrics_aggregates_rates_and_costs(monkeypatch):
         [(2.5,)],
         [(1234,)],
         [(12.3,)],
+        [("read_file", 10, 9, 12.0, 30.0, 1, 0, 0)],
     ])
     monkeypatch.setattr(metrics_mod, "query", query)
 
@@ -27,6 +28,8 @@ async def test_compute_metrics_aggregates_rates_and_costs(monkeypatch):
     assert result["approval_minutes_avg"] == 2.5
     assert result["tokens_total"] == 1234
     assert result["p95_job_seconds"] == 12.3
+    assert result["tool_metrics"][0]["name"] == "read_file"
+    assert result["tool_metrics"][0]["ok_rate"] == 0.9
 
 
 def test_rate_handles_empty_denominator():

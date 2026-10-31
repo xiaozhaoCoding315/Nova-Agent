@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 import zipfile
 
+import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.config import settings
@@ -43,8 +44,20 @@ from app.models.schemas import (
 )
 
 router = APIRouter()
+logger = structlog.get_logger()
 
 MAX_FILE_VIEW_BYTES = 200_000
+
+
+async def _ensure_workspace_git(root: Path) -> None:
+    """Give ZIP-imported workspaces a baseline commit (best-effort)."""
+    try:
+        from app.core.git_ops.service import git_available, init_repo
+        if not git_available() or (root / ".git").is_dir():
+            return
+        await init_repo(root)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("workspace_git_init_failed", root=str(root), error=str(exc))
 
 
 def _display_name(filename: str) -> str:
@@ -85,6 +98,7 @@ async def upload_repo(file: UploadFile = File(...), user: dict = Depends(get_cur
 
     repo = await create_repo_row(user["id"], _display_name(file.filename or "upload"),
                                  f"zip:{file.filename}", repo_id)
+    await _ensure_workspace_git(dest_root / "src")
     await enqueue_index(repo_id, user_id=user["id"])
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "zip", "name": repo["name"]})
@@ -127,6 +141,7 @@ async def replace_repo_files(
         raise HTTPException(status_code=400, detail=f"压缩包无效：{exc}")
     finally:
         tmp_zip.unlink(missing_ok=True)
+    await _ensure_workspace_git(root)
     await enqueue_index(repo_id, reindex=True, user_id=user["id"])
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "bridge", "name": repo["name"]})
@@ -176,13 +191,17 @@ async def delete_repo_endpoint(repo_id: str, user: dict = Depends(get_current_us
 
 
 @router.post("/repos/{repo_id}/reindex", response_model=StatusActionOut)
-async def reindex(repo_id: str, user: dict = Depends(get_current_user)):
+async def reindex(
+    repo_id: str,
+    force: bool = Query(False, description="清空后全量重建；默认只处理变更文件"),
+    user: dict = Depends(get_current_user),
+):
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
     check_job_quota(user, "reindex")
     await set_status(repo_id, "pending")
-    await enqueue_index(repo_id, reindex=True, user_id=user["id"])
+    await enqueue_index(repo_id, reindex=True, force=force, user_id=user["id"])
     return {"ok": True, "status": "pending"}
 
 

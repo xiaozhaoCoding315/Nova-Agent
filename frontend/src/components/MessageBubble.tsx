@@ -1,18 +1,29 @@
 import clsx from 'clsx'
 import { FileText, Wrench } from 'lucide-react'
-import type { EditRef, Message, StreamToolCard, StreamUsage } from '../lib/types'
+import type {
+  EditRef, Message, PlanState, StreamToolCard, StreamUsage, ToolApproval,
+} from '../lib/types'
+import { ApprovalCard } from './ApprovalCard'
 import { DeliveryReport } from './DeliveryReport'
 import { EditCard } from './EditCard'
 import { EvidenceBar } from './EvidenceBar'
 import { Markdown } from './Markdown'
+import { PlanCard } from './PlanCard'
 import { ToolCard, eventToCard, toolLabel } from './ToolCard'
 
-export function MessageBubble({ message }: { message: Message }) {
+export function MessageBubble({
+  message,
+  onOpenFile,
+}: {
+  message: Message
+  onOpenFile?: (path: string) => void
+}) {
   const isUser = message.role === 'user'
   const tools = message.tool_json?.tools_used ?? []
   const toolEvents = message.tool_json?.tool_events ?? []
   const evidence = message.tool_json?.evidence
   const edits = message.tool_json?.edits ?? []
+  const plan = message.tool_json?.plan ?? null
 
   if (isUser) {
     const attachments = message.attachments ?? []
@@ -46,8 +57,13 @@ export function MessageBubble({ message }: { message: Message }) {
         N
       </div>
       <div className="min-w-0 flex-1">
+        {plan && <PlanCard plan={plan} />}
         {toolEvents.map((event, index) => (
-          <ToolCard key={`ev-${index}`} card={eventToCard(event, index)} />
+          <ToolCard
+            key={`ev-${index}`}
+            card={eventToCard(event, index)}
+            onOpenFile={onOpenFile}
+          />
         ))}
         <Markdown content={message.content} />
         {edits.map((edit) => (
@@ -78,12 +94,22 @@ export function StreamingBubble({
   text,
   toolCards,
   editProposals,
+  plan,
+  approvals,
   usage,
+  onCancelTool,
+  onResolveApproval,
+  onOpenFile,
 }: {
   text: string
   toolCards: StreamToolCard[]
   editProposals: EditRef[]
+  plan: PlanState | null
+  approvals: ToolApproval[]
   usage?: StreamUsage | null
+  onCancelTool?: (toolCallId: string) => void
+  onResolveApproval?: (toolCallId: string, approved: boolean) => void
+  onOpenFile?: (path: string) => void
 }) {
   const status = streamStatus(toolCards)
   const totalTokens = usage ? usage.prompt_tokens + usage.completion_tokens : 0
@@ -94,8 +120,21 @@ export function StreamingBubble({
         N
       </div>
       <div className="min-w-0 flex-1">
+        {plan && <PlanCard plan={plan} />}
+        {approvals.map((approval) => (
+          <ApprovalCard
+            key={approval.id}
+            approval={approval}
+            onResolve={(approved) => onResolveApproval?.(approval.id, approved)}
+          />
+        ))}
         {toolCards.map((card) => (
-          <ToolCard key={card.call.id} card={card} />
+          <ToolCard
+            key={card.call.id}
+            card={card}
+            onCancel={onCancelTool ? () => onCancelTool(card.call.id) : undefined}
+            onOpenFile={onOpenFile}
+          />
         ))}
         {status && !text && (
           <p className="mb-1 flex items-center gap-2 text-[12px] text-dim">

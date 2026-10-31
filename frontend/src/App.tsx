@@ -3,7 +3,7 @@ import {
   ArrowLeft, Bot, Command, Cpu, ListTodo, LogOut, MessageSquarePlus, MessagesSquare,
   MonitorDown, PanelLeft, Plus, Settings, X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
 import { RecoveryCodeModal } from './components/RecoveryCodeModal'
 import { SessionList } from './components/SessionList'
@@ -14,11 +14,17 @@ import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { useLlm } from './stores/llm'
 import { useRepos } from './stores/repos'
-import { ChatView } from './views/ChatView'
-import { LoginView } from './views/LoginView'
-import { SettingsView } from './views/SettingsView'
-import { TasksView } from './views/TasksView'
-import { WorkspaceView } from './views/WorkspaceView'
+const ChatView = lazy(() => import('./views/ChatView').then((m) => ({ default: m.ChatView })))
+const LoginView = lazy(() => import('./views/LoginView').then((m) => ({ default: m.LoginView })))
+const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
+const TasksView = lazy(() => import('./views/TasksView').then((m) => ({ default: m.TasksView })))
+const WorkspaceView = lazy(() => import('./views/WorkspaceView').then((m) => ({ default: m.WorkspaceView })))
+
+const ViewFallback = () => (
+  <div className="flex min-h-[40vh] flex-1 items-center justify-center text-[13px] text-dim">
+    加载中…
+  </div>
+)
 
 type ViewKey = 'chat' | 'tasks' | 'workspace' | 'settings'
 
@@ -266,7 +272,13 @@ export default function App() {
     return <div className="flex min-h-screen items-center justify-center text-[13px] text-dim">加载中…</div>
   }
 
-  if (!user) return <LoginView />
+  if (!user) {
+    return (
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-[13px] text-dim">加载中…</div>}>
+        <LoginView />
+      </Suspense>
+    )
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -463,29 +475,31 @@ export default function App() {
               </button>
             </div>
           )}
-          {view === 'chat' && (
-            <ChatView
-              onOpenSettings={() => setView('settings')}
-              onOpenWorkspace={openWorkspace}
-              onOpenTasks={openTasks}
-            />
-          )}
-          {view === 'tasks' && (
-            <TasksView
-              key={tasksTarget.repoId ?? 'any'}
-              initialRepoId={tasksTarget.repoId}
-              onBackToChat={() => setView('chat')}
-            />
-          )}
-          {view === 'workspace' && (
-            <WorkspaceView
-              key={`${workspaceTarget.repoId ?? 'all'}-${workspaceTarget.path ?? ''}`}
-              initialRepoId={workspaceTarget.repoId}
-              initialPath={workspaceTarget.path}
-              onClose={() => setView('chat')}
-            />
-          )}
-          {view === 'settings' && <SettingsView />}
+          <Suspense fallback={<ViewFallback />}>
+            {view === 'chat' && (
+              <ChatView
+                onOpenSettings={() => setView('settings')}
+                onOpenWorkspace={openWorkspace}
+                onOpenTasks={openTasks}
+              />
+            )}
+            {view === 'tasks' && (
+              <TasksView
+                key={tasksTarget.repoId ?? 'any'}
+                initialRepoId={tasksTarget.repoId}
+                onBackToChat={() => setView('chat')}
+              />
+            )}
+            {view === 'workspace' && (
+              <WorkspaceView
+                key={`${workspaceTarget.repoId ?? 'all'}-${workspaceTarget.path ?? ''}`}
+                initialRepoId={workspaceTarget.repoId}
+                initialPath={workspaceTarget.path}
+                onClose={() => setView('chat')}
+              />
+            )}
+            {view === 'settings' && <SettingsView />}
+          </Suspense>
         </div>
 
         <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-edge/80 bg-panel px-3 text-[10.5px] text-dim">

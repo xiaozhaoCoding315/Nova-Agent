@@ -18,7 +18,7 @@ async def _index(ctx: JobContext) -> dict:
     await ctx.check_cancel()
     await ctx.update(progress=0.05, step="准备索引")
     if ctx.payload.get("reindex"):
-        await reindex_repo(repo_id, ctx=ctx)
+        await reindex_repo(repo_id, ctx=ctx, force=bool(ctx.payload.get("force")))
     else:
         await index_repo(repo_id, ctx=ctx)
     repo = await get_repo(repo_id)

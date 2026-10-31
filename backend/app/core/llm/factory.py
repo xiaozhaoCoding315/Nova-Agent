@@ -1,11 +1,14 @@
 from openai import AsyncOpenAI
 from app.config import settings
+from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
 from app.core.llm.fallback import FallbackLLM
 from app.core.llm.user_settings import get_user_config
 
 
 class OpenAICompatibleLLM(LLMProvider):
+    supports_tools = True
+
     def __init__(self, api_key: str, base_url: str, model: str, reasoning_effort: str | None = None):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
@@ -102,6 +105,8 @@ def server_default_model() -> str | None:
             return "deepseek-chat"
         if name == "dashscope" and settings.dashscope_api_key:
             return settings.dashscope_model
+        if name == "anthropic" and settings.anthropic_api_key:
+            return settings.anthropic_model
     return None
 
 
@@ -139,6 +144,12 @@ def _server_llm(model_override: str | None = None) -> LLMProvider:
                 settings.dashscope_api_key,
                 settings.dashscope_base_url,
                 settings.dashscope_model))
+        elif name == "anthropic" and settings.anthropic_api_key:
+            providers.append(AnthropicLLM(
+                settings.anthropic_api_key,
+                settings.anthropic_base_url,
+                model_override or settings.anthropic_model,
+            ))
 
     if not providers:
         raise RuntimeError("No LLM providers configured")
@@ -201,10 +212,15 @@ async def get_llm(
             if not config["api_key"]:
                 raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
             chosen_model = (model or config["model"]).strip()
-            llm = OpenAICompatibleLLM(
-                config["api_key"], config["base_url"], chosen_model,
-                reasoning_effort=config.get("reasoning_effort"),
-            )
+            if config.get("provider") == "anthropic":
+                llm = AnthropicLLM(
+                    config["api_key"], config["base_url"], chosen_model,
+                )
+            else:
+                llm = OpenAICompatibleLLM(
+                    config["api_key"], config["base_url"], chosen_model,
+                    reasoning_effort=config.get("reasoning_effort"),
+                )
             llm.context_window = config.get("context_window") or settings.default_context_window
             return llm
 

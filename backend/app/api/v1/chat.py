@@ -200,6 +200,51 @@ async def chat_message(
     )
 
 
+@router.post("/chat/sessions/{session_id}/tools/{tool_call_id}/cancel")
+async def cancel_tool(
+    session_id: str,
+    tool_call_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Kill the sandbox container labelled with the in-flight tool call."""
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    from app.core.sandbox.runtime import kill_job_containers
+    killed = await kill_job_containers(tool_call_id, user["id"])
+    return {"ok": True, "killed": killed}
+
+
+@router.post("/chat/sessions/{session_id}/tools/{tool_call_id}/approve")
+async def approve_tool(
+    session_id: str,
+    tool_call_id: str,
+    user: dict = Depends(get_current_user),
+):
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    from app.core import approvals
+    if not approvals.resolve(session_id, tool_call_id, user["id"], True):
+        raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    return {"ok": True, "approved": True}
+
+
+@router.post("/chat/sessions/{session_id}/tools/{tool_call_id}/reject")
+async def reject_tool(
+    session_id: str,
+    tool_call_id: str,
+    user: dict = Depends(get_current_user),
+):
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    from app.core import approvals
+    if not approvals.resolve(session_id, tool_call_id, user["id"], False):
+        raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    return {"ok": True, "approved": False}
+
+
 @router.get("/chat/sessions/{session_id}/trajectory", response_model=list[TraceEventOut])
 async def session_trajectory(
     session_id: str,

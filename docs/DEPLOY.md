@@ -109,13 +109,33 @@ docker compose logs -f app        # 看日志
 docker compose ps                 # 服务状态
 # 升级版本
 git pull && docker compose up -d --build
-# 备份（停机一致性备份更稳妥）
-docker compose exec postgres pg_dump -U postgres nova_agent > backup_$(date +%F).sql
-docker run --rm -v nova-agent_pgdata:/data -v $PWD:/backup alpine tar czf /backup/pgdata.tgz /data
-docker run --rm -v nova-agent_qdrant_data:/data -v $PWD:/backup alpine tar czf /backup/qdrant.tgz /data
+# 备份（PostgreSQL + Qdrant snapshot/体积包 + repos 卷，保留 7 天）
+sudo BACKUP_DIR=/opt/nova-backups ./deploy/backup.sh
+# 恢复（会 drop 数据库并覆盖 repos/qdrant 卷，需输入 RESTORE 确认）
+sudo BACKUP_DIR=/opt/nova-backups ./deploy/restore.sh 2026-10-30_030000
 ```
 
 数据都在卷里（`pgdata` / `qdrant_data` / `repos_data`）和宿主机 `data/downloads`，重建容器不丢数据。
+
+### 升级后的索引迁移
+
+本轮升级增加了密钥文件过滤与文件级增量索引。旧索引里可能仍有 `credentials.json` / `secrets.yaml` 的 chunk：
+
+```bash
+# 先预览，再实际清理（幂等）
+docker exec -w /app nova-agent-app-1 python -m scripts.purge_secret_chunks --dry-run
+docker exec -w /app nova-agent-app-1 python -m scripts.purge_secret_chunks
+# 或在项目页点一次「重建索引」（现在是增量的；需要全量时调 reindex?force=true）
+```
+
+### 服务器安全 E2E / 沙箱 smoke
+
+```bash
+docker exec -w /app nova-agent-app-1 python -m scripts.security_e2e
+docker exec -w /app nova-agent-app-1 python -m scripts.sandbox_smoke
+```
+
+`security_e2e` 覆盖：显式/间接密钥读取、只读 git、取消后无容器残留；`sandbox_smoke` 覆盖：git、非 root、只读根、禁网、Python 执行。
 
 ## 五、安全清单（公开到互联网前逐项确认）
 

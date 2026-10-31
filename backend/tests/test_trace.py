@@ -3,11 +3,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.core import trace
 
 
 @pytest.mark.asyncio
 async def test_record_persists_payload(monkeypatch):
+    monkeypatch.setattr(settings, "nova_test_fast", False)
     mock = AsyncMock(return_value=[])
     monkeypatch.setattr(trace, "execute", mock)
     await trace.record("session-1", "turn-1", "tool_call", {"name": "read_file"})

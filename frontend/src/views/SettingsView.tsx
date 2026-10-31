@@ -658,6 +658,7 @@ export function SettingsView() {
                 </div>
               </div>
               {metrics ? (
+                <>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <MetricTile label="接受变更" value={String(metrics.accepted_changes)} hint={`共 ${metrics.changes_total} 个变更`} />
                   <MetricTile label="首次 Gate 通过率" value={pct(metrics.first_gate_pass_rate)} hint="无需修复即通过" />
@@ -674,6 +675,40 @@ export function SettingsView() {
                     hint="后台 Job 完成耗时"
                   />
                 </div>
+                {metrics.tool_metrics && metrics.tool_metrics.length > 0 && (
+                  <div className="mt-4">
+                    <p className="mb-1.5 text-[11px] uppercase tracking-wide text-dim">工具健康</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[11.5px]">
+                        <thead className="text-[10.5px] uppercase tracking-wide text-dim/70">
+                          <tr>
+                            <th className="py-1 pr-3 font-medium">工具</th>
+                            <th className="py-1 pr-3 font-medium">调用</th>
+                            <th className="py-1 pr-3 font-medium">成功率</th>
+                            <th className="py-1 pr-3 font-medium">p95</th>
+                            <th className="py-1 pr-3 font-medium">策略拒绝</th>
+                            <th className="py-1 font-medium">基建错误</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {metrics.tool_metrics.map((tool) => (
+                            <tr key={tool.name} className="border-t border-edge/60">
+                              <td className="py-1.5 pr-3 font-mono text-ink">{tool.name}</td>
+                              <td className="py-1.5 pr-3 text-dim">{tool.calls}</td>
+                              <td className="py-1.5 pr-3 text-dim">{pct(tool.ok_rate)}</td>
+                              <td className="py-1.5 pr-3 text-dim">
+                                {tool.p95_ms == null ? '—' : `${tool.p95_ms}ms`}
+                              </td>
+                              <td className="py-1.5 pr-3 text-dim">{tool.policy_denials}</td>
+                              <td className="py-1.5 text-dim">{tool.infra_errors}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                </>
               ) : (
                 <p className="flex items-center gap-2 text-[12.5px] text-dim"><Spinner /> 加载指标…</p>
               )}

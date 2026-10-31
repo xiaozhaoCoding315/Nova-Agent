@@ -38,6 +38,7 @@ def _patch_common(monkeypatch, llm):
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
+    monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
 
 
 async def _collect(gen):
@@ -45,6 +46,31 @@ async def _collect(gen):
     async for event in gen:
         events.append(event)
     return events
+
+
+@pytest.mark.asyncio
+async def test_auto_edit_enqueues_reindex(monkeypatch):
+    from app.core.jobs import service as jobs_service
+    from app.core.tools.base import ToolContext
+
+    calls = []
+
+    async def fake_enqueue(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        return "job-1"
+
+    monkeypatch.setattr(jobs_service, "enqueue_index", fake_enqueue)
+    ctx = ToolContext(user=USER, repo_ids=["repo-1"], permission_mode="auto")
+
+    applied = {"ok": True, "output": {"staged": False}}
+    assert await loop_mod._reindex_after_edit("edit_file", {}, applied, ctx, 1)
+    assert calls == [("repo-1", {"reindex": True, "user_id": 1})]
+
+    calls.clear()
+    staged = {"ok": True, "output": {"staged": True}}
+    assert not await loop_mod._reindex_after_edit("edit_file", {}, staged, ctx, 1)
+    assert not await loop_mod._reindex_after_edit("json_tool", {}, applied, ctx, 1)
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -256,7 +282,7 @@ async def test_tool_result_is_truncated_in_llm_messages(monkeypatch):
                 yield event
 
     class HugeRegistry:
-        def specs(self):
+        def specs(self, **_kwargs):
             return []
 
         async def execute(self, name, args, ctx):
@@ -294,3 +320,225 @@ async def test_tool_result_is_truncated_in_llm_messages(monkeypatch):
     assert tool_message["role"] == "tool"
     assert "_truncated" in tool_message["content"]
     assert "END" in tool_message["content"]
+
+
+@pytest.mark.asyncio
+async def test_readonly_tools_run_in_parallel(monkeypatch):
+    from types import SimpleNamespace
+
+    order: list[str] = []
+
+    class ParallelRegistry:
+        def specs(self, **_kwargs):
+            return []
+
+        def get(self, name):
+            if name == "read_file":
+                return SimpleNamespace(parallel_safe=True)
+            return None
+
+        async def execute(self, name, args, ctx):
+            order.append(f"start:{args['path']}")
+            await asyncio.sleep(0.15)
+            order.append(f"end:{args['path']}")
+            return {
+                "ok": True, "output": {"path": args["path"], "content": "x"}, "ms": 150,
+            }
+
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t1", "name": "read_file", "arguments": json.dumps({"path": "a.py"})},
+                {"id": "t2", "name": "read_file", "arguments": json.dumps({"path": "b.py"})},
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "done"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: ParallelRegistry())
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "读两个文件", []))
+
+    assert order.index("start:b.py") < order.index("end:a.py")
+    results = [e for e in events if e["event"] == "tool_result"]
+    assert [e["data"]["name"] for e in results] == ["read_file", "read_file"]
+    assert [e["data"]["id"] for e in results] == ["t1", "t2"]
+
+
+@pytest.mark.asyncio
+async def test_update_plan_emits_and_persists(monkeypatch):
+    plan_args = json.dumps({
+        "steps": [
+            {"title": "定位代码", "status": "completed"},
+            {"title": "修改实现", "status": "in_progress"},
+        ],
+        "explanation": "先读后改",
+    })
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "p1", "name": "update_plan", "arguments": plan_args}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "继续执行"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "做个多步任务", []))
+
+    plan_events = [e for e in events if e["event"] == "plan"]
+    assert plan_events and plan_events[0]["data"]["steps"][1]["status"] == "in_progress"
+    tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
+    assert tool_json["plan"]["explanation"] == "先读后改"
+    assert len(tool_json["plan"]["steps"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_tool_output_streams_while_running(monkeypatch):
+    class StreamingRegistry:
+        def specs(self, **_kwargs):
+            return []
+
+        def get(self, name):
+            return None
+
+        async def execute(self, name, args, ctx):
+            if ctx.output_queue is not None:
+                ctx.output_queue.put_nowait(("stdout", "line-1\n"))
+            await asyncio.sleep(0.05)
+            return {
+                "ok": True,
+                "output": {"stdout": "line-1\n", "stderr": "", "exit_code": 0,
+                           "command": args.get("command", "")},
+                "ms": 50,
+            }
+
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "c1", "name": "run_command", "arguments": json.dumps({"command": "echo hi"})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "done"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: StreamingRegistry())
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "跑命令", []))
+
+    outputs = [e for e in events if e["event"] == "tool_output"]
+    assert outputs and outputs[0]["data"]["text"] == "line-1\n"
+    assert outputs[0]["data"]["id"] == "c1"
+
+
+@pytest.mark.asyncio
+async def test_ask_command_approval_pauses_then_runs(monkeypatch):
+    from app.core import approvals
+
+    class ApprovalRegistry:
+        def specs(self, **_kwargs):
+            return []
+
+        def get(self, name):
+            return None
+
+        async def execute(self, name, args, ctx):
+            if not ctx.approval_granted:
+                return {
+                    "ok": False, "error": "需要批准", "ms": 0, "business": True,
+                    "error_class": "policy",
+                    "requires_approval": {
+                        "name": name, "args": args, "reason": "需要你批准",
+                    },
+                }
+            return {
+                "ok": True,
+                "output": {"command": args.get("command"), "exit_code": 0,
+                           "stdout": "ok", "stderr": ""},
+                "ms": 1,
+            }
+
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "ap1", "name": "run_command",
+                 "arguments": json.dumps({"command": "pytest -q"})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "执行完成"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: ApprovalRegistry())
+
+    events = []
+    async for event in loop_mod.run_chat(USER, SESSION, "跑测试", []):
+        events.append(event)
+        if event["event"] == "tool_approval":
+            assert event["data"]["args"]["command"] == "pytest -q"
+            assert approvals.resolve(SESSION["id"], "ap1", USER["id"], True)
+
+    result = next(e for e in events if e["event"] == "tool_result")
+    assert result["data"]["ok"] is True
+    approvals.drop(SESSION["id"], "ap1")
+
+
+@pytest.mark.asyncio
+async def test_ask_command_approval_rejection_is_reported(monkeypatch):
+    from app.core import approvals
+
+    class ApprovalRegistry:
+        def specs(self, **_kwargs):
+            return []
+
+        def get(self, name):
+            return None
+
+        async def execute(self, name, args, ctx):
+            return {
+                "ok": False, "error": "需要批准", "ms": 0, "business": True,
+                "error_class": "policy",
+                "requires_approval": {"name": name, "args": args, "reason": "需要你批准"},
+            }
+
+    llm = FakeLLM([
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "ap2", "name": "run_command",
+                 "arguments": json.dumps({"command": "pytest -q"})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "好"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: ApprovalRegistry())
+
+    events = []
+    async for event in loop_mod.run_chat(USER, SESSION, "跑测试", []):
+        events.append(event)
+        if event["event"] == "tool_approval":
+            assert approvals.resolve(SESSION["id"], "ap2", USER["id"], False)
+
+    result = next(e for e in events if e["event"] == "tool_result")
+    assert result["data"]["ok"] is False
+    approvals.drop(SESSION["id"], "ap2")

@@ -6,6 +6,7 @@ import structlog
 from app.config import settings
 from app.core.mcp.client import MCPClient, MCPError, _safe_name
 from app.core.mcp.config import load_server_configs
+from app.core.mcp.http_client import MCPHttpClient
 from app.core.tools.base import ToolBusinessError, ToolDefinition
 
 logger = structlog.get_logger()
@@ -35,7 +36,7 @@ def server_admin_only_for(info: MCPToolInfo) -> bool | None:
 
 class MCPManager:
     def __init__(self) -> None:
-        self._clients: dict[str, MCPClient] = {}
+        self._clients: dict[str, MCPClient | MCPHttpClient] = {}
         self._tools: list[MCPToolInfo] = []
         self._started = False
 
@@ -53,7 +54,12 @@ class MCPManager:
             return
 
         for config in configs:
-            client = MCPClient(config.command, list(config.args), timeout=config.timeout)
+            if config.transport == "http":
+                client = MCPHttpClient(
+                    config.url, headers=config.headers, timeout=config.timeout
+                )
+            else:
+                client = MCPClient(config.command, list(config.args), timeout=config.timeout)
             try:
                 await client.start()
                 tools = await client.list_tools()

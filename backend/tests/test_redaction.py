@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.core.memory.context import build_system_prompt
 from app.core.security.redaction import REDACTED, redact_obj, redact_text
 from app.core.tools import base as tools_base
@@ -53,6 +54,7 @@ async def test_tool_output_is_redacted_before_return(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_trace_payload_is_redacted(monkeypatch):
+    monkeypatch.setattr(settings, "nova_test_fast", False)
     execute = AsyncMock()
     monkeypatch.setattr(trace_mod, "execute", execute)
 

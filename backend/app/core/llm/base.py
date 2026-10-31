@@ -2,6 +2,10 @@ from abc import ABC, abstractmethod
 
 
 class LLMProvider(ABC):
+    # Providers that ignore ``tools`` degrade to plain content; coding loops
+    # must never treat that as a successful tool-calling answer.
+    supports_tools: bool = False
+
     @abstractmethod
     async def astream(self, messages: list[dict], **kwargs) -> any:
         """Yield string tokens."""

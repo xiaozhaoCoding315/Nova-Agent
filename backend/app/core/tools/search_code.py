@@ -67,4 +67,5 @@ TOOL = ToolDefinition(
     },
     func=search_code,
     timeout=30,
+    parallel_safe=True,
 )

@@ -81,6 +81,10 @@ services:
       LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
       LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.longcat.chat/openai/v1}
       LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      ANTHROPIC_PROMPT_CACHING: ${ANTHROPIC_PROMPT_CACHING:-true}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v3}
 
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
@@ -116,6 +120,8 @@ services:
       SANDBOX_BUILDER_IMAGE: nova-builder:latest
       SANDBOX_NODE_IMAGE: nova-node:latest
       SANDBOX_ALLOW_NETWORK: ${SANDBOX_ALLOW_NETWORK:-false}
+      SANDBOX_HOST_DATA_DIR: ${SANDBOX_HOST_DATA_DIR:-}
+      SANDBOX_MASK_SECRETS: ${SANDBOX_MASK_SECRETS:-true}
       TOOL_PRE_HOOK: ${TOOL_PRE_HOOK:-}
       TOOL_POST_HOOK: ${TOOL_POST_HOOK:-}
       MCP_ENABLED: ${MCP_ENABLED:-true}

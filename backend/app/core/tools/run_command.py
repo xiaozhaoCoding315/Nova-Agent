@@ -4,7 +4,11 @@ changes persist (scaffolding, git init/commit, file moves, builds).
 
 Still sandboxed: no network by default, capabilities dropped, resource caps,
 dangerous commands denied by the policy engine, readonly mode hard-blocked.
+In readonly/ask mode the command runs against a sanitized copy without secret
+files, so a classification miss cannot read credentials or mutate the repo.
 """
+import asyncio
+import re
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -12,6 +16,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.core.sandbox.runtime import deps_volume_name, execute as sandbox_execute, sandbox_status
 from app.core.security.audit import AuditAction, log_audit
+from app.core.security.commands import CommandClass, classify_command
 from app.core.security.limits import check_sandbox_quota
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
@@ -59,6 +64,30 @@ async def run_command(args: dict, ctx: ToolContext) -> dict:
         deps = deps_volume_name(str(repo_id))
         deps_mount = None
 
+    # 只读命令在所有模式下都跑净化副本（自动模式也可能被注入读写密钥）。
+    # auto/full 的写命令保留真实工作区，但遮蔽密钥文件；git 诊断需要 .git。
+    command_class, _reason = classify_command(command)
+    approved_ask = (
+        ctx.permission_mode == "ask" and getattr(ctx, "approval_granted", False)
+    )
+    isolated = command_class is CommandClass.READONLY or (
+        ctx.permission_mode in ("readonly", "ask") and not approved_ask
+    )
+    mask_secrets = (
+        settings.sandbox_mask_secrets
+        and not isolated
+        and (ctx.permission_mode in ("auto", "full") or approved_ask)
+    )
+    include_git = bool(re.search(r"(?:^|[;&|])\s*git(?:\s|$)", command, re.MULTILINE))
+
+    on_output = None
+    if ctx.output_queue is not None:
+        loop = asyncio.get_running_loop()
+        queue_ref = ctx.output_queue
+
+        def on_output(stream: str, text: str) -> None:
+            loop.call_soon_threadsafe(queue_ref.put_nowait, (stream, text))
+
     result = await sandbox_execute(
         files={},
         command=command,
@@ -68,7 +97,14 @@ async def run_command(args: dict, ctx: ToolContext) -> dict:
         deps_mount=deps_mount,
         workspace_dir=str(root),
         user="10001:10001",
+        sanitized_workspace=isolated,
+        include_git=include_git,
+        mask_secrets=mask_secrets,
+        on_output=on_output,
+        job_id=ctx.tool_call_id or None,
+        user_label=str(ctx.user.get("id", "")) or None,
     )
+    persisted = not isolated
 
     await log_audit(
         AuditAction.SANDBOX_RUN,
@@ -77,23 +113,35 @@ async def run_command(args: dict, ctx: ToolContext) -> dict:
             "command": result.get("command"),
             "exit_code": result.get("exit_code"),
             "timed_out": result.get("timed_out"),
-            "persisted": True,
+            "persisted": persisted,
+            "isolated": isolated,
+            "masked_secrets": mask_secrets,
         },
     )
 
     ok = result["exit_code"] == 0 and not result["timed_out"]
+    if not persisted:
+        hint = (
+            "命令被判定为只读，已在净化副本中执行，未改动真实仓库；"
+            "如需写入，请使用明确的写命令（如 git commit / npm install）"
+            if ok else
+            "执行失败：请阅读 stderr，修正命令后重试"
+        )
+    else:
+        hint = (
+            "改动已写入仓库工作区；如新增/删除了文件，建议让用户在项目面板点「重建索引」"
+            if ok else
+            "执行失败：请阅读 stderr，修正命令后重试"
+        )
     return {
         "exit_code": result["exit_code"],
         "timed_out": result["timed_out"],
         "stdout": result["stdout"],
         "stderr": result["stderr"],
         "command": result["command"],
-        "persisted": True,
-        "hint": (
-            "改动已写入仓库工作区；如新增/删除了文件，建议让用户在项目面板点「重建索引」"
-            if ok else
-            "执行失败：请阅读 stderr，修正命令后重试"
-        ),
+        "persisted": persisted,
+        "isolated": isolated,
+        "hint": hint,
     }
 
 
@@ -102,8 +150,8 @@ TOOL = ToolDefinition(
     description=(
         "在仓库工作区里执行真实 shell 命令（隔离容器内，无网络），改动直接保留在仓库中。"
         "适合：脚手架、安装依赖、跑构建脚本、批量文本处理。"
-        "只读/确认模式下只放行只读命令（git status/diff/log、ls、grep 等）；"
-        "会改动仓库的命令会被拒绝，请改用 edit_file/write_files 或 run_code。"
+        "只读模式下只放行只读命令（git status/diff/log、ls、grep 等）；"
+        "确认模式下写命令会先请求用户批准，批准后在遮蔽密钥的工作区执行。"
         "与 run_code 的区别：run_code 在一次性副本里验证代码，本工具的修改会持久化。"
     ),
     parameters={

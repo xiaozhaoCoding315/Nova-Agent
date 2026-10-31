@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from app.config import settings
 from app.core.llm import usage as usage_mod
 from app.core.security import limits as limits_mod
 
@@ -38,6 +39,7 @@ async def test_job_quota_rate_limits(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_record_usage_writes_source(monkeypatch):
+    monkeypatch.setattr(settings, "nova_test_fast", False)
     execute = AsyncMock()
     monkeypatch.setattr(usage_mod, "execute", execute)
     await usage_mod.record_usage(

@@ -38,6 +38,9 @@ class ToolContext:
     session_id: str = ""
     permission_mode: str = "auto"   # readonly | ask | auto
     file_ids: list[str] = field(default_factory=list)
+    tool_call_id: str = ""
+    output_queue: object | None = None   # asyncio.Queue filled by streaming tools
+    approval_granted: bool = False       # set only for one user-approved call
 
 
 @dataclass
@@ -49,7 +52,18 @@ class ToolDefinition:
     timeout: int = TIMEOUTS.tool_timeout
     category: str = "read"          # read | write | execute | network
     capabilities: list[str] = field(default_factory=list)
+    # Side-effect free tools may run concurrently within one assistant turn.
+    parallel_safe: bool = False
 
+
+# Tools the model should not even see in a given mode / availability state.
+_READONLY_HIDDEN = {
+    "write_files", "edit_file", "run_code", "install_deps", "fetch_url",
+    "local_run_command", "local_write_file",
+}
+_ASK_HIDDEN = {"fetch_url"}
+_SANDBOX_TOOLS = {"run_code", "run_command", "install_deps"}
+_LOCAL_TOOLS = {"local_run_command", "local_write_file"}
 
 _TYPE_CHECKS = {
     "string": lambda v: isinstance(v, str),
@@ -99,19 +113,38 @@ class ToolRegistry:
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
-    def specs(self) -> list[dict]:
-        """OpenAI tools format."""
-        return [
-            {
+    def specs(
+        self,
+        *,
+        permission_mode: str | None = None,
+        sandbox_available: bool | None = None,
+        local_available: bool | None = None,
+    ) -> list[dict]:
+        """OpenAI tools format, trimmed to what is usable in this context.
+
+        ``None`` means "unknown — do not filter".  Hiding an unusable tool
+        saves prompt tokens and prevents pointless calls (e.g. ``local_*``
+        while the user's executor is offline).
+        """
+        specs: list[dict] = []
+        for tool in self._tools.values():
+            if permission_mode == "readonly" and tool.name in _READONLY_HIDDEN:
+                continue
+            if permission_mode in ("readonly", "ask") and tool.name in _ASK_HIDDEN:
+                continue
+            if sandbox_available is False and tool.name in _SANDBOX_TOOLS:
+                continue
+            if local_available is False and tool.name in _LOCAL_TOOLS:
+                continue
+            specs.append({
                 "type": "function",
                 "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
                 },
-            }
-            for t in self._tools.values()
-        ]
+            })
+        return specs
 
     async def execute(self, name: str, args: dict, ctx: ToolContext) -> dict:
         """Run a tool. Always returns a dict; never raises to the caller.
@@ -120,29 +153,37 @@ class ToolRegistry:
         """
         tool = self._tools.get(name)
         if tool is None:
-            return {"ok": False, "error": f"unknown tool: {name}", "ms": 0, "business": False}
+            return {"ok": False, "error": f"unknown tool: {name}", "ms": 0, "business": False, "error_class": "unknown_tool"}
 
         if isinstance(args, str):
             try:
                 args = json.loads(args or "{}")
             except json.JSONDecodeError as exc:
-                return {"ok": False, "error": f"invalid JSON arguments: {exc}", "ms": 0, "business": True}
+                return {"ok": False, "error": f"invalid JSON arguments: {exc}", "ms": 0, "business": True, "error_class": "invalid_args"}
 
         err = validate_args(tool.parameters, args)
         if err:
-            return {"ok": False, "error": err, "ms": 0, "business": True}
+            return {"ok": False, "error": err, "ms": 0, "business": True, "error_class": "invalid_args"}
 
         decision = decide_tool(name, tool.category, tool.capabilities, args, ctx)
         if not decision.allowed:
             await self._audit(
                 ctx, name, args, ok=False, ms=0, detail=decision.reason,
-                action=AuditAction.POLICY_DECISION, decision="deny",
+                action=AuditAction.POLICY_DECISION,
+                decision="approval_required" if decision.requires_approval else "deny",
                 capabilities=list(decision.capabilities),
             )
-            return {
+            result = {
                 "ok": False, "error": redact_text(decision.reason),
-                "ms": 0, "business": True,
+                "ms": 0, "business": True, "error_class": "policy",
             }
+            if decision.requires_approval:
+                result["requires_approval"] = {
+                    "name": name,
+                    "args": redact_obj(args),
+                    "reason": redact_text(decision.reason),
+                }
+            return result
 
         if settings.tool_pre_hook:
             hook = await run_hook(
@@ -159,7 +200,7 @@ class ToolRegistry:
                 return {
                     "ok": False,
                     "error": redact_text(f"前置钩子阻止 {name}：{hook.detail}"),
-                    "ms": 0, "business": True,
+                    "ms": 0, "business": True, "error_class": "hook",
                 }
 
         start = time.perf_counter()
@@ -181,7 +222,7 @@ class ToolRegistry:
                 ctx, name, args, ok=False, ms=ms, detail=str(detail),
                 decision="allow", capabilities=list(decision.capabilities),
             )
-            return {"ok": False, "error": redact_text(str(detail)), "ms": ms, "business": True}
+            return {"ok": False, "error": redact_text(str(detail)), "ms": ms, "business": True, "error_class": "business"}
         except Exception as exc:  # noqa: BLE001
             ms = int((time.perf_counter() - start) * 1000)
             logger.warning("tool_failed", tool=name, error=str(exc))
@@ -191,7 +232,7 @@ class ToolRegistry:
             )
             return {
                 "ok": False, "error": redact_text(f"工具执行失败: {exc}"),
-                "ms": ms, "business": False,
+                "ms": ms, "business": False, "error_class": "infra",
             }
 
         ms = int((time.perf_counter() - start) * 1000)

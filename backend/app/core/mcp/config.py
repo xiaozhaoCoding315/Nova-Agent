@@ -3,6 +3,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.config import settings
 
@@ -17,13 +18,16 @@ KNOWN_CAPABILITIES = {
 @dataclass(frozen=True)
 class MCPServerConfig:
     name: str
-    command: str
-    args: tuple[str, ...]
+    command: str = ""
+    args: tuple[str, ...] = ()
     allow_tools: dict[str, list[str]] = field(default_factory=dict)
     # None = follow the global MCP_ADMIN_ONLY default; True/False explicitly
     # restricts to admins / opens to every user for this server only.
     admin_only: bool | None = None
     timeout: int = 30
+    transport: str = "stdio"          # stdio | http
+    url: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 def _load_raw() -> object:
@@ -56,13 +60,43 @@ def load_server_configs() -> list[MCPServerConfig]:
             continue
         name = str(raw.get("name") or "").strip()
         command = str(raw.get("command") or "").strip()
-        if not name or not command or name in seen:
+        url = str(raw.get("url") or "").strip()
+        transport = str(raw.get("transport") or ("http" if url else "stdio")).lower()
+        if transport not in ("stdio", "http"):
+            logger.warning("mcp_server_transport_invalid: %s", name)
+            continue
+        if not name or name in seen:
             logger.warning("mcp_server_skipped: %s", name or "<unnamed>")
             continue
-        args = raw.get("args") or []
-        if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
-            logger.warning("mcp_server_args_invalid: %s", name)
-            continue
+        if transport == "http":
+            if not url.startswith(("http://", "https://")):
+                logger.warning("mcp_server_url_invalid: %s", name)
+                continue
+            parsed_url = urlparse(url)
+            if parsed_url.scheme not in ("http", "https") or not parsed_url.hostname:
+                logger.warning("mcp_server_url_invalid: %s", name)
+                continue
+            if (
+                parsed_url.scheme == "http"
+                and parsed_url.hostname not in ("localhost", "127.0.0.1", "::1")
+            ):
+                logger.warning("mcp_server_insecure_url: %s", name)
+                continue
+            args = ()
+            raw_headers = raw.get("headers") if isinstance(raw.get("headers"), dict) else {}
+            headers = {
+                str(key): str(value) for key, value in raw_headers.items()
+                if str(key).strip() and str(value).strip()
+            }
+        else:
+            if not command:
+                logger.warning("mcp_server_command_missing: %s", name)
+                continue
+            args = raw.get("args") or []
+            if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
+                logger.warning("mcp_server_args_invalid: %s", name)
+                continue
+            headers = {}
         raw_caps = raw.get("capabilities") if isinstance(raw.get("capabilities"), dict) else {}
         allow: dict[str, list[str]] = {}
         for tool, caps in raw_caps.items():
@@ -83,5 +117,6 @@ def load_server_configs() -> list[MCPServerConfig]:
             name=name, command=command, args=tuple(args), allow_tools=allow,
             admin_only=None if raw_admin_only is None else bool(raw_admin_only),
             timeout=int(raw.get("timeout") or settings.mcp_timeout),
+            transport=transport, url=url, headers=headers,
         ))
     return configs

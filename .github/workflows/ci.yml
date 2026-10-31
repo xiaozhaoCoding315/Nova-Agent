@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -23,10 +27,15 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Lint backend
-        run: cd backend && python -m ruff check app
+        run: cd backend && python -m ruff check app tests scripts
 
       - name: Backend tests
+        env:
+          NOVA_TEST_FAST: "1"
         run: cd backend && python -m pytest tests -q
+
+      - name: OpenAPI contract check
+        run: cd backend && python -m scripts.export_openapi --check
 
       - name: Frontend dependencies
         run: cd frontend && npm ci
@@ -36,3 +45,75 @@ jobs:
 
       - name: Contract drift check
         run: cd frontend && npm run contract:check
+
+  sandbox-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sandbox image
+        run: docker build -f backend/Dockerfile.sandbox -t nova-sandbox:ci backend
+
+      - name: Toolchain present
+        run: |
+          docker run --rm nova-sandbox:ci git --version
+          docker run --rm nova-sandbox:ci python -c "import pytest, numpy; print('deps ok')"
+
+      - name: Runtime isolation
+        run: |
+          test "$(docker run --rm nova-sandbox:ci id -u)" != "0"
+          if docker run --rm --read-only --tmpfs /tmp:rw nova-sandbox:ci touch /probe; then
+            echo "root filesystem is writable" >&2; exit 1
+          fi
+          if docker run --rm --network none nova-sandbox:ci python -c \
+            "import socket; socket.create_connection(('1.1.1.1', 53), 2)"; then
+            echo "network is reachable" >&2; exit 1
+          fi
+
+  images:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: app
+            context: .
+            file: backend/Dockerfile
+          - name: sandbox
+            context: backend
+            file: backend/Dockerfile.sandbox
+          - name: builder
+            context: backend
+            file: backend/Dockerfile.builder
+          - name: node
+            context: backend
+            file: backend/Dockerfile.node-builder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.name }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

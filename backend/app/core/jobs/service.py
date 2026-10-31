@@ -10,12 +10,13 @@ async def enqueue_index(
     repo_id: str,
     *,
     reindex: bool = False,
+    force: bool = False,
     user_id: int | None = None,
     idempotency_key: str | None = None,
 ) -> str:
     return await runner.enqueue(
         "index",
-        {"repo_id": repo_id, "reindex": reindex},
+        {"repo_id": repo_id, "reindex": reindex, "force": force},
         user_id=user_id,
         idempotency_key=idempotency_key,
     )

@@ -2,12 +2,14 @@
 import asyncio
 import os
 import shutil
+import subprocess
 import zipfile
 from pathlib import Path
 
 import structlog
 
 from app.core.indexing.languages import SKIP_DIRS, is_supported, looks_binary
+from app.core.security.paths import is_secret_path
 
 logger = structlog.get_logger()
 
@@ -39,7 +41,7 @@ def safe_extract_zip(zip_path: str, dest: str, max_files: int, max_file_bytes: i
 
 
 async def clone_git(url: str, dest: str, timeout: int) -> None:
-    """Shallow-clone a public http(s) repo, then drop the .git directory."""
+    """Shallow-clone a public http(s) repo, keeping history for the Git panel."""
     if not (url.startswith("https://") or url.startswith("http://")):
         raise ValueError("仅支持公开的 http(s) 仓库地址")
     authority = url.split("//", 1)[-1].split("/")[0]
@@ -59,7 +61,15 @@ async def clone_git(url: str, dest: str, timeout: int) -> None:
         raise ValueError(f"git clone 超时（{timeout}s），仓库过大或网络不可达")
     if proc.returncode != 0:
         raise ValueError(f"git clone 失败：{stderr.decode('utf-8', 'replace')[:300]}")
-    shutil.rmtree(Path(dest) / ".git", ignore_errors=True)
+    # Approvals auto-commit into this workspace; make sure an identity exists.
+    for key, value in (("user.email", "nova@local"), ("user.name", "Nova Agent")):
+        await asyncio.to_thread(
+            subprocess.run,
+            ["git", "-C", dest, "config", key, value],
+            capture_output=True, timeout=10,
+        )
+    from app.core.git_ops.service import ensure_secret_excludes
+    await asyncio.to_thread(ensure_secret_excludes, Path(dest))
 
 
 def strip_root_dir(root: str) -> str:
@@ -83,7 +93,7 @@ def iter_source_files(root: str, max_file_bytes: int):
                 rel = str(abspath.relative_to(root_path)).replace("\\", "/")
             except ValueError:
                 continue
-            if not is_supported(rel):
+            if not is_supported(rel) or is_secret_path(rel):
                 continue
             try:
                 size = abspath.stat().st_size

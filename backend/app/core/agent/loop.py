@@ -14,13 +14,16 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
+from app.core.agent.context_governor import compact_messages
 from app.core.agent.context_meter import estimate_messages, estimate_tokens
+from app.core import approvals
 from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
 from app.core.agent.tool_output import build_preview, serialize_tool_result
 from app.core.harness.config import TIMEOUTS
 from app.core.llm.factory import get_llm, resolve_context_window
 from app.core.llm.usage import record_usage
+from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import facts as facts_mod
 from app.core.memory import session as session_mod
 from app.core.memory.context import build_system_prompt
@@ -43,8 +46,40 @@ def _output_tail(output, key: str, limit: int = 1000) -> str | None:
     return None
 
 
+def _content_preview(name: str, output, limit: int = 3000) -> str | None:
+    if name not in ("read_file", "read_uploaded_file") or not isinstance(output, dict):
+        return None
+    content = output.get("content")
+    if isinstance(content, str) and content:
+        return redact_text(content[:limit])
+    return None
+
+
 async def _record_usage(user: dict, session_id: str, usage: dict, tool_count: int) -> None:
     await record_usage(user["id"], session_id, usage, tool_calls=tool_count, source="chat")
+
+
+async def _reindex_after_edit(
+    name: str, args: dict, result: dict, ctx: ToolContext, user_id: int
+) -> bool:
+    """Auto-mode edits are written immediately; keep RAG/index in sync."""
+    if name not in ("edit_file", "write_files") or not result.get("ok"):
+        return False
+    output = result.get("output")
+    if not isinstance(output, dict) or output.get("staged", True):
+        return False
+    repo_id = str(
+        args.get("repo_id") or (ctx.repo_ids[0] if ctx.repo_ids else "")
+    ).strip()
+    if not repo_id:
+        return False
+    try:
+        from app.core.jobs.service import enqueue_index
+        await enqueue_index(repo_id, reindex=True, user_id=user_id)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("auto_reindex_failed", repo_id=repo_id, error=str(exc))
+        return False
 
 
 async def run_chat(
@@ -63,6 +98,7 @@ async def run_chat(
     edits: list[dict] = []
     content_parts: list[str] = []
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "model": ""}
+    plan_state: dict | None = None
     rounds = 0
     sandbox_runs_ok = 0
     errors: list[str] = []
@@ -205,7 +241,10 @@ async def run_chat(
         permission_mode=session.get("permission_mode", "ask"),
         file_ids=[item["id"] for item in (attachments or [])][:5],
     )
-    specs = registry.specs()
+    specs = registry.specs(
+        permission_mode=ctx.permission_mode,
+        local_available=await local_agent_online(user["id"]),
+    )
     holder: dict = {"message_id": 0, "evidence": None, "report": None}
 
     async def _build_evidence() -> dict:
@@ -251,6 +290,8 @@ async def run_chat(
                 tool_json["tool_events"] = tool_events[-40:]
             if edits:
                 tool_json["edits"] = edits
+            if plan_state:
+                tool_json["plan"] = plan_state
             if final_text:
                 tool_json["evidence"] = await _build_evidence()
             tool_json["report"] = await _build_report()
@@ -340,6 +381,24 @@ async def run_chat(
                 llm_error_detail = ""
                 try:
                     llm = await get_llm(user["id"], model=session.get("model"))
+                    # Respect the user's configured window (BYOK), not just the
+                    # server default used for the UI estimate.
+                    round_window = resolve_context_window(user["id"], llm)
+                    compaction = compact_messages(messages, round_window)
+                    if compaction.applied:
+                        compactions = int(context_info.get("compactions") or 0) + 1
+                        context_info["compactions"] = compactions
+                        context_info["last_compaction_saved"] = compaction.saved
+                        context_info["messages_total"] = compaction.after
+                        await trace_record(session["id"], turn_id, "context_compacted", {
+                            "before": compaction.before, "after": compaction.after,
+                            "saved": compaction.saved, "messages": compaction.compacted,
+                        })
+                        if compactions == 1:
+                            yield _sse(
+                                "notice", kind="context_compacted",
+                                message="对话上下文较长，已自动压缩较早的工具输出以继续任务。",
+                            )
                     async with asyncio.timeout(settings.llm_timeout):
                         async for event in llm.astream_with_tools(messages, specs):
                             etype = event.get("type")
@@ -412,17 +471,143 @@ async def run_chat(
                 ],
             })
 
+            parsed: list[tuple[dict, str, dict]] = []
             for tc in tool_calls:
                 name = tc.get("name", "")
-                try:
-                    args = json.loads(tc.get("arguments") or "{}")
-                except json.JSONDecodeError:
-                    args = {}
+                raw_args = tc.get("arguments")
+                if isinstance(raw_args, dict):
+                    args = raw_args
+                else:
+                    try:
+                        args = json.loads(raw_args or "{}")
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        args = {}
+                parsed.append((tc, name, args))
                 yield _sse("tool_call", id=tc.get("id", ""), name=name, args=redact_obj(args), round=round_no)
                 await trace_record(session["id"], turn_id, "tool_call", {
                     "name": name, "args": _preview_for_trace(args),
                 })
-                result = await registry.execute(name, args, ctx)
+
+            def _parallel_safe(name: str) -> bool:
+                getter = getattr(registry, "get", None)
+                tool = getter(name) if callable(getter) else None
+                return bool(getattr(tool, "parallel_safe", False))
+
+            async def _execute_one(item: tuple[dict, str, dict]) -> dict:
+                _, tool_name, tool_args = item
+                tool_result = await registry.execute(tool_name, tool_args, ctx)
+                await _reindex_after_edit(
+                    tool_name, tool_args, tool_result, ctx, user["id"]
+                )
+                return tool_result
+
+            async def _execute_streaming(item: tuple[dict, str, dict], holder: dict):
+                tc, tool_name, tool_args = item
+                output_queue: asyncio.Queue = asyncio.Queue()
+                ctx.output_queue = output_queue
+                ctx.tool_call_id = str(tc.get("id") or "")
+                task = asyncio.create_task(registry.execute(tool_name, tool_args, ctx))
+                try:
+                    while not task.done():
+                        try:
+                            stream, text = await asyncio.wait_for(
+                                output_queue.get(), timeout=0.2
+                            )
+                        except asyncio.TimeoutError:
+                            continue
+                        if text:
+                            yield _sse(
+                                "tool_output", id=ctx.tool_call_id, name=tool_name,
+                                stream=stream, text=redact_text(text),
+                            )
+                    tool_result = await task
+                    while not output_queue.empty():
+                        stream, text = output_queue.get_nowait()
+                        if text:
+                            yield _sse(
+                                "tool_output", id=ctx.tool_call_id, name=tool_name,
+                                stream=stream, text=redact_text(text),
+                            )
+                    await _reindex_after_edit(
+                        tool_name, tool_args, tool_result, ctx, user["id"]
+                    )
+                    holder["result"] = tool_result
+                finally:
+                    ctx.output_queue = None
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except BaseException:  # noqa: BLE001
+                            pass
+
+            if len(parsed) > 1 and all(_parallel_safe(name) for _, name, _ in parsed):
+                limit = asyncio.Semaphore(4)
+
+                async def _guarded(item: tuple[dict, str, dict]) -> dict:
+                    async with limit:
+                        return await _execute_one(item)
+
+                results = await asyncio.gather(*(_guarded(item) for item in parsed))
+            else:
+                results = []
+                for item in parsed:
+                    if item[1] in ("run_command", "run_code"):
+                        stream_holder: dict = {}
+                        async for event in _execute_streaming(item, stream_holder):
+                            yield event
+                        results.append(stream_holder["result"])
+                    else:
+                        results.append(await _execute_one(item))
+
+            for (tc, name, args), result in zip(parsed, results):
+                approval = result.get("requires_approval")
+                if approval:
+                    tool_id = str(tc.get("id") or "")
+                    future = approvals.register(
+                        session["id"], tool_id, user["id"]
+                    )
+                    await trace_record(session["id"], turn_id, "tool_approval", {
+                        "id": tool_id, "name": name,
+                        "reason": approval.get("reason"),
+                    })
+                    yield _sse(
+                        "tool_approval", id=tool_id, name=name,
+                        args=approval.get("args") or {},
+                        reason=approval.get("reason") or "",
+                        timeout=300,
+                    )
+                    try:
+                        approved = await asyncio.wait_for(future, timeout=300)
+                    except asyncio.TimeoutError:
+                        approved = False
+                    finally:
+                        approvals.drop(session["id"], tool_id)
+
+                    if approved:
+                        ctx.approval_granted = True
+                        try:
+                            if name in ("run_command", "run_code"):
+                                approved_holder: dict = {}
+                                async for event in _execute_streaming(
+                                    (tc, name, args), approved_holder
+                                ):
+                                    yield event
+                                result = approved_holder["result"]
+                            else:
+                                result = await registry.execute(name, args, ctx)
+                        finally:
+                            ctx.approval_granted = False
+                    else:
+                        result = {
+                            "ok": False, "error": "用户拒绝了该命令，未执行",
+                            "ms": 0, "business": True,
+                            "error_class": "approval_rejected",
+                        }
+                    await trace_record(session["id"], turn_id, "tool_approval_result", {
+                        "id": tool_id, "approved": bool(approved),
+                    })
+
                 tools_used.append(name)
                 if name == "run_code" and result["ok"] and (result.get("output") or {}).get("exit_code") == 0:
                     sandbox_runs_ok += 1
@@ -437,9 +622,11 @@ async def run_chat(
                     "timed_out": bool(output.get("timed_out")) if isinstance(output, dict) else False,
                     "args": redact_obj(_args_summary(args)),
                     "error": redact_text(result.get("error")) if not result["ok"] else None,
+                    "error_class": result.get("error_class"),
                     "preview": build_preview(name, result),
                     "stdout_tail": _output_tail(output, "stdout"),
                     "stderr_tail": _output_tail(output, "stderr"),
+                    "content_preview": _content_preview(name, output),
                 })
                 if isinstance(output, dict) and output.get("edit_id"):
                     edit_entry = {
@@ -460,12 +647,23 @@ async def run_chat(
                     )
                 await trace_record(session["id"], turn_id, "tool_result", {
                     "name": name, "ok": result["ok"], "ms": result["ms"],
+                    "error_class": result.get("error_class"),
                     "preview": build_preview(name, result)[:800],
                 })
                 yield _sse(
                     "tool_result", id=tc.get("id", ""), name=name, ok=result["ok"],
                     ms=result["ms"], preview=build_preview(name, result),
+                    stdout_tail=_output_tail(output, "stdout"),
+                    stderr_tail=_output_tail(output, "stderr"),
+                    content_preview=_content_preview(name, output),
                 )
+                if name == "update_plan" and result["ok"] and isinstance(output, dict):
+                    plan_state = output
+                    yield _sse(
+                        "plan",
+                        steps=output.get("steps", []),
+                        explanation=output.get("explanation", ""),
+                    )
                 messages.append({
                     "role": "tool", "tool_call_id": tc.get("id", ""),
                     "name": name, "content": serialize_tool_result(name, result),

@@ -43,4 +43,5 @@ TOOL = ToolDefinition(
     func=read_uploaded_file,
     timeout=15,
     capabilities=["fs.read"],
+    parallel_safe=True,
 )

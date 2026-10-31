@@ -54,6 +54,25 @@ async def compute_metrics(user_id: int, days: int = 7) -> dict:
         (user_id, days),
     )
 
+    tools = await query(
+        "SELECT e.payload->>'name' AS name, "
+        "  COUNT(*) AS calls, "
+        "  COUNT(*) FILTER (WHERE COALESCE((e.payload->>'ok')::boolean, false)) AS ok_calls, "
+        "  AVG((e.payload->>'ms')::int) AS avg_ms, "
+        "  percentile_cont(0.95) WITHIN GROUP (ORDER BY (e.payload->>'ms')::int) AS p95_ms, "
+        "  COUNT(*) FILTER (WHERE e.payload->>'error_class' = 'policy') AS policy_denials, "
+        "  COUNT(*) FILTER (WHERE e.payload->>'error_class' IN ('business', 'invalid_args')) "
+        "    AS business_errors, "
+        "  COUNT(*) FILTER (WHERE e.payload->>'error_class' IN ('infra', 'unknown_tool', 'hook')) "
+        "    AS infra_errors "
+        "FROM trace_events e JOIN sessions s ON s.id = e.session_id "
+        "WHERE s.user_id = %s AND e.kind = 'tool_result' "
+        "  AND e.created_at >= now() - make_interval(days => %s) "
+        "  AND e.payload ? 'name' "
+        "GROUP BY 1 ORDER BY calls DESC LIMIT 20",
+        (user_id, days),
+    )
+
     return {
         "window_days": days,
         "accepted_changes": int(accepted_changes or 0),
@@ -64,5 +83,18 @@ async def compute_metrics(user_id: int, days: int = 7) -> dict:
         "approval_minutes_avg": round(float(approval_minutes), 1) if approval_minutes is not None else None,
         "tokens_total": int(tokens[0][0] or 0) if tokens else 0,
         "p95_job_seconds": round(float(jobs[0][0]), 1) if jobs and jobs[0][0] is not None else None,
+        "tool_metrics": [
+            {
+                "name": row[0] or "unknown",
+                "calls": int(row[1] or 0),
+                "ok_rate": _rate(int(row[2] or 0), int(row[1] or 0)),
+                "avg_ms": round(float(row[3]), 1) if row[3] is not None else None,
+                "p95_ms": round(float(row[4]), 1) if row[4] is not None else None,
+                "policy_denials": int(row[5] or 0),
+                "business_errors": int(row[6] or 0),
+                "infra_errors": int(row[7] or 0),
+            }
+            for row in tools
+        ],
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

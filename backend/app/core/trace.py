@@ -6,6 +6,7 @@ import json
 
 import structlog
 
+from app.config import settings
 from app.core.security.redaction import redact_obj
 from app.db import execute
 
@@ -13,6 +14,8 @@ logger = structlog.get_logger()
 
 
 async def record(session_id: str, turn_id: str, kind: str, payload: dict | None = None) -> None:
+    if settings.nova_test_fast:
+        return
     try:
         safe_payload = redact_obj(payload or {})
         await execute(

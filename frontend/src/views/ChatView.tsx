@@ -37,7 +37,7 @@ export function ChatView({
   onOpenTasks: (repoId?: string) => void
 }) {
   const {
-    sessionId, messages, streaming, streamText, toolCards, streamEdits, refs, error,
+    sessionId, messages, streaming, streamText, toolCards, streamEdits, plan, approvals, refs, error,
     permissionMode, setPermissionMode, model, setModel, selectedRepoIds, toggleRepo,
     attachments, uploading, uploadAttachment, removeAttachment,
     send, stop, clearError, streamUsage, contextMeter, turnNotice,
@@ -247,10 +247,29 @@ export function ChatView({
             )}
 
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onOpenFile={(path) => onOpenWorkspace(selectedRepoIds[0], path)}
+              />
             ))}
             {streaming && (
-              <StreamingBubble text={streamText} toolCards={toolCards} editProposals={streamEdits} usage={streamUsage} />
+              <StreamingBubble
+                text={streamText}
+                toolCards={toolCards}
+                editProposals={streamEdits}
+                plan={plan}
+                approvals={approvals}
+                usage={streamUsage}
+                onCancelTool={(toolCallId) => {
+                  if (!sessionId) return
+                  void api.sessions.cancelTool(sessionId, toolCallId).catch(() => {})
+                }}
+                onResolveApproval={(toolCallId, approved) => {
+                  void useChat.getState().resolveApproval(toolCallId, approved)
+                }}
+                onOpenFile={(path) => onOpenWorkspace(selectedRepoIds[0], path)}
+              />
             )}
           </div>
         </div>
@@ -304,6 +323,7 @@ export function ChatView({
             void send(content, selectedRepoIds)
           }}
           onStop={stop}
+          mentionRepoId={selectedRepoIds[0] ?? null}
         />
       </main>
 

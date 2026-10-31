@@ -20,9 +20,13 @@ def estimate_tokens(text: str) -> int:
 
 
 def estimate_messages(messages: list[dict]) -> int:
-    """Estimate tokens for a chat message list (content only, plus small overhead)."""
+    """Estimate tokens for a chat message list (content + tool-call args)."""
     total = 0
     for message in messages:
-        content = message.get("content") if isinstance(message, dict) else None
-        total += estimate_tokens(content or "") + 8
+        if not isinstance(message, dict):
+            continue
+        total += estimate_tokens(message.get("content") or "") + 8
+        for call in message.get("tool_calls") or []:
+            function = (call or {}).get("function") or {}
+            total += estimate_tokens(str(function.get("arguments") or ""))
     return total

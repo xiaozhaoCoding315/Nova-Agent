@@ -39,6 +39,12 @@ def extract_symbols(content: str, lang: str, max_symbols: int = MAX_SYMBOLS_PER_
     try:
         if lang == "python":
             return _extract_python(content, max_symbols)
+        if lang in (
+            "javascript", "jsx", "typescript", "tsx", "go", "java", "rust"
+        ):
+            parsed = _extract_tree_sitter(content, lang, max_symbols)
+            if parsed:
+                return parsed
         return _extract_generic(content, lang, max_symbols)
     except Exception as exc:  # noqa: BLE001
         logger.debug("symbol_extraction_failed", lang=lang, error=str(exc))
@@ -71,6 +77,146 @@ def _extract_python(content: str, max_symbols: int) -> list[dict]:
                 visit(child, parent)
 
     visit(tree)
+    return symbols[:max_symbols]
+
+
+def _ts_language(lang: str):
+    if lang == "python":
+        import tree_sitter_python
+        return tree_sitter_python.language()
+    if lang == "go":
+        import tree_sitter_go
+        return tree_sitter_go.language()
+    if lang == "java":
+        import tree_sitter_java
+        return tree_sitter_java.language()
+    if lang == "rust":
+        import tree_sitter_rust
+        return tree_sitter_rust.language()
+    import tree_sitter_typescript
+    if lang == "typescript":
+        return tree_sitter_typescript.language_typescript()
+    return tree_sitter_typescript.language_tsx()
+
+
+_CONTAINER_KINDS = {
+    "class_declaration": "class",
+    "class_definition": "class",
+    "interface_declaration": "interface",
+    "enum_declaration": "enum",
+    "record_declaration": "class",
+    "annotation_type_declaration": "interface",
+    "trait_item": "trait",
+    "struct_item": "class",
+    "enum_item": "enum",
+    "type_alias_declaration": "type",
+}
+
+_MEMBER_KINDS = {
+    "function_declaration": "function",
+    "function_definition": "function",
+    "function_item": "function",
+    "function_signature": "function",
+    "method_definition": "method",
+    "method_declaration": "method",
+    "method_signature": "method",
+    "constructor_declaration": "method",
+}
+
+
+def _node_text(node) -> str:
+    return node.text.decode("utf-8", "replace") if node.text else ""
+
+
+def _extract_tree_sitter(content: str, lang: str, max_symbols: int) -> list[dict]:
+    """Extract symbols with tree-sitter, falling back to regex on failure."""
+    try:
+        from tree_sitter import Language, Parser
+    except Exception:  # noqa: BLE001
+        return []
+
+    try:
+        parser = Parser(Language(_ts_language(lang)))
+    except Exception:  # noqa: BLE001 - older/newer API differences
+        try:
+            parser = Parser()
+            parser.set_language(Language(_ts_language(lang)))
+        except Exception:  # noqa: BLE001
+            return []
+
+    tree = parser.parse(content.encode("utf-8"))
+    lines = content.splitlines()
+    symbols: list[dict] = []
+
+    def add(node, name: str, kind: str, parent: str = "") -> None:
+        if not name or len(symbols) >= max_symbols:
+            return
+        start = node.start_point.row
+        end = node.end_point.row
+        signature = lines[start].strip()[:300] if start < len(lines) else ""
+        symbols.append({
+            "kind": kind, "name": name[:200], "parent": parent[:200],
+            "line_start": start + 1, "line_end": max(start + 1, end + 1),
+            "signature": signature,
+        })
+
+    def visit(node, parent: str = "") -> None:
+        if len(symbols) >= max_symbols:
+            return
+        node_type = node.type
+        name_node = node.child_by_field_name("name")
+        name = _node_text(name_node).strip() if name_node else ""
+
+        if node_type == "type_spec" and lang == "go":
+            type_node = node.child_by_field_name("type")
+            kind = "interface" if type_node and type_node.type == "interface_type" else "class"
+            add(node, name, kind)
+            return
+
+        if node_type == "variable_declarator" and lang in (
+            "typescript", "tsx", "javascript", "jsx", "vue", "svelte"
+        ):
+            value = node.child_by_field_name("value")
+            if value is not None and value.type in (
+                "arrow_function", "function_expression", "function"
+            ):
+                add(node, name, "method" if parent else "function")
+            for child in node.named_children:
+                visit(child, parent)
+            return
+
+        if node_type == "impl_item" and lang == "rust":
+            type_node = node.child_by_field_name("type")
+            impl_parent = _node_text(type_node).strip() if type_node else parent
+            for child in node.named_children:
+                visit(child, impl_parent)
+            return
+
+        container_kind = _CONTAINER_KINDS.get(node_type)
+        if container_kind and name:
+            add(node, name, container_kind, parent)
+            nested_parent = name if container_kind != "type" else parent
+            for child in node.named_children:
+                visit(child, nested_parent)
+            return
+
+        member_kind = _MEMBER_KINDS.get(node_type)
+        if member_kind and name:
+            if node_type == "method_declaration" and lang == "go" and not parent:
+                receiver = node.child_by_field_name("receiver")
+                if receiver is not None:
+                    names = re.findall(r"[A-Za-z_]\w*", _node_text(receiver))
+                    parent = names[-1] if names else ""
+            add(node, name, "method" if parent else member_kind, parent)
+            for child in node.named_children:
+                visit(child, name)
+            return
+
+        for child in node.named_children:
+            visit(child, parent)
+
+    visit(tree.root_node)
+    symbols.sort(key=lambda item: (item["line_start"], item["line_end"]))
     return symbols[:max_symbols]
 
 
@@ -158,10 +304,13 @@ async def search_symbols(query: str, repo_ids: list[str] | None = None, limit: i
     params.extend([query, f"{query}%", limit])
 
     rows = await db_query(sql, tuple(params))
+    from app.core.security.paths import is_secret_path
+
     return [
         {
             "name": r[0], "kind": r[1], "path": r[2],
             "line_start": r[3] or 0, "line_end": r[4] or 0, "signature": r[5],
         }
         for r in rows
+        if not is_secret_path(r[2])
     ]

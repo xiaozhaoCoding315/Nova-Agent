@@ -186,9 +186,27 @@ export type Message = {
     evidence?: Evidence
     edits?: EditRef[]
     report?: DeliveryReport
+    plan?: PlanState
   } | null
   attachments?: FileAttachment[]
   created_at?: string
+}
+
+export type PlanStep = {
+  title: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+export type PlanState = {
+  steps: PlanStep[]
+  explanation?: string | null
+}
+
+export type ToolApproval = {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  reason: string
 }
 
 export type ToolEvent = {
@@ -204,6 +222,7 @@ export type ToolEvent = {
   preview?: string | null
   stdout_tail?: string | null
   stderr_tail?: string | null
+  content_preview?: string | null
 }
 
 export type Citation = {
@@ -312,7 +331,16 @@ export type RetrievalHit = {
 }
 
 export type ToolCall = { id: string; name: string; args: Record<string, unknown>; round: number }
-export type ToolResult = { id: string; name: string; ok: boolean; ms: number; preview: string }
+export type ToolResult = {
+  id: string
+  name: string
+  ok: boolean
+  ms: number
+  preview: string
+  stdout_tail?: string | null
+  stderr_tail?: string | null
+  content_preview?: string | null
+}
 
 export type RepoStatus =
   | 'pending'
@@ -629,6 +657,17 @@ export type Memory = {
   daily: MemoryDaily[]
 }
 
+export type ToolMetric = {
+  name: string
+  calls: number
+  ok_rate: number
+  avg_ms: number | null
+  p95_ms: number | null
+  policy_denials: number
+  business_errors: number
+  infra_errors: number
+}
+
 export type Metrics = {
   window_days: number
   accepted_changes: number
@@ -639,6 +678,7 @@ export type Metrics = {
   approval_minutes_avg: number | null
   tokens_total: number
   p95_job_seconds: number | null
+  tool_metrics?: ToolMetric[]
   generated_at?: string | null
 }
 
@@ -665,6 +705,9 @@ export type StreamToolCard = {
   command?: string | null
   exit_code?: number | null
   timedOut?: boolean
+  stdout_tail?: string | null
+  stderr_tail?: string | null
+  output?: string
 }
 
 export type StreamUsage = {

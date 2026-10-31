@@ -26,10 +26,13 @@ class FallbackLLM(LLMProvider):
         Same degradation semantics as astream, with one refinement: once any
         event has been yielded downstream we can no longer switch providers
         (the answer would be duplicated), so mid-stream failures propagate.
-        Providers without native tool support degrade to plain content via
-        the base-class default, which still counts as a usable answer.
+        Only providers with native tool support participate — a provider that
+        ignores ``tools`` would silently degrade the coding loop to chat.
         """
-        for provider in self.providers:
+        providers = [p for p in self.providers if getattr(p, "supports_tools", False)]
+        if not providers:
+            raise RuntimeError("没有支持工具调用的 LLM provider，已拒绝退化")
+        for provider in providers:
             yielded = False
             try:
                 async for event in provider.astream_with_tools(messages, tools, **kwargs):

@@ -176,3 +176,83 @@ def test_iter_source_files_skips_noise_and_binaries(tmp_path):
 
     found = {rel for rel, _, _ in iter_source_files(str(tmp_path), 10_000)}
     assert found == {"main.py", "README.md"}
+
+
+def test_iter_source_files_skips_secret_files(tmp_path):
+    (tmp_path / "main.py").write_text("print(1)")
+    (tmp_path / "credentials.json").write_text('{"token": "x"}')
+    (tmp_path / "secrets.yaml").write_text("password: x")
+    (tmp_path / ".env").write_text("SECRET=1")
+    (tmp_path / "certs").mkdir()
+    (tmp_path / "certs" / "server.pem").write_text("key")
+
+    found = {rel for rel, _, _ in iter_source_files(str(tmp_path), 10_000)}
+    assert found == {"main.py"}
+
+def test_file_hash_and_same_file(tmp_path):
+    from app.core.indexing.pipeline import _file_hash, _same_file
+
+    path = tmp_path / "a.py"
+    path.write_text("print(1)\n", encoding="utf-8")
+    digest = _file_hash(str(path))
+    assert len(digest) == 64
+    old = {"hash": digest, "size": path.stat().st_size}
+    assert _same_file(old, digest, path.stat().st_size)
+    assert not _same_file(old, digest, path.stat().st_size, force=True)
+    assert not _same_file(old, "different", path.stat().st_size)
+    assert not _same_file(None, digest, path.stat().st_size)
+
+
+@pytest.mark.asyncio
+async def test_delete_file_data_removes_vectors_and_row(monkeypatch):
+    from app.core.indexing import pipeline
+
+    executed: list[tuple] = []
+    deleted: list[int] = []
+
+    async def fake_query(_sql, _params):
+        return [(11,), (12,)]
+
+    async def fake_execute(sql, params):
+        executed.append((sql, params))
+        return []
+
+    async def fake_delete(ids):
+        deleted.extend(ids)
+        return len(ids)
+
+    monkeypatch.setattr(pipeline, "query", fake_query)
+    monkeypatch.setattr(pipeline, "execute", fake_execute)
+    monkeypatch.setattr("app.db.qdrant.delete_point_ids", fake_delete)
+
+    await pipeline._delete_file_data(5)
+
+    assert deleted == [11, 12]
+    assert "DELETE FROM repo_files" in executed[0][0]
+    assert executed[0][1] == (5,)
+
+
+def test_tree_sitter_symbols_for_go_java_rust():
+    from app.core.indexing.symbols import extract_symbols
+
+    go = (
+        "package x\n"
+        "type S struct { A int }\n"
+        "func (s *S) Do(x int) error { return nil }\n"
+        "func Hello() {}\n"
+    )
+    go_symbols = {s["name"]: s for s in extract_symbols(go, "go")}
+    assert go_symbols["S"]["kind"] == "class"
+    assert go_symbols["Do"]["parent"] == "S"
+    assert go_symbols["Hello"]["kind"] == "function"
+
+    java = "class A { public int f(int x){ return x; } A(){} }\n"
+    java_symbols = extract_symbols(java, "java")
+    assert any(s["name"] == "A" and s["kind"] == "class" for s in java_symbols)
+    assert any(s["name"] == "f" and s["parent"] == "A" for s in java_symbols)
+
+    rust = "struct S; impl S { pub fn go(&self) {} } fn top() {}\n"
+    rust_symbols = {s["name"]: s for s in extract_symbols(rust, "rust")}
+    assert rust_symbols["S"]["kind"] == "class"
+    assert rust_symbols["go"]["parent"] == "S"
+    assert rust_symbols["top"]["kind"] == "function"

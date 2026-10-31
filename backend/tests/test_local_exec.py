@@ -144,8 +144,12 @@ async def test_local_write_file_rejects_escape_paths(_ctx=_ctx):
 @pytest.mark.asyncio
 async def test_status_reflects_agent_heartbeat(monkeypatch):
     from app.api.v1 import local_exec as api_mod
+    from app.core import local_bridge
 
-    api_mod._AGENT_LAST_SEEN.pop(7, None)
+    local_bridge._LAST_SEEN.pop(7, None)
+    local_bridge._db_disabled_until = 0.0
+    monkeypatch.setattr(local_bridge, "query", AsyncMock(return_value=[]))
+    monkeypatch.setattr(local_bridge, "execute", AsyncMock(return_value=[]))
     user = {"id": 7}
     offline = await api_mod.local_exec_status(user=user)
     assert offline["connected"] is False

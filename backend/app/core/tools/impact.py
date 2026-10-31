@@ -45,4 +45,5 @@ TOOL = ToolDefinition(
     },
     func=impact_analysis,
     timeout=30,
+    parallel_safe=True,
 )

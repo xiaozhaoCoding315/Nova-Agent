@@ -12,6 +12,7 @@ from app.core.harness.runtime import execute_with_harness
 from app.core.rag.dense import dense_search
 from app.core.rag.keyword import keyword_search
 from app.core.rag.rrf import rrf_fuse
+from app.core.security.paths import is_secret_path
 from app.models.domain import RetrievedChunk
 
 logger = structlog.get_logger()
@@ -49,4 +50,7 @@ async def retrieve(
     valid_lists = [r for r in results if isinstance(r, list) and r]
     if not valid_lists:
         return []
-    return rrf_fuse(valid_lists, top_n=min(5, top_k))
+    fused = rrf_fuse(valid_lists, top_n=min(5, top_k))
+    # Indexes created before the secret filter may still contain credentials;
+    # filtering here prevents leaking them until the repo is re-indexed.
+    return [hit for hit in fused if not is_secret_path(hit.path)]

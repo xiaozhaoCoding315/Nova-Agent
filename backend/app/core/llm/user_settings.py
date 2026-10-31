@@ -39,6 +39,12 @@ def provider_presets() -> list[dict]:
             "models": ["gpt-4o", "gpt-4o-mini"],
         },
         {
+            "id": "anthropic",
+            "label": "Anthropic 原生（tool use + 缓存）",
+            "base_url": "https://api.anthropic.com",
+            "models": ["claude-sonnet-4-5", "claude-haiku-4-5"],
+        },
+        {
             "id": "custom",
             "label": "自定义 OpenAI 兼容端点",
             "base_url": "",

@@ -147,6 +147,21 @@ export const api = {
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),
     remove: (id: string) => request<{ ok: boolean }>(`/chat/sessions/${id}`, { method: 'DELETE' }),
+    cancelTool: (sessionId: string, toolCallId: string) =>
+      request<{ ok: boolean; killed: number }>(
+        `/chat/sessions/${sessionId}/tools/${encodeURIComponent(toolCallId)}/cancel`,
+        { method: 'POST' },
+      ),
+    approveTool: (sessionId: string, toolCallId: string) =>
+      request<{ ok: boolean }>(
+        `/chat/sessions/${sessionId}/tools/${encodeURIComponent(toolCallId)}/approve`,
+        { method: 'POST' },
+      ),
+    rejectTool: (sessionId: string, toolCallId: string) =>
+      request<{ ok: boolean }>(
+        `/chat/sessions/${sessionId}/tools/${encodeURIComponent(toolCallId)}/reject`,
+        { method: 'POST' },
+      ),
   },
 
   repos: {

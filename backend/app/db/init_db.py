@@ -114,6 +114,12 @@ _DDL = [
     "ALTER TABLE local_exec_requests ADD COLUMN IF NOT EXISTS file_path TEXT",
     "ALTER TABLE local_exec_requests ADD COLUMN IF NOT EXISTS content TEXT",
     """
+    CREATE TABLE IF NOT EXISTS local_agent_heartbeats (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS user_llm_settings (
         user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         provider VARCHAR(32) NOT NULL,
@@ -224,6 +230,7 @@ _DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_repo_files_repo ON repo_files (repo_id, path)",
+    "ALTER TABLE repo_files ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64)",
     """
     CREATE TABLE IF NOT EXISTS symbols (
         id BIGSERIAL PRIMARY KEY,

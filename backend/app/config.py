@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen3.8-max"   # 阿里云百炼（DashScope）模型名
+    anthropic_api_key: str = ""
+    anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_model: str = "claude-sonnet-4-5"
+    anthropic_max_tokens: int = 8192
+    anthropic_prompt_caching: bool = True
+    anthropic_context_window: int = 200_000
     llm_timeout: int = 300         # seconds per LLM call (长任务的生成可能持续数分钟)
     task_llm_timeout: int = 180    # red-green task generation is heavier (thinking models)
     max_rounds: int = 12           # 每段工具调用轮次（触顶后自动续段，见 max_continuations）
@@ -31,7 +37,10 @@ class Settings(BaseSettings):
 
     @property
     def llm_configured(self) -> bool:
-        return bool(self.deepseek_api_key or self.dashscope_api_key or self.longcat_api_key)
+        return bool(
+            self.deepseek_api_key or self.dashscope_api_key
+            or self.longcat_api_key or self.anthropic_api_key
+        )
 
     # ---------- Embedding ----------
     embedding_model: str = "text-embedding-v3"
@@ -129,10 +138,16 @@ class Settings(BaseSettings):
     sandbox_memory: str = "256m"
     sandbox_cpus: str = "0.5"
     sandbox_allow_network: bool = False   # 允许“安装依赖”时联网（admin only）
+    # 可选：app 运行在容器内时，容器数据目录对应的宿主机路径。
+    # 留空则自动通过 docker inspect 读取自身挂载；无法探测时按宿主机运行处理。
+    sandbox_host_data_dir: str = ""
+    sandbox_mask_secrets: bool = True     # auto/full 写命令遮蔽密钥文件
 
     # ---------- Tools ----------
     enable_fetch_url: bool = True
     fetch_url_max_kb: int = 512
+    # 逗号分隔的域名 allowlist；为空表示任意公网域名（仍受只读/确认模式门禁）
+    fetch_url_allowed_domains: str = ""
 
     # ---------- Skills ----------
     skills_enabled: bool = True
@@ -150,6 +165,8 @@ class Settings(BaseSettings):
     tool_post_hook: str = ""      # best-effort post-tool audit hook
     shell_readonly_allowlist: bool = True   # readonly/ask 下放行只读 shell 命令
     tool_result_max_chars: int = 12_000     # 单条工具结果的字符预算
+    # 单元测试快速档：跳过 trace/audit/usage 的 DB 写入
+    nova_test_fast: bool = False
 
     # ---------- MCP ----------
     mcp_enabled: bool = True

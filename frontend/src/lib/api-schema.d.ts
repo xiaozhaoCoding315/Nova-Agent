@@ -564,6 +564,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Tool */
+        post: operations["approve_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Tool
+         * @description Kill the sandbox container labelled with the in-flight tool call.
+         */
+        post: operations["cancel_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Tool */
+        post: operations["reject_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/sessions/{session_id}/trajectory": {
         parameters: {
             query?: never;
@@ -3109,6 +3163,11 @@ export interface components {
              */
             tokens_total: number;
             /**
+             * Tool Metrics
+             * @default []
+             */
+            tool_metrics: components["schemas"]["ToolMetricOut"][];
+            /**
              * Window Days
              * @default 7
              */
@@ -3544,6 +3603,40 @@ export interface components {
             updated_at?: string | null;
             /** User Id */
             user_id: number;
+        };
+        /** ToolMetricOut */
+        ToolMetricOut: {
+            /** Avg Ms */
+            avg_ms?: number | null;
+            /**
+             * Business Errors
+             * @default 0
+             */
+            business_errors: number;
+            /**
+             * Calls
+             * @default 0
+             */
+            calls: number;
+            /**
+             * Infra Errors
+             * @default 0
+             */
+            infra_errors: number;
+            /** Name */
+            name: string;
+            /**
+             * Ok Rate
+             * @default 0
+             */
+            ok_rate: number;
+            /** P95 Ms */
+            p95_ms?: number | null;
+            /**
+             * Policy Denials
+             * @default 0
+             */
+            policy_denials: number;
         };
         /** TraceEventOut */
         TraceEventOut: {
@@ -4891,6 +4984,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                tool_call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                tool_call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                tool_call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6577,7 +6766,10 @@ export interface operations {
     };
     reindex_api_v1_repos__repo_id__reindex_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 清空后全量重建；默认只处理变更文件 */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 repo_id: string;

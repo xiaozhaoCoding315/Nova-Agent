@@ -52,5 +52,6 @@ TOOL = ToolDefinition(
     },
     func=list_files,
     category="read",
+    parallel_safe=True,
     timeout=20,
 )

@@ -134,6 +134,16 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         image = settings.sandbox_builder_image if use_builder else settings.sandbox_image
         deps = deps_volume_name(str(repo_id)) if repo_id else None
 
+    on_output = None
+    if ctx.output_queue is not None:
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        queue_ref = ctx.output_queue
+
+        def on_output(stream: str, text: str) -> None:
+            loop.call_soon_threadsafe(queue_ref.put_nowait, (stream, text))
+
     result = await sandbox_execute(
         files=files,
         command=command,
@@ -141,6 +151,9 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
         image=image,
         deps_volume=deps,
         deps_mount=deps_mount,
+        on_output=on_output,
+        job_id=ctx.tool_call_id or None,
+        user_label=str(ctx.user.get("id", "")) or None,
     )
 
     await log_audit(

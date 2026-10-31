@@ -132,8 +132,47 @@ ipcMain.handle('nova:connect', async (_event, rawUrl) => {
   saveConfig({ serverUrl: url })
   createMainWindow(url)
   if (setupWindow) setupWindow.close()
+  setupAutoUpdate()
   return { ok: true }
 })
+
+/* ---------- 自动更新（可选） ---------- */
+
+function setupAutoUpdate() {
+  const updateUrl = String(
+    process.env.NOVA_UPDATE_URL || loadConfig().updateUrl || '',
+  ).trim().replace(/\/+$/, '')
+  if (!app.isPackaged || !/^https?:\/\//i.test(updateUrl)) return
+
+  let autoUpdater
+  try {
+    ;({ autoUpdater } = require('electron-updater'))
+  } catch (err) {
+    console.warn('auto-update unavailable:', err?.message || err)
+    return
+  }
+
+  try {
+    autoUpdater.setFeedURL({ provider: 'generic', url: updateUrl })
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.on('error', (err) => console.warn('auto-update:', err?.message || err))
+    autoUpdater.on('update-downloaded', async () => {
+      const { response } = await dialog.showMessageBox(mainWindow ?? undefined, {
+        type: 'info',
+        title: 'Nova Agent 更新已就绪',
+        message: '新版本已下载完成，是否现在重启安装？',
+        buttons: ['重启安装', '稍后'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      if (response === 0) autoUpdater.quitAndInstall()
+    })
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+  } catch (err) {
+    console.warn('auto-update setup failed:', err?.message || err)
+  }
+}
 
 /* ---------- 应用生命周期 ---------- */
 
@@ -155,6 +194,7 @@ if (!gotLock) {
     const savedUrl = normalizeUrl(loadConfig().serverUrl)
     if (savedUrl && (await checkServer(savedUrl))) {
       createMainWindow(savedUrl)
+      setupAutoUpdate()
     } else {
       createSetupWindow(
         savedUrl,

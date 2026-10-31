@@ -21,12 +21,35 @@ def test_registry_has_all_tools_with_openai_specs():
         "run_code", "run_command", "read_file", "list_files", "read_uploaded_file",
         "search_code", "impact_analysis", "diagnose_error", "write_files", "install_deps",
         "json_tool", "sql_tool", "fetch_url", "local_run_command", "local_write_file",
-        "edit_file", "grep", "glob",
+        "edit_file", "grep", "glob", "update_plan",
     }
     for spec in specs:
         assert spec["type"] == "function"
         assert spec["function"]["description"]
         assert spec["function"]["parameters"]["type"] == "object"
+
+
+def test_specs_trim_by_mode_and_availability():
+    registry = get_registry()
+    readonly = {s["function"]["name"] for s in registry.specs(permission_mode="readonly")}
+    assert "write_files" not in readonly
+    assert "edit_file" not in readonly
+    assert "run_code" not in readonly
+    assert "fetch_url" not in readonly
+    assert "local_run_command" not in readonly
+    assert "read_file" in readonly and "run_command" in readonly
+
+    ask = {s["function"]["name"] for s in registry.specs(permission_mode="ask")}
+    assert "write_files" in ask
+    assert "fetch_url" not in ask
+
+    offline = {s["function"]["name"] for s in registry.specs(local_available=False)}
+    assert "local_run_command" not in offline
+    assert "local_write_file" not in offline
+
+    no_sandbox = {s["function"]["name"] for s in registry.specs(sandbox_available=False)}
+    assert "run_code" not in no_sandbox
+    assert "run_command" not in no_sandbox
 
 
 def test_registry_rejects_duplicate_registration():
@@ -490,3 +513,111 @@ async def test_collect_repo_files_keeps_legacy_signature(tmp_path, monkeypatch):
 
     files = await run_code_mod._collect_repo_files("repo-1", USER)
     assert files == {"main.py": "print(1)\n"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode,command,isolated,masked", [
+    ("ask", "git status", True, False),
+    ("readonly", "git status", True, False),
+    ("auto", "git status", True, False),
+    ("auto", "pytest -q", False, True),
+    ("full", "python build.py", False, True),
+])
+async def test_run_command_isolates_readonly_modes(
+    monkeypatch, tmp_path, mode, command, isolated, masked
+):
+    from app.core.tools import run_command as mod
+
+    monkeypatch.setattr(mod.settings, "sandbox_mask_secrets", True)
+
+    async def fake_status():
+        return {"available": True, "builder_available": True}
+
+    async def fake_get_repo(_repo_id, _user_id):
+        return {"id": "r1", "root_path": str(tmp_path)}
+
+    captured: dict = {}
+
+    async def fake_exec(**kwargs):
+        captured.update(kwargs)
+        return {
+            "exit_code": 0, "timed_out": False, "stdout": "", "stderr": "",
+            "command": kwargs.get("command", ""),
+        }
+
+    monkeypatch.setattr(mod, "sandbox_status", fake_status)
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+    monkeypatch.setattr(mod, "sandbox_execute", fake_exec)
+    monkeypatch.setattr(mod, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(mod, "log_audit", AsyncMock())
+
+    ctx = ToolContext(user=USER, repo_ids=["r1"], permission_mode=mode)
+    result = await mod.run_command({"command": command}, ctx)
+
+    assert captured["sanitized_workspace"] is isolated
+    assert captured["mask_secrets"] is masked
+    assert captured["include_git"] is (command.startswith("git"))
+    assert result["persisted"] is (not isolated)
+
+
+@pytest.mark.asyncio
+async def test_update_plan_validates_and_normalizes():
+    from app.core.tools.base import ToolBusinessError
+    from app.core.tools.plan import update_plan
+
+    result = await update_plan({
+        "steps": [
+            {"title": "  读代码  ", "status": "in_progress"},
+            {"title": "改代码", "status": "pending"},
+        ],
+        "explanation": " 先定位 ",
+    }, CTX)
+    assert result["steps"] == [
+        {"title": "读代码", "status": "in_progress"},
+        {"title": "改代码", "status": "pending"},
+    ]
+    assert result["explanation"] == "先定位"
+
+    with pytest.raises(ToolBusinessError):
+        await update_plan({"steps": []}, CTX)
+    with pytest.raises(ToolBusinessError):
+        await update_plan({"steps": [{"title": "x", "status": "doing"}]}, CTX)
+    with pytest.raises(ToolBusinessError):
+        await update_plan({"steps": [
+            {"title": "a", "status": "in_progress"},
+            {"title": "b", "status": "in_progress"},
+        ]}, CTX)
+
+
+@pytest.mark.asyncio
+async def test_approved_ask_command_persists_with_secret_masks(monkeypatch, tmp_path):
+    from app.core.tools import run_command as mod
+
+    monkeypatch.setattr(mod.settings, "sandbox_mask_secrets", True)
+
+    async def fake_status():
+        return {"available": True, "builder_available": True}
+
+    async def fake_get_repo(_repo_id, _user_id):
+        return {"id": "r1", "root_path": str(tmp_path)}
+
+    captured: dict = {}
+
+    async def fake_exec(**kwargs):
+        captured.update(kwargs)
+        return {"exit_code": 0, "timed_out": False, "stdout": "", "stderr": "",
+                "command": kwargs.get("command", "")}
+
+    monkeypatch.setattr(mod, "sandbox_status", fake_status)
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+    monkeypatch.setattr(mod, "sandbox_execute", fake_exec)
+    monkeypatch.setattr(mod, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(mod, "log_audit", AsyncMock())
+
+    ctx = ToolContext(user=USER, repo_ids=["r1"], permission_mode="ask")
+    ctx.approval_granted = True
+    result = await mod.run_command({"command": "pytest -q"}, ctx)
+
+    assert captured["sanitized_workspace"] is False
+    assert captured["mask_secrets"] is True
+    assert result["persisted"] is True

@@ -5,6 +5,7 @@ here so daily token budgets cannot be bypassed by using a non-chat feature.
 """
 import structlog
 
+from app.config import settings
 from app.db import execute
 
 logger = structlog.get_logger()
@@ -18,7 +19,7 @@ async def record_usage(
     tool_calls: int = 0,
     source: str = "chat",
 ) -> None:
-    if not user_id or not usage:
+    if not user_id or not usage or settings.nova_test_fast:
         return
     try:
         await execute(

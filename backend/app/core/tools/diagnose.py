@@ -157,4 +157,5 @@ TOOL = ToolDefinition(
     },
     func=diagnose_error,
     timeout=30,
+    parallel_safe=True,
 )

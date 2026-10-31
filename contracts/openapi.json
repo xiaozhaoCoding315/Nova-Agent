@@ -3611,6 +3611,14 @@
             "title": "Tokens Total",
             "type": "integer"
           },
+          "tool_metrics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolMetricOut"
+            },
+            "title": "Tool Metrics",
+            "type": "array"
+          },
           "window_days": {
             "default": 7,
             "title": "Window Days",
@@ -4792,6 +4800,66 @@
           "user_id"
         ],
         "title": "TaskOut",
+        "type": "object"
+      },
+      "ToolMetricOut": {
+        "properties": {
+          "avg_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Ms"
+          },
+          "business_errors": {
+            "default": 0,
+            "title": "Business Errors",
+            "type": "integer"
+          },
+          "calls": {
+            "default": 0,
+            "title": "Calls",
+            "type": "integer"
+          },
+          "infra_errors": {
+            "default": 0,
+            "title": "Infra Errors",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok_rate": {
+            "default": 0.0,
+            "title": "Ok Rate",
+            "type": "number"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "policy_denials": {
+            "default": 0,
+            "title": "Policy Denials",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolMetricOut",
         "type": "object"
       },
       "TraceEventOut": {
@@ -6737,6 +6805,154 @@
           }
         },
         "summary": "Get Session Messages",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/approve": {
+      "post": {
+        "operationId": "approve_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Tool",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/cancel": {
+      "post": {
+        "description": "Kill the sandbox container labelled with the in-flight tool call.",
+        "operationId": "cancel_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Tool",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/tools/{tool_call_id}/reject": {
+      "post": {
+        "operationId": "reject_tool_api_v1_chat_sessions__session_id__tools__tool_call_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Tool",
         "tags": [
           "chat"
         ]
@@ -9085,6 +9301,18 @@
             "schema": {
               "title": "Repo Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "清空后全量重建；默认只处理变更文件",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "清空后全量重建；默认只处理变更文件",
+              "title": "Force",
+              "type": "boolean"
             }
           }
         ],

@@ -66,5 +66,6 @@ TOOL = ToolDefinition(
     },
     func=read_file,
     category="read",
+    parallel_safe=True,
     timeout=20,
 )

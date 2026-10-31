@@ -81,5 +81,6 @@ TOOL = ToolDefinition(
     func=glob_files,
     category="read",
     capabilities=["fs.read"],
+    parallel_safe=True,
     timeout=20,
 )

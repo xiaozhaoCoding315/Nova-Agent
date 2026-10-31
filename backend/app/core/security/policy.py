@@ -6,7 +6,9 @@ decision.  Tools still enforce their own path/sandbox guards; this layer makes
 the rules explicit, auditable and consistent across tools.
 """
 import re
+import shlex
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from app.config import settings
 from app.core.security.commands import CommandClass, classify_command
@@ -56,6 +58,7 @@ class PolicyDecision:
     allowed: bool
     reason: str
     capabilities: tuple[str, ...]
+    requires_approval: bool = False
 
 
 def capabilities_for(
@@ -79,6 +82,51 @@ def _path_values(args: dict) -> list[str]:
     if isinstance(files, dict):
         values.extend(str(path) for path in files)
     return values
+
+
+def _secret_reference(command: str) -> str | None:
+    """Return the secret-looking path referenced by a shell command.
+
+    This is a defence-in-depth check for commands such as ``cat .env`` that
+    are otherwise classified as read-only.  The executable boundary is the
+    sanitized workspace (run_command mounts a copy without secret files);
+    token scanning catches the obvious explicit references early.
+    """
+    if not command:
+        return None
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+
+    for token in tokens:
+        candidate = token.strip()
+        if not candidate or candidate in (".", "./", "..", "-"):
+            continue
+        if "=" in candidate and not candidate.startswith(("/", "./", "../")):
+            name, value = candidate.split("=", 1)
+            if name.startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                candidate = value.strip()
+        if ":" in candidate and "://" not in candidate:
+            # git rev:path (e.g. ``git show HEAD:.env``)
+            candidate = candidate.rsplit(":", 1)[1].strip() or candidate
+        if not candidate or candidate in (".", "./", ".."):
+            continue
+        parts = [part for part in candidate.replace("\\", "/").split("/") if part]
+        if not parts:
+            continue
+        tail = "/".join(parts[-2:])
+        if is_secret_path(tail):
+            return candidate
+    return None
+
+
+def _host_allowed(host: str, allowed: str) -> bool:
+    domains = [item.strip().lower().lstrip(".") for item in allowed.split(",") if item.strip()]
+    if not domains:
+        return True
+    host = host.lower()
+    return any(host == domain or host.endswith("." + domain) for domain in domains)
 
 
 def decide_tool(
@@ -111,16 +159,30 @@ def decide_tool(
         if is_secret_path(rel):
             return PolicyDecision(False, f"拒绝访问密钥/凭据文件：{rel}", caps)
 
+    if name == "run_command":
+        secret = _secret_reference(str(args.get("command") or ""))
+        if secret:
+            return PolicyDecision(
+                False, f"拒绝访问密钥/凭据文件：{secret}", caps
+            )
+
     readonly_shell = False
     if name == "run_command" and settings.shell_readonly_allowlist:
         command = str(args.get("command") or "")
         command_class, reason = classify_command(command)
         if command_class is CommandClass.READONLY:
             readonly_shell = True
-        elif mode in ("readonly", "ask"):
+        elif mode == "ask" and not getattr(ctx, "approval_granted", False):
             return PolicyDecision(
                 False,
-                f"当前模式（{mode}）不允许执行会改动仓库的命令："
+                f"命令会改动仓库，需要你批准：{command[:160]}（{reason}）",
+                caps,
+                requires_approval=True,
+            )
+        elif mode == "readonly":
+            return PolicyDecision(
+                False,
+                f"当前模式（readonly）不允许执行会改动仓库的命令："
                 f"{command[:120]}（{reason}）。" + _SHELL_HINT,
                 caps,
             )
@@ -132,8 +194,23 @@ def decide_tool(
             caps,
         )
 
-    if "net.fetch" in cap_set and name == "fetch_url" and not settings.enable_fetch_url:
-        return PolicyDecision(False, "联网抓取已关闭（ENABLE_FETCH_URL=false）", caps)
+    if name == "fetch_url":
+        if not settings.enable_fetch_url:
+            return PolicyDecision(False, "联网抓取已关闭（ENABLE_FETCH_URL=false）", caps)
+        if mode in ("readonly", "ask"):
+            return PolicyDecision(
+                False,
+                f"当前模式（{mode}）不允许联网抓取，避免只读/确认模式下外发内容；"
+                "请切换到「自主」或「完全访问」后重试",
+                caps,
+            )
+        host = urlparse(str(args.get("url") or "")).hostname or ""
+        if not _host_allowed(host, settings.fetch_url_allowed_domains):
+            return PolicyDecision(
+                False,
+                f"域名不在允许列表内：{host or 'unknown'}（见 FETCH_URL_ALLOWED_DOMAINS）",
+                caps,
+            )
 
     if name == "install_deps":
         if user.get("role") != "admin" and mode != "full":

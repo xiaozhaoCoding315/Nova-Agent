@@ -65,6 +65,44 @@ async def status(root: Path) -> dict:
     }
 
 
+_SECRET_EXCLUDES = """\
+# Nova: never commit credential files (kept local to .git/info/exclude)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.dist
+.ssh/
+.aws/
+.kube/
+.gnupg/
+credentials.json
+secrets.json
+credentials.yaml
+credentials.yml
+secrets.yaml
+secrets.yml
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+"""
+
+
+def ensure_secret_excludes(root: Path) -> None:
+    exclude = root / ".git" / "info" / "exclude"
+    try:
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        current = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+        if "# Nova: never commit credential files" not in current:
+            exclude.write_text(current + ("\n" if current else "") + _SECRET_EXCLUDES,
+                               encoding="utf-8")
+    except OSError:
+        pass
+
+
 async def init_repo(root: Path) -> dict:
     _require_git()
     root = Path(root)
@@ -72,8 +110,9 @@ async def init_repo(root: Path) -> dict:
         result = await _git(root, "init", "-b", "main")
         if result.returncode != 0:
             raise ValueError(f"git init 失败：{result.stderr[:300]}")
-        await _git(root, "config", "user.email", "nova@local")
-        await _git(root, "config", "user.name", "Nova Agent")
+    await _git(root, "config", "user.email", "nova@local")
+    await _git(root, "config", "user.name", "Nova Agent")
+    ensure_secret_excludes(root)
 
     result = await _git(root, "add", "-A")
     if result.returncode != 0:
@@ -90,6 +129,7 @@ async def commit(root: Path, message: str | None = None) -> dict:
     if not (root / ".git").is_dir():
         raise ValueError("尚未初始化 Git，请先初始化")
     message = (message or "chore: update workspace").strip()[:200] or "chore: update workspace"
+    ensure_secret_excludes(root)
     add = await _git(root, "add", "-A")
     if add.returncode != 0:
         raise ValueError(f"git add 失败：{add.stderr[:300]}")

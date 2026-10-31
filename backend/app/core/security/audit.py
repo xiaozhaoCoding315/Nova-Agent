@@ -40,6 +40,10 @@ async def log_audit(action, user_id="anonymous", details=None, risk_level="safe"
         del _audit_buffer[:500]
     # Persist to PostgreSQL (non-blocking — failure doesn't break the flow)
     try:
+        from app.config import settings
+        if settings.nova_test_fast:
+            logger.info("audit_event", **entry)
+            return entry["id"]
         from app.db import execute
         await execute(
             "INSERT INTO audit_log (id, action, user_id, details, risk_level) VALUES (%s, %s, %s, %s, %s)",

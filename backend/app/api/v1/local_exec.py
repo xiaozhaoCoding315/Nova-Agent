@@ -3,12 +3,12 @@
 请求行由 local_run_command 工具写入；本地执行器用用户自己的凭据认证，
 只能看到并处理属于该用户的派发。命令在本机的最终执行前还会经用户确认。
 """
-import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core import local_bridge
 from app.core.security.audit import log_audit
 from app.core.security.auth import get_current_user
 from app.db import execute
@@ -16,9 +16,6 @@ from app.db import execute
 router = APIRouter()
 
 # 本地执行器在线状态：agent 每 3 秒轮询一次 pending，即天然心跳。
-# 进程内记录（单 worker 部署）；重启后 30 秒内心跳恢复即自动转绿。
-_AGENT_LAST_SEEN: dict[int, float] = {}
-_AGENT_ONLINE_WINDOW_S = 30
 
 
 class LocalExecClaim(BaseModel):
@@ -39,7 +36,7 @@ class LocalExecResult(BaseModel):
 @router.get("/local/exec/pending", response_model=list[LocalExecClaim])
 async def claim_pending(user: dict = Depends(get_current_user)):
     """本地执行器长轮询：原子地把 pending 置为 claimed 并返回，避免重复领取。"""
-    _AGENT_LAST_SEEN[user["id"]] = time.time()
+    await local_bridge.mark_seen(user["id"])
     rows = await execute(
         """
         UPDATE local_exec_requests SET status = 'claimed', updated_at = now()
@@ -88,9 +85,7 @@ async def submit_result(request_id: str, body: LocalExecResult, user: dict = Dep
 @router.get("/local/exec/status", response_model=dict)
 async def local_exec_status(user: dict = Depends(get_current_user)):
     """对话界面显示本机执行器是否在线（基于轮询心跳，30 秒窗口）。"""
-    seen = _AGENT_LAST_SEEN.get(user["id"], 0.0)
-    age = time.time() - seen if seen else None
     return {
-        "connected": age is not None and age < _AGENT_ONLINE_WINDOW_S,
-        "last_seen_age": int(age) if age is not None else None,
+        "connected": await local_bridge.is_online(user["id"]),
+        "last_seen_age": await local_bridge.last_seen_age(user["id"]),
     }

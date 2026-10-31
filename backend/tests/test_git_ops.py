@@ -98,3 +98,22 @@ def test_cli_help_smoke():
     )
     assert result.returncode == 0
     assert "Nova Agent headless CLI" in result.stdout
+
+@pytest.mark.asyncio
+async def test_init_repo_does_not_track_secret_files(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    (tmp_path / "credentials.json").write_text('{"token": "x"}', encoding="utf-8")
+    (tmp_path / "certs").mkdir()
+    (tmp_path / "certs" / "server.pem").write_text("KEY", encoding="utf-8")
+
+    await init_repo(tmp_path)
+    tracked = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files"],
+        capture_output=True, text=True, timeout=20,
+    ).stdout.splitlines()
+
+    assert "app.py" in tracked
+    assert ".env" not in tracked
+    assert "credentials.json" not in tracked
+    assert "certs/server.pem" not in tracked

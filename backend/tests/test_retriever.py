@@ -26,6 +26,24 @@ async def test_retrieve_fuses_dense_and_keyword():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_drops_secret_paths_from_legacy_index():
+    dense = [
+        RetrievedChunk(id="1", content="SECRET=1", path=".env", score_type="dense"),
+        RetrievedChunk(id="2", content="print(1)", path="app.py", score_type="dense"),
+    ]
+    keyword = [
+        RetrievedChunk(id="3", content='{"token": "x"}', path="credentials.json",
+                       score_type="keyword"),
+    ]
+
+    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(return_value=dense)), \
+         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(return_value=keyword)):
+        result = await retrieve("token", top_k=5, repo_ids=["repo-1"])
+
+    assert [c.path for c in result] == ["app.py"]
+
+
+@pytest.mark.asyncio
 async def test_retrieve_degrades_when_one_leg_fails():
     keyword = [_chunk("3", "session", "keyword")]
 

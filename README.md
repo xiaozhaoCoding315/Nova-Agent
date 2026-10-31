@@ -15,7 +15,7 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
-| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / 自定义兼容端点）、填写自己的 API Key 和模型；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
+| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / Anthropic / 自定义兼容端点）、填写自己的 API Key 和模型；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
 | **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（SPEC/计划/审查/Builder/任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
 | **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
@@ -33,7 +33,7 @@
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
 | **任务流水线（修 Bug 红-绿 / 变更方案→计划→验证）** | 统一「任务」列表里描述需求即自动分流：修复任务先生成失败测试复现（红），再给最小补丁跑到通过（绿）；变更走 SPEC → 计划 → 串行执行，每个任务过真实 Gate（失败摘要回喂，最多 3 次）→ 汇总统一 diff 提案 → 只读审查 → 人工批准后写入并重建索引。 |
 | **预览部署** | 管理员在工作区「预览」页签一键部署 **Python/FastAPI 或 Node** 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；超时自动下线；一键清理容器。 |
-| **MCP 外接工具** | 通过 stdio 接入本地 MCP server：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
+| **MCP 外接工具** | 通过 stdio 或 streamable HTTP 接入 MCP server（HTTP 支持静态鉴权头）：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
 
 ## 界面结构
 
@@ -85,12 +85,12 @@
 ## 核心特性
 
 ### 代码感知的混合检索
-- **符号索引**：Python 用 AST、Java/TS/JS/Go 等用结构化正则，按函数/类边界提取符号表（名称、类型、起止行号）
+- **符号索引**：Python 用 AST；TS/TSX/JS/Go/Java/Rust 用 tree-sitter 语法树（失败自动回退正则），按函数/类/接口边界提取符号表（名称、类型、起止行号）
 - **双路召回 + RRF 融合**：Qdrant 稠密向量（语义）+ PostgreSQL 全文（jieba 中文分词预处理）并行检索，单路故障自动降级
 - **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
 ### Agent 循环 + Function-Calling
-- **内置工具 + MCP**：18 个内置工具：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
+- **内置工具 + MCP**：19 个内置工具（含 `update_plan` 计划卡）：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
 - 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
@@ -172,6 +172,8 @@ Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
    `Nova-Agent-Setup-<版本>.exe`（macOS / Linux 同理）。把安装包放进服务器 `data/downloads/`
    目录，用户即可从登录页「下载桌面客户端」或 `http://<服务器>:8000/downloads` 下载；
    安装后首次启动填服务器地址即可使用。也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
+   打包版可设置 `NOVA_UPDATE_URL`（generic 更新目录，需托管 `latest.yml` 与安装包）启用自动更新；
+   代码签名/公证仍需自备证书。
 2. **PWA**：用 Chrome / Edge 打开站点，地址栏点「安装」，无需任何下载。
 
 ## 配置项（.env 关键项）
@@ -180,7 +182,8 @@ Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
 |---|---|
 | `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
 | `DASHSCOPE_MODEL` | 服务端默认模型名（默认 `qwen3.8-max`） |
-| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat` 启用降级链 |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic 原生通道（tool use + prompt caching）；`ANTHROPIC_PROMPT_CACHING=true` 默认开启 |
+| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat,anthropic` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `LLM_SERVER_FALLBACK_REGISTERED` | 共享 Key 是否对注册用户开放（默认 `false`：仅游客与管理员可用，注册用户必须自带 Key） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
@@ -270,7 +273,7 @@ backend/app/
 │   ├── jobs/          持久后台队列（claim / 心跳 / 恢复 / 取消 / 重试）
 │   ├── changes/       SPEC / Planner / 串行执行器 / Gate / 任务模板
 │   ├── deploy/        预览部署：幂等账本、容器启动、健康检查、teardown
-│   ├── mcp/           MCP stdio 客户端 / server allowlist / 工具注册
+│   ├── mcp/           MCP stdio + HTTP 客户端 / server allowlist / 工具注册
 │   ├── tasks/         红-绿修复任务引擎（复现→补丁→全量验证→审批）
 │   ├── verify/        多栈验证 profile（Python + Node，按步骤选镜像）
 │   ├── review/        只读 Reviewer（pass/warn/block + 依据）

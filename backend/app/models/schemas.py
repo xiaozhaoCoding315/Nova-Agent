@@ -552,6 +552,17 @@ class MemoryOut(BaseModel):
     daily: list[MemoryDailyOut] = Field(default_factory=list)
 
 
+class ToolMetricOut(BaseModel):
+    name: str
+    calls: int = 0
+    ok_rate: float = 0.0
+    avg_ms: Optional[float] = None
+    p95_ms: Optional[float] = None
+    policy_denials: int = 0
+    business_errors: int = 0
+    infra_errors: int = 0
+
+
 class MetricsOut(BaseModel):
     window_days: int = 7
     accepted_changes: int = 0
@@ -562,6 +573,7 @@ class MetricsOut(BaseModel):
     approval_minutes_avg: Optional[float] = None
     tokens_total: int = 0
     p95_job_seconds: Optional[float] = None
+    tool_metrics: list[ToolMetricOut] = []
     generated_at: Optional[str] = None
 
 

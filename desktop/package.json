@@ -33,7 +33,9 @@
       "icon.ico"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "icon.ico"
     },
     "nsis": {
@@ -46,17 +48,24 @@
       "artifactName": "Nova-Agent-Setup-${version}.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "icon.png",
       "category": "public.app-category.developer-tools",
       "identity": null,
       "artifactName": "Nova-Agent-${version}.${ext}"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "icon.png",
       "category": "Development",
       "artifactName": "Nova-Agent-${version}.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

@@ -84,6 +84,25 @@ async def delete_repo_points(repo_id: str) -> None:
     )
 
 
+async def delete_point_ids(point_ids: list[int]) -> int:
+    """Delete vectors by their PostgreSQL chunk ids (batched)."""
+    if not point_ids:
+        return 0
+    client = get_client()
+    from qdrant_client.models import PointIdsList
+
+    deleted = 0
+    for start in range(0, len(point_ids), 500):
+        batch = point_ids[start:start + 500]
+        await asyncio.to_thread(
+            client.delete,
+            settings.qdrant_collection,
+            points_selector=PointIdsList(points=batch),
+        )
+        deleted += len(batch)
+    return deleted
+
+
 async def count_points() -> int:
     client = get_client()
     result = await asyncio.to_thread(client.count, settings.qdrant_collection, exact=True)

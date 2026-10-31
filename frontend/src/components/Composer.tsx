@@ -3,7 +3,8 @@ import { ArrowUp, ChevronDown, Cpu, FileText, Loader2, Paperclip, Square, X } fr
 import { useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent } from 'react'
 import { ContextMeterChip } from './ContextMeterChip'
-import type { ContextMeter, FileAttachment, PermissionMode } from '../lib/types'
+import { api } from '../lib/api'
+import type { ContextMeter, FileAttachment, FileNode, PermissionMode } from '../lib/types'
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
   readonly: '计划模式',
@@ -40,6 +41,7 @@ export function Composer({
   onConfigureModel,
   onSend,
   onStop,
+  mentionRepoId,
 }: {
   disabled: boolean
   streaming: boolean
@@ -58,10 +60,61 @@ export function Composer({
   onConfigureModel: () => void
   onSend: (content: string) => void
   onStop: () => void
+  mentionRepoId?: string | null
 }) {
   const [value, setValue] = useState('')
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionLoading, setMentionLoading] = useState(false)
+  const mentionCache = useRef<Record<string, string[]>>({})
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const flattenFiles = (nodes: FileNode[]): string[] =>
+    nodes.flatMap((node) => (node.type === 'file' ? [node.path] : flattenFiles(node.children)))
+
+  const loadMentionFiles = async (repoId: string): Promise<string[]> => {
+    const cached = mentionCache.current[repoId]
+    if (cached) return cached
+    setMentionLoading(true)
+    try {
+      const files = flattenFiles(await api.repos.tree(repoId))
+      mentionCache.current[repoId] = files
+      return files
+    } catch {
+      return []
+    } finally {
+      setMentionLoading(false)
+    }
+  }
+
+  const mentionFiles = mentionRepoId ? mentionCache.current[mentionRepoId] ?? [] : []
+  const mentionMatches = mentionOpen
+    ? mentionFiles
+        .filter((path) => path.toLowerCase().includes(mentionQuery.toLowerCase()))
+        .slice(0, 8)
+    : []
+
+  const detectMention = (text: string) => {
+    const match = /(?:^|\s)@([^\s@]*)$/.exec(text)
+    if (!match || !mentionRepoId) {
+      setMentionOpen(false)
+      return
+    }
+    setMentionQuery(match[1] ?? '')
+    setMentionIndex(0)
+    setMentionOpen(true)
+    if (!mentionCache.current[mentionRepoId]) {
+      void loadMentionFiles(mentionRepoId)
+    }
+  }
+
+  const applyMention = (path: string) => {
+    setValue((current) => current.replace(/@([^\s@]*)$/, `@${path} `))
+    setMentionOpen(false)
+    requestAnimationFrame(() => ref.current?.focus())
+  }
 
   const submit = () => {
     const content = value.trim()
@@ -72,6 +125,27 @@ export function Composer({
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIndex((index) => (index + 1) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIndex((index) => (index - 1 + mentionMatches.length) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'Escape') {
+        setMentionOpen(false)
+        return
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        applyMention(mentionMatches[mentionIndex] ?? mentionMatches[0])
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       submit()
@@ -125,11 +199,42 @@ export function Composer({
               ))}
             </div>
           )}
+          {mentionOpen && mentionRepoId && (
+            <div className="absolute bottom-full left-3 z-20 mb-1.5 w-[min(440px,92%)] overflow-hidden rounded-xl border border-edge bg-panel shadow-xl">
+              <p className="border-b border-edge/60 px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-dim">
+                {mentionLoading ? '加载文件…' : '插入仓库文件'}
+              </p>
+              {mentionMatches.length === 0 && !mentionLoading ? (
+                <p className="px-3 py-2 text-[11.5px] text-dim">没有匹配文件</p>
+              ) : (
+                mentionMatches.map((path, index) => (
+                  <button
+                    key={path}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      applyMention(path)
+                    }}
+                    className={clsx(
+                      'block w-full truncate px-3 py-1.5 text-left font-mono text-[11px]',
+                      index === mentionIndex ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised',
+                    )}
+                    title={path}
+                  >
+                    {path}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
           <textarea
             ref={ref}
             rows={Math.min(7, value.split('\n').length)}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value)
+              detectMention(e.target.value)
+            }}
             onKeyDown={onKeyDown}
             disabled={disabled}
             placeholder="问代码、贴报错，或让 Nova 修改并真实运行验证…"
