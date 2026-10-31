@@ -22,13 +22,17 @@ def test_connection_urls():
 
 
 def test_llm_priority_parsing():
-    s = _fresh(llm_model_priority="longcat,deepseek")
-    assert s.llm_priority_list == ["longcat", "deepseek"]
+    s = _fresh(llm_model_priority="zhipu,deepseek")
+    assert s.llm_priority_list == ["zhipu", "deepseek"]
 
 
 def test_llm_configured_flag():
-    assert not _fresh(deepseek_api_key="", dashscope_api_key="", longcat_api_key="").llm_configured
-    assert _fresh(deepseek_api_key="sk-x", dashscope_api_key="", longcat_api_key="").llm_configured
+    assert not _fresh(
+        deepseek_api_key="", dashscope_api_key="", zhipu_api_key="", anthropic_api_key="",
+    ).llm_configured
+    assert _fresh(
+        deepseek_api_key="", dashscope_api_key="", zhipu_api_key="sk-x", anthropic_api_key="",
+    ).llm_configured
 
 
 def test_quota_defaults():

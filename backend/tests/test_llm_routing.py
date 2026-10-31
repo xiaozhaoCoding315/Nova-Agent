@@ -12,7 +12,6 @@ def providers(monkeypatch):
     monkeypatch.setattr(settings, "dashscope_api_key", "sk-test")
     monkeypatch.setattr(settings, "dashscope_model", "qwen3.8-max")
     monkeypatch.setattr(settings, "deepseek_api_key", "")
-    monkeypatch.setattr(settings, "longcat_api_key", "")
     monkeypatch.setattr(settings, "llm_route_plan", "qwen3.8-max")
     monkeypatch.setattr(settings, "llm_route_utility", "qwen-turbo")
 

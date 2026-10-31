@@ -39,8 +39,8 @@ async def test_enqueue_requires_valid_kind_and_change(monkeypatch):
 def test_window_boundaries():
     import datetime as dt
     monkey = pytest.MonkeyPatch()
-    monkey.setattr(settings, "night_window_start", 0)
-    monkey.setattr(settings, "night_window_end", 8)
+    monkey.setattr(night, "NIGHT_WINDOW_START", 0)
+    monkey.setattr(night, "NIGHT_WINDOW_END", 8)
     try:
         assert night._in_window(dt.datetime(2026, 10, 24, 0, 30)) is True
         assert night._in_window(dt.datetime(2026, 10, 24, 7, 59)) is True
@@ -60,8 +60,8 @@ async def test_budget_exhausted_respects_threshold(monkeypatch):
 
     monkeypatch.setattr(night, "query", fake_query)
     monkeypatch.setattr(night, "tokens_used_today", fake_tokens)
-    monkeypatch.setattr(night.settings, "demo_daily_tokens", 100)
-    monkeypatch.setattr(night.settings, "night_budget_reserve", 0.2)
+    monkeypatch.setattr(settings, "demo_daily_tokens", 100)
+    monkeypatch.setattr(night, "NIGHT_BUDGET_RESERVE", 0.2)
     # 95 >= 100 * 0.8 → stop dispatching
     assert await night._budget_exhausted(1) is True
 

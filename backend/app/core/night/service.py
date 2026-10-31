@@ -11,13 +11,20 @@ from datetime import datetime
 
 import structlog
 
-from app.config import settings
 from app.core.security.limits import daily_token_budget, tokens_used_today
 from app.db import execute, query
 
 logger = structlog.get_logger()
 
 KINDS = ("change_execute", "task", "chat", "builder")
+
+# The night queue is scheduled for removal (Task 7); its window/budget knobs
+# no longer live in Settings, so keep the current defaults locally until then.
+NIGHT_QUEUE_ENABLED = True
+NIGHT_WINDOW_START = 0
+NIGHT_WINDOW_END = 8
+NIGHT_MAX_PER_HOUR = 3
+NIGHT_BUDGET_RESERVE = 0.2
 
 
 async def enqueue_item(
@@ -131,7 +138,7 @@ async def cancel_item(item_id: str, user_id: int) -> bool:
 
 def _in_window(now: datetime | None = None) -> bool:
     now = now or datetime.now()
-    start, end = settings.night_window_start, settings.night_window_end
+    start, end = NIGHT_WINDOW_START, NIGHT_WINDOW_END
     if start <= end:
         return start <= now.hour < end
     return now.hour >= start or now.hour < end  # window crosses midnight
@@ -142,7 +149,7 @@ async def _budget_exhausted(user_id: int) -> bool:
     if budget <= 0:
         return False  # unlimited
     used = await tokens_used_today(user_id)
-    return used >= budget * (1.0 - settings.night_budget_reserve)
+    return used >= budget * (1.0 - NIGHT_BUDGET_RESERVE)
 
 
 async def _user_budget(user_id: int) -> int:
@@ -218,7 +225,7 @@ async def _dispatch_pending() -> int:
     rows = await query(
         "SELECT id, user_id, kind, payload FROM night_queue "
         "WHERE status = 'pending' ORDER BY created_at ASC LIMIT %s",
-        (settings.night_max_per_hour,),
+        (NIGHT_MAX_PER_HOUR,),
     )
     for item_id, user_id, kind, payload in rows:
         payload = payload or {}
@@ -332,7 +339,7 @@ async def _dispatch_pending() -> int:
 
 async def run_maintenance() -> dict:
     """Hourly entrypoint from the cleanup loop."""
-    if not settings.night_queue_enabled:
+    if not NIGHT_QUEUE_ENABLED:
         return {"dispatched": 0, "skipped": "disabled"}
     if not _in_window():
         return {"dispatched": 0, "skipped": "outside_window"}

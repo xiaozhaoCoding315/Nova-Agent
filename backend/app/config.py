@@ -5,17 +5,17 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # ---------- LLM ----------
-    llm_model_priority: str = "dashscope,deepseek,longcat"
-    longcat_api_key: str = ""
-    longcat_base_url: str = "https://api.longcat.chat/openai/v1"
-    longcat_model: str = "LongCat-2.0"
+    llm_model_priority: str = "zhipu,dashscope,deepseek,anthropic"
+    zhipu_api_key: str = ""
+    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    zhipu_model: str = "glm-4.7-flash"
     deepseek_api_key: str = ""
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_model: str = "qwen3.8-max"   # 阿里云百炼（DashScope）模型名
+    dashscope_model: str = "qwen3.8-max"
     anthropic_api_key: str = ""
     anthropic_base_url: str = "https://api.anthropic.com"
-    anthropic_model: str = "claude-sonnet-4-5"
+    anthropic_model: str = "claude-sonnet-5-5"
     anthropic_max_tokens: int = 8192
     anthropic_prompt_caching: bool = True
     anthropic_context_window: int = 200_000
@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     @property
     def llm_configured(self) -> bool:
         return bool(
-            self.deepseek_api_key or self.dashscope_api_key
-            or self.longcat_api_key or self.anthropic_api_key
+            self.zhipu_api_key or self.deepseek_api_key
+            or self.dashscope_api_key or self.anthropic_api_key
         )
 
     # ---------- Embedding ----------
@@ -152,13 +152,6 @@ class Settings(BaseSettings):
     # ---------- Skills ----------
     skills_enabled: bool = True
     skills_dir: str = "data/skills"   # <dir>/<skill-name>/SKILL.md, operator-provided
-
-    # ---------- Night queue ----------
-    night_queue_enabled: bool = True
-    night_window_start: int = 0       # local server hour, inclusive
-    night_window_end: int = 8         # exclusive; items run serially inside the window
-    night_max_per_hour: int = 3       # items dispatched per maintenance tick
-    night_budget_reserve: float = 0.2 # stop dispatching above 80% of the daily token budget
 
     # ---------- Tool hooks / policy ----------
     tool_pre_hook: str = ""       # executable command; JSON payload on stdin; exit 2 blocks

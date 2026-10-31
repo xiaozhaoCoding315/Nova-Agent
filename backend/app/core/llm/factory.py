@@ -99,8 +99,6 @@ def server_default_model() -> str | None:
     """Model the shared server key would use, for display and fallbacks."""
     for name in settings.llm_priority_list:
         name = name.lower()
-        if name == "longcat" and settings.longcat_api_key:
-            return settings.longcat_model
         if name == "deepseek" and settings.deepseek_api_key:
             return "deepseek-chat"
         if name == "dashscope" and settings.dashscope_api_key:
@@ -120,13 +118,7 @@ def _server_llm(model_override: str | None = None) -> LLMProvider:
     providers = []
     for name in settings.llm_priority_list:
         name = name.lower()
-        if name == "longcat" and settings.longcat_api_key:
-            if model_override:
-                return OpenAICompatibleLLM(
-                    settings.longcat_api_key, settings.longcat_base_url, model_override)
-            providers.append(OpenAICompatibleLLM(
-                settings.longcat_api_key, settings.longcat_base_url, settings.longcat_model))
-        elif name == "deepseek" and settings.deepseek_api_key:
+        if name == "deepseek" and settings.deepseek_api_key:
             if model_override:
                 return OpenAICompatibleLLM(
                     settings.deepseek_api_key,

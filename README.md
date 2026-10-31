@@ -15,7 +15,7 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
-| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（DashScope / DeepSeek / LongCat / OpenAI / Anthropic / 自定义兼容端点）、填写自己的 API Key 和模型；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
+| **多用户模型接入（BYOK）** | 每个用户在设置页选择服务商（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / 自定义兼容端点等 16 家厂商）、填写自己的 API Key 和模型；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换模型。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
 | **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（SPEC/计划/审查/Builder/任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
 | **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
@@ -123,7 +123,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | 服务端默认阿里云百炼 `qwen3.8-max`（可配置 deepseek/longcat 降级链）；用户可自带任意 OpenAI 兼容 Key 与模型 |
+| LLM | 服务端默认智谱 GLM-4.7-Flash（免费），可切换 16 家厂商；用户可自带任意 OpenAI 兼容 Key 与模型 |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -180,10 +180,10 @@ Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
 
 | 变量 | 说明 |
 |---|---|
-| `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
-| `DASHSCOPE_MODEL` | 服务端默认模型名（默认 `qwen3.8-max`） |
+| `ZHIPU_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
+| `ZHIPU_MODEL` / `DASHSCOPE_MODEL` | 服务端默认模型名（智谱默认 `glm-4.7-flash`；DashScope 默认 `qwen3.8-max`） |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic 原生通道（tool use + prompt caching）；`ANTHROPIC_PROMPT_CACHING=true` 默认开启 |
-| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `dashscope`；可写 `dashscope,deepseek,longcat,anthropic` 启用降级链 |
+| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `zhipu,dashscope,deepseek,anthropic` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `LLM_SERVER_FALLBACK_REGISTERED` | 共享 Key 是否对注册用户开放（默认 `false`：仅游客与管理员可用，注册用户必须自带 Key） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |

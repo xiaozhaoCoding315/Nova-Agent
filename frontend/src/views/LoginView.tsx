@@ -712,7 +712,7 @@ export function LoginView() {
         </section>
 
         <footer className="mt-24 border-t border-edge/60 py-8 text-center text-[10.5px] leading-relaxed text-dim/50">
-          游客空间到期自动清理，注册可保留数据 · 支持百炼 / DeepSeek / LongCat / OpenAI 兼容端点
+          游客空间到期自动清理，注册可保留数据 · 支持智谱 / 百炼 / DeepSeek / OpenAI 兼容端点
           <br />Nova Agent · 可自托管的工程 Agent · {new Date().getFullYear()}
         </footer>
       </div>

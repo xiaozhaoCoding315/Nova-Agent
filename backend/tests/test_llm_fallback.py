@@ -16,7 +16,7 @@ class FakeLLM(LLMProvider):
 
 @pytest.mark.asyncio
 async def test_fallback_tries_next_on_failure():
-    primary = FakeLLM("longcat", should_fail=True)
+    primary = FakeLLM("zhipu", should_fail=True)
     secondary = FakeLLM("deepseek")
     fb = FallbackLLM([primary, secondary])
 
@@ -28,14 +28,14 @@ async def test_fallback_tries_next_on_failure():
 
 @pytest.mark.asyncio
 async def test_fallback_uses_first_successful():
-    primary = FakeLLM("longcat")
+    primary = FakeLLM("zhipu")
     secondary = FakeLLM("deepseek")
     fb = FallbackLLM([primary, secondary])
 
     tokens = []
     async for token in fb.astream([{"role": "user", "content": "hi"}]):
         tokens.append(token)
-    assert "response from longcat" in tokens
+    assert "response from zhipu" in tokens
 
 
 class ToolFake(FakeLLM):
