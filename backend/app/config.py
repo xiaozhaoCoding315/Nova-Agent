@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -175,6 +178,20 @@ class Settings(BaseSettings):
     job_stale_seconds: int = 120        # requeue running jobs whose heartbeat is older
     job_runner_enabled: bool = True
 
+    # ---------- Local runtime ----------
+    # server = 现有云端行为；local = 本机单用户运行时。
+    nova_mode: Literal["server", "local"] = "server"
+    nova_data_dir: str = ""
+    local_user: str = "local"
+    local_tmp_dir: str = ""
+    local_pg_backend: Literal["pgserver", "pg_ctl"] = "pgserver"
+    local_pg_bin_dir: str = ""
+    local_pg_port: int = 0
+    local_allow_install_deps: bool = False
+    postgres_dsn_override: str = ""
+    embeddings_enabled: bool = True
+    job_max_concurrency: int = 0     # 0 = 沿用各 kind 自己的并发上限
+
     # ---------- App ----------
     app_env: str = "dev"
     debug: bool = False
@@ -187,6 +204,8 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
+        if self.postgres_dsn_override:
+            return self.postgres_dsn_override
         return (f"postgresql://{self.postgres_user}:{self.postgres_password}"
                 f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
                 f"?connect_timeout=3")
@@ -194,6 +213,8 @@ class Settings(BaseSettings):
     @property
     def postgres_admin_dsn(self) -> str:
         """DSN against the maintenance DB, used to CREATE DATABASE on first run."""
+        if self.postgres_dsn_override:
+            return self._dsn_with_db(self.postgres_dsn_override, "postgres")
         return (f"postgresql://{self.postgres_user}:{self.postgres_password}"
                 f"@{self.postgres_host}:{self.postgres_port}/postgres"
                 f"?connect_timeout=3")
@@ -209,6 +230,45 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_local(self) -> bool:
+        return self.nova_mode == "local"
+
+    @property
+    def use_host_executor(self) -> bool:
+        """Local mode runs commands on the host; cloud mode keeps Docker."""
+        return self.is_local
+
+    @property
+    def use_embeddings(self) -> bool:
+        """Local v1 has no Qdrant/embedding; cloud keeps dense retrieval."""
+        return self.embeddings_enabled and not self.is_local
+
+    @property
+    def effective_job_max_concurrency(self) -> int:
+        """0 = no global cap (existing per-kind limits); local = single worker."""
+        return 1 if self.is_local else self.job_max_concurrency
+
+    @property
+    def data_root(self) -> Path:
+        if not self.nova_data_dir:
+            raise RuntimeError("NOVA_DATA_DIR is required when NOVA_MODE=local")
+        return Path(self.nova_data_dir).expanduser().resolve()
+
+    @property
+    def local_tmp_root(self) -> Path:
+        if self.local_tmp_dir:
+            return Path(self.local_tmp_dir).expanduser().resolve()
+        return self.data_root / "tmp"
+
+    @staticmethod
+    def _dsn_with_db(dsn: str, dbname: str) -> str:
+        from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+        params = conninfo_to_dict(dsn)
+        params["dbname"] = dbname
+        return make_conninfo(**params)
 
 
 settings = Settings()
