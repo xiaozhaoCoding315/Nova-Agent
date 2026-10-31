@@ -183,14 +183,15 @@ async def test_llm_settings(
     body: LlmSettingsUpdate,
     user: dict = Depends(get_current_user),
 ):
-    existing = await get_user_config(user["id"], body.provider)
-    api_key = (body.api_key or "").strip() or (existing["api_key"] if existing else "")
-    if not api_key and body.provider != "ollama":
-        raise HTTPException(status_code=400, detail="请先填写 API Key")
-
     spec = get_provider(body.provider)
     if not spec:
         raise HTTPException(status_code=400, detail="不支持的模型服务商")
+
+    existing = await get_user_config(user["id"], spec.id)
+    api_key = (body.api_key or "").strip() or (existing["api_key"] if existing else "")
+    if not api_key and spec.id != "ollama":
+        raise HTTPException(status_code=400, detail="请先填写 API Key")
+
     try:
         base_url = resolve_base_url(spec, body.base_url)
     except ValueError as exc:
@@ -222,7 +223,10 @@ async def test_llm_settings(
         )
     except Exception as exc:  # noqa: BLE001
         elapsed = int((time.perf_counter() - started) * 1000)
+        # Replace the literal key first: redact_text only knows key-shaped
+        # patterns, so a provider echoing an opaque key would otherwise leak.
+        detail = str(exc).replace(api_key, "[REDACTED]") if api_key else str(exc)
         return LlmTestOut(
             ok=False, model=model, latency_ms=elapsed,
-            message=redact_text(str(exc))[:300],
+            message=redact_text(detail)[:300],
         )

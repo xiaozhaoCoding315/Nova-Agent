@@ -1594,6 +1594,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/llm/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credentials */
+        get: operations["list_credentials_api_v1_settings_llm_credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/credentials/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Credential */
+        put: operations["save_credential_api_v1_settings_llm_credentials__provider__put"];
+        post?: never;
+        /** Delete Credential */
+        delete: operations["delete_credential_api_v1_settings_llm_credentials__provider__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/credentials/{provider}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make Default */
+        post: operations["make_default_api_v1_settings_llm_credentials__provider__default_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_v1_settings_llm_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm/test": {
         parameters: {
             query?: never;
@@ -2386,6 +2455,7 @@ export interface components {
             content: string;
             /** File Ids */
             file_ids?: string[];
+            llm_overrides?: components["schemas"]["LlmOverrides"] | null;
             /** Model */
             model?: string | null;
             /** Permission Mode */
@@ -2937,16 +3007,144 @@ export interface components {
             /** User Id */
             user_id?: number | null;
         };
+        /** LlmCredentialOut */
+        LlmCredentialOut: {
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /** Context Window */
+            context_window?: number | null;
+            /**
+             * Has Key
+             * @default false
+             */
+            has_key: boolean;
+            /**
+             * Icon
+             * @default custom
+             */
+            icon: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Key Hint */
+            key_hint?: string | null;
+            /** Label */
+            label: string;
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** LlmCredentialUpdate */
+        LlmCredentialUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Context Window */
+            context_window?: number | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Model */
+            model: string;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+        };
+        /** LlmOverrides */
+        LlmOverrides: {
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Tokens */
+            max_tokens?: number | null;
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Reasoning Effort */
+            reasoning_effort?: ("" | "low" | "medium" | "high") | null;
+            /** Temperature */
+            temperature?: number | null;
+        };
         /** LlmProviderOut */
         LlmProviderOut: {
-            /** Base Url */
+            /**
+             * Base Url
+             * @default
+             */
             base_url: string;
+            /**
+             * Base Url Locked
+             * @default true
+             */
+            base_url_locked: boolean;
+            /**
+             * Context Window
+             * @default 131072
+             */
+            context_window: number;
+            /**
+             * Docs Url
+             * @default
+             */
+            docs_url: string;
+            /**
+             * Env Key
+             * @default
+             */
+            env_key: string;
+            /**
+             * Free Tier
+             * @default false
+             */
+            free_tier: boolean;
+            /**
+             * Group
+             * @default domestic
+             */
+            group: string;
+            /**
+             * Icon
+             * @default
+             */
+            icon: string;
             /** Id */
             id: string;
+            /**
+             * Kind
+             * @default openai
+             */
+            kind: string;
             /** Label */
             label: string;
             /** Models */
             models?: string[];
+            /**
+             * Supports Reasoning
+             * @default false
+             */
+            supports_reasoning: boolean;
+            /**
+             * Supports Temperature
+             * @default true
+             */
+            supports_temperature: boolean;
+            /**
+             * Supports Tools
+             * @default true
+             */
+            supports_tools: boolean;
         };
         /** LlmSettingsOut */
         LlmSettingsOut: {
@@ -2961,6 +3159,8 @@ export interface components {
             configured: boolean;
             /** Context Window */
             context_window?: number | null;
+            /** Credentials */
+            credentials?: components["schemas"]["LlmCredentialOut"][];
             /**
              * Has Key
              * @default false
@@ -2994,6 +3194,11 @@ export interface components {
             base_url?: string | null;
             /** Context Window */
             context_window?: number | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
             /** Model */
             model: string;
             /** Provider */
@@ -3449,6 +3654,7 @@ export interface components {
         };
         /** SessionCreateRequest */
         SessionCreateRequest: {
+            llm_overrides?: components["schemas"]["LlmOverrides"] | null;
             /** Repo Ids */
             repo_ids?: string[];
         };
@@ -3458,6 +3664,10 @@ export interface components {
             created_at?: string | null;
             /** Id */
             id: string;
+            /** Llm Overrides */
+            llm_overrides?: {
+                [key: string]: unknown;
+            };
             /**
              * Message Count
              * @default 0
@@ -6993,6 +7203,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmSettingsOut"];
+                };
+            };
+        };
+    };
+    list_credentials_api_v1_settings_llm_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmCredentialOut"][];
+                };
+            };
+        };
+    };
+    save_credential_api_v1_settings_llm_credentials__provider__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmCredentialUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_api_v1_settings_llm_credentials__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    make_default_api_v1_settings_llm_credentials__provider__default_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_v1_settings_llm_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProviderOut"][];
                 };
             };
         };

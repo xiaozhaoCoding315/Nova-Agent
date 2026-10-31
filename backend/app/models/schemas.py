@@ -4,6 +4,21 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+class _ContextWindowBounds(BaseModel):
+    """Bounds shared by every schema with an optional custom context window.
+
+    ``0``/``None`` clears the override (follow the deployment default); any
+    other value must match the range accepted by ``user_settings``.
+    """
+
+    @field_validator("context_window", check_fields=False)
+    @classmethod
+    def _check_context_window(cls, value: Optional[int]) -> Optional[int]:
+        if value not in (None, 0) and value < 2048:
+            raise ValueError("上下文窗口需在 2048 - 10,000,000 tokens 之间")
+        return value
+
+
 # ---------- Auth ----------
 
 class LoginRequest(BaseModel):
@@ -232,21 +247,13 @@ class FileListOut(BaseModel):
 
 # ---------- Chat ----------
 
-class LlmOverrides(BaseModel):
+class LlmOverrides(_ContextWindowBounds):
     provider: Optional[str] = Field(default=None, max_length=32)
     model: Optional[str] = Field(default=None, max_length=120)
     reasoning_effort: Optional[Literal["", "low", "medium", "high"]] = None
     context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
     temperature: Optional[float] = Field(default=None, ge=0, le=2)
     max_tokens: Optional[int] = Field(default=None, ge=1, le=200_000)
-
-    @field_validator("context_window")
-    @classmethod
-    def _check_context_window(cls, value: Optional[int]) -> Optional[int]:
-        # 0/None = 清除自定义窗口；其余值需与 user_settings 的下限一致。
-        if value not in (None, 0) and value < 2048:
-            raise ValueError("上下文窗口需在 2048 - 10,000,000 tokens 之间")
-        return value
 
 
 class SessionOut(BaseModel):
@@ -455,7 +462,7 @@ class LlmCredentialOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class LlmCredentialUpdate(BaseModel):
+class LlmCredentialUpdate(_ContextWindowBounds):
     model: str = Field(min_length=1, max_length=120)
     base_url: Optional[str] = Field(default=None, max_length=500)
     api_key: Optional[str] = Field(default=None, max_length=4000)
@@ -481,7 +488,7 @@ class LlmSettingsOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class LlmSettingsUpdate(BaseModel):
+class LlmSettingsUpdate(_ContextWindowBounds):
     provider: str = Field(min_length=1, max_length=32)
     model: str = Field(min_length=1, max_length=120)
     base_url: Optional[str] = Field(default=None, max_length=500)
