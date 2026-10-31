@@ -359,7 +359,7 @@ python nova.py agent --dir ~/my-project   # 本地执行器：Agent 可派发命
 ```
 
 - 生成项目想落到本地：网页里批准写入后点项目面板的下载图标，或 `nova.py export --repo <名字> --out 项目.zip`
-- 对话里的 `run_command` 工具在仓库上执行真实 shell（脚手架 / git 提交 / 移动文件），改动持久化在仓库中，`pull` 即可取回
+- 对话里的 `run_command` 工具在仓库上执行真实 shell（脚手架 / git 提交 / 移动文件），改动持久化在仓库中，可在项目面板下载或用 `nova.py export` 取回
 - **本地执行器**：挂着 `nova.py agent` 后，对话里的 `local_run_command` 工具会把命令派发到你的本机执行
   （构建、装依赖、查系统环境……）。每条命令默认需要在终端按 `y` 确认（`--yes` 跳过），命令只能在
   `--dir` 根目录内运行；只读权限模式下不可用，全部记录审计
