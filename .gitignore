@@ -31,6 +31,10 @@ docs/superpowers/
 backend/data/
 resume.html
 
+# Local runtime config/data accidentally created inside the repo
+backend/nova-config.json
+backend/local-data/
+
 # Operator-local MCP server config
 backend/mcp_servers.json
 
