@@ -1,0 +1,2 @@
+# Local runtime only. Never installed by the cloud image.
+pgserver==0.1.4
