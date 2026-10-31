@@ -3,7 +3,14 @@
 Backend A (pgserver) is a pip package with bundled binaries. Backend B
 (pg_ctl) manages official PostgreSQL binaries and is the packaging fallback.
 The launcher uses one of them; both expose the same PgInfo.
+
+Termination is verified from ``postmaster.pid`` instead of trusting the
+backend: pgserver 0.1.4's ``PostgresServer._cleanup()`` silently returns when
+its ``.handle_pids.json`` still lists a crashed process, so every kill path
+here proves the PID and data directory before taskkill and only reports
+success once the process is gone.
 """
+import json
 import os
 import secrets
 import shutil
@@ -14,13 +21,17 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
 
 import psycopg
 import structlog
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 logger = structlog.get_logger()
+
+# How long to wait for a force-killed postmaster to disappear.
+_KILL_WAIT_SECONDS = 5.0
+_POLL_SECONDS = 0.1
+_WINDOWS_KERNEL32 = None
 
 
 @dataclass(frozen=True)
@@ -39,20 +50,47 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _windows_kernel32():
+    global _WINDOWS_KERNEL32
+    if _WINDOWS_KERNEL32 is None:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        ]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        _WINDOWS_KERNEL32 = kernel32
+    return _WINDOWS_KERNEL32
+
+
 def pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
     if os.name == "nt":
         import ctypes
+        from ctypes import wintypes
 
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        kernel32 = _windows_kernel32()
+        handle = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, wintypes.BOOL(False), pid
+        )
         if not handle:
             return False
         try:
-            code = ctypes.c_ulong()
+            code = wintypes.DWORD()
             ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
             return bool(ok) and code.value == STILL_ACTIVE
         finally:
@@ -66,7 +104,8 @@ def pid_alive(pid: int) -> bool:
         return True
 
 
-def _pid_is_postgres(pid: int) -> bool:
+def _pid_is_postgres(pid: int) -> bool | None:
+    """True/False when known, None when the process image cannot be checked."""
     if os.name == "nt":
         try:
             result = subprocess.run(
@@ -74,6 +113,11 @@ def _pid_is_postgres(pid: int) -> bool:
                 capture_output=True, text=True, timeout=10,
             )
         except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        if '"' not in result.stdout:
+            # tasklist's "no tasks match" info line, not a process row.
             return False
         return "postgres.exe" in result.stdout.lower()
     try:
@@ -82,50 +126,252 @@ def _pid_is_postgres(pid: int) -> bool:
             capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return None
+    if result.returncode != 0:
+        return None
     return "postgres" in result.stdout.lower()
 
 
-def _kill_tree_sync(pid: int) -> None:
+def _windows_cmdline(pid: int) -> str | None:
+    """Read a Windows process command line via wmic or PowerShell CIM."""
+    queries = (
+        ["wmic", "process", "where", f"processid={pid}",
+         "get", "commandline", "/value"],
+        [
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            f'(Get-CimInstance Win32_Process -Filter "ProcessId={pid}").CommandLine',
+        ],
+    )
+    for query in queries:
+        try:
+            result = subprocess.run(
+                query, capture_output=True, text=True, timeout=15,
+            )
+        except FileNotFoundError:
+            continue
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            continue
+        if query[0] == "wmic":
+            for line in result.stdout.splitlines():
+                if line.lower().startswith("commandline="):
+                    value = line.split("=", 1)[1].strip()
+                    if value:
+                        return value
+        else:
+            value = result.stdout.strip()
+            if value:
+                return value
+    return None
+
+
+def _process_cmdline(pid: int) -> str | None:
+    """Return the command line of ``pid``, or None when it cannot be read."""
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
-            capture_output=True, timeout=20,
+        return _windows_cmdline(pid)
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "args="],
+            capture_output=True, text=True, timeout=10,
         )
-        return
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _normalized_path(path: Path | str) -> str:
+    text = str(Path(path).expanduser().resolve()).rstrip("\\/")
+    return os.path.normcase(text)
+
+
+def _same_path(left: Path | str, right: Path | str) -> bool:
+    left_path, right_path = Path(left), Path(right)
+    if left_path == right_path:
+        return True
+    try:
+        return left_path.resolve() == right_path.resolve()
+    except OSError:
+        return False
+
+
+def _cmdline_mentions_path(cmdline: str, data_dir: Path) -> bool:
+    haystack = os.path.normcase(cmdline)
+    raw = str(data_dir).rstrip("\\/")
+    candidates = set()
+    if raw and os.path.isabs(raw):
+        candidates.add(os.path.normcase(raw))
+    try:
+        candidates.add(_normalized_path(data_dir))
+    except OSError:
+        pass
+    return any(candidate and candidate in haystack for candidate in candidates)
+
+
+def _pid_matches_data_dir(pid: int, data_dir: Path) -> bool:
+    """Prove ``pid`` is the PostgreSQL postmaster serving ``data_dir``.
+
+    Fails closed: when the command line cannot be read the identity is
+    unknown and the caller must not kill the process.
+    """
+    if not pid_alive(pid) or _pid_is_postgres(pid) is not True:
+        return False
+    _, recorded = _read_pid_file(data_dir)
+    if recorded is not None and not _same_path(recorded, data_dir):
+        return False
+    cmdline = _process_cmdline(pid)
+    if cmdline is None:
+        return False
+    return _cmdline_mentions_path(cmdline, data_dir)
+
+
+def _kill_tree_sync(pid: int) -> bool:
+    """Kill ``pid`` and its children; return whether the command succeeded."""
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True, timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return result.returncode == 0
     try:
         os.killpg(os.getpgid(pid), signal.SIGKILL)
+        return True
     except (ProcessLookupError, PermissionError):
-        pass
+        return False
+
+
+def _wait_pid_exit(pid: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not pid_alive(pid):
+            return True
+        time.sleep(_POLL_SECONDS)
+    return not pid_alive(pid)
+
+
+def _read_pid_file(data_dir: Path) -> tuple[int | None, Path | None]:
+    """Parse the PID and recorded data directory from ``postmaster.pid``."""
+    try:
+        lines = (data_dir / "postmaster.pid").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, None
+    try:
+        pid = int(lines[0].strip())
+    except (ValueError, IndexError):
+        pid = None
+    recorded = Path(lines[1].strip()) if len(lines) > 1 and lines[1].strip() else None
+    return pid, recorded
 
 
 def _read_pid(data_dir: Path) -> int | None:
+    return _read_pid_file(data_dir)[0]
+
+
+def _log_tail(path: Path, *, lines: int = 20, max_chars: int = 2000) -> str:
     try:
-        first = (data_dir / "postmaster.pid").read_text(encoding="utf-8").splitlines()[0]
-        return int(first.strip())
-    except (OSError, ValueError, IndexError):
-        return None
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "<no log>"
+    return _tail_text(text, lines=lines, max_chars=max_chars)
+
+
+def _tail_text(
+    value: bytes | str | None, *, lines: int = 20, max_chars: int = 2000
+) -> str:
+    if not value:
+        return "<no output>"
+    text = value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+    tail = "\n".join(text.splitlines()[-lines:])
+    return tail[-max_chars:] or "<no output>"
+
+
+def _prune_pgserver_handles(data_dir: Path, *, remove_pid: int | None = None) -> None:
+    """Drop dead (and optionally our own) PIDs from pgserver's handle list.
+
+    pgserver only stops the server when ``.handle_pids.json`` is exactly
+    ``[os.getpid()]``; a PID left behind by a hard-killed app makes every
+    later ``cleanup()`` a silent no-op.
+    """
+    path = data_dir / ".handle_pids.json"
+    if not path.exists():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise ValueError("handle list is not a list")
+    except (OSError, ValueError):
+        path.unlink(missing_ok=True)
+        return
+    remaining = [
+        value
+        for value in raw
+        if isinstance(value, int) and value != remove_pid and pid_alive(value)
+    ]
+    try:
+        if remaining:
+            path.write_text(json.dumps(remaining), encoding="utf-8")
+        else:
+            path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("local_pg_handle_prune_failed", path=str(path))
 
 
 def cleanup_stale(data_dir: Path) -> None:
-    """Recover from a hard crash: stop an orphan PG, remove stale pid."""
+    """Recover from a hard crash: stop a verified orphan PG, remove stale pid.
+
+    Refuses to kill or unlink when a live PID cannot be proven to be the
+    PostgreSQL postmaster for ``data_dir``.
+    """
     pid_file = data_dir / "postmaster.pid"
     if not pid_file.exists():
         return
     pid = _read_pid(data_dir)
-    if pid and pid_alive(pid) and _pid_is_postgres(pid):
-        logger.warning("local_pg_orphan_stop", pid=pid)
-        _kill_tree_sync(pid)
-        for _ in range(50):
-            if not pid_alive(pid):
-                break
-            time.sleep(0.1)
+    if pid is None or not pid_alive(pid):
+        pid_file.unlink(missing_ok=True)
+        return
+    is_postgres = _pid_is_postgres(pid)
+    if is_postgres is False:
+        pid_file.unlink(missing_ok=True)
+        return
+    if is_postgres is None:
+        raise RuntimeError(
+            f"refusing to recover {data_dir}: cannot verify whether live PID "
+            f"{pid} is PostgreSQL; stop it manually or remove postmaster.pid "
+            "after confirming it is stale"
+        )
+    if not _pid_matches_data_dir(pid, data_dir):
+        raise RuntimeError(
+            f"refusing to recover {data_dir}: live PostgreSQL PID {pid} is not "
+            "verifiably the postmaster for this data directory; stop it manually "
+            "or remove postmaster.pid after confirming it is stale"
+        )
+    logger.warning("local_pg_orphan_stop", pid=pid)
+    _kill_tree_sync(pid)
+    if not _wait_pid_exit(pid, _KILL_WAIT_SECONDS):
+        raise RuntimeError(
+            f"stale PostgreSQL postmaster (PID {pid}) did not exit after kill; "
+            f"refusing to remove {pid_file}"
+        )
     pid_file.unlink(missing_ok=True)
 
 
-def ensure_database_sync(admin_dsn: str, dbname: str) -> None:
-    if not dbname.replace("_", "").isalnum():
+def _validate_dbname(dbname: str) -> None:
+    if (
+        not dbname
+        or not dbname.isascii()
+        or not dbname.replace("_", "").isalnum()
+    ):
         raise ValueError(f"unsafe database name: {dbname!r}")
+
+
+def ensure_database_sync(admin_dsn: str, dbname: str) -> None:
+    _validate_dbname(dbname)
     with psycopg.connect(admin_dsn, autocommit=True, connect_timeout=5) as conn:
         exists = conn.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (dbname,)
@@ -145,10 +391,15 @@ def _wait_ready(dsn: str, timeout: int = 30) -> None:
         except Exception as exc:  # noqa: BLE001
             last = exc
             time.sleep(0.25)
-    raise RuntimeError(f"PostgreSQL did not become ready: {type(last).__name__}: {last}")
+    # Only the exception type is reported: the message may contain connection
+    # details and must never echo the generated password.
+    raise RuntimeError(
+        f"PostgreSQL did not become ready: {type(last).__name__}"
+    ) from None
 
 
 def pgserver_info(uri: str, dbname: str, data_dir: Path | None = None) -> PgInfo:
+    _validate_dbname(dbname)
     params = conninfo_to_dict(uri)
     host = str(params.get("host") or "")
     if not host or host.startswith(("/", "\\", ".")) or "\\" in host:
@@ -159,9 +410,14 @@ def pgserver_info(uri: str, dbname: str, data_dir: Path | None = None) -> PgInfo
     common = {"host": host, "port": port, "user": user, "connect_timeout": 3}
     if password:
         common["password"] = password
+    try:
+        dsn = make_conninfo(**common, dbname=dbname)
+        admin_dsn = make_conninfo(**common, dbname="postgres")
+    except Exception:  # noqa: BLE001
+        raise RuntimeError("failed to build PostgreSQL connection string") from None
     return PgInfo(
-        dsn=make_conninfo(**common, dbname=dbname),
-        admin_dsn=make_conninfo(**common, dbname="postgres"),
+        dsn=dsn,
+        admin_dsn=admin_dsn,
         host=host,
         port=port,
         data_dir=Path(data_dir) if data_dir is not None else Path("."),
@@ -182,6 +438,7 @@ class LocalPostgres:
     ) -> None:
         if backend not in ("pgserver", "pg_ctl"):
             raise ValueError(f"unknown PostgreSQL backend: {backend}")
+        _validate_dbname(dbname)
         self.data_dir = Path(data_dir)
         self.backend = backend
         self.port = port
@@ -201,6 +458,7 @@ class LocalPostgres:
             return self._info
         self.data_dir.mkdir(parents=True, exist_ok=True)
         cleanup_stale(self.data_dir)
+        _prune_pgserver_handles(self.data_dir)
         try:
             info = self._start_backend()
             self._started = True
@@ -208,13 +466,31 @@ class LocalPostgres:
             ensure_database_sync(info.admin_dsn, self.dbname)
             _wait_ready(info.dsn, timeout=10)
         except Exception:
-            # Never leave a half-started postgres behind when init/migration fails.
+            # A backend can spawn postmaster and still raise (pgserver does
+            # before assigning a handle), so clean up from postmaster.pid even
+            # though _stop_backend() has no server object to work with.
+            self._started = True
             try:
                 self._stop_backend()
-            except Exception:
-                logger.exception("local_pg_start_cleanup_failed", backend=self.backend)
-            self._server = None
-            self._started = False
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "local_pg_start_cleanup_failed",
+                    backend=self.backend,
+                    error=type(exc).__name__,
+                )
+            try:
+                self._ensure_postmaster_stopped()
+            except Exception as exc:  # noqa: BLE001
+                # Keep _started=True so a later stop() retries the cleanup.
+                logger.error(
+                    "local_pg_start_cleanup_failed",
+                    backend=self.backend,
+                    error=type(exc).__name__,
+                )
+            else:
+                self._started = False
+                self._server = None
+                self._info = None
             raise
         self._info = info
         logger.info(
@@ -228,15 +504,52 @@ class LocalPostgres:
             return
         try:
             self._stop_backend()
-        except Exception:
-            logger.exception("local_pg_stop_failed", backend=self.backend)
-            pid = _read_pid(self.data_dir)
-            if pid and pid_alive(pid):
-                _kill_tree_sync(pid)
-        finally:
-            self._started = False
-            self._server = None
-            logger.info("local_pg_stopped", backend=self.backend)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "local_pg_stop_failed",
+                backend=self.backend,
+                error=type(exc).__name__,
+            )
+        # Never report success until postmaster.pid shows the server is gone.
+        self._ensure_postmaster_stopped()
+        self._started = False
+        self._server = None
+        self._info = None
+        logger.info("local_pg_stopped", backend=self.backend)
+
+    def _ensure_postmaster_stopped(self) -> None:
+        pid_file = self.data_dir / "postmaster.pid"
+        pid = _read_pid(self.data_dir)
+        if pid is None:
+            if pid_file.exists():
+                pid_file.unlink(missing_ok=True)
+            return
+        if not pid_alive(pid):
+            pid_file.unlink(missing_ok=True)
+            return
+        is_postgres = _pid_is_postgres(pid)
+        if is_postgres is False:
+            # The PID was recycled by an unrelated process; our postmaster
+            # is gone and only its lock file is left behind.
+            pid_file.unlink(missing_ok=True)
+            return
+        if is_postgres is None:
+            raise RuntimeError(
+                f"cannot verify whether live PID {pid} is PostgreSQL; refusing "
+                f"to remove the lock file for {self.data_dir}"
+            )
+        if not _pid_matches_data_dir(pid, self.data_dir):
+            raise RuntimeError(
+                f"refusing to kill PID {pid}: it is not verifiably the PostgreSQL "
+                f"postmaster for {self.data_dir}"
+            )
+        _kill_tree_sync(pid)
+        if not _wait_pid_exit(pid, _KILL_WAIT_SECONDS):
+            raise RuntimeError(
+                f"PostgreSQL postmaster (PID {pid}) is still running after kill; "
+                "state was kept so stop() can be retried"
+            )
+        pid_file.unlink(missing_ok=True)
 
     def _start_backend(self) -> PgInfo:
         if self.backend == "pgserver":
@@ -245,10 +558,33 @@ class LocalPostgres:
 
     def _stop_backend(self) -> None:
         if self.backend == "pgserver":
-            if self._server is not None:
-                self._server.cleanup()
+            self._stop_pgserver()
             return
         self._stop_pgctl()
+
+    def _stop_pgserver(self) -> None:
+        try:
+            if self._server is not None:
+                self._server.cleanup()
+        finally:
+            # pgserver keeps our PID in .handle_pids.json even when cleanup()
+            # bailed out, which would break the next same-process stop.
+            _prune_pgserver_handles(self.data_dir, remove_pid=os.getpid())
+            self._forget_pgserver_instance()
+
+    def _forget_pgserver_instance(self) -> None:
+        self._server = None
+        try:
+            import pgserver
+        except ImportError:
+            return
+        try:
+            key = Path(self.data_dir).expanduser().resolve()
+        except OSError:
+            return
+        registry = getattr(pgserver.PostgresServer, "_instances", None)
+        if isinstance(registry, dict):
+            registry.pop(key, None)
 
     def _start_pgserver(self) -> PgInfo:
         try:
@@ -305,6 +641,13 @@ class LocalPostgres:
                     ],
                     check=True, capture_output=True, timeout=180,
                 )
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(
+                    "initdb failed (exit "
+                    f"{exc.returncode}): {_tail_text(exc.stderr)}"
+                ) from exc
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("initdb timed out") from exc
             finally:
                 init_password_path.unlink(missing_ok=True)
             password_path.write_text(password, encoding="utf-8")
@@ -318,28 +661,51 @@ class LocalPostgres:
         # Never use pipes here: on Windows the postgres child inherits
         # pg_ctl's stdout/stderr handles, so capture_output would never see
         # EOF and subprocess.run would hang.
-        with open(ctl_log, "a", encoding="utf-8") as handle:
-            subprocess.run(
-                [
-                    str(pg_ctl), "-D", str(self.data_dir), "-l", str(logfile),
-                    "-o", f"-p {port} -h 127.0.0.1", "-w", "-t", "60", "start",
-                ],
-                check=True, stdout=handle, stderr=subprocess.STDOUT, timeout=90,
+        try:
+            with open(ctl_log, "a", encoding="utf-8") as handle:
+                subprocess.run(
+                    [
+                        str(pg_ctl), "-D", str(self.data_dir), "-l", str(logfile),
+                        "-o", f"-p {port} -h 127.0.0.1", "-w", "-t", "60", "start",
+                    ],
+                    check=True, stdout=handle, stderr=subprocess.STDOUT, timeout=90,
+                )
+        except (OSError, subprocess.SubprocessError) as exc:
+            tail = _log_tail(ctl_log)
+            logger.error(
+                "local_pg_start_command_failed",
+                backend="pg_ctl",
+                error=type(exc).__name__,
+                log_tail=tail,
             )
-        user = quote(password, safe="")
-        dsn = f"postgresql://nova:{user}@127.0.0.1:{port}/{self.dbname}?connect_timeout=3"
-        admin = f"postgresql://nova:{user}@127.0.0.1:{port}/postgres?connect_timeout=3"
+            raise RuntimeError(
+                f"pg_ctl start failed ({type(exc).__name__}): {tail}"
+            ) from exc
+        common = {
+            "host": "127.0.0.1",
+            "port": port,
+            "user": "nova",
+            "password": password,
+            "connect_timeout": 3,
+        }
+        try:
+            dsn = make_conninfo(**common, dbname=self.dbname)
+            admin_dsn = make_conninfo(**common, dbname="postgres")
+        except Exception:  # noqa: BLE001
+            raise RuntimeError(
+                "failed to build PostgreSQL connection string"
+            ) from None
         return PgInfo(
-            dsn=dsn, admin_dsn=admin, host="127.0.0.1", port=port,
+            dsn=dsn, admin_dsn=admin_dsn, host="127.0.0.1", port=port,
             data_dir=self.data_dir, backend="pg_ctl",
         )
 
     def _stop_pgctl(self) -> None:
         if not (self.data_dir / "PG_VERSION").exists():
             return
-        _, pg_ctl = self._pg_bins()
         ctl_log = self.data_dir / "pg_ctl.log"
         try:
+            _, pg_ctl = self._pg_bins()
             with open(ctl_log, "a", encoding="utf-8") as handle:
                 subprocess.run(
                     [
@@ -348,7 +714,14 @@ class LocalPostgres:
                     ],
                     check=True, stdout=handle, stderr=subprocess.STDOUT, timeout=45,
                 )
-        finally:
-            pid = _read_pid(self.data_dir)
-            if pid and pid_alive(pid):
-                _kill_tree_sync(pid)
+        except (OSError, subprocess.SubprocessError) as exc:
+            tail = _log_tail(ctl_log)
+            logger.error(
+                "local_pg_stop_command_failed",
+                backend="pg_ctl",
+                error=type(exc).__name__,
+                log_tail=tail,
+            )
+            raise RuntimeError(
+                f"pg_ctl stop failed ({type(exc).__name__}): {tail}"
+            ) from exc
