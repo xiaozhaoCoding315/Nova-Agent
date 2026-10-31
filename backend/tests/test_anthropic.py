@@ -167,3 +167,96 @@ async def test_stream_emits_thinking_blocks_before_tool_calls(monkeypatch):
     ]
     tool_calls = events[types.index("tool_calls")]["tool_calls"]
     assert tool_calls[0]["arguments"] == '{"path": "a.py"}'
+
+
+def _fake_stream(monkeypatch, stream_events):
+    body = "".join(f"data: {json.dumps(event)}\n\n" for event in stream_events)
+    real_client = httpx.AsyncClient
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body.encode())
+
+    def fake_client(**kwargs):
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(anthropic_mod.httpx, "AsyncClient", fake_client)
+
+
+async def _collect_stream(llm, messages):
+    return [event async for event in llm.astream_with_tools(messages, [])]
+
+
+@pytest.mark.asyncio
+async def test_stream_captures_redacted_thinking_before_tool_calls(monkeypatch):
+    _fake_stream(monkeypatch, [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 10}}},
+        {"type": "content_block_start", "index": 0,
+         "content_block": {"type": "redacted_thinking", "data": "opaque-blob"}},
+        {"type": "content_block_start", "index": 1,
+         "content_block": {"type": "tool_use", "id": "t1", "name": "read_file"}},
+        {"type": "content_block_delta", "index": 1,
+         "delta": {"type": "input_json_delta", "partial_json": '{"path": "a.py"}'}},
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"},
+         "usage": {"output_tokens": 5}},
+    ])
+
+    events = await _collect_stream(
+        AnthropicLLM("key", model="claude-sonnet-5-5"),
+        [{"role": "user", "content": "hi"}],
+    )
+
+    types = [event["type"] for event in events]
+    thinking_index = types.index("thinking_blocks")
+    assert types.index("tool_calls") == thinking_index + 1
+    blocks = events[thinking_index]["thinking_blocks"]
+    assert blocks == [{"type": "redacted_thinking", "data": "opaque-blob"}]
+
+    _, converted = _to_anthropic([
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant", "content": "",
+            "thinking_blocks": blocks,
+            "tool_calls": [{
+                "id": "t1", "type": "function",
+                "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+            }],
+        },
+        {"role": "tool", "tool_call_id": "t1", "name": "read_file", "content": "x"},
+    ])
+    assistant_blocks = converted[1]["content"]
+    assert assistant_blocks[0] == {"type": "redacted_thinking", "data": "opaque-blob"}
+    assert [block["type"] for block in assistant_blocks] == [
+        "redacted_thinking", "tool_use",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_keeps_thinking_and_redacted_blocks_in_index_order(monkeypatch):
+    _fake_stream(monkeypatch, [
+        {"type": "content_block_start", "index": 0,
+         "content_block": {"type": "thinking", "thinking": ""}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "thinking_delta", "thinking": "consider"}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "signature_delta", "signature": "sig-1"}},
+        {"type": "content_block_start", "index": 1,
+         "content_block": {"type": "redacted_thinking", "data": "blob-1"}},
+        {"type": "content_block_start", "index": 2,
+         "content_block": {"type": "tool_use", "id": "t1", "name": "grep"}},
+        {"type": "content_block_delta", "index": 2,
+         "delta": {"type": "input_json_delta", "partial_json": "{}"}},
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"}},
+    ])
+
+    events = await _collect_stream(
+        AnthropicLLM("key"), [{"role": "user", "content": "hi"}],
+    )
+
+    blocks = next(
+        event["thinking_blocks"] for event in events
+        if event["type"] == "thinking_blocks"
+    )
+    assert blocks == [
+        {"type": "thinking", "thinking": "consider", "signature": "sig-1"},
+        {"type": "redacted_thinking", "data": "blob-1"},
+    ]

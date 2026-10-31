@@ -307,6 +307,111 @@ async def test_llm_failure_without_output_auto_continues(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_llm_failure_detail_is_redacted_in_sse_and_trace(monkeypatch):
+    class LeakyLLM:
+        async def astream_with_tools(self, messages, tools):
+            raise RuntimeError(
+                "401 Unauthorized: key sk-abcdefghijklmnop1234 rejected"
+            )
+            yield  # pragma: no cover — makes this an async generator
+
+    _patch_common(monkeypatch, LeakyLLM())
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+    monkeypatch.setattr(loop_mod.settings, "llm_round_retries", 0)
+    monkeypatch.setattr(loop_mod.settings, "max_continuations", 0)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+
+    error = next(e for e in events if e["event"] == "error")
+    assert error["data"]["code"] == "llm_error"
+    assert "sk-abcdefghijklmnop1234" not in error["data"]["message"]
+    assert "[REDACTED]" in error["data"]["message"]
+
+    error_traces = [
+        call.args for call in loop_mod.trace_record.await_args_list
+        if len(call.args) >= 4 and call.args[2] == "error"
+    ]
+    assert error_traces
+    payload = json.dumps(error_traces[-1][3], ensure_ascii=False)
+    assert "sk-abcdefghijklmnop1234" not in payload
+    assert "[REDACTED]" in error_traces[-1][3]["message"]
+
+
+@pytest.mark.asyncio
+async def test_not_configured_error_is_not_retried_or_continued(monkeypatch):
+    calls = 0
+
+    async def _unconfigured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise loop_mod.LLMNotConfiguredError(
+            "尚未配置可用模型：请在「设置 → 模型与密钥」填写个人 API Key"
+        )
+
+    _patch_common(monkeypatch, None)
+    monkeypatch.setattr(loop_mod, "get_llm", _unconfigured)
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+    monkeypatch.setattr(loop_mod.settings, "llm_round_retries", 2)
+    monkeypatch.setattr(loop_mod.settings, "max_continuations", 3)
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+
+    assert calls == 1
+    error = next(e for e in events if e["event"] == "error")
+    assert error["data"]["code"] == "llm_not_configured"
+    assert "个人 API Key" in error["data"]["message"]
+    assert not [e for e in events if e["event"] == "notice"]
+
+
+@pytest.mark.asyncio
+async def test_thinking_blocks_attach_to_their_own_round_only(monkeypatch):
+    class CapturingLLM(FakeLLM):
+        def __init__(self, scripts):
+            super().__init__(scripts)
+            self.seen: list[list[dict]] = []
+
+        async def astream_with_tools(self, messages, tools):
+            self.seen.append([dict(message) for message in messages])
+            async for event in super().astream_with_tools(messages, tools):
+                yield event
+
+    thinking = {"type": "thinking", "thinking": "hmm", "signature": "sig-1"}
+    llm = CapturingLLM([
+        [
+            {"type": "thinking_blocks", "thinking_blocks": [thinking]},
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t1", "name": "json_tool",
+                 "arguments": json.dumps({"input": '{"a": 1}'})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t2", "name": "json_tool",
+                 "arguments": json.dumps({"input": '{"b": 2}'})}
+            ]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ],
+        [
+            {"type": "content", "content": "完成"},
+            {"type": "finish", "finish_reason": "stop"},
+        ],
+    ])
+    _patch_common(monkeypatch, llm)
+
+    await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+
+    third_round = llm.seen[2]
+    assistants = [
+        message for message in third_round
+        if message.get("role") == "assistant" and message.get("tool_calls")
+    ]
+    assert len(assistants) == 2
+    assert assistants[0]["thinking_blocks"] == [thinking]
+    assert "thinking_blocks" not in assistants[1]
+
+
+@pytest.mark.asyncio
 async def test_tool_result_is_truncated_in_llm_messages(monkeypatch):
     class CapturingLLM(FakeLLM):
         def __init__(self, scripts):

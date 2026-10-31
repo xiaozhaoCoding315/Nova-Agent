@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.llm.factory import OpenAICompatibleLLM
 from app.core.llm.providers import (
     PROVIDERS, get_provider, provider_list, resolve_base_url,
 )
@@ -69,6 +70,47 @@ def test_ollama_loopback_is_still_allowed():
     ollama = get_provider("ollama")
     assert resolve_base_url(ollama, "http://127.0.0.1:11434/v1") == "http://127.0.0.1:11434/v1"
     assert resolve_base_url(ollama, "http://[::1]:11434/v1") == "http://[::1]:11434/v1"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:8000/v1",
+        "http://127.8.9.10/v1",
+        "http://[::1]:8000/v1",
+    ],
+)
+def test_custom_loopback_is_rejected(url):
+    custom = get_provider("custom")
+    with pytest.raises(ValueError, match="不允许使用该地址"):
+        resolve_base_url(custom, url)
+
+
+@pytest.mark.parametrize("provider_id", ["custom", "ollama"])
+def test_cgnat_metadata_is_rejected_for_every_provider(provider_id):
+    spec = get_provider(provider_id)
+    with pytest.raises(ValueError, match="不允许使用该地址"):
+        resolve_base_url(spec, "http://100.100.100.200/v1")
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "url"),
+    [
+        ("custom", "http://192.168.1.10:8000/v1"),
+        ("ollama", "http://192.168.1.10:11434/v1"),
+    ],
+)
+def test_lan_private_ranges_are_allowed_for_local_first_use(provider_id, url):
+    spec = get_provider(provider_id)
+    assert resolve_base_url(spec, url) == url
+
+
+def test_openai_compatible_client_never_follows_redirects():
+    llm = OpenAICompatibleLLM("key", "https://api.example.com/v1", "model")
+
+    # httpx exposes the flag on the inner AsyncClient; the OpenAI SDK wrapper
+    # does not re-export it, so _client is the only observable location.
+    assert llm.client._client.follow_redirects is False
 
 
 def test_public_payload_has_ui_metadata():

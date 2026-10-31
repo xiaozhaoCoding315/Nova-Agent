@@ -289,6 +289,24 @@ async def test_server_key_reserved_for_guests_and_admins(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_no_configured_model_raises_actionable_error(monkeypatch):
+    monkeypatch.setattr(factory, "get_user_config", AsyncMock(return_value=None))
+    monkeypatch.setattr(factory, "_fallback_allowed_for", AsyncMock(return_value=True))
+    monkeypatch.setattr(settings, "llm_allow_server_fallback", True)
+    for name in (
+        "zhipu_api_key", "deepseek_api_key", "dashscope_api_key", "anthropic_api_key",
+    ):
+        monkeypatch.setattr(settings, name, "")
+
+    with pytest.raises(factory.LLMNotConfiguredError) as excinfo:
+        await factory.get_llm(7)
+
+    message = str(excinfo.value)
+    assert "个人 API Key" in message
+    assert "No LLM providers configured" not in message
+
+
+@pytest.mark.asyncio
 async def test_registered_user_without_key_gets_byok_guidance(monkeypatch):
     monkeypatch.setattr(factory, "get_user_config", AsyncMock(return_value=None))
     monkeypatch.setattr(factory, "_fallback_allowed_for", AsyncMock(return_value=False))

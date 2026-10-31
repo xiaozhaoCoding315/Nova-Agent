@@ -29,6 +29,8 @@ from app.models.schemas import (
 
 router = APIRouter()
 
+KEYLESS_PROVIDERS = {"ollama"}
+
 
 def _credential_view(config: dict) -> LlmCredentialOut:
     spec = get_provider(config["provider"])
@@ -50,7 +52,12 @@ def _credential_view(config: dict) -> LlmCredentialOut:
 def _public_view(
     config: dict | None, user: dict, configs: list[dict] | None = None,
 ) -> LlmSettingsOut:
+    # Keyless local providers (Ollama) are usable without an API key. ``has_key``
+    # stays key-based because the credential editor uses it to mask the field.
     has_key = bool(config and config.get("api_key"))
+    usable = bool(config) and (
+        bool(config.get("api_key")) or config.get("provider") in KEYLESS_PROVIDERS
+    )
     server_applies = bool(
         settings.llm_allow_server_fallback
         and (
@@ -59,7 +66,7 @@ def _public_view(
             or settings.llm_server_fallback_registered
         )
     )
-    if has_key:
+    if usable:
         source = "user"
     elif settings.llm_configured and server_applies:
         source = "server"
@@ -68,19 +75,19 @@ def _public_view(
 
     return LlmSettingsOut(
         source=source,
-        configured=has_key,
+        configured=usable,
         provider=config["provider"] if config else None,
-        model=config["model"] if has_key else server_default_model(),
-        base_url=config["base_url"] if has_key else None,
+        model=config["model"] if usable else server_default_model(),
+        base_url=config["base_url"] if usable else None,
         has_key=has_key,
         key_hint=config.get("key_hint") if has_key else None,
         server_model=server_default_model(),
-        allow_server_fallback=server_applies,
-        context_window=config.get("context_window") if config else None,
-        reasoning_effort=config.get("reasoning_effort") if config else None,
+        allow_server_fallback=server_applies and settings.llm_configured,
+        context_window=config.get("context_window") if usable else None,
+        reasoning_effort=config.get("reasoning_effort") if usable else None,
         providers=provider_list(),
         credentials=[_credential_view(item) for item in (configs or [])],
-        updated_at=config.get("updated_at") if config else None,
+        updated_at=config.get("updated_at") if usable else None,
     )
 
 

@@ -21,7 +21,11 @@ from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
 from app.core.agent.tool_output import build_preview, serialize_tool_result
 from app.core.harness.config import TIMEOUTS
-from app.core.llm.factory import get_llm, resolve_context_window
+from app.core.llm.factory import (
+    LLMNotConfiguredError,
+    get_llm,
+    resolve_context_window,
+)
 from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import facts as facts_mod
@@ -426,15 +430,28 @@ async def run_chat(
                     break
                 except TimeoutError:
                     llm_failed = "timeout"
+                except LLMNotConfiguredError as exc:
+                    # Configuration is deterministic: retrying the same call
+                    # and the continuation path would only repeat the error.
+                    llm_failed = "config"
+                    llm_error_detail = str(exc)
+                    break
                 except Exception as exc:  # noqa: BLE001
                     llm_failed = "error"
-                    llm_error_detail = str(exc)
+                    llm_error_detail = redact_text(str(exc))
                 if round_text or tool_calls or attempt >= max(int(settings.llm_round_retries), 0):
                     break
                 yield _sse("notice", kind="retry",
                            message=f"模型连接抖动，自动重试（{attempt + 2}/{max(int(settings.llm_round_retries), 0) + 1}）…")
 
             if llm_failed:
+                if llm_failed == "config":
+                    errors.append(llm_error_detail)
+                    await trace_record(session["id"], turn_id, "error",
+                                       {"code": "llm_not_configured"})
+                    yield _sse("error", code="llm_not_configured",
+                               message=llm_error_detail)
+                    break
                 had_output = bool(round_text or tool_calls)
                 if continuations_left > 0:
                     # 中断续跑：已流出的部分作为 assistant 消息入库，让模型接着写

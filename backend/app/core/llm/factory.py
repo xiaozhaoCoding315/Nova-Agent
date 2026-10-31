@@ -1,3 +1,4 @@
+import httpx
 import structlog
 from openai import AsyncOpenAI
 
@@ -9,6 +10,14 @@ from app.core.llm.providers import get_provider
 from app.core.llm.user_settings import get_user_config
 
 logger = structlog.get_logger()
+
+NOT_CONFIGURED_MESSAGE = (
+    "尚未配置可用模型：请在「设置 → 模型与密钥」填写个人 API Key"
+)
+
+
+class LLMNotConfiguredError(RuntimeError):
+    """No usable model configuration — retrying the same call cannot help."""
 
 
 class OpenAICompatibleLLM(LLMProvider):
@@ -24,7 +33,11 @@ class OpenAICompatibleLLM(LLMProvider):
         max_tokens: int | None = None,
         context_window: int | None = None,
     ):
-        self.client = AsyncOpenAI(api_key=api_key or "ollama", base_url=base_url)
+        self.client = AsyncOpenAI(
+            api_key=api_key or "ollama",
+            base_url=base_url,
+            http_client=httpx.AsyncClient(follow_redirects=False),
+        )
         self.model = model
         self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
         self.temperature = temperature
@@ -211,7 +224,7 @@ def _server_llm(model_override: str | None = None) -> LLMProvider:
             ))
 
     if not providers:
-        raise RuntimeError("No LLM providers configured")
+        raise LLMNotConfiguredError(NOT_CONFIGURED_MESSAGE)
     return FallbackLLM(providers)
 
 
@@ -275,7 +288,7 @@ async def get_llm(
     if user_id is not None:
         config = await get_user_config(user_id, requested_provider)
         if requested_provider and not config:
-            raise RuntimeError("请先在设置里配置该厂商的 API Key")
+            raise LLMNotConfiguredError("请先在设置里配置该厂商的 API Key")
         if config:
             if not config["api_key"] and config["provider"] != "ollama":
                 raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
@@ -311,10 +324,10 @@ async def get_llm(
             return llm
 
     if requested_provider:
-        raise RuntimeError("请先在设置里配置该厂商的 API Key")
+        raise LLMNotConfiguredError("请先在设置里配置该厂商的 API Key")
 
     if not await _fallback_allowed_for(user_id):
-        raise RuntimeError(
+        raise LLMNotConfiguredError(
             "请先在「设置 → 模型」配置你的个人 API Key，再开始对话"
             if user_id is not None
             else "尚未配置个人模型 API Key，且服务端未开放共享模型"

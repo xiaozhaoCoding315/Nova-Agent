@@ -36,7 +36,8 @@ def _to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
             blocks: list[dict] = [
                 block
                 for block in message.get("thinking_blocks") or []
-                if isinstance(block, dict) and block.get("type") == "thinking"
+                if isinstance(block, dict)
+                and block.get("type") in ("thinking", "redacted_thinking")
             ]
             text = message.get("content")
             if text:
@@ -195,6 +196,11 @@ class AnthropicLLM(LLMProvider):
                             thinking_blocks[index] = {
                                 "type": "thinking", "thinking": "", "signature": "",
                             }
+                        elif block.get("type") == "redacted_thinking":
+                            thinking_blocks[index] = {
+                                "type": "redacted_thinking",
+                                "data": block.get("data") or "",
+                            }
                         elif block.get("type") == "tool_use":
                             tool_blocks[index] = {
                                 "id": block.get("id") or "",
@@ -232,7 +238,11 @@ class AnthropicLLM(LLMProvider):
         if tool_blocks:
             captured = [
                 block for _, block in sorted(thinking_blocks.items())
-                if block["signature"] or block["thinking"]
+                if (
+                    (block["type"] == "thinking"
+                     and (block["signature"] or block["thinking"]))
+                    or (block["type"] == "redacted_thinking" and block["data"])
+                )
             ]
             if captured:
                 yield {"type": "thinking_blocks", "thinking_blocks": captured}

@@ -211,6 +211,41 @@ def test_legacy_get_settings_never_exposes_raw_key(client, monkeypatch):
     assert body["credentials"][0]["key_hint"] == KEY_HINT
 
 
+def test_keyless_ollama_credential_counts_as_configured(client, monkeypatch):
+    ollama = _config(
+        provider="ollama",
+        base_url="http://127.0.0.1:11434/v1",
+        model="qwen3-coder:30b",
+        api_key="",
+        key_hint="",
+    )
+    monkeypatch.setattr(settings_llm, "save_user_config", AsyncMock(return_value=ollama))
+    monkeypatch.setattr(
+        settings_llm, "list_user_configs", AsyncMock(return_value=[ollama]),
+    )
+    # No server key: the exposed fallback flag must stay honest.
+    monkeypatch.setattr(
+        type(settings_llm.settings), "llm_configured", property(lambda self: False),
+    )
+
+    saved = client.put(
+        "/api/v1/settings/llm",
+        json={"provider": "ollama", "model": "qwen3-coder:30b"},
+    )
+    assert saved.status_code == 200
+
+    response = client.get("/api/v1/settings/llm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configured"] is True
+    assert body["source"] == "user"
+    assert body["model"] == "qwen3-coder:30b"
+    assert body["has_key"] is False
+    assert body["key_hint"] is None
+    assert body["allow_server_fallback"] is False
+
+
 def test_legacy_put_settings_saves_as_default_and_masks(client, monkeypatch):
     save = AsyncMock(return_value=_config())
     monkeypatch.setattr(settings_llm, "save_user_config", save)

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from app.config import settings
 
 BLOCKED_HOSTS = {"169.254.169.254", "metadata.google.internal"}
+CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 
 
 @dataclass(frozen=True)
@@ -238,7 +239,17 @@ def resolve_base_url(spec: ProviderSpec, requested: str | None = None) -> str:
         return value
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
-    # Loopback stays allowed: the local ollama provider legitimately uses it.
     if address.is_link_local or address.is_unspecified:
+        raise ValueError("不允许使用该地址")
+    # CGNAT covers cloud metadata endpoints such as Alibaba's 100.100.100.200;
+    # no provider, including the local preset, has a legitimate use for it.
+    if address in CGNAT_NETWORK:
+        raise ValueError("不允许使用该地址")
+    # RFC1918 private ranges stay allowed for both custom and ollama: LAN
+    # inference servers are a supported local-first use case. Loopback,
+    # multicast and reserved ranges only make sense for the local preset.
+    if spec.id != "ollama" and (
+        address.is_loopback or address.is_multicast or address.is_reserved
+    ):
         raise ValueError("不允许使用该地址")
     return value
