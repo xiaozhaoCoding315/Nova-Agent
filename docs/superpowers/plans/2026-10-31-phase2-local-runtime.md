@@ -206,7 +206,9 @@ Expected: psql 输出版本；stop 后无 postgres 进程。该路线通过则 B
 在 spike venv 中：
 
 ```bash
-pip install "pyinstaller==6.10.0" "fastapi==0.115.0" "tree-sitter==0.23.2" "tree-sitter-python==0.23.6"
+pip install "pyinstaller==6.10.0" "fastapi==0.115.0" \
+    "tree-sitter==0.26.0" "tree-sitter-python==0.25.0" "tree-sitter-typescript==0.23.2" \
+    "tree-sitter-go==0.25.0" "tree-sitter-java==0.23.5" "tree-sitter-rust==0.24.2"
 cat > "$TEMP/spike_main.py" <<'PY'
 import pathlib, tempfile
 import fastapi, psycopg, tree_sitter, tree_sitter_python
@@ -221,12 +223,18 @@ except Exception as exc:
     print("embedded-pg-failed", type(exc).__name__, str(exc)[:200])
 PY
 pyinstaller --onefile --name nova-spike \
-  --collect-all pgserver --collect-all tree_sitter --collect-all tree_sitter_python \
+  --collect-all pgserver --collect-all tree_sitter \
+  --collect-all tree_sitter_python --collect-all tree_sitter_typescript \
+  --collect-all tree_sitter_go --collect-all tree_sitter_java --collect-all tree_sitter_rust \
   "$TEMP/spike_main.py"
 "$TEMP/dist/nova-spike.exe"
 ```
 
 Expected: `imports-ok` 且 `embedded-pg-ok True`。若 `embedded-pg-failed`，PyInstaller + pgserver 路线不可行，但 pg_ctl + bundled Python runtime 仍可继续。
+
+注：上面的依赖版本是 `backend/requirements.txt` 的应用 pin，`--collect-all` 覆盖 `backend/app/core/indexing/symbols.py`
+实际导入的全部 grammar（Python 符号提取本身走 `ast`）。Task 0 实跑时只安装了 `tree-sitter==0.23.2` /
+`tree-sitter-python==0.23.6` 并只打包 `tree_sitter_python`（见结果文档）；其余 grammar 与 0.26.0 组合未验证。
 
 - [x] **Step 7: 写出 go/no-go 决策**
 
@@ -271,7 +279,13 @@ Expected: commit 成功；不修改任何 `backend/` 或 `frontend/` 文件。
 **决策记录（2026-11-01，实测见 `2026-10-31-phase2-spike-results.md`）：**
 - 结果：A 路线全部 PASS，B 路线也 PASS（官方 PostgreSQL 16.2 ZIP + `pg_ctl` 可运行且干净停止）。
 - `local_pg_backend` 默认值：`pgserver`；`pg_ctl` 保留为显式回退后端。
-- Phase 4 打包：PyInstaller（`--onefile --collect-all pgserver --collect-all tree_sitter --collect-all tree_sitter_python`，实测 `embedded-pg-ok True`）。
+- Phase 4 打包：PyInstaller `--onefile`；`--collect-all` 覆盖 `pgserver` 与应用实际导入的全部 grammar：
+  `--collect-all pgserver --collect-all tree_sitter --collect-all tree_sitter_python
+  --collect-all tree_sitter_typescript --collect-all tree_sitter_go --collect-all tree_sitter_java
+  --collect-all tree_sitter_rust`。
+  spike 只打包了 toy `spike_main.py`（`embedded-pg-ok True`），未验证 `app.main`/uvicorn 应用级打包、
+  杀毒/SmartScreen、`--onefile` 启动延迟、Electron/NSIS 集成与完整 hidden-import 集；
+  tree-sitter 实测版本 0.23.2 / 0.23.6 与应用 pin（0.26.0 / 0.25.0 及其余 grammar）不同。
 - Phase 2：GO。Task 3 采用 A 路径，新增 `backend/requirements-local.txt` 固定 `pgserver==0.1.4`。
 
 ---
@@ -847,12 +861,13 @@ def test_ensure_database_rejects_unsafe_name():
 
 @pytest.mark.skipif(
     os.getenv("NOVA_TEST_LOCAL_PG") != "1",
-    reason="set NOVA_TEST_LOCAL_PG=1 after the Task 0 spike chooses a backend",
+    reason="set NOVA_TEST_LOCAL_PG=1 to run the real PostgreSQL roundtrip "
+    "(Task 0 decision: pgserver default, pg_ctl fallback)",
 )
 def test_local_pg_roundtrip(tmp_path):
     import psycopg
 
-    backend = os.getenv("LOCAL_PG_BACKEND", "pg_ctl")
+    backend = os.getenv("LOCAL_PG_BACKEND", "pgserver")
     bin_dir = os.getenv("LOCAL_PG_BIN_DIR") or None
     local = LocalPostgres(tmp_path / "pgdata", backend=backend, bin_dir=bin_dir)
     info = local.start()
@@ -1229,7 +1244,7 @@ pgserver==0.1.4
 
 Run: `cd backend && NOVA_TEST_FAST=1 python -m pytest tests/test_local_pg.py -q`
 
-Expected: PASS；真实 roundtrip 测试 skipped，理由为 `set NOVA_TEST_LOCAL_PG=1 after the Task 0 spike chooses a backend`。
+Expected: PASS；真实 roundtrip 测试 skipped，理由为 `set NOVA_TEST_LOCAL_PG=1 to run the real PostgreSQL roundtrip (Task 0 decision: pgserver default, pg_ctl fallback)`。
 
 - [ ] **Step 5: 全量回归与提交**
 
@@ -5328,9 +5343,9 @@ git commit -m "feat(ui): add minimal local mode setup and folder entry"
 - Windows 11（v1 验收平台）
 - Python 3.12
 - Git（可选；存在时索引会遵循 `.gitignore`，否则回退为目录遍历）
-- PostgreSQL 16 二进制或 `pgserver` wheel，取决于打包 spike 的结论：
-  - A 路线：`pip install -r requirements-local.txt`（`pgserver==0.1.4`）
-  - B 路线：设置 `LOCAL_PG_BIN_DIR` 指向包含 `initdb.exe` / `pg_ctl.exe` 的目录
+- PostgreSQL：默认使用 `pgserver==0.1.4` wheel（Task 0 已选定 A 路线）：
+  - 默认（`pgserver`）：`pip install -r requirements-local.txt`
+  - 显式回退（`pg_ctl`）：设置 `LOCAL_PG_BIN_DIR` 指向包含 `initdb.exe` / `pg_ctl.exe` 的 PostgreSQL 16 `bin` 目录，并传 `--pg-backend pg_ctl`
 - 一个可用的 LLM API Key（首次启动预选智谱 GLM）
 
 ## 2. 安装与启动
@@ -5340,7 +5355,7 @@ cd backend
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-# 仅 A 路线：
+# 本地模式默认后端（Task 0 决定：pgserver）：
 pip install -r requirements-local.txt
 
 cd ..\frontend

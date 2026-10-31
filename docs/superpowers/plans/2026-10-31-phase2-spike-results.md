@@ -19,7 +19,13 @@
 - PyInstaller + pgserver 启动：PASS（证据：同一 exe 运行输出 `embedded-pg-ok True`，退出码 0；退出后无 postgres/nova-spike 进程）
 - tree-sitter 原生扩展：PASS（证据：venv 内 `tree_sitter.Parser` 成功解析 `def nova_spike(): return 42`，
   `ROOT module children 1`；exe 内 `import tree_sitter, tree_sitter_python` 成功（随 exe 打包并加载原生扩展）；
-  版本 tree-sitter 0.23.2 / tree-sitter-python 0.23.6）
+  实测版本 tree-sitter 0.23.2 / tree-sitter-python 0.23.6）。
+  **注意：spike 只验证了这两个旧版本。** 应用实际从 `backend/app/core/indexing/symbols.py` 导入
+  `tree_sitter_python`、`tree_sitter_typescript`、`tree_sitter_go`、`tree_sitter_java`、`tree_sitter_rust`，
+  且 `backend/requirements.txt` pin 为 `tree-sitter==0.26.0`、`tree-sitter-python==0.25.0`、
+  `tree-sitter-typescript==0.23.2`、`tree-sitter-go==0.25.0`、`tree-sitter-java==0.23.5`、
+  `tree-sitter-rust==0.24.2`；Python 符号提取走标准库 `ast`，不依赖 tree-sitter。其余 grammar 与
+  0.26.0 组合在 PyInstaller 下均未验证。
 - 本机未安装/未运行 Qdrant，且不依赖 Qdrant 服务（证据：`tasklist | grep -i qdrant` 无输出；
   `netstat -ano | grep -E ":6333|:6334"` 无输出；Task 10 据此实现无 Qdrant 检索）
 
@@ -131,7 +137,19 @@ tasklist | grep -iE "postgres|nova-spike"                -> no postgres/nova-spi
 - 后续 Task 3 必须采用的路径：A 路线——`LOCAL_PG_BACKEND=pgserver` 为默认；
   新增 `backend/requirements-local.txt` 固定 `pgserver==0.1.4`（云端镜像不读取）；
   `pg_ctl` 保留为显式回退后端，使用官方 PostgreSQL 16 ZIP 二进制（B 路线已验证可行）；
-  Phase 4 采用 PyInstaller `--onefile`，并继续 `--collect-all pgserver --collect-all tree_sitter --collect-all tree_sitter_python`。
+  Phase 4 采用 PyInstaller `--onefile`；`--collect-all` 必须覆盖应用实际导入的全部 grammar：
+  `--collect-all pgserver --collect-all tree_sitter --collect-all tree_sitter_python
+  --collect-all tree_sitter_typescript --collect-all tree_sitter_go --collect-all tree_sitter_java
+  --collect-all tree_sitter_rust`。spike 仅实测 `tree-sitter==0.23.2` / `tree-sitter-python==0.23.6`，
+  与应用 pin（`0.26.0` / `0.25.0` 及其余 grammar）不同，Phase 4 需按完整依赖重测。
+
+## 未验证（明确排除）
+
+- 上述 PyInstaller 结论来自 toy `spike_main.py`（仅 `import fastapi/psycopg/tree_sitter/tree_sitter_python` 并启动 pgserver），**不是** `app.main` / uvicorn 的应用级打包；应用完整 import 图与 hidden-import 集合未枚举。
+- 未验证杀毒软件 / Windows SmartScreen 对未签名 `--onefile` exe 的拦截与首次运行提示。
+- 未测量 `--onefile` 的启动延迟（运行时解压到临时目录的开销）。
+- 未验证 Electron / NSIS 安装包集成（安装、升级、卸载、快捷方式、单实例）。
+- 未验证应用 pinned 版本的 `tree-sitter==0.26.0`、其余语言 grammar，及其在打包后的原生扩展加载。
 
 ## 备注/异常
 
