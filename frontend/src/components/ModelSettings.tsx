@@ -1,7 +1,7 @@
 import {
   CheckCircle2, Eye, EyeOff, KeyRound, Plus, Server, Star, Trash2, XCircle, Zap,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ProviderIcon } from './ProviderIcon'
 import { Badge, Button, Modal, Spinner } from './common'
 import type { LlmCredential, LlmProvider, LlmSettings } from '../lib/types'
@@ -42,6 +42,7 @@ export function ModelSettings({
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const sessionRef = useRef(0)
   const runAction = (task: Promise<unknown>) => {
     setActionError(null)
     void task
@@ -56,6 +57,7 @@ export function ModelSettings({
   const defaultCredential = credentials.find((item) => item.is_default) ?? credentials[0]
   const spec = providers.find((item) => item.id === editing)
   const current = credentials.find((item) => item.provider === editing)
+  const deleteTarget = credentials.find((item) => item.provider === confirmDelete)?.label ?? '该厂商'
 
   const grouped = useMemo(() => {
     const groups = new Map<string, LlmProvider[]>()
@@ -68,6 +70,7 @@ export function ModelSettings({
   }, [providers])
 
   const openAdd = (provider: LlmProvider) => {
+    sessionRef.current += 1
     setEditing(provider.id)
     setModel(provider.models[0] ?? '__custom__')
     setCustomModel('')
@@ -81,6 +84,7 @@ export function ModelSettings({
   }
 
   const openEdit = (credential: LlmCredential) => {
+    sessionRef.current += 1
     const provider = providers.find((item) => item.id === credential.provider)
     setEditing(credential.provider)
     setModel(
@@ -101,6 +105,7 @@ export function ModelSettings({
   }
 
   const close = () => {
+    sessionRef.current += 1
     setEditing(null)
     setFeedback(null)
     setBusy(false)
@@ -110,6 +115,7 @@ export function ModelSettings({
   const effectiveModel = model === '__custom__' ? customModel.trim() : model
 
   const submit = async (mode: 'save' | 'test') => {
+    const session = sessionRef.current
     if (!spec || !effectiveModel) {
       setFeedback({ ok: false, text: '请选择或填写模型名称' })
       return
@@ -129,22 +135,28 @@ export function ModelSettings({
       if (mode === 'save') {
         await saveCredential(spec.id, { ...input, is_default: makeDefault })
         onReload()
-        close()
+        if (sessionRef.current === session) close()
       } else {
         const result = await test(input)
-        setFeedback({
-          ok: result.ok,
-          text: `${result.message}${result.latency_ms ? `（${result.latency_ms} ms）` : ''}`,
-        })
+        if (sessionRef.current === session) {
+          setFeedback({
+            ok: result.ok,
+            text: `${result.message}${result.latency_ms ? `（${result.latency_ms} ms）` : ''}`,
+          })
+        }
       }
     } catch (err) {
-      setFeedback({
-        ok: false,
-        text: err instanceof ApiError ? err.message : '操作失败',
-      })
+      if (sessionRef.current === session) {
+        setFeedback({
+          ok: false,
+          text: err instanceof ApiError ? err.message : '操作失败',
+        })
+      }
     } finally {
-      setBusy(false)
-      setTesting(false)
+      if (sessionRef.current === session) {
+        setBusy(false)
+        setTesting(false)
+      }
     }
   }
 
@@ -246,6 +258,7 @@ export function ModelSettings({
                   size="sm"
                   variant="danger"
                   onClick={() => setConfirmDelete(credential.provider)}
+                  aria-label={`删除 ${credential.label}`}
                 >
                   <Trash2 size={12} />
                 </Button>
@@ -272,24 +285,31 @@ export function ModelSettings({
                   {GROUP_LABEL[group] ?? group}
                 </p>
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-                  {items.map((provider) => (
-                    <button
-                      key={provider.id}
-                      type="button"
-                      onClick={() => openAdd(provider)}
-                      className="flex items-center gap-2 rounded-lg border border-edge/80 px-2.5 py-2 text-left transition-colors hover:border-accentSoft hover:bg-raised/40"
-                    >
-                      <ProviderIcon id={provider.id} size={20} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px] font-medium">
-                          {provider.label}
+                  {items.map((provider) => {
+                    const existing = credentials.find((item) => item.provider === provider.id)
+                    return (
+                      <button
+                        key={provider.id}
+                        type="button"
+                        onClick={() => existing ? openEdit(existing) : openAdd(provider)}
+                        className="flex items-center gap-2 rounded-lg border border-edge/80 px-2.5 py-2 text-left transition-colors hover:border-accentSoft hover:bg-raised/40"
+                      >
+                        <ProviderIcon id={provider.id} size={20} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium">
+                            {provider.label}
+                          </span>
+                          <span className="block truncate text-[10px] text-dim">
+                            {existing
+                              ? '已配置'
+                              : provider.free_tier
+                                ? '免费额度'
+                                : provider.models[0] || '手动填写模型'}
+                          </span>
                         </span>
-                        <span className="block truncate text-[10px] text-dim">
-                          {provider.free_tier ? '免费额度' : provider.models[0] || '手动填写模型'}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             ))}
@@ -410,14 +430,20 @@ export function ModelSettings({
               )}
             </div>
 
-            <label className="flex items-center gap-2 text-[12px] text-dim">
-              <input
-                type="checkbox"
-                checked={makeDefault}
-                onChange={(event) => setMakeDefault(event.target.checked)}
-              />
-              设为默认厂商（新对话使用）
-            </label>
+            {current?.is_default ? (
+              <p className="text-[12px] text-dim">
+                当前为默认厂商；如需更换，请在列表中将其他厂商设为默认。
+              </p>
+            ) : (
+              <label className="flex items-center gap-2 text-[12px] text-dim">
+                <input
+                  type="checkbox"
+                  checked={makeDefault}
+                  onChange={(event) => setMakeDefault(event.target.checked)}
+                />
+                设为默认厂商（新对话使用）
+              </label>
+            )}
 
             {feedback && (
               <p className={`flex items-start gap-1.5 text-[11.5px] ${
@@ -450,7 +476,7 @@ export function ModelSettings({
         width="max-w-sm"
       >
         <p className="text-[12.5px] leading-relaxed text-dim">
-          删除后，该厂商的 Key 与模型设置会被移除；如果它是默认厂商，会自动切换到最近使用的另一家。
+          删除「{deleteTarget}」后，其 Key 与模型设置会被移除；如果它是默认厂商，会自动切换到最近使用的另一家。
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" onClick={() => setConfirmDelete(null)}>取消</Button>
