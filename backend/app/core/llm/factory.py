@@ -291,7 +291,9 @@ async def get_llm(
             raise LLMNotConfiguredError("请先在设置里配置该厂商的 API Key")
         if config:
             if not config["api_key"] and config["provider"] != "ollama":
-                raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
+                raise LLMNotConfiguredError(
+                    config.get("key_error") or "个人模型 API Key 无效，请重新保存"
+                )
             chosen_model = (overrides.get("model") or model or config["model"]).strip()
             effort = overrides.get("reasoning_effort", None)
             if effort is None:

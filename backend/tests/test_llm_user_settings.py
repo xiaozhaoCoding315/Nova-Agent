@@ -307,6 +307,27 @@ async def test_no_configured_model_raises_actionable_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key_error",
+    ["API Key 无法解密，请重新保存", ""],
+)
+async def test_invalid_saved_credential_is_a_configuration_error(monkeypatch, key_error):
+    monkeypatch.setattr(factory, "get_user_config", AsyncMock(return_value={
+        "provider": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "api_key": "",
+        "key_error": key_error,
+    }))
+
+    with pytest.raises(factory.LLMNotConfiguredError) as excinfo:
+        await factory.get_llm(7)
+
+    expected = key_error or "个人模型 API Key 无效，请重新保存"
+    assert str(excinfo.value) == expected
+
+
+@pytest.mark.asyncio
 async def test_registered_user_without_key_gets_byok_guidance(monkeypatch):
     monkeypatch.setattr(factory, "get_user_config", AsyncMock(return_value=None))
     monkeypatch.setattr(factory, "_fallback_allowed_for", AsyncMock(return_value=False))
