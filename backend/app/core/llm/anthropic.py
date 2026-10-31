@@ -83,6 +83,9 @@ def _tools_payload(tools: list[dict], caching: bool) -> list[dict]:
     return payload
 
 
+THINKING_BUDGETS = {"low": 4_096, "medium": 16_384, "high": 32_768}
+
+
 class AnthropicLLM(LLMProvider):
     supports_tools = True
 
@@ -90,9 +93,10 @@ class AnthropicLLM(LLMProvider):
         self,
         api_key: str,
         base_url: str = "https://api.anthropic.com",
-        model: str = "claude-sonnet-4-5",
+        model: str = "claude-sonnet-5-5",
         max_tokens: int | None = None,
         caching: bool | None = None,
+        reasoning_effort: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -100,6 +104,7 @@ class AnthropicLLM(LLMProvider):
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
         self.caching = settings.anthropic_prompt_caching if caching is None else caching
         self.context_window: int | None = settings.anthropic_context_window
+        self.thinking_budget = THINKING_BUDGETS.get((reasoning_effort or "").strip().lower())
 
     def _payload(self, messages: list[dict], tools: list[dict]) -> dict:
         system, converted = _to_anthropic(messages)
@@ -109,6 +114,14 @@ class AnthropicLLM(LLMProvider):
             "messages": converted,
             "stream": True,
         }
+        if self.thinking_budget:
+            payload["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
+            payload["max_tokens"] = max(
+                int(payload["max_tokens"]), self.thinking_budget + 4_096,
+            )
         if system:
             if self.caching:
                 payload["system"] = [{

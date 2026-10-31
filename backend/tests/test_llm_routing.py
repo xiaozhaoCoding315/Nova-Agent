@@ -49,9 +49,9 @@ async def test_get_llm_routes_utility_on_server_key():
 
 @pytest.mark.asyncio
 async def test_byok_model_is_never_routed(monkeypatch):
-    async def fake_config(user_id):
-        return {"api_key": "sk-personal", "base_url": "https://example.com/v1",
-                "model": "my-model"}
+    async def fake_config(user_id, provider=None):
+        return {"provider": "custom", "api_key": "sk-personal",
+                "base_url": "https://example.com/v1", "model": "my-model"}
 
     monkeypatch.setattr(factory_mod, "get_user_config", fake_config)
     llm = await get_llm(user_id=7, purpose="utility")

@@ -3,27 +3,58 @@ from app.config import settings
 from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
 from app.core.llm.fallback import FallbackLLM
+from app.core.llm.providers import get_provider
 from app.core.llm.user_settings import get_user_config
 
 
 class OpenAICompatibleLLM(LLMProvider):
     supports_tools = True
 
-    def __init__(self, api_key: str, base_url: str, model: str, reasoning_effort: str | None = None):
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        reasoning_effort: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        context_window: int | None = None,
+    ):
+        self.client = AsyncOpenAI(api_key=api_key or "ollama", base_url=base_url)
         self.model = model
-        # 推理强度只在对话主链路携带；摘要/抽取等工具型调用不带。
         self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
-        # 上下文窗口（token）：BYOK 用户可配；由 get_llm 统一填默认值。
-        self.context_window: int | None = None
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.context_window = context_window
+
+    def _extras(self) -> dict:
+        extras: dict = {}
+        if self.reasoning_effort:
+            extras["reasoning_effort"] = self.reasoning_effort
+        if self.temperature is not None:
+            extras["temperature"] = self.temperature
+        if self.max_tokens:
+            extras["max_tokens"] = self.max_tokens
+        return extras
 
     async def astream(self, messages: list[dict], **kwargs):
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            stream=True,
-            **kwargs,
-        )
+        # kwargs win over stored extras so a caller-supplied max_tokens is not
+        # passed twice (Python rejects duplicate keyword arguments).
+        params = {**self._extras(), **kwargs}
+        try:
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+                **params,
+            )
+        except Exception:  # noqa: BLE001 — provider may reject optional params
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+                **kwargs,
+            )
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
@@ -32,9 +63,9 @@ class OpenAICompatibleLLM(LLMProvider):
         """Streamed OpenAI-compatible function calling.
 
         tool_calls deltas arrive fragmented across chunks; we accumulate them
-        by index and emit one aggregated event before finish, keeping the
-        downstream chat loop simple. Real token usage is requested via
-        stream_options (providers that reject it are retried without).
+        by index and emit one aggregated event before finish. Real token usage
+        is requested via stream_options; providers that reject optional
+        parameters are retried with fewer extras, then bare.
         """
         async def _create(**extra):
             return await self.client.chat.completions.create(
@@ -46,14 +77,18 @@ class OpenAICompatibleLLM(LLMProvider):
                 **extra,
             )
 
+        extras = {**self._extras(), **kwargs}
         try:
-            stream = await _create(stream_options={"include_usage": True}, **kwargs)
-        except Exception:  # noqa: BLE001 — provider may not support include_usage
+            stream = await _create(stream_options={"include_usage": True}, **extras)
+        except Exception:  # noqa: BLE001
             try:
-                stream = await _create(**kwargs)
-            except Exception:  # noqa: BLE001 — provider may reject reasoning_effort etc.
-                if kwargs:
-                    stream = await _create()
+                stream = await _create(**extras)
+            except Exception:  # noqa: BLE001
+                if extras:
+                    try:
+                        stream = await _create(**kwargs)
+                    except Exception:  # noqa: BLE001
+                        stream = await _create()
                 else:
                     raise
 
@@ -99,6 +134,8 @@ def server_default_model() -> str | None:
     """Model the shared server key would use, for display and fallbacks."""
     for name in settings.llm_priority_list:
         name = name.lower()
+        if name == "zhipu" and settings.zhipu_api_key:
+            return settings.zhipu_model
         if name == "deepseek" and settings.deepseek_api_key:
             return "deepseek-chat"
         if name == "dashscope" and settings.dashscope_api_key:
@@ -118,7 +155,13 @@ def _server_llm(model_override: str | None = None) -> LLMProvider:
     providers = []
     for name in settings.llm_priority_list:
         name = name.lower()
-        if name == "deepseek" and settings.deepseek_api_key:
+        if name == "zhipu" and settings.zhipu_api_key:
+            if model_override:
+                return OpenAICompatibleLLM(
+                    settings.zhipu_api_key, settings.zhipu_base_url, model_override)
+            providers.append(OpenAICompatibleLLM(
+                settings.zhipu_api_key, settings.zhipu_base_url, settings.zhipu_model))
+        elif name == "deepseek" and settings.deepseek_api_key:
             if model_override:
                 return OpenAICompatibleLLM(
                     settings.deepseek_api_key,
@@ -157,10 +200,16 @@ def route_model_for(purpose: str | None) -> str | None:
     return None
 
 
-def resolve_context_window(user_id: int | None, provider: LLMProvider | None = None) -> int:
+def resolve_context_window(
+    user_id: int | None,
+    provider: LLMProvider | None = None,
+    overrides: dict | None = None,
+) -> int:
     """Effective context window for the context meter (tokens)."""
     if provider is not None and getattr(provider, "context_window", None):
         return int(provider.context_window)
+    if overrides and overrides.get("context_window"):
+        return int(overrides["context_window"])
     return settings.default_context_window
 
 
@@ -188,33 +237,57 @@ async def get_llm(
     user_id: int | None = None,
     model: str | None = None,
     purpose: str | None = None,
+    overrides: dict | None = None,
 ) -> LLMProvider:
     """Resolve the provider for one call.
 
-    A user-saved key takes precedence and is used exclusively, so a bad personal
-    config never silently spends the server owner's quota — and purpose routing
-    never overrides a BYOK user's own model choice. Without a personal key, the
-    shared env-key chain only serves guests and admins (system calls too);
-    registered users must bring their own key unless the deployment explicitly
-    opens ``llm_server_fallback_registered``.
+    A session-level provider/model override wins over the saved default, but
+    only when that provider has a saved credential. A missing credential is an
+    explicit error instead of a silent fallback to another vendor.
     """
+    overrides = overrides or {}
+    requested_provider = (overrides.get("provider") or "").strip().lower() or None
+
     if user_id is not None:
-        config = await get_user_config(user_id)
+        config = await get_user_config(user_id, requested_provider)
+        if requested_provider and not config:
+            raise RuntimeError("请先在设置里配置该厂商的 API Key")
         if config:
-            if not config["api_key"]:
+            if not config["api_key"] and config["provider"] != "ollama":
                 raise RuntimeError(config.get("key_error") or "个人模型 API Key 无效，请重新保存")
-            chosen_model = (model or config["model"]).strip()
-            if config.get("provider") == "anthropic":
+            chosen_model = (overrides.get("model") or model or config["model"]).strip()
+            effort = overrides.get("reasoning_effort", None)
+            if effort is None:
+                effort = config.get("reasoning_effort")
+            effort = (effort or "").strip().lower() or None
+            # Reasoning effort is a chat-turn setting: summaries and fact
+            # extraction (purpose != None) must stay cheap and fast.
+            if purpose:
+                effort = None
+            spec = get_provider(config["provider"])
+            context = (
+                overrides.get("context_window")
+                or config.get("context_window")
+                or (spec.context_window if spec else settings.default_context_window)
+            )
+            temperature = overrides.get("temperature")
+            max_tokens = overrides.get("max_tokens")
+            if spec and spec.kind == "anthropic":
                 llm = AnthropicLLM(
                     config["api_key"], config["base_url"], chosen_model,
+                    max_tokens=max_tokens, reasoning_effort=effort,
                 )
             else:
                 llm = OpenAICompatibleLLM(
                     config["api_key"], config["base_url"], chosen_model,
-                    reasoning_effort=config.get("reasoning_effort"),
+                    reasoning_effort=effort, temperature=temperature,
+                    max_tokens=max_tokens, context_window=int(context),
                 )
-            llm.context_window = config.get("context_window") or settings.default_context_window
+            llm.context_window = int(context)
             return llm
+
+    if requested_provider:
+        raise RuntimeError("请先在设置里配置该厂商的 API Key")
 
     if not await _fallback_allowed_for(user_id):
         raise RuntimeError(
