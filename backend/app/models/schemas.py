@@ -171,7 +171,7 @@ class SourceUsageOut(BaseModel):
     tokens: int
 
 
-# ---------- Night queue ----------
+# ---------- Builder design ----------
 
 class BuilderDesignMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -182,35 +182,6 @@ class BuilderDesignRequest(BaseModel):
     """Conversational project design: full turn history, server replies once."""
     messages: list[BuilderDesignMessage] = Field(min_length=1, max_length=40)
     stack: Literal["python", "fullstack"] = "fullstack"
-
-
-class NightQueueRequest(BaseModel):
-    kind: Literal["change_execute", "task", "chat", "builder"]
-    change_id: Optional[str] = None
-    repo_id: Optional[str] = None
-    bug_report: Optional[str] = Field(default=None, max_length=8000)
-    # chat kind: unattended prompt; session_id optional (new session otherwise)
-    content: Optional[str] = Field(default=None, max_length=8000)
-    session_id: Optional[str] = None
-    repo_ids: list[str] = Field(default_factory=list, max_length=5)
-    # builder kind: generate a project from scratch overnight
-    name: Optional[str] = Field(default=None, max_length=80)
-    requirements: Optional[str] = Field(default=None, max_length=6000)
-    stack: Literal["python", "fullstack"] = "python"
-
-
-class NightItemOut(BaseModel):
-    id: str
-    kind: str
-    target_id: Optional[str] = None
-    payload: dict = {}
-    title: str = ""
-    status: str
-    job_id: Optional[str] = None
-    error: Optional[str] = None
-    created_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
 
 
 # ---------- Debt radar ----------

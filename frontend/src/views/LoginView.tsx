@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
   Bot, BrainCircuit, CheckCircle2, ChevronRight, Download, FlaskConical, Fingerprint,
-  KeyRound, Loader2, MonitorDown, Moon, ShieldCheck, Sparkles,
+  KeyRound, Loader2, MonitorDown, ShieldCheck, Sparkles,
   TerminalSquare, UserPlus, Wand2, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -188,23 +188,6 @@ function BentoGrid() {
         </div>
       </div>
 
-      {/* 夜间队列 */}
-      <div className="reveal rounded-2xl border border-edge bg-panel/60 p-4 transition-colors hover:border-accentSoft/60" style={{ transitionDelay: '160ms' }}>
-        <Moon size={15} className="text-accent" />
-        <h3 className="mt-1.5 text-[13.5px] font-semibold">夜间队列</h3>
-        <p className="mt-1 text-[11.5px] leading-relaxed text-dim">睡前排队，夜间窗口自动执行，早上带证据审批。</p>
-        <div className="mt-3 flex items-center gap-1">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <span
-              key={i}
-              className="h-1.5 flex-1 rounded-full bg-accent/40"
-              style={{ animation: `nova-pulse 2.4s ease-out ${i * 0.35}s infinite` }}
-            />
-          ))}
-        </div>
-        <p className="mt-2 font-mono text-[9.5px] text-dim/60">00:00 → 08:00 自动推进</p>
-      </div>
-
       {/* 本地执行器（宽格） */}
       <div className="reveal col-span-2 overflow-hidden rounded-2xl border border-edge bg-panel/60 p-4 transition-colors hover:border-accentSoft/60" style={{ transitionDelay: '120ms' }}>
         <TerminalSquare size={15} className="text-accent" />
@@ -282,7 +265,7 @@ function LocalBridgeViz() {
 /* ================= 关键词跑马灯 ================= */
 
 const MARQUEE = [
-  '引用核验', 'Docker 沙箱实测', '红绿验证门', '夜间队列', '反思教训', '本地执行器',
+  '引用核验', 'Docker 沙箱实测', '红绿验证门', '反思教训', '本地执行器',
   '项目大脑', '从 0 建项目', '多用户隔离', '自带模型 Key', 'SKILL.md 技能', 'Git 交付',
 ]
 

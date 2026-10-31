@@ -982,41 +982,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/night-queue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Night Queue */
-        get: operations["list_night_queue_api_v1_night_queue_get"];
-        put?: never;
-        /** Add Night Item */
-        post: operations["add_night_item_api_v1_night_queue_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/night-queue/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Cancel Night Item */
-        delete: operations["cancel_night_item_api_v1_night_queue__item_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/repos": {
         parameters: {
             query?: never;
@@ -3377,69 +3342,6 @@ export interface components {
              * @default 7
              */
             window_days: number;
-        };
-        /** NightItemOut */
-        NightItemOut: {
-            /** Created At */
-            created_at?: string | null;
-            /** Error */
-            error?: string | null;
-            /** Finished At */
-            finished_at?: string | null;
-            /** Id */
-            id: string;
-            /** Job Id */
-            job_id?: string | null;
-            /** Kind */
-            kind: string;
-            /**
-             * Payload
-             * @default {}
-             */
-            payload: {
-                [key: string]: unknown;
-            };
-            /** Started At */
-            started_at?: string | null;
-            /** Status */
-            status: string;
-            /** Target Id */
-            target_id?: string | null;
-            /**
-             * Title
-             * @default
-             */
-            title: string;
-        };
-        /** NightQueueRequest */
-        NightQueueRequest: {
-            /** Bug Report */
-            bug_report?: string | null;
-            /** Change Id */
-            change_id?: string | null;
-            /** Content */
-            content?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "change_execute" | "task" | "chat" | "builder";
-            /** Name */
-            name?: string | null;
-            /** Repo Id */
-            repo_id?: string | null;
-            /** Repo Ids */
-            repo_ids?: string[];
-            /** Requirements */
-            requirements?: string | null;
-            /** Session Id */
-            session_id?: string | null;
-            /**
-             * Stack
-             * @default python
-             * @enum {string}
-             */
-            stack: "python" | "fullstack";
         };
         /** OkOut */
         OkOut: {
@@ -5953,92 +5855,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_night_queue_api_v1_night_queue_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NightItemOut"][];
-                };
-            };
-        };
-    };
-    add_night_item_api_v1_night_queue_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NightQueueRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NightItemOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_night_item_api_v1_night_queue__item_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */

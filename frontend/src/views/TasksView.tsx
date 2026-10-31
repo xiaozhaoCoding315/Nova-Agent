@@ -1,11 +1,10 @@
 import clsx from 'clsx'
 import {
   CheckCircle2, ChevronDown, ClipboardList, FileDiff, FlaskConical, GitPullRequest, ListTodo,
-  Moon, Play, Plus, RefreshCw, ShieldCheck, XCircle, XOctagon,
+  Play, Plus, RefreshCw, ShieldCheck, XCircle, XOctagon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DiffView } from '../components/DiffView'
-import { NightQueuePanel } from '../components/NightQueuePanel'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
@@ -797,7 +796,6 @@ export function TasksView({
   const [description, setDescription] = useState('')
   const [kind, setKind] = useState<Kind>('auto')
   const [creating, setCreating] = useState(false)
-  const [nightOpen, setNightOpen] = useState(false)
 
   const readyRepos = repos.filter((repo) => repo.status === 'ready')
 
@@ -895,24 +893,8 @@ export function TasksView({
               回到对话
             </button>
           )}
-          <button
-            onClick={() => setNightOpen(!nightOpen)}
-            className={clsx(
-              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors',
-              nightOpen ? 'border-accent/60 bg-accentSoft/30 text-ink' : 'border-edge/80 text-dim hover:text-ink',
-            )}
-            title="睡前排队，夜间窗口内自动执行，早上看报告批准"
-          >
-            <Moon size={12} className={nightOpen ? 'text-accent' : ''} /> 夜间队列
-          </button>
         </div>
       </div>
-
-      {nightOpen && (
-        <div className="max-h-[45%] shrink-0 overflow-y-auto px-4 py-3">
-          <NightQueuePanel repos={repos} />
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-80 shrink-0 flex-col border-r border-edge bg-panel/40">

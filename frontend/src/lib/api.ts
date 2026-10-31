@@ -2,7 +2,7 @@ import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
   Change, ChangeListItem, ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus, LlmSettings,
-  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, NightItem, RegisterResult, Repo,
+  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, RegisterResult, Repo,
   Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
@@ -120,23 +120,6 @@ export const api = {
       self_hourly_messages?: number | null
       self_sandbox_daily?: number | null
     }) => request<SelfQuota>('/settings/quota', { ...json(values), method: 'PUT' }),
-  },
-
-  night: {
-    list: () => request<NightItem[]>('/night-queue'),
-    add: (body: {
-      kind: 'change_execute' | 'task' | 'chat' | 'builder'
-      change_id?: string
-      repo_id?: string
-      bug_report?: string
-      content?: string
-      session_id?: string
-      repo_ids?: string[]
-      name?: string
-      requirements?: string
-      stack?: 'python' | 'fullstack'
-    }) => request<NightItem>('/night-queue', json(body)),
-    cancel: (id: string) => request<{ ok: boolean }>(`/night-queue/${id}`, { method: 'DELETE' }),
   },
 
   sessions: {

@@ -716,20 +716,6 @@ export type StreamUsage = {
   completion_tokens: number
 }
 
-export type NightItem = {
-  id: string
-  kind: 'change_execute' | 'task'
-  target_id?: string | null
-  payload?: Record<string, unknown>
-  title: string
-  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
-  job_id?: string | null
-  error?: string | null
-  created_at?: string | null
-  started_at?: string | null
-  finished_at?: string | null
-}
-
 export type DebtSnapshot = {
   score: number
   metrics: {
