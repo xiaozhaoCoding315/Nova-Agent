@@ -106,10 +106,11 @@ async def list_user_configs(user_id: int) -> list[dict]:
 
 
 async def get_user_config(user_id: int, provider: str | None = None) -> dict | None:
+    provider_id = (provider or "").strip().lower()
     if provider:
         rows = await query(
             f"{_SELECT} WHERE user_id = %s AND provider = %s LIMIT 1",
-            (user_id, provider),
+            (user_id, provider_id),
         )
     else:
         rows = await query(
@@ -207,7 +208,8 @@ async def save_user_config(
 
 
 async def set_default_provider(user_id: int, provider: str) -> dict | None:
-    if not await get_user_config(user_id, provider):
+    provider_id = (provider or "").strip().lower()
+    if not provider_id or not await get_user_config(user_id, provider_id):
         return None
     await execute(
         "UPDATE user_llm_providers SET is_default = FALSE WHERE user_id = %s",
@@ -216,17 +218,18 @@ async def set_default_provider(user_id: int, provider: str) -> dict | None:
     await execute(
         "UPDATE user_llm_providers SET is_default = TRUE "
         "WHERE user_id = %s AND provider = %s",
-        (user_id, provider),
+        (user_id, provider_id),
     )
-    return await get_user_config(user_id, provider)
+    return await get_user_config(user_id, provider_id)
 
 
 async def delete_user_config(user_id: int, provider: str | None = None) -> bool:
+    provider_id = (provider or "").strip().lower()
     if provider:
         rows = await execute(
             "DELETE FROM user_llm_providers WHERE user_id = %s AND provider = %s "
             "RETURNING is_default",
-            (user_id, provider),
+            (user_id, provider_id),
         )
         if not rows:
             return False
