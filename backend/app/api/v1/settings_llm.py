@@ -1,28 +1,56 @@
-"""Per-user model credentials: view, save, delete and connection test."""
+"""Per-user model credentials: catalog, CRUD, default and connection test."""
 import asyncio
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import settings
+from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.factory import OpenAICompatibleLLM, server_default_model
+from app.core.llm.providers import get_provider, provider_list, resolve_base_url
 from app.core.llm.user_settings import (
     delete_user_config,
     get_user_config,
-    provider_by_id,
-    provider_presets,
+    list_user_configs,
     save_user_config,
+    set_default_provider,
 )
 from app.core.security.auth import get_current_user
 from app.core.security.redaction import redact_text
-from app.models.schemas import LlmSettingsOut, LlmSettingsUpdate, LlmTestOut
+from app.models.schemas import (
+    LlmCredentialOut,
+    LlmCredentialUpdate,
+    LlmProviderOut,
+    LlmSettingsOut,
+    LlmSettingsUpdate,
+    LlmTestOut,
+    OkOut,
+)
 
 router = APIRouter()
 
 
-def _public_view(config: dict | None, user: dict) -> LlmSettingsOut:
+def _credential_view(config: dict) -> LlmCredentialOut:
+    spec = get_provider(config["provider"])
+    return LlmCredentialOut(
+        provider=config["provider"],
+        label=spec.label if spec else config["provider"],
+        icon=spec.icon if spec else "custom",
+        model=config["model"],
+        base_url=config["base_url"],
+        has_key=bool(config.get("api_key")),
+        key_hint=config.get("key_hint") or None,
+        context_window=config.get("context_window"),
+        reasoning_effort=config.get("reasoning_effort"),
+        is_default=bool(config.get("is_default")),
+        updated_at=config.get("updated_at"),
+    )
+
+
+def _public_view(
+    config: dict | None, user: dict, configs: list[dict] | None = None,
+) -> LlmSettingsOut:
     has_key = bool(config and config.get("api_key"))
-    # 服务端共享 Key 的适用范围随账号而变：游客/管理员可用，注册用户需自带 Key。
     server_applies = bool(
         settings.llm_allow_server_fallback
         and (
@@ -50,14 +78,77 @@ def _public_view(config: dict | None, user: dict) -> LlmSettingsOut:
         allow_server_fallback=server_applies,
         context_window=config.get("context_window") if config else None,
         reasoning_effort=config.get("reasoning_effort") if config else None,
-        providers=provider_presets(),
+        providers=provider_list(),
+        credentials=[_credential_view(item) for item in (configs or [])],
         updated_at=config.get("updated_at") if config else None,
     )
 
 
+async def _public_for(user: dict) -> LlmSettingsOut:
+    configs = await list_user_configs(user["id"])
+    default = next((item for item in configs if item.get("is_default")), None)
+    if default is None and configs:
+        default = configs[0]
+    return _public_view(default, user, configs)
+
+
+@router.get("/settings/llm/providers", response_model=list[LlmProviderOut])
+async def list_providers(user: dict = Depends(get_current_user)):
+    return provider_list()
+
+
+@router.get("/settings/llm/credentials", response_model=list[LlmCredentialOut])
+async def list_credentials(user: dict = Depends(get_current_user)):
+    return [_credential_view(item) for item in await list_user_configs(user["id"])]
+
+
+@router.put(
+    "/settings/llm/credentials/{provider}", response_model=LlmCredentialOut,
+)
+async def save_credential(
+    provider: str,
+    body: LlmCredentialUpdate,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        config = await save_user_config(
+            user["id"],
+            provider=provider,
+            model=body.model,
+            base_url=body.base_url,
+            api_key=body.api_key,
+            context_window=body.context_window,
+            reasoning_effort=body.reasoning_effort,
+            is_default=body.is_default,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _credential_view(config)
+
+
+@router.delete(
+    "/settings/llm/credentials/{provider}", response_model=OkOut,
+)
+async def delete_credential(provider: str, user: dict = Depends(get_current_user)):
+    if not await delete_user_config(user["id"], provider):
+        raise HTTPException(status_code=404, detail="该厂商尚未配置")
+    return {"ok": True}
+
+
+@router.post(
+    "/settings/llm/credentials/{provider}/default",
+    response_model=LlmCredentialOut,
+)
+async def make_default(provider: str, user: dict = Depends(get_current_user)):
+    config = await set_default_provider(user["id"], provider)
+    if config is None:
+        raise HTTPException(status_code=404, detail="该厂商尚未配置")
+    return _credential_view(config)
+
+
 @router.get("/settings/llm", response_model=LlmSettingsOut)
 async def get_llm_settings(user: dict = Depends(get_current_user)):
-    return _public_view(await get_user_config(user["id"]), user)
+    return await _public_for(user)
 
 
 @router.put("/settings/llm", response_model=LlmSettingsOut)
@@ -74,16 +165,17 @@ async def update_llm_settings(
             api_key=body.api_key,
             context_window=body.context_window,
             reasoning_effort=body.reasoning_effort,
+            is_default=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return _public_view(await get_user_config(user["id"]), user)
+    return await _public_for(user)
 
 
 @router.delete("/settings/llm", response_model=LlmSettingsOut)
 async def clear_llm_settings(user: dict = Depends(get_current_user)):
     await delete_user_config(user["id"])
-    return _public_view(None, user)
+    return await _public_for(user)
 
 
 @router.post("/settings/llm/test", response_model=LlmTestOut)
@@ -91,28 +183,37 @@ async def test_llm_settings(
     body: LlmSettingsUpdate,
     user: dict = Depends(get_current_user),
 ):
-    existing = await get_user_config(user["id"])
+    existing = await get_user_config(user["id"], body.provider)
     api_key = (body.api_key or "").strip() or (existing["api_key"] if existing else "")
-    if not api_key:
+    if not api_key and body.provider != "ollama":
         raise HTTPException(status_code=400, detail="请先填写 API Key")
 
-    preset = provider_by_id(body.provider)
-    if not preset:
+    spec = get_provider(body.provider)
+    if not spec:
         raise HTTPException(status_code=400, detail="不支持的模型服务商")
-    base_url = (body.base_url or preset.get("base_url") or "").strip()
+    try:
+        base_url = resolve_base_url(spec, body.base_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     model = body.model.strip()
 
     started = time.perf_counter()
     try:
-        llm = OpenAICompatibleLLM(api_key, base_url, model)
-        async with asyncio.timeout(20):
+        if spec.kind == "anthropic":
+            llm = AnthropicLLM(api_key, base_url, model)
+        else:
+            llm = OpenAICompatibleLLM(api_key, base_url, model)
+        async with asyncio.timeout(15):
             async for _ in llm.astream(
                 [{"role": "user", "content": "Reply with OK only."}],
                 max_tokens=8,
             ):
                 break
         elapsed = int((time.perf_counter() - started) * 1000)
-        return LlmTestOut(ok=True, model=model, latency_ms=elapsed, message="连接成功，已收到模型响应")
+        return LlmTestOut(
+            ok=True, model=model, latency_ms=elapsed,
+            message="连接成功，已收到模型响应",
+        )
     except TimeoutError:
         elapsed = int((time.perf_counter() - started) * 1000)
         return LlmTestOut(

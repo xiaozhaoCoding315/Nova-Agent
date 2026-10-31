@@ -1654,6 +1654,16 @@
             "title": "File Ids",
             "type": "array"
           },
+          "llm_overrides": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmOverrides"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "model": {
             "anyOf": [
               {
@@ -3013,14 +3023,298 @@
         "title": "JobOut",
         "type": "object"
       },
+      "LlmCredentialOut": {
+        "properties": {
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "has_key": {
+            "default": false,
+            "title": "Has Key",
+            "type": "boolean"
+          },
+          "icon": {
+            "default": "custom",
+            "title": "Icon",
+            "type": "string"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Hint"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "provider",
+          "label",
+          "model"
+        ],
+        "title": "LlmCredentialOut",
+        "type": "object"
+      },
+      "LlmCredentialUpdate": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "maximum": 10000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "model": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "LlmCredentialUpdate",
+        "type": "object"
+      },
+      "LlmOverrides": {
+        "properties": {
+          "context_window": {
+            "anyOf": [
+              {
+                "maximum": 10000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "",
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          }
+        },
+        "title": "LlmOverrides",
+        "type": "object"
+      },
       "LlmProviderOut": {
         "properties": {
           "base_url": {
+            "default": "",
             "title": "Base Url",
+            "type": "string"
+          },
+          "base_url_locked": {
+            "default": true,
+            "title": "Base Url Locked",
+            "type": "boolean"
+          },
+          "context_window": {
+            "default": 131072,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "docs_url": {
+            "default": "",
+            "title": "Docs Url",
+            "type": "string"
+          },
+          "env_key": {
+            "default": "",
+            "title": "Env Key",
+            "type": "string"
+          },
+          "free_tier": {
+            "default": false,
+            "title": "Free Tier",
+            "type": "boolean"
+          },
+          "group": {
+            "default": "domestic",
+            "title": "Group",
+            "type": "string"
+          },
+          "icon": {
+            "default": "",
+            "title": "Icon",
             "type": "string"
           },
           "id": {
             "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "openai",
+            "title": "Kind",
             "type": "string"
           },
           "label": {
@@ -3033,12 +3327,26 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "supports_reasoning": {
+            "default": false,
+            "title": "Supports Reasoning",
+            "type": "boolean"
+          },
+          "supports_temperature": {
+            "default": true,
+            "title": "Supports Temperature",
+            "type": "boolean"
+          },
+          "supports_tools": {
+            "default": true,
+            "title": "Supports Tools",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
-          "label",
-          "base_url"
+          "label"
         ],
         "title": "LlmProviderOut",
         "type": "object"
@@ -3075,6 +3383,13 @@
               }
             ],
             "title": "Context Window"
+          },
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/LlmCredentialOut"
+            },
+            "title": "Credentials",
+            "type": "array"
           },
           "has_key": {
             "default": false,
@@ -3210,6 +3525,11 @@
               }
             ],
             "title": "Context Window"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
           },
           "model": {
             "maxLength": 120,
@@ -4401,6 +4721,16 @@
       },
       "SessionCreateRequest": {
         "properties": {
+          "llm_overrides": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmOverrides"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "repo_ids": {
             "items": {
               "type": "string"
@@ -4430,6 +4760,11 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "llm_overrides": {
+            "additionalProperties": true,
+            "title": "Llm Overrides",
+            "type": "object"
           },
           "message_count": {
             "default": 0,
@@ -9607,6 +9942,190 @@
           }
         },
         "summary": "Update Llm Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/llm/credentials": {
+      "get": {
+        "operationId": "list_credentials_api_v1_settings_llm_credentials_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LlmCredentialOut"
+                  },
+                  "title": "Response List Credentials Api V1 Settings Llm Credentials Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Credentials",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/llm/credentials/{provider}": {
+      "delete": {
+        "operationId": "delete_credential_api_v1_settings_llm_credentials__provider__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "save_credential_api_v1_settings_llm_credentials__provider__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmCredentialUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Credential",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/llm/credentials/{provider}/default": {
+      "post": {
+        "operationId": "make_default_api_v1_settings_llm_credentials__provider__default_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Default",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/llm/providers": {
+      "get": {
+        "operationId": "list_providers_api_v1_settings_llm_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LlmProviderOut"
+                  },
+                  "title": "Response List Providers Api V1 Settings Llm Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
         "tags": [
           "settings"
         ]

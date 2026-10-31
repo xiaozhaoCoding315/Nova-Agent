@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------- Auth ----------
@@ -232,6 +232,23 @@ class FileListOut(BaseModel):
 
 # ---------- Chat ----------
 
+class LlmOverrides(BaseModel):
+    provider: Optional[str] = Field(default=None, max_length=32)
+    model: Optional[str] = Field(default=None, max_length=120)
+    reasoning_effort: Optional[Literal["", "low", "medium", "high"]] = None
+    context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+    max_tokens: Optional[int] = Field(default=None, ge=1, le=200_000)
+
+    @field_validator("context_window")
+    @classmethod
+    def _check_context_window(cls, value: Optional[int]) -> Optional[int]:
+        # 0/None = 清除自定义窗口；其余值需与 user_settings 的下限一致。
+        if value not in (None, 0) and value < 2048:
+            raise ValueError("上下文窗口需在 2048 - 10,000,000 tokens 之间")
+        return value
+
+
 class SessionOut(BaseModel):
     id: str
     title: str
@@ -240,12 +257,14 @@ class SessionOut(BaseModel):
     repo_ids: list[str] = Field(default_factory=list)
     primary_repo_id: Optional[str] = None
     model: Optional[str] = None
+    llm_overrides: dict = Field(default_factory=dict)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
 class SessionCreateRequest(BaseModel):
     repo_ids: list[str] = Field(default_factory=list, max_length=5)
+    llm_overrides: Optional[LlmOverrides] = None
 
 
 class MessageOut(BaseModel):
@@ -261,6 +280,11 @@ class SessionRenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class SessionUpdateRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    llm_overrides: Optional[LlmOverrides] = None
+
+
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     content: str = Field(min_length=1, max_length=8000)
@@ -268,6 +292,7 @@ class ChatRequest(BaseModel):
     repo_ids: Optional[list[str]] = None
     permission_mode: Optional[Literal["readonly", "ask", "auto", "full"]] = None
     model: Optional[str] = Field(default=None, max_length=120)
+    llm_overrides: Optional[LlmOverrides] = None
     file_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
@@ -401,8 +426,42 @@ class UsageOut(BaseModel):
 class LlmProviderOut(BaseModel):
     id: str
     label: str
-    base_url: str
+    group: str = "domestic"
+    kind: str = "openai"
+    base_url: str = ""
     models: list[str] = Field(default_factory=list)
+    docs_url: str = ""
+    free_tier: bool = False
+    supports_tools: bool = True
+    supports_reasoning: bool = False
+    supports_temperature: bool = True
+    context_window: int = 131_072
+    base_url_locked: bool = True
+    env_key: str = ""
+    icon: str = ""
+
+
+class LlmCredentialOut(BaseModel):
+    provider: str
+    label: str
+    icon: str = "custom"
+    model: str
+    base_url: str = ""
+    has_key: bool = False
+    key_hint: Optional[str] = None
+    context_window: Optional[int] = None
+    reasoning_effort: Optional[str] = None
+    is_default: bool = False
+    updated_at: Optional[datetime] = None
+
+
+class LlmCredentialUpdate(BaseModel):
+    model: str = Field(min_length=1, max_length=120)
+    base_url: Optional[str] = Field(default=None, max_length=500)
+    api_key: Optional[str] = Field(default=None, max_length=4000)
+    context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    reasoning_effort: Optional[str] = Field(default=None, max_length=12)
+    is_default: bool = False
 
 
 class LlmSettingsOut(BaseModel):
@@ -418,6 +477,7 @@ class LlmSettingsOut(BaseModel):
     context_window: Optional[int] = None       # None = 跟随部署默认窗口
     reasoning_effort: Optional[str] = None     # "" / low / medium / high
     providers: list[LlmProviderOut] = Field(default_factory=list)
+    credentials: list[LlmCredentialOut] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
 
@@ -430,6 +490,7 @@ class LlmSettingsUpdate(BaseModel):
     # 0/None = 清除自定义窗口（跟随部署默认）；reasoning_effort 空 = 默认
     context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
     reasoning_effort: Optional[str] = Field(default=None, max_length=12)
+    is_default: bool = False
 
 
 class LlmTestOut(BaseModel):
