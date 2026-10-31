@@ -145,7 +145,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="claude-sonnet-5-5",
         models=("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"),
         docs_url="https://docs.anthropic.com/",
-        supports_reasoning=True, context_window=200_000,
+        supports_reasoning=True, supports_temperature=False, context_window=200_000,
         env_key="ANTHROPIC_API_KEY", icon="anthropic",
         base_url_setting="anthropic_base_url",
     ),

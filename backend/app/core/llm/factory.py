@@ -1,10 +1,14 @@
+import structlog
 from openai import AsyncOpenAI
+
 from app.config import settings
 from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
 from app.core.llm.fallback import FallbackLLM
 from app.core.llm.providers import get_provider
 from app.core.llm.user_settings import get_user_config
+
+logger = structlog.get_logger()
 
 
 class OpenAICompatibleLLM(LLMProvider):
@@ -40,21 +44,26 @@ class OpenAICompatibleLLM(LLMProvider):
     async def astream(self, messages: list[dict], **kwargs):
         # kwargs win over stored extras so a caller-supplied max_tokens is not
         # passed twice (Python rejects duplicate keyword arguments).
-        params = {**self._extras(), **kwargs}
-        try:
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                **params,
-            )
-        except Exception:  # noqa: BLE001 — provider may reject optional params
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                **kwargs,
-            )
+        attempts: list[dict] = []
+        for attempt in ({**self._extras(), **kwargs}, dict(kwargs)):
+            if not attempts or attempt != attempts[-1]:
+                attempts.append(attempt)
+        for index, attempt in enumerate(attempts):
+            try:
+                stream = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    stream=True,
+                    **attempt,
+                )
+                break
+            except Exception:  # noqa: BLE001 — provider may reject optional params
+                if index + 1 >= len(attempts):
+                    raise
+                logger.warning(
+                    "llm_retry_reduced_params",
+                    dropped=sorted(set(attempt) - set(attempts[index + 1])),
+                )
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
@@ -78,19 +87,34 @@ class OpenAICompatibleLLM(LLMProvider):
             )
 
         extras = {**self._extras(), **kwargs}
-        try:
-            stream = await _create(stream_options={"include_usage": True}, **extras)
-        except Exception:  # noqa: BLE001
+        ladder: list[dict] = [
+            {"stream_options": {"include_usage": True}, **extras},
+            dict(extras),
+        ]
+        if "temperature" in extras:
+            ladder.append({
+                key: value for key, value in extras.items() if key != "temperature"
+            })
+        ladder.append(dict(kwargs))
+        ladder.append({})
+
+        # Never send two byte-identical requests: dedupe the fallback ladder.
+        attempts: list[dict] = []
+        for attempt in ladder:
+            if attempt not in attempts:
+                attempts.append(attempt)
+
+        for index, attempt in enumerate(attempts):
             try:
-                stream = await _create(**extras)
+                stream = await _create(**attempt)
+                break
             except Exception:  # noqa: BLE001
-                if extras:
-                    try:
-                        stream = await _create(**kwargs)
-                    except Exception:  # noqa: BLE001
-                        stream = await _create()
-                else:
+                if index + 1 >= len(attempts):
                     raise
+                logger.warning(
+                    "llm_tool_retry_dropped_params",
+                    dropped=sorted(set(attempt) - set(attempts[index + 1])),
+                )
 
         acc: dict[int, dict] = {}
         finish_reason = "stop"
@@ -206,10 +230,10 @@ def resolve_context_window(
     overrides: dict | None = None,
 ) -> int:
     """Effective context window for the context meter (tokens)."""
-    if provider is not None and getattr(provider, "context_window", None):
-        return int(provider.context_window)
     if overrides and overrides.get("context_window"):
         return int(overrides["context_window"])
+    if provider is not None and getattr(provider, "context_window", None):
+        return int(provider.context_window)
     return settings.default_context_window
 
 

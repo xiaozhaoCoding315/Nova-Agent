@@ -81,7 +81,7 @@ async def health():
         "postgres": postgres,
         "qdrant": qdrant,
         "llm": _check_llm(),
-        "model": server_default_model() or settings.dashscope_model,
+        "model": server_default_model() or settings.zhipu_model,
         "embedding": _check_embedding(),
         "sandbox": sandbox,
         "git": "ok" if _git_available() else "missing",

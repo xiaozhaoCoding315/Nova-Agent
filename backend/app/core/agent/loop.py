@@ -361,6 +361,7 @@ async def run_chat(
             rounds = round_no
             round_text: list[str] = []
             tool_calls: list[dict] = []
+            thinking_blocks: list[dict] = []
             usage: dict | None = None
 
             try:
@@ -408,6 +409,8 @@ async def run_chat(
                                 yield _sse("token", text=event["content"])
                             elif etype == "tool_calls":
                                 tool_calls = event["tool_calls"]
+                            elif etype == "thinking_blocks":
+                                thinking_blocks = event.get("thinking_blocks") or []
                             elif etype == "usage":
                                 usage = event["usage"]
                     break
@@ -461,7 +464,7 @@ async def run_chat(
             if not tool_calls:
                 break
 
-            messages.append({
+            assistant_message = {
                 "role": "assistant",
                 "content": text,
                 "tool_calls": [
@@ -469,7 +472,10 @@ async def run_chat(
                      "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                     for tc in tool_calls
                 ],
-            })
+            }
+            if thinking_blocks:
+                assistant_message["thinking_blocks"] = thinking_blocks
+            messages.append(assistant_message)
 
             parsed: list[tuple[dict, str, dict]] = []
             for tc in tool_calls:

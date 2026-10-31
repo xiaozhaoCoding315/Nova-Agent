@@ -1,6 +1,10 @@
 """Anthropic message/tool conversion (no network)."""
 import json
 
+import httpx
+import pytest
+
+from app.core.llm import anthropic as anthropic_mod
 from app.core.llm.anthropic import AnthropicLLM, _to_anthropic, _tools_payload
 
 MESSAGES = [
@@ -63,3 +67,103 @@ def test_payload_caches_system_when_enabled():
         [{"role": "system", "content": "sys"}], []
     )
     assert plain["system"] == "sys"
+
+
+@pytest.mark.parametrize(
+    ("effort", "floor"),
+    [("low", 8_192), ("medium", 16_384), ("high", 32_768)],
+)
+def test_payload_uses_adaptive_thinking_and_effort(effort, floor):
+    llm = AnthropicLLM(
+        "key", model="claude-sonnet-5-5", max_tokens=1024,
+        reasoning_effort=effort,
+    )
+
+    payload = llm._payload([{"role": "user", "content": "hi"}], [])
+
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": effort}
+    assert "budget_tokens" not in json.dumps(payload)
+    assert payload["max_tokens"] == floor
+
+
+def test_payload_without_effort_omits_thinking_config():
+    llm = AnthropicLLM("key", model="claude-sonnet-5-5", max_tokens=1024)
+
+    payload = llm._payload([{"role": "user", "content": "hi"}], [])
+
+    assert "thinking" not in payload
+    assert "output_config" not in payload
+    assert payload["max_tokens"] == 1024
+
+
+def test_assistant_thinking_blocks_are_replayed_first():
+    messages = [
+        {"role": "user", "content": "read it"},
+        {
+            "role": "assistant",
+            "content": "checking",
+            "thinking_blocks": [
+                {"type": "thinking", "thinking": "", "signature": "sig-1"},
+                {"type": "text", "text": "not a thinking block"},
+            ],
+            "tool_calls": [{
+                "id": "t1", "type": "function",
+                "function": {"name": "read_file", "arguments": json.dumps({"path": "a.py"})},
+            }],
+        },
+        {"role": "tool", "tool_call_id": "t1", "name": "read_file", "content": "print(1)"},
+    ]
+
+    _, converted = _to_anthropic(messages)
+
+    blocks = converted[1]["content"]
+    assert [block["type"] for block in blocks] == ["thinking", "text", "tool_use"]
+    assert blocks[0] == {"type": "thinking", "thinking": "", "signature": "sig-1"}
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_thinking_blocks_before_tool_calls(monkeypatch):
+    stream_events = [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 10}}},
+        {"type": "content_block_start", "index": 0,
+         "content_block": {"type": "thinking", "thinking": ""}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "thinking_delta", "thinking": "hmm"}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "signature_delta", "signature": "sig-1"}},
+        {"type": "content_block_start", "index": 1,
+         "content_block": {"type": "tool_use", "id": "t1", "name": "read_file"}},
+        {"type": "content_block_delta", "index": 1,
+         "delta": {"type": "input_json_delta", "partial_json": '{"path": "a.py"}'}},
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"},
+         "usage": {"output_tokens": 5}},
+    ]
+    body = "".join(f"data: {json.dumps(event)}\n\n" for event in stream_events)
+
+    real_client = httpx.AsyncClient
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body.encode())
+
+    def fake_client(**kwargs):
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(anthropic_mod.httpx, "AsyncClient", fake_client)
+
+    llm = AnthropicLLM("key", model="claude-sonnet-5-5", reasoning_effort="high")
+    events = [
+        event
+        async for event in llm.astream_with_tools(
+            [{"role": "user", "content": "hi"}], []
+        )
+    ]
+
+    types = [event["type"] for event in events]
+    thinking_index = types.index("thinking_blocks")
+    assert types.index("tool_calls") == thinking_index + 1
+    assert events[thinking_index]["thinking_blocks"] == [
+        {"type": "thinking", "thinking": "hmm", "signature": "sig-1"},
+    ]
+    tool_calls = events[types.index("tool_calls")]["tool_calls"]
+    assert tool_calls[0]["arguments"] == '{"path": "a.py"}'

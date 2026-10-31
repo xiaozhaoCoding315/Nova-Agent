@@ -15,9 +15,10 @@ class LLMProvider(ABC):
         """Yield event dicts for function-calling conversations.
 
         Event protocol (consumed by the chat loop):
-          {"type": "content",    "content": str}
-          {"type": "tool_calls", "tool_calls": [{"id", "name", "arguments"}]}
-          {"type": "finish",     "finish_reason": str}
+          {"type": "content",         "content": str}
+          {"type": "thinking_blocks", "thinking_blocks": [...]}   # optional
+          {"type": "tool_calls",      "tool_calls": [{"id", "name", "arguments"}]}
+          {"type": "finish",          "finish_reason": str}
 
         Default implementation: providers without native tool support degrade
         gracefully to plain streaming, so FallbackLLM can always try them.

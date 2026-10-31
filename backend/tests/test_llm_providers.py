@@ -18,6 +18,12 @@ def test_only_custom_and_ollama_have_unlocked_base_urls():
     assert unlocked == {"custom", "ollama"}
 
 
+def test_anthropic_rejects_temperature_in_catalog():
+    anthropic = get_provider("anthropic")
+    assert anthropic.supports_temperature is False
+    assert get_provider("zhipu").supports_temperature is True
+
+
 def test_zhipu_is_the_free_default():
     zhipu = get_provider("zhipu")
     assert zhipu is not None

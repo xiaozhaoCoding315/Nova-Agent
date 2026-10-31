@@ -33,7 +33,11 @@ def _to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
             continue
 
         if role == "assistant":
-            blocks: list[dict] = []
+            blocks: list[dict] = [
+                block
+                for block in message.get("thinking_blocks") or []
+                if isinstance(block, dict) and block.get("type") == "thinking"
+            ]
             text = message.get("content")
             if text:
                 blocks.append({"type": "text", "text": str(text)})
@@ -83,7 +87,7 @@ def _tools_payload(tools: list[dict], caching: bool) -> list[dict]:
     return payload
 
 
-THINKING_BUDGETS = {"low": 4_096, "medium": 16_384, "high": 32_768}
+EFFORT_MAX_TOKENS = {"low": 8_192, "medium": 16_384, "high": 32_768}
 
 
 class AnthropicLLM(LLMProvider):
@@ -104,7 +108,7 @@ class AnthropicLLM(LLMProvider):
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
         self.caching = settings.anthropic_prompt_caching if caching is None else caching
         self.context_window: int | None = settings.anthropic_context_window
-        self.thinking_budget = THINKING_BUDGETS.get((reasoning_effort or "").strip().lower())
+        self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
 
     def _payload(self, messages: list[dict], tools: list[dict]) -> dict:
         system, converted = _to_anthropic(messages)
@@ -114,14 +118,12 @@ class AnthropicLLM(LLMProvider):
             "messages": converted,
             "stream": True,
         }
-        if self.thinking_budget:
-            payload["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self.thinking_budget,
-            }
-            payload["max_tokens"] = max(
-                int(payload["max_tokens"]), self.thinking_budget + 4_096,
-            )
+        if self.reasoning_effort:
+            payload["thinking"] = {"type": "adaptive"}
+            payload["output_config"] = {"effort": self.reasoning_effort}
+            floor = EFFORT_MAX_TOKENS.get(self.reasoning_effort)
+            if floor:
+                payload["max_tokens"] = max(int(payload["max_tokens"]), floor)
         if system:
             if self.caching:
                 payload["system"] = [{
@@ -154,6 +156,7 @@ class AnthropicLLM(LLMProvider):
         payload = self._payload(messages, tools)
         usage: dict = {"model": self.model, "prompt_tokens": 0, "completion_tokens": 0}
         tool_blocks: dict[int, dict] = {}
+        thinking_blocks: dict[int, dict] = {}
         finish_reason = "stop"
 
         async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
@@ -187,20 +190,31 @@ class AnthropicLLM(LLMProvider):
                         usage["cached_tokens"] = cached
                     elif event_type == "content_block_start":
                         block = data.get("content_block") or {}
-                        if block.get("type") == "tool_use":
-                            tool_blocks[int(data.get("index") or 0)] = {
+                        index = int(data.get("index") or 0)
+                        if block.get("type") == "thinking":
+                            thinking_blocks[index] = {
+                                "type": "thinking", "thinking": "", "signature": "",
+                            }
+                        elif block.get("type") == "tool_use":
+                            tool_blocks[index] = {
                                 "id": block.get("id") or "",
                                 "name": block.get("name") or "",
                                 "arguments": "",
                             }
                     elif event_type == "content_block_delta":
                         delta = data.get("delta") or {}
-                        if delta.get("type") == "text_delta" and delta.get("text"):
+                        index = int(data.get("index") or 0)
+                        if delta.get("type") == "thinking_delta":
+                            if index in thinking_blocks:
+                                thinking_blocks[index]["thinking"] += delta.get("thinking") or ""
+                        elif delta.get("type") == "signature_delta":
+                            if index in thinking_blocks:
+                                thinking_blocks[index]["signature"] += delta.get("signature") or ""
+                        elif delta.get("type") == "text_delta" and delta.get("text"):
                             yield {"type": "content", "content": delta["text"]}
                         elif delta.get("type") == "input_json_delta":
                             slot = tool_blocks.setdefault(
-                                int(data.get("index") or 0),
-                                {"id": "", "name": "", "arguments": ""},
+                                index, {"id": "", "name": "", "arguments": ""},
                             )
                             slot["arguments"] += delta.get("partial_json") or ""
                     elif event_type == "message_delta":
@@ -216,6 +230,12 @@ class AnthropicLLM(LLMProvider):
                         )
 
         if tool_blocks:
+            captured = [
+                block for _, block in sorted(thinking_blocks.items())
+                if block["signature"] or block["thinking"]
+            ]
+            if captured:
+                yield {"type": "thinking_blocks", "thinking_blocks": captured}
             yield {
                 "type": "tool_calls",
                 "tool_calls": [
