@@ -354,29 +354,6 @@ class TaskCreate(BaseModel):
     title: Optional[str] = Field(default=None, max_length=120)
 
 
-# ---------- Changes (SPEC + plan) ----------
-
-class ChangeCreate(BaseModel):
-    repo_id: str
-    title: Optional[str] = Field(default=None, max_length=120)
-    requirements: str = Field(min_length=10, max_length=8000)
-
-
-class ChangeSpecUpdate(BaseModel):
-    title: Optional[str] = Field(default=None, max_length=120)
-    goal: Optional[str] = Field(default=None, max_length=4000)
-    in_scope: Optional[list[str]] = None
-    out_scope: Optional[list[str]] = None
-    interfaces: Optional[list[str]] = None
-    acceptance_cases: Optional[list[str]] = None
-    nfr: Optional[list[str]] = None
-    open_questions: Optional[list[str]] = None
-
-
-class ChangeApplyRequest(BaseModel):
-    force: bool = False
-
-
 # ---------- Status ----------
 
 class HealthOut(BaseModel):
@@ -600,8 +577,6 @@ class ToolMetricOut(BaseModel):
 
 class MetricsOut(BaseModel):
     window_days: int = 7
-    accepted_changes: int = 0
-    changes_total: int = 0
     tasks_total: int = 0
     first_gate_pass_rate: float = 0.0
     rework_rate: float = 0.0
@@ -659,107 +634,6 @@ class GitDiffOut(BaseModel):
 
 class GitRollbackOut(GitStatusOut):
     reindex_started: bool = True
-
-
-# ---------- Changes ----------
-
-class ChangeTaskOut(BaseModel):
-    id: str
-    seq: int
-    title: str
-    kind: str
-    in_scope: list[str] = Field(default_factory=list)
-    out_scope: list[str] = Field(default_factory=list)
-    acceptance: str = ""
-    depends_on: list[int] = Field(default_factory=list)
-    status: str = "pending"
-    attempts: int = 0
-    result: dict = Field(default_factory=dict)
-
-
-class ChangeProposalOut(BaseModel):
-    edit_id: Optional[str] = None
-    diff: Optional[str] = None
-    files: list[str] = Field(default_factory=list)
-    gate: Optional[VerifyResultOut] = None
-    review: Optional[ReviewOut] = None
-    tasks: list[dict] = Field(default_factory=list)
-
-
-class ChangeEvidenceOut(BaseModel):
-    summary: Optional[str] = None
-    spec: Optional[str] = None
-    tasks: list[dict] = Field(default_factory=list)
-    gate: Optional[VerifyResultOut] = None
-    unverified: list[str] = Field(default_factory=list)
-    elapsed_ms: Optional[int] = None
-    applied: Optional[bool] = None
-    applied_at: Optional[str] = None
-    commit: Optional[str] = None
-    branch: Optional[str] = None
-    applied_files: list[str] = Field(default_factory=list)
-
-
-class ChangeOut(BaseModel):
-    id: str
-    user_id: int
-    repo_id: str
-    repo_name: str
-    title: str
-    requirements: str = ""
-    goal: str = ""
-    in_scope: list[str] = Field(default_factory=list)
-    out_scope: list[str] = Field(default_factory=list)
-    interfaces: list[str] = Field(default_factory=list)
-    acceptance_cases: list[str] = Field(default_factory=list)
-    nfr: list[str] = Field(default_factory=list)
-    open_questions: list[str] = Field(default_factory=list)
-    status: str
-    version: int = 1
-    plan_notes: str = ""
-    proposal: ChangeProposalOut = Field(default_factory=ChangeProposalOut)
-    evidence: ChangeEvidenceOut = Field(default_factory=ChangeEvidenceOut)
-    error: Optional[str] = None
-    job_id: Optional[str] = None
-    approved_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    tasks: list[ChangeTaskOut] = Field(default_factory=list)
-
-
-class ChangeListItemOut(BaseModel):
-    id: str
-    title: str
-    status: str
-    version: int = 1
-    repo_id: str
-    repo_name: str
-    error: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    task_count: int = 0
-
-
-class ChangeActionOut(BaseModel):
-    ok: bool = True
-    job_id: Optional[str] = None
-
-
-class ChangeApplyOut(BaseModel):
-    ok: bool = True
-    applied: list[str] = Field(default_factory=list)
-    commit: Optional[str] = None
-    branch: Optional[str] = None
-
-
-class ChangeReportOut(BaseModel):
-    change_id: str
-    status: str
-    spec: dict = Field(default_factory=dict)
-    tasks: list[ChangeTaskOut] = Field(default_factory=list)
-    proposal: ChangeProposalOut = Field(default_factory=ChangeProposalOut)
-    evidence: ChangeEvidenceOut = Field(default_factory=ChangeEvidenceOut)
-    error: Optional[str] = None
 
 
 # ---------- Tasks ----------

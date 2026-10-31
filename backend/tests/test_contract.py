@@ -20,14 +20,14 @@ def test_key_endpoints_have_typed_responses():
     spec = app.openapi()
     schemas = spec.get("components", {}).get("schemas", {})
     for name in (
-        "ChangeOut", "ChangeListItemOut", "JobOut", "TaskOut",
+        "LlmCredentialOut", "LlmProviderOut", "JobOut", "TaskOut",
         "VerifyResultOut", "BrainOut", "ImpactOut", "ReviewOut",
     ):
         assert name in schemas
 
     for path, method in (
-        ("/api/v1/changes", "get"),
-        ("/api/v1/changes", "post"),
+        ("/api/v1/settings/llm/credentials", "get"),
+        ("/api/v1/settings/llm/providers", "get"),
         ("/api/v1/jobs", "get"),
         ("/api/v1/tasks", "get"),
         ("/api/v1/repos/{repo_id}/brain", "get"),

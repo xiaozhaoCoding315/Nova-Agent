@@ -9,7 +9,6 @@ from app.core.metrics import service as metrics_mod
 @pytest.mark.asyncio
 async def test_compute_metrics_aggregates_rates_and_costs(monkeypatch):
     query = AsyncMock(side_effect=[
-        [(5, 3, 1)],
         [(10, 8, 2, 6)],
         [(2.5,)],
         [(1234,)],
@@ -20,8 +19,8 @@ async def test_compute_metrics_aggregates_rates_and_costs(monkeypatch):
 
     result = await metrics_mod.compute_metrics(1, 7)
 
-    assert result["accepted_changes"] == 3
-    assert result["changes_total"] == 5
+    assert "accepted_changes" not in result
+    assert "changes_total" not in result
     assert result["tasks_total"] == 10
     assert result["first_gate_pass_rate"] == 0.75
     assert result["rework_rate"] == 0.2

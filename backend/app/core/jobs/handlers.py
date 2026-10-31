@@ -88,58 +88,6 @@ async def _session_summary(ctx: JobContext) -> dict:
     return {"session_id": session_id, "summarized": added}
 
 
-async def _change_spec(ctx: JobContext) -> dict:
-    from app.core.changes import service
-    from app.core.jobs.models import JobCanceled
-
-    change_id = str(ctx.payload["change_id"])
-    await ctx.check_cancel()
-    await ctx.update(progress=0.1, step="起草 SPEC")
-    try:
-        await service.draft_spec(change_id, ctx=ctx)
-    except JobCanceled:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        await service.set_change_status(change_id, "failed", str(exc))
-        raise
-    return {"change_id": change_id, "status": "draft"}
-
-
-async def _change_plan(ctx: JobContext) -> dict:
-    from app.core.changes import service
-    from app.core.jobs.models import JobCanceled
-
-    change_id = str(ctx.payload["change_id"])
-    await ctx.check_cancel()
-    await ctx.update(progress=0.1, step="规划变更任务")
-    try:
-        await service.generate_plan(change_id, ctx=ctx)
-    except JobCanceled:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        await service.set_change_status(change_id, "failed", str(exc))
-        raise
-    return {"change_id": change_id, "status": "plan_ready"}
-
-
-async def _change_execute(ctx: JobContext) -> dict:
-    from app.core.changes.executor import execute_change
-    from app.core.changes import service
-    from app.core.jobs.models import JobCanceled
-
-    change_id = str(ctx.payload["change_id"])
-    user_id = int(ctx.payload["user_id"])
-    await ctx.check_cancel()
-    try:
-        result = await execute_change(change_id, user_id, ctx=ctx)
-    except JobCanceled:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        await service.set_change_status(change_id, "failed", str(exc))
-        raise
-    return result
-
-
 async def _verify(ctx: JobContext) -> dict:
     import json
 
@@ -214,9 +162,3 @@ def register_all(runner) -> None:
         runner.register("builder_smoke", _builder_smoke, concurrency=1)
     if not runner.has("verify"):
         runner.register("verify", _verify, concurrency=1)
-    if not runner.has("change_spec"):
-        runner.register("change_spec", _change_spec, concurrency=1)
-    if not runner.has("change_plan"):
-        runner.register("change_plan", _change_plan, concurrency=1)
-    if not runner.has("change_execute"):
-        runner.register("change_execute", _change_execute, concurrency=1)

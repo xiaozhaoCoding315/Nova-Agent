@@ -1,6 +1,6 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  Change, ChangeListItem, ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus, LlmSettings,
   LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, RegisterResult, Repo,
   Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
@@ -258,26 +258,6 @@ export const api = {
       }),
     reject: (id: string) => request<{ ok: boolean }>(`/tasks/${id}/reject`, { method: 'POST' }),
     review: (id: string) => request<Review>(`/tasks/${id}/review`, { method: 'POST' }),
-  },
-
-  changes: {
-    list: () => request<ChangeListItem[]>('/changes'),
-    get: (id: string) => request<Change>(`/changes/${id}`),
-    create: (repoId: string, requirements: string, title?: string) =>
-      request<Change>('/changes', json({ repo_id: repoId, requirements, title })),
-    update: (id: string, patch: Record<string, unknown>) =>
-      request<Change>(`/changes/${id}`, { ...json(patch), method: 'PATCH' }),
-    draft: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/draft`, { method: 'POST' }),
-    approve: (id: string) => request<Change>(`/changes/${id}/approve`, { method: 'POST' }),
-    plan: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/plan`, { method: 'POST' }),
-    approvePlan: (id: string) => request<Change>(`/changes/${id}/plan/approve`, { method: 'POST' }),
-    execute: (id: string) => request<{ ok: boolean; job_id: string }>(`/changes/${id}/execute`, { method: 'POST' }),
-    apply: (id: string, force = false) =>
-      request<{ ok: boolean; applied: string[]; commit?: string | null; branch?: string | null }>(
-        `/changes/${id}/apply`, json({ force }),
-      ),
-    reject: (id: string) => request<{ ok: boolean }>(`/changes/${id}/reject`, { method: 'POST' }),
-    cancel: (id: string) => request<{ ok: boolean }>(`/changes/${id}/cancel`, { method: 'POST' }),
   },
 
   jobs: {

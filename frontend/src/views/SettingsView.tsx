@@ -660,7 +660,6 @@ export function SettingsView() {
               {metrics ? (
                 <>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <MetricTile label="接受变更" value={String(metrics.accepted_changes)} hint={`共 ${metrics.changes_total} 个变更`} />
                   <MetricTile label="首次 Gate 通过率" value={pct(metrics.first_gate_pass_rate)} hint="无需修复即通过" />
                   <MetricTile label="返工率" value={pct(metrics.rework_rate)} hint="需要修复的任务占比" />
                   <MetricTile

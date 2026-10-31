@@ -1,28 +1,21 @@
 import clsx from 'clsx'
 import {
-  CheckCircle2, ChevronDown, ClipboardList, FileDiff, FlaskConical, GitPullRequest, ListTodo,
-  Play, Plus, RefreshCw, ShieldCheck, XCircle, XOctagon,
+  CheckCircle2, ClipboardList, FlaskConical, Plus, RefreshCw, ShieldCheck, XCircle, XOctagon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DiffView } from '../components/DiffView'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { Change, ChangeListItem, Job, Task, TaskListItem, TaskStep } from '../lib/types'
+import type { Task, TaskListItem, TaskStep } from '../lib/types'
 import { useRepos } from '../stores/repos'
 
 /**
- * 统一任务视图：修复任务（红-绿）与变更（方案→计划→验证）共用一个列表与详情，
- * 用户只描述「要做什么」，不用先理解两条流水线的差别。
+ * 修复任务视图（红-绿）：描述问题，Nova 先写失败测试复现，再生成最小补丁并跑到测试通过，
+ * 写入仓库前由用户确认。
  */
 
 type Bucket = 'running' | 'review' | 'done' | 'closed' | 'failed'
-
-const CHANGE_BUCKET: Record<string, Bucket> = {
-  drafting: 'running', planning: 'running', executing: 'running',
-  draft: 'review', plan_ready: 'review', plan_approved: 'review', review: 'review',
-  applied: 'done', rejected: 'closed', canceled: 'closed', failed: 'failed',
-}
 
 const TASK_BUCKET: Record<string, Bucket> = {
   running: 'running', ready: 'review', applied: 'done', rejected: 'closed', failed: 'failed',
@@ -36,22 +29,8 @@ const BUCKET_META: Record<Bucket, { label: string; tone: 'dim' | 'ok' | 'warn' |
   failed: { label: '失败', tone: 'err' },
 }
 
-const CHANGE_ACTIVE = new Set(['drafting', 'planning', 'executing'])
-
-/** 自动分流：命中关键词走修复（红-绿），否则走变更（方案→计划）。 */
-const FIX_RE = /报错|错误|异常|修复|修好|修一下|崩溃|挂了|崩了|bug|traceback|exception|stack ?trace|复现/i
-
-type Kind = 'auto' | 'fix' | 'change'
-
-const KIND_OPTIONS: { key: Kind; label: string; hint: string }[] = [
-  { key: 'auto', label: '自动', hint: '根据描述选择' },
-  { key: 'fix', label: '修 Bug', hint: '失败测试复现 → 最小补丁 → 跑绿' },
-  { key: 'change', label: '新功能 / 重构', hint: '方案与计划 → 逐任务真实验证 → 统一 diff' },
-]
-
 type UnifiedItem = {
   key: string
-  kind: 'change' | 'task'
   id: string
   title: string
   bucket: Bucket
@@ -67,474 +46,22 @@ function timestamp(value?: string | null): number {
   return Number.isNaN(t) ? 0 : t
 }
 
-function mergeItems(changes: ChangeListItem[], tasks: TaskListItem[]): UnifiedItem[] {
-  const items: UnifiedItem[] = [
-    ...changes.map((c) => ({
-      key: `change-${c.id}`,
-      kind: 'change' as const,
-      id: c.id,
-      title: c.title,
-      bucket: CHANGE_BUCKET[c.status] ?? 'running',
-      repoName: c.repo_name,
-      time: c.updated_at ?? c.created_at ?? '',
-      meta: `v${c.version} · ${c.task_count} 个任务`,
-      error: c.error,
-    })),
-    ...tasks.map((t) => ({
-      key: `task-${t.id}`,
-      kind: 'task' as const,
-      id: t.id,
-      title: t.title,
-      bucket: TASK_BUCKET[t.status] ?? 'running',
-      repoName: t.repo_name,
-      time: t.created_at ?? '',
-      meta: '修复任务',
-    })),
-  ]
+function mergeItems(tasks: TaskListItem[]): UnifiedItem[] {
+  const items: UnifiedItem[] = tasks.map((t) => ({
+    key: `task-${t.id}`,
+    id: t.id,
+    title: t.title,
+    bucket: TASK_BUCKET[t.status] ?? 'running',
+    repoName: t.repo_name,
+    time: t.created_at ?? '',
+    meta: '修复任务',
+  }))
   return items.sort((a, b) => timestamp(b.time) - timestamp(a.time))
 }
 
 function BucketBadge({ bucket }: { bucket: Bucket }) {
   const meta = BUCKET_META[bucket]
   return <Badge tone={meta.tone}>{meta.label}</Badge>
-}
-
-function Section({
-  title, icon, right, defaultOpen = false, children,
-}: {
-  title: string
-  icon?: React.ReactNode
-  right?: React.ReactNode
-  defaultOpen?: boolean
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <section className="rounded-xl border border-edge bg-panel/60">
-      <button
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-left"
-        onClick={() => setOpen((value) => !value)}
-      >
-        {icon}
-        <h3 className="text-[13px] font-semibold">{title}</h3>
-        <div className="ml-auto flex items-center gap-2" onClick={(e) => e.stopPropagation()}>{right}</div>
-        <ChevronDown size={14} className={clsx('shrink-0 text-dim transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && <div className="space-y-3 border-t border-edge px-4 py-3">{children}</div>}
-    </section>
-  )
-}
-
-function JobBar({ job, onCancel }: { job: Job | null; onCancel: () => void }) {
-  if (!job) return null
-  const pct = Math.round((job.progress || 0) * 100)
-  const running = job.status === 'running' || job.status === 'queued'
-  return (
-    <div className="rounded-lg border border-edge bg-base/60 px-3 py-2">
-      <div className="flex items-center gap-2 text-[11.5px]">
-        {running ? <Spinner /> : job.status === 'succeeded'
-          ? <CheckCircle2 size={13} className="text-ok" />
-          : <XCircle size={13} className="text-err" />}
-        <span className="font-mono text-dim">{job.kind}</span>
-        <span className="text-dim">{job.step || job.status}</span>
-        <span className="ml-auto font-mono text-dim">{pct}%</span>
-        {running && <Button size="sm" variant="danger" onClick={onCancel}>取消</Button>}
-      </div>
-      <div className="mt-1.5 h-1 overflow-hidden rounded bg-raised">
-        <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
-      </div>
-      {job.error && <p className="mt-1 text-[11px] text-err">{job.error}</p>}
-    </div>
-  )
-}
-
-/* ---------------- SPEC（方案）编辑 ---------------- */
-
-const FIELD = 'w-full rounded-md border border-edge bg-base px-2.5 py-1.5 text-[12px] outline-none focus:border-accent'
-
-function asLines(items: string[] | undefined): string {
-  return (items ?? []).join('\n')
-}
-
-function fromLines(value: string): string[] {
-  return value.split('\n').map((item) => item.trim()).filter(Boolean)
-}
-
-function SpecEditor({
-  change, busy, onSave, onCommit,
-}: {
-  change: Change
-  busy: string
-  onSave: (patch: Record<string, unknown>) => void
-  onCommit: (patch: Record<string, unknown>) => void
-}) {
-  const [title, setTitle] = useState(change.title)
-  const [goal, setGoal] = useState(change.goal)
-  const [acceptance, setAcceptance] = useState(asLines(change.acceptance_cases))
-  const [advanced, setAdvanced] = useState(false)
-  const [inScope, setInScope] = useState(asLines(change.in_scope))
-  const [outScope, setOutScope] = useState(asLines(change.out_scope))
-  const [interfaces, setInterfaces] = useState(asLines(change.interfaces))
-  const [nfr, setNfr] = useState(asLines(change.nfr))
-  const [questions, setQuestions] = useState(asLines(change.open_questions))
-
-  useEffect(() => {
-    setTitle(change.title)
-    setGoal(change.goal)
-    setAcceptance(asLines(change.acceptance_cases))
-    setInScope(asLines(change.in_scope))
-    setOutScope(asLines(change.out_scope))
-    setInterfaces(asLines(change.interfaces))
-    setNfr(asLines(change.nfr))
-    setQuestions(asLines(change.open_questions))
-  }, [change])
-
-  const editing = change.status === 'draft' || change.status === 'failed'
-  const specPatch = () => ({
-    title, goal,
-    in_scope: fromLines(inScope), out_scope: fromLines(outScope),
-    interfaces: fromLines(interfaces), acceptance_cases: fromLines(acceptance),
-    nfr: fromLines(nfr), open_questions: fromLines(questions),
-  })
-  return (
-    <div className="space-y-3">
-      {change.status === 'drafting' ? (
-        <p className="flex items-center gap-2 text-[12.5px] text-dim">
-          <Spinner /> 正在根据你的描述起草方案，稍等片刻即可编辑…
-        </p>
-      ) : (
-        <>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-[11.5px] text-dim">
-              标题
-              <input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editing} />
-            </label>
-            <label className="space-y-1 text-[11.5px] text-dim">
-              验收用例（每行一条，必须可判定）
-              <textarea className={clsx(FIELD, 'min-h-20')} value={acceptance} onChange={(e) => setAcceptance(e.target.value)} disabled={!editing} />
-            </label>
-          </div>
-          <label className="block space-y-1 text-[11.5px] text-dim">
-            目标
-            <textarea className={clsx(FIELD, 'min-h-16')} value={goal} onChange={(e) => setGoal(e.target.value)} disabled={!editing} />
-          </label>
-          <button
-            className="text-[11.5px] text-dim underline-offset-2 hover:text-ink hover:underline"
-            onClick={() => setAdvanced(!advanced)}
-          >
-            {advanced ? '收起高级字段' : '展开高级字段（范围 / 接口 / 待澄清）'}
-          </button>
-          {advanced && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-[11.5px] text-dim">
-                In 范围（每行一条路径或前缀）
-                <textarea className={clsx(FIELD, 'min-h-16 font-mono')} value={inScope} onChange={(e) => setInScope(e.target.value)} disabled={!editing} />
-              </label>
-              <label className="space-y-1 text-[11.5px] text-dim">
-                Out 范围
-                <textarea className={clsx(FIELD, 'min-h-16 font-mono')} value={outScope} onChange={(e) => setOutScope(e.target.value)} disabled={!editing} />
-              </label>
-              <label className="space-y-1 text-[11.5px] text-dim">
-                接口 / 契约
-                <textarea className={clsx(FIELD, 'min-h-16')} value={interfaces} onChange={(e) => setInterfaces(e.target.value)} disabled={!editing} />
-              </label>
-              <label className="space-y-1 text-[11.5px] text-dim">
-                非功能要求
-                <textarea className={clsx(FIELD, 'min-h-16')} value={nfr} onChange={(e) => setNfr(e.target.value)} disabled={!editing} />
-              </label>
-              <label className="space-y-1 text-[11.5px] text-dim md:col-span-2">
-                待澄清问题（必须清空才能冻结方案）
-                <textarea className={clsx(FIELD, 'min-h-16')} value={questions} onChange={(e) => setQuestions(e.target.value)} disabled={!editing} />
-              </label>
-            </div>
-          )}
-          {editing && (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => onSave(specPatch())} disabled={Boolean(busy)}>
-                保存修改
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => onCommit(specPatch())} disabled={Boolean(busy) || questions.trim().length > 0}>
-                <ShieldCheck size={12} /> 冻结方案并生成计划
-              </Button>
-              {questions.trim().length > 0 && (
-                <span className="self-center text-[11px] text-dim">还有待澄清问题未清空</span>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-/* ---------------- 变更详情 ---------------- */
-
-function ChangeDetail({
-  changeId, onError, onChanged,
-}: {
-  changeId: string
-  onError: (message: string | null) => void
-  onChanged: () => void
-}) {
-  const [detail, setDetail] = useState<Change | null>(null)
-  const [job, setJob] = useState<Job | null>(null)
-  const [busy, setBusy] = useState('')
-
-  const load = async () => {
-    try {
-      const next = await api.changes.get(changeId)
-      setDetail(next)
-      onError(null)
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : '加载变更失败')
-    }
-  }
-
-  useEffect(() => {
-    let alive = true
-    void load()
-    // 仅在后台任务执行中轮询；草稿态轮询会覆盖用户正在编辑的方案。
-    if (!detail || !CHANGE_ACTIVE.has(detail.status)) {
-      return () => {
-        alive = false
-      }
-    }
-    const timer = setInterval(() => {
-      if (alive) void load()
-    }, 2500)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [changeId, detail?.status])
-
-  useEffect(() => {
-    if (!detail?.job_id) {
-      setJob(null)
-      return
-    }
-    let alive = true
-    const poll = async () => {
-      try {
-        const next = await api.jobs.get(detail.job_id as string)
-        if (alive) setJob(next)
-      } catch {
-        /* job may be gone */
-      }
-    }
-    void poll()
-    const timer = setInterval(poll, 1500)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [detail?.job_id])
-
-  const run = async (label: string, action: () => Promise<unknown>) => {
-    setBusy(label)
-    onError(null)
-    try {
-      await action()
-      await load()
-      onChanged()
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : '操作失败')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  if (!detail) {
-    return (
-      <div className="flex h-full items-center justify-center text-[12.5px] text-dim">
-        <Spinner /> 加载中…
-      </div>
-    )
-  }
-
-  const status = detail.status
-  const active = CHANGE_ACTIVE.has(status)
-  const proposal = detail.proposal
-
-  return (
-    <div className="mx-auto max-w-4xl space-y-3 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <GitPullRequest size={15} className="shrink-0 text-accent" />
-        <h2 className="min-w-0 flex-1 truncate text-[16px] font-semibold">{detail.title}</h2>
-        <BucketBadge bucket={CHANGE_BUCKET[status] ?? 'running'} />
-        <span className="text-[11px] text-dim">v{detail.version} · {detail.repo_name}</span>
-        {active && (
-          <Button size="sm" variant="danger" onClick={() => void run('cancel', () => api.changes.cancel(detail.id))}>
-            取消
-          </Button>
-        )}
-        <Button size="sm" onClick={() => void load()}>
-          <RefreshCw size={12} /> 刷新
-        </Button>
-      </div>
-      {detail.error && (
-        <div className="rounded-lg border border-err/30 bg-err/10 px-3 py-2 text-[12px] text-err">{detail.error}</div>
-      )}
-      <JobBar job={job} onCancel={() => void run('cancel', () => api.changes.cancel(detail.id))} />
-
-      <Section
-        title="方案"
-        icon={<ClipboardList size={13} className="text-accent" />}
-        defaultOpen={['drafting', 'draft', 'failed'].includes(status)}
-        right={<Badge tone={['drafting', 'draft', 'failed'].includes(status) ? 'warn' : 'ok'}>{['drafting', 'draft', 'failed'].includes(status) ? '可编辑' : '已冻结'}</Badge>}
-      >
-        {['drafting', 'draft', 'failed'].includes(status) ? (
-          <SpecEditor
-            change={detail}
-            busy={busy}
-            onSave={(patch) => void run('save', () => api.changes.update(detail.id, patch))}
-            onCommit={(patch) => void run('approve', async () => {
-              await api.changes.update(detail.id, patch)
-              await api.changes.approve(detail.id)
-              await api.changes.plan(detail.id)
-            })}
-          />
-        ) : (
-          <div className="space-y-2 text-[12px]">
-            <p><span className="text-dim">目标：</span>{detail.goal || '—'}</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div><p className="text-dim">In 范围</p><p className="font-mono">{detail.in_scope.join('，') || '—'}</p></div>
-              <div><p className="text-dim">Out 范围</p><p className="font-mono">{detail.out_scope.join('，') || '—'}</p></div>
-            </div>
-            <div>
-              <p className="text-dim">验收</p>
-              <ul className="list-disc pl-4">{detail.acceptance_cases.map((item) => <li key={item}>{item}</li>)}</ul>
-            </div>
-          </div>
-        )}
-        {status === 'approved' && (
-          <Button size="sm" variant="primary" onClick={() => void run('plan', () => api.changes.plan(detail.id))} disabled={Boolean(busy)}>
-            {busy === 'plan' ? <Spinner /> : <ListTodo size={12} />} 生成执行计划
-          </Button>
-        )}
-        {status === 'planning' && <p className="flex items-center gap-2 text-[12px] text-dim"><Spinner /> 正在生成计划…</p>}
-      </Section>
-
-      {detail.tasks.length > 0 && (
-        <Section
-          title={`执行计划 · ${detail.tasks.length} 个任务`}
-          icon={<ListTodo size={13} className="text-accent" />}
-          defaultOpen={['plan_ready', 'plan_approved', 'executing'].includes(status)}
-          right={<span className="text-[11px] text-dim">每个任务都要跑过真实验证门</span>}
-        >
-          {detail.plan_notes && <p className="text-[12px] text-dim">{detail.plan_notes}</p>}
-          <div className="space-y-1.5">
-            {detail.tasks.map((task) => (
-              <div key={task.id} className="rounded-lg border border-edge bg-base/50 px-2.5 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-dim">#{task.seq}</span>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{task.title}</span>
-                  {task.status === 'ready'
-                    ? <CheckCircle2 size={12} className="text-ok" />
-                    : task.status === 'running'
-                      ? <Spinner />
-                      : <XCircle size={12} className={task.status === 'failed' ? 'text-err' : 'text-dim/50'} />}
-                  {task.attempts > 0 && <span className="text-[10.5px] text-dim">重试 {task.attempts}</span>}
-                </div>
-                <p className="mt-1 text-[11.5px] text-dim">{task.acceptance}</p>
-                {task.result?.files?.length ? (
-                  <p className="mt-0.5 truncate font-mono text-[10.5px] text-dim">改动：{task.result.files.join('，')}</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {status === 'plan_ready' && (
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => void run('plan-approve', async () => {
-                  await api.changes.approvePlan(detail.id)
-                  await api.changes.execute(detail.id)
-                })}
-                disabled={Boolean(busy)}
-              >
-                {busy === 'plan-approve' ? <Spinner /> : <Play size={12} />} 批准并开始执行
-              </Button>
-            )}
-            {status === 'plan_approved' && (
-              <Button size="sm" variant="primary" onClick={() => void run('execute', () => api.changes.execute(detail.id))} disabled={Boolean(busy)}>
-                <Play size={12} /> 开始执行
-              </Button>
-            )}
-            {status === 'failed' && detail.tasks.length > 0 && (
-              <Button size="sm" onClick={() => void run('execute', () => api.changes.execute(detail.id))} disabled={Boolean(busy)}>
-                <RefreshCw size={12} /> 从失败处重试
-              </Button>
-            )}
-            {status === 'executing' && <span className="flex items-center gap-2 text-[12px] text-dim"><Spinner /> 正在执行，进度见上方…</span>}
-          </div>
-        </Section>
-      )}
-
-      {proposal?.edit_id && (
-        <Section
-          title="变更与验证"
-          icon={<FileDiff size={13} className="text-accent" />}
-          defaultOpen={status === 'review'}
-          right={
-            <>
-              {proposal.gate && (
-                <Badge tone={proposal.gate.status === 'passed' ? 'ok' : 'warn'}>
-                  验证{proposal.gate.status === 'passed' ? '通过' : '未通过'}
-                </Badge>
-              )}
-              <Badge tone="dim">{proposal.files?.length ?? 0} 个文件</Badge>
-            </>
-          }
-        >
-          <ReviewPanel review={proposal.review} />
-          {proposal.gate?.steps?.length ? (
-            <div className="space-y-1">
-              {proposal.gate.steps.map((step, index) => (
-                <div key={`${step.name}-${index}`} className="flex items-center gap-2 text-[11.5px]">
-                  {step.status === 'passed'
-                    ? <CheckCircle2 size={12} className="text-ok" />
-                    : <XCircle size={12} className="text-err" />}
-                  <span className="font-mono">{step.name}</span>
-                  <span className="min-w-0 flex-1 truncate text-dim">{step.command}</span>
-                  <span className="ml-auto font-mono text-dim">exit {step.exit_code}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <p className="flex items-center gap-2 text-[11.5px] text-dim"><FileDiff size={13} /> 统一 diff</p>
-          <DiffView diff={proposal.diff || ''} maxHeight="max-h-80" />
-          {status === 'review' && (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="primary" onClick={() => void run('apply', () => api.changes.apply(detail.id))} disabled={Boolean(busy)}>
-                {busy === 'apply' ? <Spinner /> : <CheckCircle2 size={12} />} 批准并写入仓库
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => void run('reject', () => api.changes.reject(detail.id))} disabled={Boolean(busy)}>
-                <XOctagon size={12} /> 拒绝
-              </Button>
-            </div>
-          )}
-        </Section>
-      )}
-
-      {detail.evidence?.summary && (
-        <Section
-          title="交付证据"
-          defaultOpen={status === 'applied'}
-          right={<Badge tone={status === 'applied' ? 'ok' : 'warn'}>{BUCKET_META[CHANGE_BUCKET[status] ?? 'running'].label}</Badge>}
-        >
-          <p className="text-[12px]">{detail.evidence.summary}</p>
-          {detail.evidence.unverified?.length ? (
-            <p className="text-[11.5px] text-warn">未验证：{detail.evidence.unverified.join('；')}</p>
-          ) : null}
-          {detail.evidence.commit && <p className="font-mono text-[11px] text-dim">commit {detail.evidence.commit}</p>}
-          {detail.evidence.branch && <p className="font-mono text-[11px] text-dim">分支 {detail.evidence.branch}</p>}
-        </Section>
-      )}
-    </div>
-  )
 }
 
 /* ---------------- 修复任务详情 ---------------- */
@@ -787,19 +314,17 @@ export function TasksView({
   onBackToChat?: () => void
 } = {}) {
   const { repos, refresh: refreshRepos } = useRepos()
-  const [changes, setChanges] = useState<ChangeListItem[]>([])
   const [tasks, setTasks] = useState<TaskListItem[]>([])
   const [filter, setFilter] = useState<'all' | Bucket>('all')
   const [selected, setSelected] = useState<UnifiedItem | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [repoId, setRepoId] = useState(initialRepoId ?? '')
   const [description, setDescription] = useState('')
-  const [kind, setKind] = useState<Kind>('auto')
   const [creating, setCreating] = useState(false)
 
   const readyRepos = repos.filter((repo) => repo.status === 'ready')
 
-  const items = useMemo(() => mergeItems(changes, tasks), [changes, tasks])
+  const items = useMemo(() => mergeItems(tasks), [tasks])
   const filtered = filter === 'all' ? items : items.filter((item) => item.bucket === filter)
   const counts = useMemo(() => {
     const map: Record<string, number> = { all: items.length }
@@ -808,11 +333,7 @@ export function TasksView({
   }, [items])
 
   const loadLists = async () => {
-    const [changeList, taskList] = await Promise.all([
-      api.changes.list().catch(() => [] as ChangeListItem[]),
-      api.tasks.list().catch(() => [] as TaskListItem[]),
-    ])
-    setChanges(changeList)
+    const taskList = await api.tasks.list().catch(() => [] as TaskListItem[])
     setTasks(taskList)
   }
 
@@ -843,10 +364,6 @@ export function TasksView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items])
 
-  const detected: 'fix' | 'change' = kind === 'auto'
-    ? (FIX_RE.test(description) ? 'fix' : 'change')
-    : kind === 'fix' ? 'fix' : 'change'
-
   const create = async () => {
     if (!repoId || description.trim().length < 5) {
       setError('请选择项目，并描述至少 5 个字')
@@ -855,19 +372,11 @@ export function TasksView({
     setCreating(true)
     setError(null)
     try {
-      if (detected === 'fix') {
-        const task = await api.tasks.create(repoId, description.trim())
-        setSelected({
-          key: `task-${task.id}`, kind: 'task', id: task.id, title: task.title,
-          bucket: 'running', repoName: task.repo_name, time: task.created_at ?? '', meta: '修复任务',
-        })
-      } else {
-        const change = await api.changes.create(repoId, description.trim())
-        setSelected({
-          key: `change-${change.id}`, kind: 'change', id: change.id, title: change.title,
-          bucket: 'running', repoName: change.repo_name, time: change.created_at ?? '', meta: `v${change.version}`,
-        })
-      }
+      const task = await api.tasks.create(repoId, description.trim())
+      setSelected({
+        key: `task-${task.id}`, id: task.id, title: task.title,
+        bucket: 'running', repoName: task.repo_name, time: task.created_at ?? '', meta: '修复任务',
+      })
       setDescription('')
       await loadLists()
     } catch (err) {
@@ -881,9 +390,9 @@ export function TasksView({
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-edge/80 bg-panel/25 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12.5px] font-medium">把一件事交给 Nova 完成，过程中的验证与写入都由你确认</span>
+          <span className="text-[12.5px] font-medium">把一个问题交给 Nova 修复，过程中的验证与写入都由你确认</span>
           <span className="hidden text-[11px] text-dim md:inline">
-            修 Bug 会先写失败测试复现（红）再修复跑到通过（绿）；新功能 / 重构会先给方案与计划，逐任务过真实验证，最后统一 diff 等你批准。
+            修复任务会先写失败测试复现（红），再生成最小补丁并跑到测试通过（绿），最后等你批准写入。
           </span>
           {onBackToChat && (
             <button
@@ -911,35 +420,15 @@ export function TasksView({
             </select>
             <textarea
               className="min-h-20 w-full rounded-md border border-edge bg-base px-2 py-1.5 text-[12px]"
-              placeholder="描述要做的事：例如「结算时折扣超过 100% 会把总价算成负数」或「给用户列表加分页和筛选」"
+              placeholder="描述要修复的问题：例如「结算时折扣超过 100% 会把总价算成负数」"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-            <div className="flex items-center gap-1.5">
-              <div className="flex flex-1 rounded-lg border border-edge/80 bg-base/40 p-0.5">
-                {KIND_OPTIONS.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setKind(key)}
-                    className={clsx(
-                      'flex-1 rounded-md px-1.5 py-1 text-[11px] transition-colors',
-                      kind === key ? 'bg-accentSoft/45 text-ink' : 'text-dim hover:text-ink',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center justify-end">
               <Button size="sm" variant="primary" onClick={() => void create()} disabled={creating || !repoId || description.trim().length < 5}>
                 {creating ? <Spinner /> : <Plus size={12} />} 创建
               </Button>
             </div>
-            <p className="text-[10.5px] leading-relaxed text-dim/80">
-              {KIND_OPTIONS.find((option) => option.key === kind)?.hint}
-              {kind === 'auto' && description.trim().length > 3 && (
-                <span className="ml-1 text-accent/80">（当前将创建：{detected === 'fix' ? '修复任务' : '变更'}）</span>
-              )}
-            </p>
           </div>
 
           <div className="flex gap-1 border-b border-edge/70 px-2 py-1.5">
@@ -961,7 +450,7 @@ export function TasksView({
           <div className="flex-1 overflow-auto p-2">
             {items.length === 0 && (
               <p className="px-2 py-4 text-[12px] leading-relaxed text-dim">
-                还没有任务。在上方描述一件事，创建后 Nova 会自动推进，关键节点停下来等你确认。
+                还没有修复任务。在上方描述一个问题，创建后 Nova 会自动推进，关键节点停下来等你确认。
               </p>
             )}
             {filtered.map((item) => (
@@ -979,9 +468,7 @@ export function TasksView({
                 )}
               >
                 <div className="flex items-center gap-2">
-                  {item.kind === 'task'
-                    ? <FlaskConical size={11} className="shrink-0 text-dim" />
-                    : <GitPullRequest size={11} className="shrink-0 text-dim" />}
+                  <FlaskConical size={11} className="shrink-0 text-dim" />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{item.title}</span>
                   <BucketBadge bucket={item.bucket} />
                 </div>
@@ -999,15 +486,7 @@ export function TasksView({
           {error && (
             <div className="mx-4 mt-3 rounded-lg border border-err/30 bg-err/10 px-3 py-2 text-[12px] text-err">{error}</div>
           )}
-          {selected?.kind === 'change' && (
-            <ChangeDetail
-              key={selected.key}
-              changeId={selected.id}
-              onError={setError}
-              onChanged={() => void loadLists()}
-            />
-          )}
-          {selected?.kind === 'task' && (
+          {selected && (
             <FixDetail
               key={selected.key}
               taskId={selected.id}
@@ -1017,7 +496,7 @@ export function TasksView({
           )}
           {!selected && (
             <div className="flex h-full items-center justify-center px-6 text-center text-[12.5px] leading-relaxed text-dim">
-              从左侧选择一个任务，或在上方描述一件要做的事。<br />
+              从左侧选择一个修复任务，或在上方描述一个问题。<br />
               小改动和问答直接回「对话」即可，不用建任务。
             </div>
           )}

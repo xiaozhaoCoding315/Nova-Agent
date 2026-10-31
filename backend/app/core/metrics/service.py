@@ -1,4 +1,4 @@
-"""Delivery metrics aggregated from tasks, changes, usage and jobs."""
+"""Delivery metrics aggregated from tasks, usage and jobs."""
 from datetime import datetime, timezone
 
 from app.db import query
@@ -10,16 +10,6 @@ def _rate(numerator: int, denominator: int) -> float:
 
 async def compute_metrics(user_id: int, days: int = 7) -> dict:
     days = max(1, min(int(days), 90))
-    changes = await query(
-        "SELECT COUNT(*), "
-        "COUNT(*) FILTER (WHERE status = 'applied'), "
-        "COUNT(*) FILTER (WHERE status = 'failed') "
-        "FROM change_requests WHERE user_id = %s "
-        "AND created_at >= now() - make_interval(days => %s)",
-        (user_id, days),
-    )
-    changes_total, accepted_changes, _failed_changes = changes[0]
-
     tasks = await query(
         "SELECT COUNT(*), "
         "COUNT(*) FILTER (WHERE status IN ('ready', 'applied')), "
@@ -75,8 +65,6 @@ async def compute_metrics(user_id: int, days: int = 7) -> dict:
 
     return {
         "window_days": days,
-        "accepted_changes": int(accepted_changes or 0),
-        "changes_total": int(changes_total or 0),
         "tasks_total": int(tasks_total or 0),
         "first_gate_pass_rate": _rate(int(tasks_first_pass or 0), int(tasks_verified or 0)),
         "rework_rate": _rate(int(tasks_repaired or 0), int(tasks_total or 0)),
