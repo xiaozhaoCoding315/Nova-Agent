@@ -1,8 +1,9 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
   ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
-  FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus, LlmSettings,
-  LlmSettingsInput, LlmTestResult, Memory, Message, Metrics, RegisterResult, Repo,
+  FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
+  LlmCredential, LlmCredentialInput, LlmProvider, LlmSettings, LlmSettingsInput, LlmTestResult,
+  Memory, Message, Metrics, RegisterResult, Repo,
   Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
@@ -226,6 +227,21 @@ export const api = {
     clear: () => request<LlmSettings>('/settings/llm', { method: 'DELETE' }),
     test: (input: LlmSettingsInput) =>
       request<LlmTestResult>('/settings/llm/test', json(input)),
+    providers: () => request<LlmProvider[]>('/settings/llm/providers'),
+    credentials: () => request<LlmCredential[]>('/settings/llm/credentials'),
+    saveCredential: (provider: string, input: LlmCredentialInput) =>
+      request<LlmCredential>(`/settings/llm/credentials/${provider}`, {
+        ...json(input),
+        method: 'PUT',
+      }),
+    deleteCredential: (provider: string) =>
+      request<{ ok: boolean }>(`/settings/llm/credentials/${provider}`, {
+        method: 'DELETE',
+      }),
+    setDefault: (provider: string) =>
+      request<LlmCredential>(`/settings/llm/credentials/${provider}/default`, {
+        method: 'POST',
+      }),
   },
 
   local: {

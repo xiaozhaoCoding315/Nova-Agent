@@ -498,8 +498,33 @@ export type Usage = {
 export type LlmProvider = {
   id: string
   label: string
+  group: 'domestic' | 'international' | 'aggregator' | 'local' | string
+  kind: 'openai' | 'anthropic' | string
   base_url: string
   models: string[]
+  docs_url: string
+  free_tier: boolean
+  supports_tools: boolean
+  supports_reasoning: boolean
+  supports_temperature: boolean
+  context_window: number
+  base_url_locked: boolean
+  env_key: string
+  icon: string
+}
+
+export type LlmCredential = {
+  provider: string
+  label: string
+  icon: string
+  model: string
+  base_url: string
+  has_key: boolean
+  key_hint?: string | null
+  context_window?: number | null
+  reasoning_effort?: string | null
+  is_default: boolean
+  updated_at?: string | null
 }
 
 export type LlmSettings = {
@@ -515,6 +540,7 @@ export type LlmSettings = {
   context_window?: number | null
   reasoning_effort?: string | null
   providers: LlmProvider[]
+  credentials: LlmCredential[]
   updated_at?: string | null
 }
 
@@ -525,6 +551,15 @@ export type LlmSettingsInput = {
   api_key?: string | null
   context_window?: number
   reasoning_effort?: string
+}
+
+export type LlmCredentialInput = {
+  model: string
+  base_url?: string | null
+  api_key?: string | null
+  context_window?: number
+  reasoning_effort?: string
+  is_default?: boolean
 }
 
 export type LlmTestResult = {

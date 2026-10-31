@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
-import type { LlmSettings, LlmSettingsInput, LlmTestResult } from '../lib/types'
+import type {
+  LlmCredential, LlmCredentialInput, LlmSettings, LlmSettingsInput, LlmTestResult,
+} from '../lib/types'
 
 type LlmState = {
   settings: LlmSettings | null
@@ -10,6 +12,9 @@ type LlmState = {
   save: (input: LlmSettingsInput) => Promise<LlmSettings>
   clear: () => Promise<void>
   test: (input: LlmSettingsInput) => Promise<LlmTestResult>
+  saveCredential: (provider: string, input: LlmCredentialInput) => Promise<LlmCredential>
+  deleteCredential: (provider: string) => Promise<void>
+  setDefault: (provider: string) => Promise<LlmCredential>
   reset: () => void
   clearError: () => void
 }
@@ -41,6 +46,23 @@ export const useLlm = create<LlmState>((set) => ({
   },
 
   test: (input) => api.llm.test(input),
+
+  saveCredential: async (provider, input) => {
+    const credential = await api.llm.saveCredential(provider, input)
+    set({ settings: await api.llm.get(), error: null })
+    return credential
+  },
+
+  deleteCredential: async (provider) => {
+    await api.llm.deleteCredential(provider)
+    set({ settings: await api.llm.get(), error: null })
+  },
+
+  setDefault: async (provider) => {
+    const credential = await api.llm.setDefault(provider)
+    set({ settings: await api.llm.get(), error: null })
+    return credential
+  },
 
   reset: () => set({ settings: null, loading: false, error: null }),
 
