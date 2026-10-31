@@ -19,11 +19,14 @@ async def create_session(
     title: str = DEFAULT_TITLE,
     model: str | None = None,
     repo_ids: list[str] | None = None,
+    llm_overrides: dict | None = None,
 ) -> dict:
     session_id = str(uuid.uuid4())
+    overrides = llm_overrides or {}
     await execute(
-        "INSERT INTO sessions (id, user_id, title, model) VALUES (%s, %s, %s, %s)",
-        (session_id, user_id, title, model),
+        "INSERT INTO sessions (id, user_id, title, model, llm_overrides) "
+        "VALUES (%s, %s, %s, %s, %s::jsonb)",
+        (session_id, user_id, title, model, json.dumps(overrides, ensure_ascii=False)),
     )
     if repo_ids:
         await set_repo_ids(session_id, repo_ids, user_id=user_id)
@@ -31,6 +34,7 @@ async def create_session(
         "id": session_id, "user_id": user_id, "title": title,
         "permission_mode": "ask", "repo_ids": list(repo_ids or []), "model": model,
         "primary_repo_id": (repo_ids or [None])[0],
+        "llm_overrides": overrides,
     }
 
 
@@ -42,7 +46,7 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
                    SELECT jsonb_agg(sr.repo_id ORDER BY sr.created_at)
                    FROM session_repos sr WHERE sr.session_id = s.id
                ), '[]'::jsonb),
-               s.summary_upto_id, s.model, s.primary_repo_id
+               s.summary_upto_id, s.model, s.primary_repo_id, s.llm_overrides
         FROM sessions s
         WHERE s.id = %s AND s.user_id = %s
         """,
@@ -58,6 +62,7 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
         "summary_upto_id": int(r[7] or 0),
         "model": r[8],
         "primary_repo_id": str(r[9]) if r[9] else None,
+        "llm_overrides": r[10] or {},
     }
 
 
@@ -82,7 +87,7 @@ async def list_sessions(
                    SELECT jsonb_agg(sr.repo_id ORDER BY sr.created_at)
                    FROM session_repos sr WHERE sr.session_id = s.id
                ), '[]'::jsonb),
-               s.model, s.primary_repo_id
+               s.model, s.primary_repo_id, s.llm_overrides
         FROM sessions s
         WHERE s.user_id = %s {repo_clause}
         ORDER BY s.updated_at DESC
@@ -98,6 +103,7 @@ async def list_sessions(
             "repo_ids": [str(x) for x in (r[6] or [])],
             "model": r[7],
             "primary_repo_id": str(r[8]) if r[8] else None,
+            "llm_overrides": r[9] or {},
         }
         for r in rows
     ]
@@ -121,6 +127,18 @@ async def rename_session(session_id: str, user_id: int, title: str) -> dict | No
         return None
     r = rows[0]
     return {"id": str(r[0]), "title": r[1], "created_at": r[2], "updated_at": r[3]}
+
+
+async def update_llm_overrides(
+    session_id: str, user_id: int, overrides: dict,
+) -> dict | None:
+    rows = await execute(
+        "UPDATE sessions SET llm_overrides = "
+        "COALESCE(llm_overrides, '{}'::jsonb) || %s::jsonb, updated_at = now() "
+        "WHERE id = %s AND user_id = %s RETURNING llm_overrides",
+        (json.dumps(overrides, ensure_ascii=False), session_id, user_id),
+    )
+    return rows[0][0] if rows else None
 
 
 async def get_messages(

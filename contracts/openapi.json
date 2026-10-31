@@ -4829,19 +4829,33 @@
         "title": "SessionOut",
         "type": "object"
       },
-      "SessionRenameRequest": {
+      "SessionUpdateRequest": {
         "properties": {
+          "llm_overrides": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmOverrides"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
-        "required": [
-          "title"
-        ],
-        "title": "SessionRenameRequest",
+        "title": "SessionUpdateRequest",
         "type": "object"
       },
       "SourceUsageOut": {
@@ -7049,7 +7063,7 @@
         ]
       },
       "patch": {
-        "operationId": "rename_session_api_v1_chat_sessions__session_id__patch",
+        "operationId": "update_session_api_v1_chat_sessions__session_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -7065,7 +7079,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SessionRenameRequest"
+                "$ref": "#/components/schemas/SessionUpdateRequest"
               }
             }
           },
@@ -7093,7 +7107,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Rename Session",
+        "summary": "Update Session",
         "tags": [
           "chat"
         ]

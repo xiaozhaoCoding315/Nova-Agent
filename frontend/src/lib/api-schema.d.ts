@@ -543,8 +543,8 @@ export interface paths {
         delete: operations["delete_session_api_v1_chat_sessions__session_id__delete"];
         options?: never;
         head?: never;
-        /** Rename Session */
-        patch: operations["rename_session_api_v1_chat_sessions__session_id__patch"];
+        /** Update Session */
+        patch: operations["update_session_api_v1_chat_sessions__session_id__patch"];
         trace?: never;
     };
     "/api/v1/chat/sessions/{session_id}/messages": {
@@ -3689,10 +3689,11 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
-        /** SessionRenameRequest */
-        SessionRenameRequest: {
+        /** SessionUpdateRequest */
+        SessionUpdateRequest: {
+            llm_overrides?: components["schemas"]["LlmOverrides"] | null;
             /** Title */
-            title: string;
+            title?: string | null;
         };
         /**
          * SourceUsageOut
@@ -5141,7 +5142,7 @@ export interface operations {
             };
         };
     };
-    rename_session_api_v1_chat_sessions__session_id__patch: {
+    update_session_api_v1_chat_sessions__session_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -5152,7 +5153,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SessionRenameRequest"];
+                "application/json": components["schemas"]["SessionUpdateRequest"];
             };
         };
         responses: {

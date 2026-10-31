@@ -31,7 +31,7 @@ async def test_list_sessions_filters_by_project(monkeypatch):
     query = AsyncMock(return_value=[(
         "s1", "登录需求", None, None, 3, "ask",
         ["11111111-1111-1111-1111-111111111111"], "qwen3.8-max",
-        "11111111-1111-1111-1111-111111111111",
+        "11111111-1111-1111-1111-111111111111", {"model": "glm-4.6"},
     )])
     monkeypatch.setattr(session_mod, "query", query)
 

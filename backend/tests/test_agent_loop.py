@@ -27,7 +27,7 @@ class SlowLLM:
 
 
 def _patch_common(monkeypatch, llm):
-    async def _get_llm(*_args, **_kwargs):
+    async def _get_llm(*_args, overrides=None, **_kwargs):
         return llm
 
     monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
@@ -98,6 +98,43 @@ async def test_plain_answer_event_sequence(monkeypatch):
     assert report["stats"]["rounds"] == 1
     tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
     assert "report" in tool_json
+
+
+@pytest.mark.asyncio
+async def test_session_overrides_thread_into_meta_and_llm(monkeypatch):
+    llm = FakeLLM([[
+        {"type": "content", "content": "ok"},
+        {"type": "finish", "finish_reason": "stop"},
+    ]])
+    _patch_common(monkeypatch, llm)
+    captured = {}
+
+    async def _capturing_llm(*_args, **kwargs):
+        captured["overrides"] = kwargs.get("overrides")
+        return llm
+
+    monkeypatch.setattr(loop_mod, "get_llm", _capturing_llm)
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+
+    session = {
+        **SESSION,
+        "model": "legacy-model",
+        "llm_overrides": {
+            "provider": "zhipu",
+            "model": "glm-4.6",
+            "reasoning_effort": "high",
+            "context_window": 64_000,
+        },
+    }
+    events = await _collect(loop_mod.run_chat(USER, session, "hi", []))
+
+    meta = events[0]["data"]
+    assert meta["provider"] == "zhipu"
+    assert meta["model"] == "glm-4.6"          # override wins over session.model
+    assert meta["reasoning_effort"] == "high"
+    assert meta["context_window"] == 64_000
+    assert events[2]["data"]["window"] == 64_000
+    assert captured["overrides"] == session["llm_overrides"]
 
 
 @pytest.mark.asyncio

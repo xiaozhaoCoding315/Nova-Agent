@@ -283,10 +283,6 @@ class MessageOut(BaseModel):
     created_at: Optional[datetime] = None
 
 
-class SessionRenameRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-
-
 class SessionUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     llm_overrides: Optional[LlmOverrides] = None

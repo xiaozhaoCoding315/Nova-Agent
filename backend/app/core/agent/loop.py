@@ -104,12 +104,16 @@ async def run_chat(
     errors: list[str] = []
     active_lesson_ids: list[str] = []
 
+    session_overrides = session.get("llm_overrides") or {}
     yield _sse(
         "meta",
         session_id=session["id"],
         title=session["title"],
         repo_ids=session.get("repo_ids", repo_ids),
-        model=session.get("model"),
+        model=session_overrides.get("model") or session.get("model"),
+        provider=session_overrides.get("provider"),
+        reasoning_effort=session_overrides.get("reasoning_effort"),
+        context_window=session_overrides.get("context_window"),
         turn_id=turn_id,
     )
 
@@ -210,7 +214,10 @@ async def run_chat(
     ]
 
     # 上下文计量：分段估算本次提示的构成，供前端展示「用了多少、用在哪里」。
-    context_window = resolve_context_window(user["id"])
+    context_window = (
+        session_overrides.get("context_window")
+        or resolve_context_window(user["id"])
+    )
     section_labels = {
         "identity": "系统提示", "summary": "会话摘要", "repos": "仓库说明",
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
@@ -381,7 +388,10 @@ async def run_chat(
                 llm_failed = None
                 llm_error_detail = ""
                 try:
-                    llm = await get_llm(user["id"], model=session.get("model"))
+                    llm = await get_llm(
+                        user["id"], model=session.get("model"),
+                        overrides=session_overrides,
+                    )
                     # Respect the user's configured window (BYOK), not just the
                     # server default used for the UI estimate.
                     round_window = resolve_context_window(user["id"], llm)

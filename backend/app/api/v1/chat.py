@@ -27,11 +27,26 @@ from app.models.schemas import (
     ReviewOut,
     SessionCreateRequest,
     SessionOut,
-    SessionRenameRequest,
+    SessionUpdateRequest,
     TraceEventOut,
 )
 
 router = APIRouter()
+
+
+def _session_payload(session: dict, message_count: int = 0) -> dict:
+    return {
+        "id": session["id"],
+        "title": session["title"],
+        "message_count": message_count,
+        "permission_mode": session.get("permission_mode", "ask"),
+        "repo_ids": session.get("repo_ids", []),
+        "primary_repo_id": session.get("primary_repo_id"),
+        "model": session.get("model"),
+        "llm_overrides": session.get("llm_overrides") or {},
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+    }
 
 
 @router.get("/chat/sessions", response_model=list[SessionOut])
@@ -51,13 +66,14 @@ async def create_session(
     for repo_id in repo_ids:
         if not await get_repo(repo_id, user["id"]):
             raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
-    session = await session_mod.create_session(user["id"], repo_ids=repo_ids)
-    return {
-        "id": session["id"], "title": session["title"], "message_count": 0,
-        "repo_ids": repo_ids,
-        "primary_repo_id": repo_ids[0] if repo_ids else None,
-        "model": session.get("model"),
-    }
+    overrides = (
+        body.llm_overrides.model_dump(exclude_none=True)
+        if body and body.llm_overrides else {}
+    )
+    session = await session_mod.create_session(
+        user["id"], repo_ids=repo_ids, llm_overrides=overrides,
+    )
+    return _session_payload(session)
 
 
 @router.get("/chat/sessions/{session_id}/messages", response_model=list[MessageOut])
@@ -69,29 +85,33 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
 
 
 @router.patch("/chat/sessions/{session_id}", response_model=SessionOut)
-async def rename_session(
+async def update_session(
     session_id: str,
-    body: SessionRenameRequest,
+    body: SessionUpdateRequest,
     user: dict = Depends(get_current_user),
 ):
     session = await session_mod.get_session(session_id, user["id"])
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    title = body.title.strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="会话标题不能为空")
-    renamed = await session_mod.rename_session(session_id, user["id"], title)
-    if not renamed:
+
+    if body.title is not None:
+        title = body.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="会话标题不能为空")
+        renamed = await session_mod.rename_session(session_id, user["id"], title)
+        if not renamed:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+    if body.llm_overrides is not None:
+        merged = await session_mod.update_llm_overrides(
+            session_id, user["id"], body.llm_overrides.model_dump(exclude_none=True),
+        )
+        session["llm_overrides"] = merged or {}
+
+    fresh = await session_mod.get_session(session_id, user["id"])
+    if not fresh:
         raise HTTPException(status_code=404, detail="会话不存在")
-    return {
-        "id": renamed["id"], "title": renamed["title"],
-        "message_count": await session_mod.count_messages(session_id),
-        "permission_mode": session.get("permission_mode", "ask"),
-        "repo_ids": session.get("repo_ids", []),
-        "primary_repo_id": session.get("primary_repo_id"),
-        "model": session.get("model"),
-        "created_at": renamed["created_at"], "updated_at": renamed["updated_at"],
-    }
+    return _session_payload(fresh, await session_mod.count_messages(session_id))
 
 
 @router.delete("/chat/sessions/{session_id}", response_model=OkOut)
@@ -109,12 +129,23 @@ async def chat_message(
 ):
     await check_chat_quota(user)
 
+    incoming_overrides = (
+        body.llm_overrides.model_dump(exclude_none=True)
+        if body.llm_overrides else None
+    )
     if body.session_id:
         session = await session_mod.get_session(body.session_id, user["id"])
         if not session:
             raise HTTPException(status_code=404, detail="会话不存在")
+        if incoming_overrides is not None:
+            merged = await session_mod.update_llm_overrides(
+                session["id"], user["id"], incoming_overrides,
+            )
+            session["llm_overrides"] = merged or {}
     else:
-        session = await session_mod.create_session(user["id"], model=body.model)
+        session = await session_mod.create_session(
+            user["id"], model=body.model, llm_overrides=incoming_overrides,
+        )
 
     if body.model and body.model.strip() != (session.get("model") or ""):
         model = body.model.strip()
@@ -165,6 +196,7 @@ async def chat_message(
         "repo_ids": effective_repo_ids,
         "permission_mode": session.get("permission_mode", "ask"),
         "model": session.get("model"),
+        "llm_overrides": session.get("llm_overrides") or {},
         "file_ids": [item["id"] for item in attachments],
     })
 
