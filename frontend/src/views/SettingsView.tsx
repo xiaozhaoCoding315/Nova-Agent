@@ -1,15 +1,15 @@
 import {
-  Activity, AlertCircle, Brain, CheckCircle2, Clock, Coins, Cpu, Eye, EyeOff, FolderOpen,
-  KeyRound, RefreshCw, Server, Trash2, TrendingUp, Users, Zap,
+  Activity, Brain, Clock, Coins, Cpu, FolderOpen,
+  KeyRound, RefreshCw, Server, Trash2, TrendingUp, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import { AccountPanel } from '../components/AccountPanel'
 import { AdminUsersPanel } from '../components/AdminUsersPanel'
 import { FilesPanel } from '../components/FilesPanel'
-import { Badge, Button, Modal, Spinner, StatusDot } from '../components/common'
+import { ModelSettings } from '../components/ModelSettings'
+import { Badge, Button, Spinner, StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { Health, LlmSettings, Memory, Metrics, SelfQuota, Usage } from '../lib/types'
+import type { Health, Memory, Metrics, SelfQuota, Usage } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { useLlm } from '../stores/llm'
 
@@ -170,306 +170,6 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Cpu }[] = [
   { key: 'admin', label: '用户管理', icon: Users },
 ]
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 flex items-center gap-2 text-[11.5px] text-dim">
-        {label}
-        {hint && <span className="text-[10px] text-dim/50">{hint}</span>}
-      </span>
-      {children}
-    </label>
-  )
-}
-
-const inputClass =
-  'w-full rounded-lg border border-edge bg-base/60 px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60 disabled:opacity-50'
-
-function ModelSection({ settings, loading, onReload }: {
-  settings: LlmSettings | null
-  loading: boolean
-  onReload: () => void
-}) {
-  const { save, clear, test } = useLlm()
-  const [hydrated, setHydrated] = useState(false)
-  const [provider, setProvider] = useState('dashscope')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [model, setModel] = useState('')
-  const [customModel, setCustomModel] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [showKey, setShowKey] = useState(false)
-  const [contextWindow, setContextWindow] = useState('')
-  const [reasoningEffort, setReasoningEffort] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
-  const [confirmClear, setConfirmClear] = useState(false)
-
-  useEffect(() => {
-    if (!settings || hydrated) return
-    const providers = settings.providers
-    const saved = settings.source === 'user'
-    const preset = providers.find((item) => item.id === (saved ? settings.provider : 'dashscope')) ?? providers[0]
-    if (!preset) return
-    const savedModel = saved ? (settings.model ?? '') : ''
-    const known = preset.models.includes(savedModel)
-    setProvider(preset.id)
-    setBaseUrl(saved && settings.base_url ? settings.base_url : preset.base_url)
-    setModel(savedModel && !known ? '__custom__' : (savedModel || preset.models[0] || '__custom__'))
-    setCustomModel(savedModel && !known ? savedModel : '')
-    setContextWindow(saved && settings.context_window ? String(settings.context_window) : '')
-    setReasoningEffort(saved ? settings.reasoning_effort || '' : '')
-    setHydrated(true)
-  }, [settings, hydrated])
-
-  const preset = settings?.providers.find((item) => item.id === provider)
-  const effectiveModel = model === '__custom__' ? customModel.trim() : model
-  const sourceUser = settings?.source === 'user'
-
-  const chooseProvider = (id: string) => {
-    const next = settings?.providers.find((item) => item.id === id)
-    setProvider(id)
-    setBaseUrl(next?.base_url ?? '')
-    setModel(next?.models[0] ?? '__custom__')
-    setCustomModel('')
-    setFeedback(null)
-  }
-
-  const submit = async (mode: 'save' | 'test') => {
-    if (!effectiveModel) {
-      setFeedback({ ok: false, text: '请选择或填写模型名称' })
-      return
-    }
-    if (mode === 'save') setBusy(true)
-    else setTesting(true)
-    setFeedback(null)
-    try {
-      const input = {
-        provider,
-        model: effectiveModel,
-        base_url: baseUrl.trim() || null,
-        api_key: apiKey.trim() || null,
-        context_window: contextWindow.trim() ? Number(contextWindow.trim()) : 0,
-        reasoning_effort: reasoningEffort || '',
-      }
-      if (mode === 'save') {
-        const saved = await save(input)
-        setApiKey('')
-        setHydrated(false)
-        setFeedback({ ok: true, text: `已保存，当前模型：${saved.model}` })
-        onReload()
-      } else {
-        const result = await test(input)
-        setFeedback({
-          ok: result.ok,
-          text: `${result.message}${result.latency_ms ? `（${result.latency_ms} ms）` : ''}`,
-        })
-      }
-    } catch (err) {
-      setFeedback({ ok: false, text: err instanceof ApiError ? err.message : '操作失败' })
-    } finally {
-      setBusy(false)
-      setTesting(false)
-    }
-  }
-
-  if (!settings) {
-    return <p className="flex items-center gap-2 text-[12.5px] text-dim">{loading ? <Spinner /> : null} 加载模型配置…</p>
-  }
-
-  return (
-    <div className="space-y-4">
-      <section className="rounded-xl border border-edge bg-panel p-4">
-        <div className="flex items-start gap-3">
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${sourceUser ? 'bg-accentSoft/50 text-accent' : 'bg-raised text-dim'}`}>
-            {sourceUser ? <KeyRound size={16} /> : <Server size={16} />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[13px] font-medium">
-                {sourceUser ? '正在使用你自己的 API Key' : settings.source === 'server' ? '正在使用服务端共享密钥' : '尚未配置可用模型'}
-              </p>
-              <Badge tone={sourceUser ? 'accent' : settings.source === 'server' ? 'ok' : 'err'}>
-                {sourceUser ? '个人' : settings.source === 'server' ? '共享' : '未配置'}
-              </Badge>
-            </div>
-            <p className="mt-1 break-all text-[11.5px] text-dim">
-              {settings.model ?? '—'}
-              {sourceUser && settings.key_hint ? ` · ${settings.key_hint}` : ''}
-              {sourceUser && settings.provider ? ` · ${settings.providers.find((p) => p.id === settings.provider)?.label ?? settings.provider}` : ''}
-            </p>
-            {!sourceUser && settings.source === 'server' && (
-              <p className="mt-1 text-[11px] leading-relaxed text-dim/80">
-                对话会消耗部署者的额度。保存自己的 Key 后将完全改用你的配置，不回退到共享密钥。
-              </p>
-            )}
-            {settings.source === 'none' && !settings.allow_server_fallback && (
-              <p className="mt-1 text-[11px] leading-relaxed text-warn">
-                当前账号需使用个人 API Key：请在下方配置后即可开始对话（Key 加密存储，仅供你自己的对话使用）。
-              </p>
-            )}
-          </div>
-          {sourceUser && (
-            <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
-              移除
-            </Button>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-edge bg-panel p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Cpu size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">模型服务商</h3>
-          <span className="text-[10.5px] text-dim">任意 OpenAI 兼容端点</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {settings.providers.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => chooseProvider(item.id)}
-              className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                provider === item.id
-                  ? 'border-accent/70 bg-accentSoft/25'
-                  : 'border-edge/80 hover:border-accentSoft'
-              }`}
-            >
-              <p className="truncate text-[12px] font-medium">{item.label}</p>
-              <p className="mt-0.5 truncate font-mono text-[9.5px] text-dim">{item.base_url || '自定义地址'}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-3 rounded-xl border border-edge bg-panel p-4">
-        <Field label="Base URL" hint="OpenAI 兼容 /v1 地址">
-          <input
-            className={inputClass}
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://api.example.com/v1"
-            spellCheck={false}
-          />
-        </Field>
-
-        <Field label="API Key" hint={settings.has_key ? `已保存 ${settings.key_hint}，留空保持不变` : '仅保存在服务端，加密存储'}>
-          <div className="relative">
-            <input
-              className={`${inputClass} pr-9`}
-              type={showKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={settings.has_key ? '留空则继续使用已保存的 Key' : 'sk-…'}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey((value) => !value)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-ink"
-              aria-label={showKey ? '隐藏密钥' : '显示密钥'}
-            >
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-        </Field>
-
-        <Field label="模型">
-          {preset && preset.models.length > 0 ? (
-            <select
-              className={inputClass}
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-            >
-              {preset.models.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-              <option value="__custom__">自定义模型…</option>
-            </select>
-          ) : null}
-          {(model === '__custom__' || !preset?.models.length) && (
-            <input
-              className={`${inputClass} ${preset?.models.length ? 'mt-2' : ''}`}
-              value={customModel}
-              onChange={(event) => setCustomModel(event.target.value)}
-              placeholder="填写模型 ID，例如 qwen3-coder-plus"
-              spellCheck={false}
-            />
-          )}
-        </Field>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="上下文窗口（tokens）" hint="留空跟随部署默认；用于对话中的上下文占用估算">
-            <input
-              className={inputClass}
-              value={contextWindow}
-              onChange={(event) => setContextWindow(event.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="例如 131072"
-              inputMode="numeric"
-              spellCheck={false}
-            />
-          </Field>
-          <Field label="推理强度" hint="对话主链路随请求携带；不支持的端点会自动忽略">
-            <select
-              className={inputClass}
-              value={reasoningEffort}
-              onChange={(event) => setReasoningEffort(event.target.value)}
-            >
-              <option value="">默认（不显式指定）</option>
-              <option value="low">低 · 响应更快</option>
-              <option value="medium">中</option>
-              <option value="high">高 · 深度思考</option>
-            </select>
-          </Field>
-        </div>
-
-        {feedback && (
-          <p className={`flex items-start gap-1.5 text-[11.5px] ${feedback.ok ? 'text-ok' : 'text-err'}`}>
-            {feedback.ok ? <CheckCircle2 size={13} className="mt-0.5 shrink-0" /> : <AlertCircle size={13} className="mt-0.5 shrink-0" />}
-            <span className="break-all">{feedback.text}</span>
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <Button variant="primary" size="sm" disabled={busy} onClick={() => void submit('save')}>
-            {busy ? <Spinner /> : <KeyRound size={12} />} 保存配置
-          </Button>
-          <Button size="sm" disabled={testing} onClick={() => void submit('test')}>
-            {testing ? <Spinner /> : <Zap size={12} />} 测试连接
-          </Button>
-          <p className="ml-auto text-[10px] text-dim/60">
-            密钥以 SECRET_KEY 派生密钥加密；接口只返回掩码。Embedding 仍使用服务端密钥。
-          </p>
-        </div>
-      </section>
-
-      <Modal open={confirmClear} onClose={() => setConfirmClear(false)} title="移除个人模型配置" width="max-w-sm">
-        <p className="text-[12.5px] leading-relaxed text-dim">
-          移除后，对话会回退到服务端共享密钥{settings.allow_server_fallback ? '' : '；当前部署已关闭共享密钥，将无法继续对话'}。
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button size="sm" onClick={() => setConfirmClear(false)}>取消</Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => {
-              setConfirmClear(false)
-              void clear().then(() => {
-                setHydrated(false)
-                setFeedback({ ok: true, text: '已移除个人模型配置' })
-                onReload()
-              })
-            }}
-          >
-            确认移除
-          </Button>
-        </div>
-      </Modal>
-    </div>
-  )
-}
-
 export function SettingsView() {
   const user = useAuth((s) => s.user)
   const {
@@ -610,7 +310,11 @@ export function SettingsView() {
           {error && <p className="mb-3 text-[12.5px] text-err">{error}</p>}
 
           {section === 'model' && (
-            <ModelSection settings={llmSettings} loading={llmLoading} onReload={() => void loadLlm()} />
+            <ModelSettings
+              settings={llmSettings}
+              loading={llmLoading}
+              onReload={() => void loadLlm()}
+            />
           )}
 
           {section === 'usage' && (
