@@ -11,11 +11,33 @@ cannot create asyncio subprocesses. Commands are therefore started with
 On Windows the command is passed to ``cmd.exe /d /s /c`` as a raw command
 line: the list form lets subprocess escape the command's own quotes as
 ``\\"``, which cmd.exe does not understand.
+
+Design notes and accepted limitations:
+
+* ``taskkill /T`` is the tree-kill mechanism on Windows; the root is first
+  killed through the tree so ``taskkill`` can still enumerate descendants,
+  with ``Popen.kill`` as a root-only fallback. The ``Popen`` handle kept in
+  the registry pins the root PID: Windows cannot recycle it while the handle
+  is open, so a retained entry never refers to a different process.
+* There is no Windows Job Object. A descendant that detaches and keeps
+  running after the shell exits is *not* tracked by ``job_id`` once the shell
+  is gone, and ``cancel_host_processes`` cannot reach it. The result is still
+  returned when the shell exits (after a short drain window); reader threads
+  are then cancelled and the parent pipe handles closed, so such a descendant
+  cannot block the executor forever. Only processes still in the shell's tree
+  can be killed with ``taskkill /T``.
+* Reader threads block in ``ReadFile``. A ``done`` event alone does not
+  unblock a thread already inside a pipe read: Windows uses
+  ``CancelSynchronousIo`` and POSIX readers poll with ``select``.
 """
 import asyncio
+import locale
+import logging
 import os
 import queue
 import re
+import select
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,9 +46,13 @@ import time
 from pathlib import Path
 
 OUTPUT_LIMIT = 100_000
+MAX_LINE_BYTES = 64_000
 _POLL_SECONDS = 0.2
 _EXIT_DRAIN_SECONDS = 2.0
 _KILL_WAIT_SECONDS = 5.0
+_KILL_VERIFY_SECONDS = 1.0
+_READER_JOIN_SECONDS = 0.5
+_READ_CHUNK = 65_536
 _DRIVE = re.compile(r"^[A-Za-z]:")
 
 _WIN_ALLOW = {
@@ -39,42 +65,72 @@ _POSIX_ALLOW = {
     "PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE",
     "TERM", "TMPDIR", "SHELL",
 }
-_SECRET_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+_SECRET_SUFFIXES = ("_KEY", "_TOKEN")
+_SECRET_PARTS = ("SECRET", "PASSWORD", "CREDENTIAL")
+_SECRET_PREFIXES = ("AWS_", "GOOGLE_", "AZURE_")
+_SECRET_EXACT = {"GIT_SSH_COMMAND", "NODE_OPTIONS", "DATABASE_URL"}
+_FORCED_ENV = {"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
 
-_RUNNING: dict[str, set[tuple[int, str]]] = {}
+_LOG = logging.getLogger(__name__)
+_REGISTRY_LOCK = threading.Lock()
+_RUNNING: dict[str, dict[int, tuple[subprocess.Popen, str]]] = {}
 _WINDOWS_KERNEL32 = None
 
 
+def _is_secret_key(name: str) -> bool:
+    """Case-insensitive denylist for caller-supplied environment entries."""
+    upper = name.upper()
+    if upper.endswith(_SECRET_SUFFIXES) or upper == "TOKEN":
+        return True
+    if any(part in upper for part in _SECRET_PARTS):
+        return True
+    return upper.startswith(_SECRET_PREFIXES) or upper in _SECRET_EXACT
+
+
 def scrub_env(extra=None, *, env=None, platform=None) -> dict[str, str]:
-    """Allowlist PATH/OS variables and drop anything that looks like a secret."""
+    """Allowlist PATH/OS variables and drop anything that looks like a secret.
+
+    ``extra`` entries are filtered case-insensitively: secret-looking names
+    (``*_KEY``, ``*_TOKEN``, ``*SECRET*``, ``*PASSWORD*``, ``*CREDENTIAL*``,
+    ``AWS_*``, ``GOOGLE_*``, ``AZURE_*``, ``GIT_SSH_COMMAND``,
+    ``NODE_OPTIONS``, ``DATABASE_URL``) are ignored. They also cannot override
+    the platform allowlist keys or the forced Python encoding flags; callers
+    that need a different ``PATH`` should use ``venv_root`` instead.
+    """
     plat = platform or sys.platform
     source = dict(os.environ if env is None else env)
     allow = _WIN_ALLOW if plat == "win32" else _POSIX_ALLOW
+    protected = allow | set(_FORCED_ENV)
     out = {
         key: value for key, value in source.items()
         if key in allow or key.upper() in allow
     }
     for key, value in (extra or {}).items():
         upper = key.upper()
-        if any(marker in upper for marker in _SECRET_MARKERS):
+        if upper in protected or _is_secret_key(key):
             continue
         out[key] = str(value)
-    out["PYTHONIOENCODING"] = "utf-8"
-    out["PYTHONUTF8"] = "1"
+    out.update(_FORCED_ENV)
     return out
 
 
 def resolve_cwd(root: str | Path, cwd: str = ".") -> Path:
     """Resolve ``cwd`` under ``root``, rejecting absolute paths and escapes.
 
-    Symlinks and junctions are resolved before the containment check, so a
-    link inside the project cannot be used to step outside it.
+    Symlinks and NTFS junctions are resolved before the containment check, so
+    a link inside the project cannot be used to step outside it. Windows
+    drive prefixes, UNC/device paths, root-relative paths and alternate data
+    streams (``name:stream``) are rejected before touching the filesystem.
     """
     root_path = Path(root).resolve(strict=True)
     raw = str(cwd or ".").strip()
     if "\x00" in raw:
         raise ValueError("cwd 包含非法字符")
     if raw.startswith(("/", "\\")) or _DRIVE.match(raw):
+        raise ValueError("cwd 必须是相对项目根目录的路径")
+    if os.name == "nt" and ":" in raw:
+        # Alternate data streams (``dir::$INDEX_ALLOCATION``) and any other
+        # drive-relative form that starts with a non-letter.
         raise ValueError("cwd 必须是相对项目根目录的路径")
     candidate = (root_path / raw).resolve(strict=False)
     if candidate != root_path and root_path not in candidate.parents:
@@ -138,6 +194,14 @@ def _windows_kernel32():
         kernel32.GetExitCodeProcess.restype = wintypes.BOOL
         kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
         kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.OpenThread.argtypes = [
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        ]
+        kernel32.OpenThread.restype = wintypes.HANDLE
+        kernel32.CancelSynchronousIo.argtypes = [wintypes.HANDLE]
+        kernel32.CancelSynchronousIo.restype = wintypes.BOOL
         _WINDOWS_KERNEL32 = kernel32
     return _WINDOWS_KERNEL32
 
@@ -173,15 +237,52 @@ def pid_alive(pid: int) -> bool:
         return True
 
 
-def _kill_tree_sync(pid: int) -> None:
+def _system_root() -> str:
+    return os.environ.get("SystemRoot") or r"C:\Windows"
+
+
+def _taskkill_path() -> str:
+    """Pinned system binary; PATH search only as a last-resort fallback."""
+    pinned = Path(_system_root()) / "System32" / "taskkill.exe"
+    if pinned.is_file():
+        return str(pinned)
+    found = shutil.which("taskkill.exe")
+    return found or str(pinned)
+
+
+def _taskkill_env() -> dict[str, str]:
+    """Minimal environment for the internal taskkill helper (no secrets)."""
+    root = _system_root()
+    system32 = str(Path(root) / "System32")
+    return {
+        "SystemRoot": root,
+        "windir": root,
+        "PATH": system32,
+        "ComSpec": str(Path(system32) / "cmd.exe"),
+    }
+
+
+def _wait_for_death(pid: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        if not pid_alive(pid):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+
+
+def _kill_tree_sync(pid: int) -> bool:
+    """Kill ``pid`` and its tree; return True when the root is confirmed dead."""
     if pid <= 0:
-        return
+        return False
     if os.name == "nt":
         try:
             subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                [_taskkill_path(), "/PID", str(pid), "/T", "/F"],
                 capture_output=True,
                 timeout=20,
+                env=_taskkill_env(),
             )
         except (OSError, subprocess.TimeoutExpired):
             pass
@@ -191,38 +292,57 @@ def _kill_tree_sync(pid: int) -> None:
                 os.kill(pid, signal.SIGTERM)
             except OSError:
                 pass
-        return
+        return _wait_for_death(pid, _KILL_VERIFY_SECONDS)
     try:
         os.killpg(os.getpgid(pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
+    return _wait_for_death(pid, _KILL_VERIFY_SECONDS)
 
 
 async def kill_process_tree(pid: int) -> None:
     await asyncio.to_thread(_kill_tree_sync, pid)
 
 
-def _register(job_id: str, pid: int, user_id) -> None:
-    _RUNNING.setdefault(str(job_id), set()).add((pid, str(user_id)))
+def _register(job_id: str, proc: subprocess.Popen, user_id) -> None:
+    with _REGISTRY_LOCK:
+        _RUNNING.setdefault(str(job_id), {})[proc.pid] = (proc, str(user_id))
 
 
 def _unregister(job_id: str, pid: int, user_id) -> None:
-    entries = _RUNNING.get(str(job_id))
-    if not entries:
-        return
-    entries.discard((pid, str(user_id)))
-    if not entries:
-        _RUNNING.pop(str(job_id), None)
+    with _REGISTRY_LOCK:
+        entries = _RUNNING.get(str(job_id))
+        if not entries:
+            return
+        entries.pop(pid, None)
+        if not entries:
+            _RUNNING.pop(str(job_id), None)
 
 
 async def cancel_host_processes(job_id, user_id=None) -> int:
-    """Kill every registered process tree for ``job_id`` (optionally per user)."""
+    """Kill registered trees for ``job_id``; count only confirmed kills.
+
+    Entries whose kill cannot be confirmed stay registered (and keep their
+    ``Popen`` handle) so a later cancel can retry without risking PID reuse.
+    """
+    with _REGISTRY_LOCK:
+        entries = list((_RUNNING.get(str(job_id)) or {}).items())
     killed = 0
-    for pid, owner in list(_RUNNING.get(str(job_id), set())):
+    for pid, (proc, owner) in entries:
         if user_id is not None and owner != str(user_id):
             continue
-        await kill_process_tree(pid)
-        killed += 1
+        if proc.poll() is not None:
+            # Already dead: remove the entry instead of risking PID reuse.
+            _unregister(str(job_id), pid, owner)
+            continue
+        confirmed = await asyncio.to_thread(_kill_tree_sync, pid)
+        if not confirmed and proc.poll() is not None:
+            confirmed = True
+        if confirmed:
+            killed += 1
+            _unregister(str(job_id), pid, owner)
+        else:
+            _LOG.warning("host_kill_failed job_id=%s pid=%s", job_id, pid)
     return killed
 
 
@@ -256,21 +376,182 @@ def _write_stdin(stream, data: bytes) -> None:
 
 def _append_bounded(
     parts: list[str], sizes: dict[str, int], name: str, text: str
-) -> None:
+) -> bool:
+    """Append up to the per-stream cap; return True when text was dropped."""
     remaining = OUTPUT_LIMIT - sizes[name]
     if remaining <= 0:
-        return
+        return bool(text)
     piece = text[:remaining]
-    parts.append(piece)
-    sizes[name] += len(piece)
+    if piece:
+        parts.append(piece)
+        sizes[name] += len(piece)
+    return len(text) > len(piece)
 
 
-def _forward(on_output, name: str, text: str) -> None:
+def _forward(on_output, name: str, text: str, state: dict) -> None:
     if on_output is None:
         return
     try:
         on_output(name, text)
-    except Exception:  # noqa: BLE001 - streaming must not break execution
+    except Exception as exc:  # noqa: BLE001 - streaming must not break execution
+        if not state.get("warned"):
+            state["warned"] = True
+            _LOG.warning(
+                "host_on_output_failed stream=%s error=%s",
+                name,
+                type(exc).__name__,
+            )
+
+
+def _preferred_output_encoding() -> str:
+    if os.name != "nt":
+        return "utf-8"
+    try:
+        return locale.getpreferredencoding(False) or "mbcs"
+    except (LookupError, ValueError):
+        return "mbcs"
+
+
+def _decode_output(data: bytes, encoding: str) -> str:
+    """Decode a line: UTF-8 first (Python children), then the console codepage.
+
+    ``execute_host`` forces Python children to UTF-8 via ``PYTHONIOENCODING``,
+    while ``cmd.exe``/native tools emit bytes in the active code page. Strict
+    UTF-8 succeeds for the former; otherwise the fallback keeps Chinese
+    ``cmd.exe`` output readable instead of producing replacement characters.
+    Every failure path uses ``errors="replace"`` and never raises.
+    """
+    if encoding == "utf-8":
+        return data.decode("utf-8", "replace")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode(encoding, "replace")
+
+
+def _put_item(chunks: queue.Queue, stop: threading.Event, item) -> bool:
+    while not stop.is_set():
+        try:
+            chunks.put(item, timeout=0.2)
+            return True
+        except queue.Full:
+            continue
+    return False
+
+
+def _read_chunk(pipe, stop: threading.Event) -> bytes:
+    if os.name == "nt":
+        return pipe.read(_READ_CHUNK)
+    fd = pipe.fileno()
+    while not stop.is_set():
+        ready, _, _ = select.select([fd], [], [], _POLL_SECONDS)
+        if ready:
+            return os.read(fd, _READ_CHUNK)
+    return b""
+
+
+def _stream_reader(
+    pipe,
+    name: str,
+    stop: threading.Event,
+    chunks: queue.Queue,
+    encoding: str,
+    eof,
+) -> None:
+    """Split a pipe into bounded lines and queue them for the collector."""
+    pending = bytearray()
+    dropping = False
+
+    def emit(truncated: bool) -> bool:
+        nonlocal pending
+        if not pending:
+            return True
+        text = _decode_output(bytes(pending), encoding)
+        pending = bytearray()
+        return _put_item(chunks, stop, (name, text, truncated))
+
+    try:
+        while not stop.is_set():
+            chunk = _read_chunk(pipe, stop)
+            if not chunk:
+                break
+            index = 0
+            while index < len(chunk):
+                newline = chunk.find(b"\n", index)
+                if newline < 0:
+                    if not dropping:
+                        room = MAX_LINE_BYTES - len(pending)
+                        if room > 0:
+                            pending.extend(chunk[index:index + room])
+                        if len(chunk) - index > room:
+                            dropping = True
+                    break
+                segment = chunk[index:newline + 1]
+                index = newline + 1
+                if dropping:
+                    if not emit(True):
+                        return
+                    dropping = False
+                    continue
+                room = MAX_LINE_BYTES - len(pending)
+                if len(segment) > room:
+                    if room > 0:
+                        pending.extend(segment[:room])
+                    if not emit(True):
+                        return
+                else:
+                    pending.extend(segment)
+                    if not emit(False):
+                        return
+        if pending:
+            emit(dropping)
+    except (OSError, ValueError):
+        pass
+    finally:
+        try:
+            pipe.close()
+        except (OSError, ValueError):
+            pass
+        _put_item(chunks, stop, eof)
+
+
+def _cancel_reader_io(reader: threading.Thread) -> None:
+    """Abort a Windows ``ReadFile`` blocked in ``reader`` (no-op elsewhere)."""
+    if os.name != "nt" or not reader.is_alive():
+        return
+    native_id = reader.native_id
+    if native_id is None:
+        return
+    try:
+        kernel32 = _windows_kernel32()
+        handle = kernel32.OpenThread(0x0001, False, native_id)
+        if not handle:
+            return
+        try:
+            kernel32.CancelSynchronousIo(handle)
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, OSError):
+        pass
+
+
+def _stop_readers(readers: list[tuple[threading.Thread, object]]) -> None:
+    # Two attempts: CancelSynchronousIo can miss a reader that has passed the
+    # stop check but has not yet entered ReadFile.
+    for _ in range(2):
+        for reader, _ in readers:
+            _cancel_reader_io(reader)
+        for reader, _ in readers:
+            if reader.is_alive():
+                reader.join(timeout=_READER_JOIN_SECONDS)
+
+
+def _close_pipe(stream) -> None:
+    if stream is None:
+        return
+    try:
+        stream.close()
+    except (OSError, ValueError):
         pass
 
 
@@ -280,6 +561,7 @@ def _collect_output(
     timeout: float,
     stdin_text: str,
     on_output,
+    job_id: str | None = None,
 ) -> dict:
     """Drain pipes, enforce the deadline and kill the tree when it expires."""
     if stdin_text and proc.stdin is not None:
@@ -287,49 +569,39 @@ def _collect_output(
             target=_write_stdin,
             args=(proc.stdin, stdin_text.encode("utf-8")),
             daemon=True,
+            name="host-stdin",
         ).start()
 
     chunks: queue.Queue = queue.Queue(maxsize=256)
     eof = object()
-    done = threading.Event()
+    stop = threading.Event()
+    encoding = _preferred_output_encoding()
 
-    def _put(item) -> bool:
-        while not done.is_set():
-            try:
-                chunks.put(item, timeout=0.2)
-                return True
-            except queue.Full:
-                continue
-        return False
-
-    def _reader(pipe, name: str) -> None:
-        try:
-            for line in iter(pipe.readline, b""):
-                if not _put((name, line.decode("utf-8", "replace"))):
-                    break
-        except (OSError, ValueError):
-            pass
-        finally:
-            try:
-                pipe.close()
-            except OSError:
-                pass
-            _put(eof)
-
-    readers = []
+    readers: list[tuple[threading.Thread, object]] = []
+    expected_eofs = 0
     for pipe, name in ((proc.stdout, "stdout"), (proc.stderr, "stderr")):
         if pipe is None:
-            _put(eof)
+            chunks.put_nowait(eof)
+            expected_eofs += 1
             continue
-        reader = threading.Thread(target=_reader, args=(pipe, name), daemon=True)
+        reader = threading.Thread(
+            target=_stream_reader,
+            args=(pipe, name, stop, chunks, encoding, eof),
+            daemon=True,
+            name=f"host-reader-{name}",
+        )
         reader.start()
-        readers.append(reader)
+        readers.append((reader, pipe))
+        expected_eofs += 1
 
     out_parts: list[str] = []
     err_parts: list[str] = []
     sizes = {"stdout": 0, "stderr": 0}
+    forwarded: dict = {"warned": False}
     deadline = time.monotonic() + max(0.0, float(timeout))
     timed_out = False
+    kill_failed = False
+    output_truncated = False
     eofs = 0
     exit_drain_deadline: float | None = None
 
@@ -342,15 +614,26 @@ def _collect_output(
                 break
         elif now >= deadline:
             timed_out = True
-            _kill_tree_sync(proc.pid)
+            killed = _kill_tree_sync(proc.pid)
+            if not killed or proc.poll() is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
             try:
                 proc.wait(timeout=_KILL_WAIT_SECONDS)
             except subprocess.TimeoutExpired:
                 pass
             if proc.poll() is None:
-                # The tree survived the kill; do not spin on it forever.
+                # Do not report success for a process that survived the kill.
+                kill_failed = True
+                _LOG.warning(
+                    "host_kill_failed job_id=%s pid=%s timed_out=true",
+                    job_id,
+                    proc.pid,
+                )
                 break
-        if exit_drain_deadline is not None and eofs >= 2:
+        if exit_drain_deadline is not None and eofs >= expected_eofs:
             break
 
         wait_for = _POLL_SECONDS
@@ -365,14 +648,23 @@ def _collect_output(
         if item is eof:
             eofs += 1
             continue
-        name, text = item
+        name, text, truncated = item
         target = out_parts if name == "stdout" else err_parts
-        _append_bounded(target, sizes, name, text)
-        _forward(on_output, name, text)
+        if _append_bounded(target, sizes, name, text):
+            output_truncated = True
+        if truncated:
+            output_truncated = True
+        _forward(on_output, name, text, forwarded)
 
-    done.set()
-    for reader in readers:
-        reader.join(timeout=0.2)
+    stop.set()
+    _stop_readers(readers)
+    for reader, pipe in readers:
+        if reader.is_alive():
+            # Last resort: leave the daemon reader owning its pipe rather than
+            # blocking this collector in a cross-thread close.
+            _LOG.warning("host_reader_stuck name=%s", reader.name)
+        else:
+            _close_pipe(pipe)
 
     while True:
         try:
@@ -381,21 +673,27 @@ def _collect_output(
             break
         if item is eof:
             continue
-        name, text = item
+        name, text, truncated = item
         target = out_parts if name == "stdout" else err_parts
-        _append_bounded(target, sizes, name, text)
-        _forward(on_output, name, text)
+        if _append_bounded(target, sizes, name, text):
+            output_truncated = True
+        if truncated:
+            output_truncated = True
+        _forward(on_output, name, text, forwarded)
 
-    try:
-        proc.wait(timeout=_KILL_WAIT_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
+    if not kill_failed:
+        try:
+            proc.wait(timeout=_KILL_WAIT_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
 
     return {
         "stdout": "".join(out_parts),
         "stderr": "".join(err_parts),
         "exit_code": proc.returncode if proc.returncode is not None else -1,
         "timed_out": timed_out,
+        "kill_failed": kill_failed,
+        "output_truncated": output_truncated,
         "sandboxed": False,
         "isolation": "none",
         "executor": "host",
@@ -435,18 +733,33 @@ async def execute_host(
         **popen_extra,
     )
     if job_id:
-        _register(str(job_id), proc.pid, user_id)
+        _register(str(job_id), proc, user_id)
 
     try:
         result = await asyncio.to_thread(
-            _collect_output, proc, command, timeout, stdin, on_output
+            _collect_output, proc, command, timeout, stdin, on_output, job_id
         )
     except BaseException:
         # Cancelled task or unexpected failure: never leave a process behind.
-        await kill_process_tree(proc.pid)
+        await asyncio.to_thread(_kill_tree_sync, proc.pid)
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            try:
+                proc.wait(timeout=_KILL_WAIT_SECONDS)
+            except subprocess.TimeoutExpired:
+                pass
+        if proc.poll() is None:
+            _LOG.warning("host_kill_failed job_id=%s pid=%s", job_id, proc.pid)
+        elif job_id:
+            _unregister(str(job_id), proc.pid, user_id)
         raise
-    finally:
-        if job_id:
+    else:
+        # A process that survived its kill keeps its registry entry (and its
+        # Popen handle) so a later cancel can reach it.
+        if job_id and not result["kill_failed"]:
             _unregister(str(job_id), proc.pid, user_id)
 
     result["duration_ms"] = int((time.perf_counter() - started) * 1000)
