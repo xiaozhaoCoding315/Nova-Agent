@@ -249,6 +249,20 @@ def cmd_agent(args) -> int:
         time.sleep(poll)
 
 
+def cmd_local(args) -> int:
+    from app.local.config import load_or_create
+    from app.local.launcher import run
+
+    config = load_or_create(args.config)
+    if args.pg_backend:
+        config["pgBackend"] = args.pg_backend
+    try:
+        return run(config, host=args.host, port=args.port)
+    except (RuntimeError, ValueError) as exc:
+        print(f"本地启动失败：{exc}", file=sys.stderr)
+        return 1
+
+
 def _post_result(c: httpx.Client, request_id: str, *, ok: bool, exit_code: int, output: str) -> None:
     try:
         c.post(f"/api/v1/local/exec/{request_id}/result",
@@ -294,6 +308,13 @@ def main() -> int:
     p_agent.add_argument("--interval", type=float, default=3.0, help="轮询间隔秒数（默认 3）")
     p_agent.add_argument("--timeout", type=int, default=120, help="单条命令执行超时秒数（默认 120）")
     p_agent.set_defaults(func=cmd_agent)
+
+    p_local = sub.add_parser("local", help="以本地模式启动后端（内嵌 PostgreSQL）")
+    p_local.add_argument("--config", help="nova-config.json 路径（默认 %%APPDATA%%/Nova/nova-config.json）")
+    p_local.add_argument("--host", default="127.0.0.1")
+    p_local.add_argument("--port", type=int, default=0, help="0 = 随机空闲端口")
+    p_local.add_argument("--pg-backend", choices=["pgserver", "pg_ctl"])
+    p_local.set_defaults(func=cmd_local)
 
     args = parser.parse_args()
     return args.func(args)

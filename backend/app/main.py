@@ -58,6 +58,10 @@ async def _cleanup_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     setup_logging()
+    if settings.is_local:
+        from app.local.runtime import validate_local_settings
+
+        validate_local_settings()
     logger.info("nova_agent_starting", version=VERSION, env=settings.app_env)
     if settings.registration_mode not in ("open", "invite", "closed"):
         raise RuntimeError("REGISTRATION_MODE must be one of: open, invite, closed")
@@ -225,5 +229,5 @@ _FRONTEND_DIST = (
     else Path(__file__).resolve().parents[2] / "frontend" / "dist"
 )
 
-if settings.app_env == "prod" and _FRONTEND_DIST.is_dir():
+if (settings.app_env == "prod" or settings.is_local) and _FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
