@@ -131,36 +131,163 @@ def _git_listed_files(root: Path) -> list[str] | None:
     return [p for p in result.stdout.decode("utf-8", "replace").split("\0") if p]
 
 
-def iter_local_project_files(root: str, max_file_bytes: int):
-    """Yield project files, honoring .gitignore; skip symlinks escaping root."""
-    root_path = Path(root).resolve()
+def _resolve_strict(path: str | Path) -> Path | None:
+    """Resolve ``path`` (following reparse points) or return None if it is gone."""
+    try:
+        return Path(path).resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _resolve_excluded(path: str | Path) -> Path | None:
+    """Resolve a directory we must never index, even when it does not exist yet."""
+    try:
+        return Path(path).expanduser().resolve(strict=False)
+    except OSError:
+        return None
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _is_within_any(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(_is_within(path, root) for root in roots)
+
+
+def _local_file_entry(
+    rel: str, abspath: Path, max_file_bytes: int
+) -> tuple[str, str, int] | None:
+    """Apply the indexer's file filters to one already-confined candidate."""
+    if not is_supported(rel) or is_secret_path(rel):
+        return None
+    try:
+        if not abspath.is_file():
+            return None
+        size = abspath.stat().st_size
+    except OSError:
+        return None
+    if size == 0 or size > max_file_bytes:
+        return None
+    if not rel.lower().endswith(".pdf"):
+        try:
+            with abspath.open("rb") as handle:
+                head = handle.read(2048)
+        except OSError:
+            return None
+        if looks_binary(head):
+            return None
+    return rel, str(abspath), size
+
+
+def _walk_local_tree(
+    root: Path, max_file_bytes: int, excluded: tuple[Path, ...]
+):
+    """Walk ``root`` without ever descending through an escaping link/junction.
+
+    Every directory is resolved strictly and checked *before* it is opened, so
+    an outside tree is never traversed. Files are resolved too; only entries
+    whose real path stays inside ``root`` (and outside Nova-owned dirs) are
+    yielded. In-root links still work; ``visited`` prevents link cycles from
+    duplicating or looping the walk.
+    """
+    visited: set[Path] = set()
+    stack: list[tuple[Path, str]] = [(root, "")]
+    while stack:
+        directory, prefix = stack.pop()
+        real_dir = _resolve_strict(directory)
+        if real_dir is None or not real_dir.is_dir():
+            continue
+        if not _is_within(real_dir, root) or _is_within_any(real_dir, excluded):
+            continue
+        if real_dir in visited:
+            continue
+        visited.add(real_dir)
+        try:
+            with os.scandir(directory) as scan:
+                entries = []
+                for entry in scan:
+                    try:
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    entries.append((entry.name, entry.path, is_dir))
+        except OSError:
+            continue
+        entries.sort(key=lambda item: item[0].lower())
+        subdirs: list[tuple[Path, str]] = []
+        for name, entry_path, is_dir in entries:
+            rel = f"{prefix}/{name}" if prefix else name
+            if is_dir:
+                if name not in SKIP_DIRS:
+                    subdirs.append((Path(entry_path), rel))
+                continue
+            # Symlinks-to-directories report is_dir(False) without following,
+            # so resolve before deciding whether this is a dir or a file.
+            abspath = _resolve_strict(entry_path)
+            if abspath is None:
+                continue
+            if not _is_within(abspath, root) or _is_within_any(abspath, excluded):
+                continue
+            if abspath.is_dir():
+                if name not in SKIP_DIRS:
+                    subdirs.append((Path(entry_path), rel))
+                continue
+            entry_data = _local_file_entry(rel, abspath, max_file_bytes)
+            if entry_data is not None:
+                yield entry_data
+        # Reverse so the first (alphabetical) subdirectory is walked first.
+        stack.extend(reversed(subdirs))
+
+
+def _iter_local_project_files(
+    root: str | Path,
+    max_file_bytes: int,
+    excluded_roots: tuple[Path, ...] = (),
+):
+    root_path = _resolve_strict(root)
+    if root_path is None or not root_path.is_dir():
+        return
+    excluded = tuple(
+        resolved
+        for resolved in (_resolve_excluded(path) for path in excluded_roots)
+        if resolved is not None
+    )
+    if _is_within_any(root_path, excluded):
+        return
     listed = _git_listed_files(root_path)
     if listed is None:
-        yield from iter_source_files(str(root_path), max_file_bytes)
+        yield from _walk_local_tree(root_path, max_file_bytes, excluded)
         return
     for raw in listed:
         rel = raw.replace("\\", "/")
         if not is_supported(rel) or is_secret_path(rel):
             continue
-        try:
-            abspath = (root_path / rel).resolve(strict=True)
-        except OSError:
+        abspath = _resolve_strict(root_path / rel)
+        if abspath is None:
             continue
-        if root_path not in abspath.parents and abspath != root_path:
+        if not _is_within(abspath, root_path) or _is_within_any(abspath, excluded):
             continue
-        if not abspath.is_file():
-            continue
-        try:
-            size = abspath.stat().st_size
-        except OSError:
-            continue
-        if size == 0 or size > max_file_bytes:
-            continue
-        if not rel.lower().endswith(".pdf"):
-            try:
-                head = abspath.open("rb").read(2048)
-            except OSError:
-                continue
-            if looks_binary(head):
-                continue
-        yield rel, str(abspath), size
+        entry = _local_file_entry(rel, abspath, max_file_bytes)
+        if entry is not None:
+            yield entry
+
+
+def iter_local_project_files(root: str, max_file_bytes: int):
+    """Yield project files under ``root``, honoring .gitignore.
+
+    Enumeration is confined to the registered root: symlinks, junctions and
+    other reparse points that resolve outside it are pruned before traversal.
+    """
+    yield from _iter_local_project_files(root, max_file_bytes)
+
+
+def iter_local_project_files_excluding(
+    root: str, max_file_bytes: int, excluded_roots: tuple[Path, ...] = ()
+):
+    """Like ``iter_local_project_files`` but also prunes Nova-owned dirs.
+
+    Used by the indexer as defense in depth so a project that (incorrectly)
+    contains the Nova data directory can never index Nova's own secrets.
+    """
+    yield from _iter_local_project_files(root, max_file_bytes, excluded_roots)

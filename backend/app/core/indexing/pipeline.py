@@ -25,6 +25,26 @@ EMBED_BATCH = 10
 EMBEDDING_CHAR_LIMIT = 2000
 
 
+def _local_data_exclusions() -> tuple[Path, ...]:
+    """Nova-owned directories that must never be indexed (defense in depth)."""
+    paths: list[Path] = []
+    try:
+        paths.append(settings.data_root)
+    except RuntimeError:
+        pass
+    for value in (
+        settings.user_data_dir,
+        settings.repos_dir,
+        settings.skills_dir,
+        settings.log_dir,
+        settings.downloads_dir,
+        settings.local_tmp_dir,
+    ):
+        if value:
+            paths.append(Path(value).expanduser())
+    return tuple(paths)
+
+
 async def create_repo_row(
     user_id: int, name: str, source: str, repo_id: str, origin: str = "upload"
 ) -> dict:
@@ -258,6 +278,12 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
     if not repo:
         return
     root = repo["root_path"]
+    if repo.get("origin") == "local" and not Path(root).is_dir():
+        # Never let a vanished folder look like an empty project: that would
+        # mark it ready and delete the whole existing index.
+        logger.warning("local_project_root_missing", repo_id=repo_id, root=root)
+        await set_status(repo_id, "failed", f"本地项目目录不存在或已移动：{root}")
+        return
     await set_status(repo_id, "indexing")
     logger.info("index_started", repo_id=repo_id, name=repo["name"])
 
@@ -265,7 +291,10 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.02, step="扫描文件")
-        from app.core.indexing.walker import iter_local_project_files, strip_root_dir
+        from app.core.indexing.walker import (
+            iter_local_project_files_excluding,
+            strip_root_dir,
+        )
 
         if repo.get("origin") != "local":
             root = strip_root_dir(root)
@@ -295,11 +324,19 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
             for row in rows
         }
 
+        max_file_bytes = settings.max_file_kb * 1024
         if repo.get("origin") == "local":
-            iterator = iter_local_project_files(root, settings.max_file_kb * 1024)
+            # git ls-files + directory scans are blocking: keep a slow or
+            # network-backed folder off the event loop.
+            files = await asyncio.to_thread(
+                lambda: list(
+                    iter_local_project_files_excluding(
+                        root, max_file_bytes, _local_data_exclusions()
+                    )
+                )[: settings.max_repo_files]
+            )
         else:
-            iterator = iter_source_files(root, settings.max_file_kb * 1024)
-        files = list(iterator)[: settings.max_repo_files]
+            files = list(iter_source_files(root, max_file_bytes))[: settings.max_repo_files]
         stats = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0, "embedded": 0}
         pending: list[tuple[int, dict, str]] = []
         file_meta: list[dict] = []

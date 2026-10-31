@@ -178,6 +178,11 @@ async def open_local_repo(
 ):
     if not settings.is_local:
         raise HTTPException(status_code=404, detail="仅本地模式支持打开本地文件夹")
+    if not settings.nova_data_dir:
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 Nova 数据目录（NOVA_DATA_DIR），请通过本地启动器运行",
+        )
     try:
         return await register_local_project(user, body.path, body.name)
     except ValueError as exc:

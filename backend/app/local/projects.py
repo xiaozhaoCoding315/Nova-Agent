@@ -36,8 +36,12 @@ def validate_local_project_path(raw: str, data_root: Path) -> Path:
     data = data_root.expanduser().resolve()
     if data.exists() and not data.is_dir():
         raise ValueError(f"Nova 数据目录不是文件夹：{data}")
-    if root == data or data in root.parents:
-        raise ValueError("不能打开 Nova 数据目录或其子目录")
+    if data.is_relative_to(root):
+        raise ValueError(
+            f"项目目录包含 Nova 数据目录（{data}），不能打开数据目录或其上级文件夹"
+        )
+    if root.is_relative_to(data):
+        raise ValueError(f"不能打开 Nova 数据目录或其子目录：{data}")
     if not os.access(root, os.R_OK):
         raise ValueError("目录不可读，请检查 Windows 权限")
     return root
