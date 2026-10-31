@@ -105,6 +105,8 @@ async def messages_total(user_id: int) -> int:
 async def check_chat_quota(user: dict) -> None:
     """Raise 429 when the hourly rate, the daily token budget or the guest
     lifetime message cap is exhausted."""
+    if settings.is_local:
+        return
     if user.get("is_guest") and settings.guest_total_messages > 0:
         used = await messages_total(user["id"])
         if used >= settings.guest_total_messages:
@@ -129,6 +131,8 @@ async def check_chat_quota(user: dict) -> None:
 
 
 async def check_sandbox_quota(user: dict) -> None:
+    if settings.is_local:
+        return
     limit = sandbox_daily_limit(user)
     if limit > 0:
         used = await sandbox_runs_today(user["id"])
@@ -149,6 +153,8 @@ def job_hourly_limit(user: dict) -> int:
 
 def check_job_quota(user: dict, kind: str) -> None:
     """Rate-limit expensive background entrypoints (import/reindex/task/builder)."""
+    if settings.is_local:
+        return
     limit = job_hourly_limit(user)
     if limit > 0:
         _rate_check(user, f"job:{kind}", limit)
@@ -156,6 +162,8 @@ def check_job_quota(user: dict, kind: str) -> None:
 
 def check_search_quota(user: dict) -> None:
     """Search hits the embedding API; allow more than chat but still bound it."""
+    if settings.is_local:
+        return
     limit = hourly_message_limit(user) * 10
     if limit > 0:
         _rate_check(user, "search", limit)
@@ -172,6 +180,8 @@ async def ensure_token_budget(
     ``extra_tokens`` accounts for usage accumulated inside the current turn,
     which is not yet visible in ``usage_log``.
     """
+    if settings.is_local:
+        return
     if user is None:
         if user_id is None:
             return

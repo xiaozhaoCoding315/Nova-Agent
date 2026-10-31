@@ -1,5 +1,6 @@
 """Authentication: bcrypt password hashing + JWT session cookie."""
 import datetime
+import secrets
 
 import bcrypt
 import jwt
@@ -97,6 +98,8 @@ async def authenticate(username: str, password: str) -> dict | None:
 
 
 async def get_current_user(request: Request) -> dict:
+    if settings.is_local:
+        return await get_local_user()
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth = request.headers.get("Authorization", "")
@@ -130,9 +133,44 @@ async def get_current_user(request: Request) -> dict:
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    if settings.is_local:
+        return user
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return user
+
+
+async def get_local_user() -> dict:
+    rows = await query(
+        "SELECT id, username, display_name, role, status, is_guest, expires_at, "
+        f"token_version, created_at{QUOTA_SELECT} FROM users WHERE username = %s",
+        (settings.local_user,),
+    )
+    if not rows:
+        raise HTTPException(status_code=503, detail="本地用户尚未初始化，请重启应用")
+    r = rows[0]
+    user = _with_quota({
+        "id": r[0], "username": r[1], "display_name": r[2] or r[1],
+        "role": r[3], "status": r[4] or "active", "is_guest": bool(r[5]),
+        "expires_at": r[6], "token_version": int(r[7] or 0),
+        "created_at": r[8],
+    }, r, 9)
+    if not _active(user):
+        raise HTTPException(status_code=403, detail="本地用户不可用")
+    return user
+
+
+async def ensure_local_user() -> dict:
+    """Idempotently seed the single local user. No password is ever used."""
+    await execute(
+        """
+        INSERT INTO users (username, password_hash, display_name, role)
+        VALUES (%s, %s, %s, 'local')
+        ON CONFLICT (username) DO UPDATE SET role = 'local', status = 'active'
+        """,
+        (settings.local_user, hash_password(secrets.token_urlsafe(32)), "本地用户"),
+    )
+    return await get_local_user()
 
 
 async def ensure_default_users() -> str:

@@ -878,17 +878,27 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
 ]
 
 
+def _target_dbname() -> str:
+    """Database the app actually connects to — an override DSN wins."""
+    if settings.postgres_dsn_override:
+        from psycopg.conninfo import conninfo_to_dict
+
+        override = conninfo_to_dict(settings.postgres_dsn_override)
+        return override.get("dbname") or settings.postgres_db
+    return settings.postgres_db
+
+
 async def ensure_database() -> str:
     """Create the target database on first run. Returns created | already_exists."""
 
     def _run() -> str:
+        db = _target_dbname()
         with psycopg.connect(settings.postgres_admin_dsn, autocommit=True) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (settings.postgres_db,))
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db,))
                 if cur.fetchone():
                     return "already_exists"
                 # Identifier cannot be parameterized; validate strictly instead.
-                db = settings.postgres_db
                 if not db.replace("_", "").isalnum():
                     raise ValueError(f"unsafe database name: {db!r}")
                 cur.execute(f'CREATE DATABASE "{db}"')
@@ -966,35 +976,51 @@ async def init_all() -> dict:
 
     result["postgres"] = await init_postgres()
 
-    try:
-        from app.core.storage.user_storage import migrate_legacy_repos
-        result["storage"] = await migrate_legacy_repos()
-    except Exception as exc:  # noqa: BLE001
-        result["storage"] = f"failed: {exc}"
-        logger.error("repo_storage_migration_failed", error=str(exc))
+    if settings.is_local:
+        result["storage"] = "skipped: local mode"
+    else:
+        try:
+            from app.core.storage.user_storage import migrate_legacy_repos
+            result["storage"] = await migrate_legacy_repos()
+        except Exception as exc:  # noqa: BLE001
+            result["storage"] = f"failed: {exc}"
+            logger.error("repo_storage_migration_failed", error=str(exc))
 
-    try:
-        result["qdrant"] = await init_qdrant()
-    except Exception as exc:  # noqa: BLE001
-        result["qdrant"] = f"failed: {exc}"
-        logger.error("qdrant_init_failed", error=str(exc))
+    if not settings.use_embeddings:
+        result["qdrant"] = "skipped: embeddings disabled"
+        result["qdrant_payload"] = "skipped: embeddings disabled"
+    else:
+        try:
+            result["qdrant"] = await init_qdrant()
+        except Exception as exc:  # noqa: BLE001
+            result["qdrant"] = f"failed: {exc}"
+            logger.error("qdrant_init_failed", error=str(exc))
 
-    try:
-        from app.db.qdrant import backfill_repo_user_payload
-        repos = await query("SELECT id, user_id FROM repos")
-        for repo_id, user_id in repos:
-            await backfill_repo_user_payload(str(repo_id), int(user_id))
-        result["qdrant_payload"] = len(repos)
-    except Exception as exc:  # noqa: BLE001
-        result["qdrant_payload"] = f"failed: {exc}"
-        logger.warning("qdrant_payload_backfill_failed", error=str(exc))
+        try:
+            from app.db.qdrant import backfill_repo_user_payload
+            repos = await query("SELECT id, user_id FROM repos")
+            for repo_id, user_id in repos:
+                await backfill_repo_user_payload(str(repo_id), int(user_id))
+            result["qdrant_payload"] = len(repos)
+        except Exception as exc:  # noqa: BLE001
+            result["qdrant_payload"] = f"failed: {exc}"
+            logger.warning("qdrant_payload_backfill_failed", error=str(exc))
 
-    try:
-        from app.core.security.auth import ensure_default_users
-        result["users"] = await ensure_default_users()
-    except Exception as exc:  # noqa: BLE001
-        result["users"] = f"failed: {exc}"
-        logger.error("user_seed_failed", error=str(exc))
+    if settings.is_local:
+        try:
+            from app.core.security.auth import ensure_local_user
+            user = await ensure_local_user()
+            result["users"] = f"local: {user['username']}"
+        except Exception as exc:  # noqa: BLE001
+            result["users"] = f"failed: {exc}"
+            logger.error("local_user_seed_failed", error=str(exc))
+    else:
+        try:
+            from app.core.security.auth import ensure_default_users
+            result["users"] = await ensure_default_users()
+        except Exception as exc:  # noqa: BLE001
+            result["users"] = f"failed: {exc}"
+            logger.error("user_seed_failed", error=str(exc))
 
     return result
 

@@ -86,8 +86,21 @@ def _set_cookie(response: Response, user: dict) -> None:
     )
 
 
+def _ensure_server_mode() -> None:
+    if settings.is_local:
+        raise HTTPException(status_code=404, detail="本地模式不提供账号登录/注册")
+
+
 @router.get("/auth/config", response_model=AuthConfigOut)
-async def auth_config():
+def auth_config():
+    if settings.is_local:
+        return AuthConfigOut(
+            registration_mode="closed",
+            guest_enabled=False,
+            invite_required=False,
+            min_password_length=settings.min_password_length,
+            email_verification=False,
+        )
     return AuthConfigOut(
         registration_mode=settings.registration_mode,
         guest_enabled=settings.guest_enabled,
@@ -100,6 +113,7 @@ async def auth_config():
 @router.post("/auth/email/code", response_model=dict)
 async def email_code(body: EmailCodeRequest, request: Request):
     """发送邮箱验证码（注册 / 找回密码）。邮件服务未配置时明确报 503。"""
+    _ensure_server_mode()
     if not settings.email_enabled:
         raise HTTPException(status_code=503, detail="邮件服务未配置，请联系管理员")
     _check_registration_rate(request)
@@ -118,6 +132,7 @@ async def email_code(body: EmailCodeRequest, request: Request):
 
 @router.post("/auth/login", response_model=UserOut)
 async def login(body: LoginRequest, response: Response):
+    _ensure_server_mode()
     user = await authenticate(body.username, body.password)
     if not user:
         await log_audit(
@@ -135,6 +150,7 @@ async def login(body: LoginRequest, response: Response):
 
 @router.post("/auth/register", response_model=RegisterOut)
 async def register(body: RegisterRequest, request: Request, response: Response):
+    _ensure_server_mode()
     mode = settings.registration_mode
     if mode == "closed":
         raise HTTPException(status_code=403, detail="当前部署未开放注册")
@@ -209,6 +225,7 @@ async def register(body: RegisterRequest, request: Request, response: Response):
 
 @router.post("/auth/guest", response_model=UserOut)
 async def guest(request: Request, response: Response):
+    _ensure_server_mode()
     if not settings.guest_enabled:
         raise HTTPException(status_code=403, detail="当前部署未开放游客体验")
 
@@ -256,6 +273,7 @@ async def guest(request: Request, response: Response):
 
 @router.post("/auth/logout", response_model=OkOut)
 async def logout(response: Response):
+    _ensure_server_mode()
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"ok": True}
 
@@ -267,6 +285,7 @@ async def me(user: dict = Depends(get_current_user)):
 
 @router.patch("/auth/profile", response_model=UserOut)
 async def update_my_profile(body: ProfileUpdateRequest, user: dict = Depends(get_current_user)):
+    _ensure_server_mode()
     try:
         updated = await update_profile(user["id"], body.display_name)
     except ValueError as exc:
@@ -280,6 +299,7 @@ async def update_my_password(
     response: Response,
     user: dict = Depends(get_current_user),
 ):
+    _ensure_server_mode()
     try:
         updated = await change_password(user["id"], body.current_password, body.new_password)
     except ValueError as exc:
@@ -291,6 +311,7 @@ async def update_my_password(
 
 @router.post("/auth/password/reset", response_model=OkOut)
 async def reset_password(body: PasswordResetRequest):
+    _ensure_server_mode()
     try:
         await reset_password_with_recovery(body.username, body.recovery_code, body.new_password)
     except ValueError as exc:
@@ -302,6 +323,7 @@ async def reset_password(body: PasswordResetRequest):
 @router.post("/auth/password/reset/email", response_model=OkOut)
 async def reset_password_by_email(body: EmailResetRequest):
     """用户名 + 邮箱验证码找回密码（邮箱须与账号绑定一致）。"""
+    _ensure_server_mode()
     if not settings.email_enabled:
         raise HTTPException(status_code=503, detail="邮件服务未配置，请联系管理员")
     try:
