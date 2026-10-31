@@ -43,7 +43,7 @@ const VIEW_TITLE: Record<ViewKey, string> = {
 
 const VIEW_SUBTITLE: Record<ViewKey, string> = {
   chat: '带着证据与仓库上下文对话',
-  tasks: '修复与变更，统一推进、验证与审批',
+  tasks: '红-绿修复，统一推进、验证与审批',
   workspace: '浏览代码与版本历史',
   settings: '模型、用量与账号',
 }
@@ -246,7 +246,7 @@ export default function App() {
     items.push({
       id: 'open-tasks',
       label: '打开任务',
-      hint: '修复与变更',
+      hint: '红-绿修复',
       run: () => openTasks(),
     })
     items.push({

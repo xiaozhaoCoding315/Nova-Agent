@@ -14,7 +14,7 @@
 | **多栈验证** | 工作区/Builder 里点「验证」：自动识别 Python、Node 或混合项目；Python 使用 builder 镜像跑 compileall / pytest / 可选 ruff / mypy，Node 使用 node 镜像跑 lint / tsc / test / build，逐项返回命令、退出码与输出；依赖持久化到仓库级依赖卷。 |
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
-| **交付指标** | 设置页聚合接受变更数、首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
+| **交付指标** | 设置页聚合首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
 | **多用户模型接入（BYOK）** | 每个用户可在设置页为 16 家厂商分别保存 API Key 与模型（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
 | **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（计划/审查/Builder/修复任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
@@ -88,7 +88,7 @@
 - **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
 ### Agent 循环 + Function-Calling
-- **内置工具 + MCP**：19 个内置工具（含 `update_plan` 计划卡）：`read_file` / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
+- **内置工具 + MCP**：19 个内置工具（含 `update_plan` 计划卡）：`read_file` / `read_uploaded_file`（读取聊天附件） / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`local_write_file`（写回用户本机文件）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
 - 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
@@ -341,7 +341,7 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 只有 `capabilities` 中显式声明的工具会被注册，暴露名为 `mcp__<server>__<tool>`
 - MCP 工具走同一能力策略：`readonly` 拦截写能力，密钥路径拒绝，危险命令拒绝
 - 默认 `MCP_ADMIN_ONLY=true`；单个 server 写 `"admin_only": false` 可开放给所有用户，`secrets.read` 能力除外
-- 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
+- 支持 stdio（newline-delimited JSON-RPC）或 streamable HTTP；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
 ## 本地执行器（nova agent）
@@ -491,7 +491,7 @@ cd frontend && npm run contract:check
 - 预览使用 bridge 网络以支持本地端口映射；域名反代尚未接入；Node 依赖需先安装到 `nova-node-deps-<repo>` 卷
 - 运行中预览默认 120 分钟后由维护循环自动下线（`PREVIEW_TTL_MINUTES`，0 = 关闭）
 - 部署历史记录保留在 `deployments`，重复部署由 `external_actions` 幂等键复用同一运行中的预览
-- MCP 仅支持 stdio + newline JSON-RPC；远程 HTTP/SSE、OAuth、按参数级过滤尚未接入；MCP server 进程属于运维可信代码
+- MCP 支持 stdio（newline-delimited JSON-RPC）或 streamable HTTP；远程 SSE、OAuth、按参数级过滤尚未接入；MCP server 进程属于运维可信代码
 - 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
 - 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升，矛盾事实检测尚未自动化
 - 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序
