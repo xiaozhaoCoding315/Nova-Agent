@@ -393,7 +393,13 @@ def _bootstrap_local_role(admin_dsn: str, data_dir: Path, password: str) -> None
     -U postgres``, so the only role is the password-less ``postgres``
     superuser. pg_ctl can start such a cluster but cannot connect as ``nova``.
     This connects as that superuser (trust auth) and creates ``nova`` with
-    ``LOGIN CREATEDB`` + ``password``, or updates the existing role.
+    ``LOGIN SUPERUSER CREATEDB`` + ``password``, or updates the existing role.
+    ``SUPERUSER`` is intentional: this role only serves local single-user,
+    loopback-only clusters. A fresh pg_ctl cluster already has ``nova`` as the
+    initdb superuser; a pgserver cluster runs the password-less ``postgres``
+    superuser on the same loopback trust setup, so this restores parity and
+    lets ``nova`` own/migrate the pgserver-created database (PostgreSQL 15+
+    denies CREATE on ``public`` to non-owners).
 
     PostgreSQL utility statements do not accept server-side parameters, so
     the password is bound client-side with ``psycopg.sql.Literal``: it is
@@ -408,7 +414,7 @@ def _bootstrap_local_role(admin_dsn: str, data_dir: Path, password: str) -> None
             ).fetchone()
             action = "ALTER" if exists else "CREATE"
             statement = sql.SQL(
-                f"{action} ROLE {{}} WITH LOGIN CREATEDB PASSWORD {{}}"
+                f"{action} ROLE {{}} WITH LOGIN SUPERUSER CREATEDB PASSWORD {{}}"
             ).format(sql.Identifier(_LOCAL_ROLE), sql.Literal(password))
             conn.execute(statement)
     except Exception as exc:  # noqa: BLE001
@@ -417,8 +423,10 @@ def _bootstrap_local_role(admin_dsn: str, data_dir: Path, password: str) -> None
             f"以超级用户 {_ADMIN_ROLE} 进行 trust 认证连接或创建角色失败"
             f"（{type(exc).__name__}）。\n"
             f"数据目录已保留：{data_dir}\n"
-            "修复方式：改用 `--pg-backend pgserver` 启动以继续使用该数据目录，"
-            "或改用由 `nova.py local` 初始化的数据目录；请勿删除数据目录。"
+            "修复方式：确认该数据目录可由本机 trust 认证以超级用户 "
+            f"{_ADMIN_ROLE} 连接后重试；若该目录由其他工具以不同认证方式"
+            "初始化，请改用由 `nova.py local` 初始化的数据目录。"
+            "数据目录已保留，请勿删除。"
         ) from None
 
 

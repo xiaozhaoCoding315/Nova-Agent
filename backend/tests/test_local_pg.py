@@ -503,7 +503,7 @@ def test_pgctl_bootstraps_role_on_foreign_cluster(
     statement = conn.statements[1][0].as_string(None)
     action = "ALTER" if role_exists else "CREATE"
     assert statement.startswith(f'{action} ROLE "nova"')
-    assert "LOGIN CREATEDB PASSWORD" in statement
+    assert "LOGIN SUPERUSER CREATEDB PASSWORD" in statement
     assert "'generated-pw'" in statement
 
     assert (tmp_path / "pgpassword").read_text(encoding="utf-8") == "generated-pw"
@@ -609,10 +609,26 @@ def test_pgserver_cluster_recovers_through_pg_ctl(tmp_path):
     data_dir = tmp_path / "pgdata"
     first = LocalPostgres(data_dir, backend="pgserver")
     recovered = None
+    recovered_pid = None
     try:
         first_info = first.start()
-        with psycopg.connect(first_info.dsn, connect_timeout=5) as conn:
+        # Create a postgres-owned table while pgserver runs: after the
+        # fallback this is the object a non-superuser nova could not alter.
+        with psycopg.connect(
+            first_info.dsn, autocommit=True, connect_timeout=5
+        ) as conn:
             assert conn.execute("select 1").fetchone()[0] == 1
+            conn.execute(
+                "CREATE TABLE pgserver_owned (id integer PRIMARY KEY, note text)"
+            )
+            conn.execute(
+                "INSERT INTO pgserver_owned (id, note) VALUES (1, 'pgserver')"
+            )
+            owner = conn.execute(
+                "SELECT tableowner FROM pg_tables "
+                "WHERE schemaname = 'public' AND tablename = 'pgserver_owned'"
+            ).fetchone()[0]
+            assert owner == "postgres"
         assert not (data_dir / "pgpassword").exists()
 
         pid = pg_module._read_pid(data_dir)
@@ -628,11 +644,31 @@ def test_pgserver_cluster_recovers_through_pg_ctl(tmp_path):
         recovered = LocalPostgres(data_dir, backend="pg_ctl", bin_dir=bin_dir)
         info = recovered.start()
         assert info.backend == "pg_ctl"
-        with psycopg.connect(info.dsn, connect_timeout=5) as conn:
+        recovered_pid = pg_module._read_pid(data_dir)
+        assert recovered_pid is not None
+        with psycopg.connect(info.dsn, autocommit=True, connect_timeout=5) as conn:
             assert conn.execute("select 1").fetchone()[0] == 1
+            # C2: the recovered role must be able to work with the
+            # postgres-owned schema, not just connect.
+            conn.execute("CREATE TABLE nova_owned (id integer PRIMARY KEY)")
+            conn.execute(
+                "ALTER TABLE pgserver_owned ADD COLUMN extra text"
+            )
+            conn.execute(
+                "INSERT INTO pgserver_owned (id, note, extra) "
+                "VALUES (2, 'nova', 'ok')"
+            )
+            rows = conn.execute(
+                "SELECT id, note, extra FROM pgserver_owned ORDER BY id"
+            ).fetchall()
+            assert rows == [(1, "pgserver", None), (2, "nova", "ok")]
         assert (data_dir / "pgpassword").exists()
     finally:
         if recovered is not None:
             recovered.stop()
+            assert not (data_dir / "postmaster.pid").exists()
+            if recovered_pid is not None:
+                assert not pg_module.pid_alive(recovered_pid)
         else:
             first.stop()
+            assert not (data_dir / "postmaster.pid").exists()
