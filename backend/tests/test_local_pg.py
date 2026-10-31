@@ -390,8 +390,49 @@ def test_kill_tree_sync_reports_taskkill_failure(monkeypatch):
     assert pg_module._kill_tree_sync(1234) is False
 
 
+def _record_pgctl_run(calls):
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args[0], 0)
+
+    return fake_run
+
+
+class _RecordingAdminConn:
+    """Fake psycopg connection recording statements sent by the bootstrap."""
+
+    def __init__(self, role_exists: bool):
+        self.role_exists = role_exists
+        self.statements: list[tuple[object, object]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, statement, params=None):
+        self.statements.append((statement, params))
+        return self
+
+    def fetchone(self):
+        return (1,) if self.role_exists else None
+
+
+def _foreign_pgserver_dir(tmp_path):
+    """A pgserver-style cluster: trust auth, only the postgres superuser."""
+    (tmp_path / "PG_VERSION").write_text("16", encoding="utf-8")
+    (tmp_path / "pg_hba.conf").write_text(
+        "local   all all                trust\n"
+        "host    all all 127.0.0.1/32   trust\n"
+        "host    all all ::1/128        trust\n",
+        encoding="utf-8",
+    )
+
+
 def test_pgctl_dsn_escapes_password(tmp_path, monkeypatch):
     (tmp_path / "PG_VERSION").write_text("16", encoding="utf-8")
+    (tmp_path / "pgpassword").write_text("p@ss w/rd", encoding="utf-8")
     local = LocalPostgres(
         tmp_path, backend="pg_ctl", password="p@ss w/rd"
     )
@@ -399,11 +440,14 @@ def test_pgctl_dsn_escapes_password(tmp_path, monkeypatch):
         local, "_pg_bins", lambda: (tmp_path / "initdb", tmp_path / "pg_ctl")
     )
     monkeypatch.setattr(
-        local, "_password_file", lambda: (tmp_path / "pgpassword", "p@ss w/rd")
-    )
-    monkeypatch.setattr(
         pg_module.subprocess, "run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0),
+    )
+    monkeypatch.setattr(
+        pg_module.psycopg, "connect",
+        lambda *a, **k: pytest.fail(
+            "a cluster with pgpassword must not be bootstrapped"
+        ),
     )
 
     info = local._start_pgctl()
@@ -413,6 +457,90 @@ def test_pgctl_dsn_escapes_password(tmp_path, monkeypatch):
     assert conninfo_to_dict(info.dsn)["password"] == "p@ss w/rd"
     assert conninfo_to_dict(info.dsn)["dbname"] == "nova_agent"
     assert conninfo_to_dict(info.admin_dsn)["dbname"] == "postgres"
+
+
+@pytest.mark.parametrize("role_exists", [False, True])
+def test_pgctl_bootstraps_role_on_foreign_cluster(
+    tmp_path, monkeypatch, role_exists
+):
+    _foreign_pgserver_dir(tmp_path)
+    assert not (tmp_path / "pgpassword").exists()
+    events: list[str] = []
+    calls: list[list[str]] = []
+    conn = _RecordingAdminConn(role_exists)
+    connect_calls: list[tuple[str, dict]] = []
+
+    def fake_connect(dsn, **kwargs):
+        events.append("admin_connect")
+        connect_calls.append((dsn, kwargs))
+        return conn
+
+    monkeypatch.setattr(pg_module.psycopg, "connect", fake_connect)
+    monkeypatch.setattr(
+        pg_module.subprocess, "run",
+        _record_pgctl_run(calls),
+    )
+    local = LocalPostgres(tmp_path, backend="pg_ctl", password="generated-pw")
+    monkeypatch.setattr(
+        local, "_pg_bins", lambda: (tmp_path / "initdb", tmp_path / "pg_ctl")
+    )
+
+    info = local._start_pgctl()
+
+    # pg_ctl started the foreign cluster before the admin connection.
+    assert "start" in calls[0]
+    assert events == ["admin_connect"]
+    dsn, kwargs = connect_calls[0]
+    admin = pg_module.conninfo_to_dict(dsn)
+    assert admin["user"] == "postgres"
+    assert admin["dbname"] == "postgres"
+    assert "password" not in admin
+    assert kwargs["autocommit"] is True
+
+    select_sql, select_params = conn.statements[0]
+    assert "pg_roles" in select_sql
+    assert select_params == ("nova",)
+    statement = conn.statements[1][0].as_string(None)
+    action = "ALTER" if role_exists else "CREATE"
+    assert statement.startswith(f'{action} ROLE "nova"')
+    assert "LOGIN CREATEDB PASSWORD" in statement
+    assert "'generated-pw'" in statement
+
+    assert (tmp_path / "pgpassword").read_text(encoding="utf-8") == "generated-pw"
+    local_dsn = pg_module.conninfo_to_dict(info.dsn)
+    assert local_dsn["user"] == "nova"
+    assert local_dsn["password"] == "generated-pw"
+    assert info.backend == "pg_ctl"
+
+
+def test_pgctl_bootstrap_failure_is_actionable_and_stops_server(
+    tmp_path, monkeypatch
+):
+    _foreign_pgserver_dir(tmp_path)
+    calls: list[list[str]] = []
+
+    def failing_connect(dsn, **kwargs):
+        raise pg_module.psycopg.OperationalError("trust rejected")
+
+    monkeypatch.setattr(pg_module.psycopg, "connect", failing_connect)
+    monkeypatch.setattr(pg_module.subprocess, "run", _record_pgctl_run(calls))
+    local = LocalPostgres(tmp_path, backend="pg_ctl", password="super-secret-value")
+    monkeypatch.setattr(
+        local, "_pg_bins", lambda: (tmp_path / "initdb", tmp_path / "pg_ctl")
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        local.start()
+
+    message = str(excinfo.value)
+    assert str(tmp_path) in message
+    assert "postgres" in message
+    assert "已保留" in message or "preserved" in message
+    assert "super-secret-value" not in message
+    assert not (tmp_path / "pgpassword").exists()
+    # start() reuses its cleanup path, so pg_ctl stop was invoked.
+    assert any(command[-1] == "stop" for command in calls)
+    assert local.info is None
 
 
 def test_database_name_is_validated(tmp_path):
@@ -428,6 +556,21 @@ def test_ensure_database_rejects_unsafe_name():
             "postgresql://nova:pw@127.0.0.1:55432/postgres",
             "nova; drop database postgres",
         )
+
+
+def _pgserver_bundle_bin_dir():
+    """Path to pg_ctl/initdb shipped inside the installed pgserver wheel."""
+    configured = os.getenv("LOCAL_PG_BIN_DIR")
+    if configured:
+        return configured
+    try:
+        import pgserver
+    except ImportError:
+        return None
+    candidate = os.path.join(
+        os.path.dirname(pgserver.__file__), "pginstall", "bin"
+    )
+    return candidate if os.path.isdir(candidate) else None
 
 
 @pytest.mark.skipif(
@@ -448,3 +591,48 @@ def test_local_pg_roundtrip(tmp_path):
     finally:
         local.stop()
         local.stop()
+
+
+@pytest.mark.skipif(
+    os.getenv("NOVA_TEST_LOCAL_PG") != "1",
+    reason="set NOVA_TEST_LOCAL_PG=1 to run the real pgserver -> pg_ctl "
+    "crash-recovery test",
+)
+def test_pgserver_cluster_recovers_through_pg_ctl(tmp_path):
+    """C1: pgserver init -> unclean kill -> pg_ctl fallback -> SELECT 1."""
+    import psycopg
+
+    bin_dir = _pgserver_bundle_bin_dir()
+    if bin_dir is None:
+        pytest.skip("no pg_ctl binaries; set LOCAL_PG_BIN_DIR")
+
+    data_dir = tmp_path / "pgdata"
+    first = LocalPostgres(data_dir, backend="pgserver")
+    recovered = None
+    try:
+        first_info = first.start()
+        with psycopg.connect(first_info.dsn, connect_timeout=5) as conn:
+            assert conn.execute("select 1").fetchone()[0] == 1
+        assert not (data_dir / "pgpassword").exists()
+
+        pid = pg_module._read_pid(data_dir)
+        assert pid is not None
+        # taskkill can exit non-zero when a child backend exits mid-traversal,
+        # even though it killed the postmaster; the crash simulation only
+        # requires that the postmaster is gone.
+        pg_module._kill_tree_sync(pid)
+        assert pg_module._wait_pid_exit(pid, 10)
+        # Drop the crashed handle so pgserver's atexit cleanup stays inert.
+        pg_module._prune_pgserver_handles(data_dir, remove_pid=os.getpid())
+
+        recovered = LocalPostgres(data_dir, backend="pg_ctl", bin_dir=bin_dir)
+        info = recovered.start()
+        assert info.backend == "pg_ctl"
+        with psycopg.connect(info.dsn, connect_timeout=5) as conn:
+            assert conn.execute("select 1").fetchone()[0] == 1
+        assert (data_dir / "pgpassword").exists()
+    finally:
+        if recovered is not None:
+            recovered.stop()
+        else:
+            first.stop()

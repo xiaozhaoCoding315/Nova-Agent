@@ -33,6 +33,12 @@ _KILL_WAIT_SECONDS = 5.0
 _POLL_SECONDS = 0.1
 _WINDOWS_KERNEL32 = None
 
+# Role and superuser used by the pg_ctl backend. The superuser matches
+# pgserver 0.1.4's ``initdb ... -U postgres`` so a cluster it initialized can
+# be recovered by pg_ctl (see ``_bootstrap_local_role``).
+_LOCAL_ROLE = "nova"
+_ADMIN_ROLE = "postgres"
+
 
 @dataclass(frozen=True)
 class PgInfo:
@@ -380,6 +386,42 @@ def ensure_database_sync(admin_dsn: str, dbname: str) -> None:
             conn.execute(f'CREATE DATABASE "{dbname}"')
 
 
+def _bootstrap_local_role(admin_dsn: str, data_dir: Path, password: str) -> None:
+    """Create or update the ``nova`` role on a cluster we did not initialize.
+
+    pgserver 0.1.4 initializes with ``--auth=trust --auth-local=trust
+    -U postgres``, so the only role is the password-less ``postgres``
+    superuser. pg_ctl can start such a cluster but cannot connect as ``nova``.
+    This connects as that superuser (trust auth) and creates ``nova`` with
+    ``LOGIN CREATEDB`` + ``password``, or updates the existing role.
+
+    PostgreSQL utility statements do not accept server-side parameters, so
+    the password is bound client-side with ``psycopg.sql.Literal``: it is
+    quoted by psycopg and never interpolated into SQL text by hand.
+    """
+    from psycopg import sql
+
+    try:
+        with psycopg.connect(admin_dsn, autocommit=True, connect_timeout=5) as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM pg_roles WHERE rolname = %s", (_LOCAL_ROLE,)
+            ).fetchone()
+            action = "ALTER" if exists else "CREATE"
+            statement = sql.SQL(
+                f"{action} ROLE {{}} WITH LOGIN CREATEDB PASSWORD {{}}"
+            ).format(sql.Identifier(_LOCAL_ROLE), sql.Literal(password))
+            conn.execute(statement)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"无法在现有数据目录中初始化本地数据库角色 {_LOCAL_ROLE}："
+            f"以超级用户 {_ADMIN_ROLE} 进行 trust 认证连接或创建角色失败"
+            f"（{type(exc).__name__}）。\n"
+            f"数据目录已保留：{data_dir}\n"
+            "修复方式：改用 `--pg-backend pgserver` 启动以继续使用该数据目录，"
+            "或改用由 `nova.py local` 初始化的数据目录；请勿删除数据目录。"
+        ) from None
+
+
 def _wait_ready(dsn: str, timeout: int = 30) -> None:
     deadline = time.monotonic() + timeout
     last: Exception | None = None
@@ -622,6 +664,13 @@ class LocalPostgres:
     def _start_pgctl(self) -> PgInfo:
         initdb, pg_ctl = self._pg_bins()
         password_path, password = self._password_file()
+        # A cluster may have been initialized by another tool (pgserver 0.1.4
+        # runs initdb with trust auth and only the "postgres" role). It has no
+        # pgpassword file; after pg_ctl starts it we create/update "nova" over
+        # the trust-authenticated admin connection.
+        bootstrap_role = (
+            (self.data_dir / "PG_VERSION").exists() and not password_path.exists()
+        )
         if not (self.data_dir / "PG_VERSION").exists():
             # initdb refuses a non-empty target directory, so the password is
             # passed through a temp file outside the cluster and persisted
@@ -635,7 +684,7 @@ class LocalPostgres:
             try:
                 subprocess.run(
                     [
-                        str(initdb), "-D", str(self.data_dir), "-U", "nova",
+                        str(initdb), "-D", str(self.data_dir), "-U", _LOCAL_ROLE,
                         "--auth=scram-sha-256", f"--pwfile={init_password_path}",
                         "-E", "UTF8",
                     ],
@@ -681,10 +730,23 @@ class LocalPostgres:
             raise RuntimeError(
                 f"pg_ctl start failed ({type(exc).__name__}): {tail}"
             ) from exc
+        if bootstrap_role:
+            admin_dsn = make_conninfo(
+                host="127.0.0.1", port=port, user=_ADMIN_ROLE,
+                dbname="postgres", connect_timeout=3,
+            )
+            _bootstrap_local_role(admin_dsn, self.data_dir, password)
+            # Never overwrite a pgpassword another process persisted meanwhile.
+            if not password_path.exists():
+                password_path.write_text(password, encoding="utf-8")
+                try:
+                    os.chmod(password_path, 0o600)
+                except OSError:
+                    pass
         common = {
             "host": "127.0.0.1",
             "port": port,
-            "user": "nova",
+            "user": _LOCAL_ROLE,
             "password": password,
             "connect_timeout": 3,
         }

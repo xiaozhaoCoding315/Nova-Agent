@@ -79,10 +79,6 @@ class InstanceLock:
     def for_data_dir(cls, data_dir: Path) -> "InstanceLock":
         return cls(Path(data_dir).parent / LOCK_NAME)
 
-    @property
-    def held(self) -> bool:
-        return self._handle is not None
-
     def acquire(self) -> None:
         if self._handle is not None:
             return
@@ -145,15 +141,25 @@ def _bundled_pgserver_bin_dir() -> Path | None:
     return bin_dir if bin_dir.is_dir() else None
 
 
+def _pg_binaries_present(bin_dir: Path) -> bool:
+    suffix = ".exe" if os.name == "nt" else ""
+    return all(
+        (bin_dir / f"{name}{suffix}").is_file() for name in ("pg_ctl", "initdb")
+    )
+
+
 def _resolve_pgctl_bin_dir(env: dict) -> str | None:
     """Resolve the pg_ctl binary directory for the automatic fallback.
 
     Order: configured ``pgBinDir`` / ``LOCAL_PG_BIN_DIR`` (already folded into
-    the runtime env by Task 2) -> binaries bundled with the pgserver package.
-    ``None`` means no fallback is possible.
+    the runtime env by Task 2) when it actually contains the two binaries ->
+    binaries bundled with the pgserver package. A configured path without the
+    binaries is skipped rather than used, so a stale config cannot turn a
+    recoverable failure into a guaranteed one. ``None`` means no fallback is
+    possible.
     """
     configured = (env.get("LOCAL_PG_BIN_DIR") or "").strip()
-    if configured:
+    if configured and _pg_binaries_present(Path(configured)):
         return configured
     bundled = _bundled_pgserver_bin_dir()
     return str(bundled) if bundled is not None else None
@@ -169,6 +175,29 @@ def _apply_dsn_override(dsn: str) -> None:
     from app.config import settings
 
     settings.postgres_dsn_override = dsn
+
+
+def _apply_backend_override(backend: str) -> None:
+    """Reflect the backend actually serving in the Settings singleton."""
+    from app.config import settings
+
+    settings.local_pg_backend = backend
+
+
+def _stop_quietly(pg, backend: str) -> None:
+    """Best-effort stop of a failed instance; log only the exception type.
+
+    Task 3 keeps ``_started=True`` after a failed start so ``stop()`` retries
+    its cleanup; dropping the instance instead would lose that contract.
+    """
+    try:
+        pg.stop()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "local_pg_stop_after_start_failed",
+            backend=backend,
+            error=type(exc).__name__,
+        )
 
 
 def _startup_error(data_dir: Path, backend: str, *, detail: str) -> RuntimeError:
@@ -202,6 +231,7 @@ def _start_postgres(config: dict, env: dict, pg_factory) -> tuple[object, object
             data_dir=str(data_dir),
             error=failed,
         )
+        _stop_quietly(pg, backend)
         if backend != "pgserver":
             raise _startup_error(
                 data_dir, backend, detail=f"启动失败，错误类型 {failed}"
@@ -229,6 +259,7 @@ def _start_postgres(config: dict, env: dict, pg_factory) -> tuple[object, object
         try:
             info = fallback.start()
         except Exception as fallback_exc:
+            _stop_quietly(fallback, "pg_ctl")
             raise _startup_error(
                 data_dir,
                 "pgserver -> pg_ctl",
@@ -264,10 +295,14 @@ def run(
     lock.acquire()
     try:
         pg, info = _start_postgres(config, env, pg_factory)
-        env_map["POSTGRES_DSN_OVERRIDE"] = info.dsn
-        _apply_dsn_override(info.dsn)
-        listen_port = port or free_port()
         try:
+            actual_backend = getattr(info, "backend", env["LOCAL_PG_BACKEND"])
+            if actual_backend != env["LOCAL_PG_BACKEND"]:
+                env_map["LOCAL_PG_BACKEND"] = actual_backend
+                _apply_backend_override(actual_backend)
+            env_map["POSTGRES_DSN_OVERRIDE"] = info.dsn
+            _apply_dsn_override(info.dsn)
+            listen_port = port or free_port()
             app = (app_factory or _load_app)()
             server = (server_factory or _uvicorn_server)(app, host, listen_port)
             print(

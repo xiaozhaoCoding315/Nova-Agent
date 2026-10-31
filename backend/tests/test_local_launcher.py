@@ -1,3 +1,4 @@
+import os
 import types
 from pathlib import Path
 
@@ -8,12 +9,20 @@ from app.local import launcher
 from app.local.pg import PgInfo
 
 
-def _info(tmp_path: Path) -> PgInfo:
+def _info(tmp_path: Path, backend: str = "pgserver") -> PgInfo:
     return PgInfo(
         dsn="postgresql://nova:pw@127.0.0.1:55432/nova_agent",
         admin_dsn="postgresql://nova:pw@127.0.0.1:55432/postgres",
-        host="127.0.0.1", port=55432, data_dir=tmp_path, backend="pgserver",
+        host="127.0.0.1", port=55432, data_dir=tmp_path, backend=backend,
     )
+
+
+def _make_bin_dir(path: Path) -> Path:
+    suffix = ".exe" if os.name == "nt" else ""
+    path.mkdir(parents=True, exist_ok=True)
+    for name in ("pg_ctl", "initdb"):
+        (path / f"{name}{suffix}").write_text("", encoding="utf-8")
+    return path
 
 
 def _config(tmp_path: Path, **overrides) -> dict:
@@ -57,10 +66,18 @@ class _FakeServer:
 
 @pytest.fixture(autouse=True)
 def _restore_settings_dsn():
-    """run() writes the DSN to the Settings singleton; keep tests isolated."""
-    original = settings.postgres_dsn_override
+    """run() mutates the Settings singleton; keep tests isolated."""
+    original_dsn = settings.postgres_dsn_override
+    original_backend = settings.local_pg_backend
     yield
-    settings.postgres_dsn_override = original
+    settings.postgres_dsn_override = original_dsn
+    settings.local_pg_backend = original_backend
+
+
+@pytest.fixture(autouse=True)
+def _do_not_configure_global_logging(monkeypatch):
+    """Tests must not call the real setup_logging() and mutate process state."""
+    monkeypatch.setattr(launcher.structlog, "is_configured", lambda: True)
 
 
 def test_validate_local_settings_rejects_default_secret(tmp_path, monkeypatch):
@@ -167,8 +184,11 @@ def test_cmd_local_forwards_flags(monkeypatch, tmp_path):
 def test_run_falls_back_from_pgserver_to_pg_ctl_once(tmp_path):
     events: list[tuple] = []
     environ: dict[str, str] = {}
-    factory = _pg_factory(events, _info(tmp_path), failing=("pgserver",))
-    config = _config(tmp_path, pgBinDir=str(tmp_path / "pgbin"))
+    pgbin = _make_bin_dir(tmp_path / "pgbin")
+    factory = _pg_factory(
+        events, _info(tmp_path, backend="pg_ctl"), failing=("pgserver",)
+    )
+    config = _config(tmp_path, pgBinDir=str(pgbin))
 
     code = launcher.run(
         config, environ=environ, pg_factory=factory,
@@ -179,10 +199,31 @@ def test_run_falls_back_from_pgserver_to_pg_ctl_once(tmp_path):
     inits = [event for event in events if event[0] == "pg_init"]
     assert [event[1] for event in inits] == ["pgserver", "pg_ctl"]
     assert inits[1][2] == Path(environ["LOCAL_PG_DATA_DIR"])
-    assert inits[1][3] == str(tmp_path / "pgbin")
+    assert inits[1][3] == str(pgbin)
+    # The failed instance is stopped before the fallback starts, and the
+    # fallback is stopped after the server exits.
     assert [event for event in events if event[0] == "pg_stop"] == [
-        ("pg_stop", "pg_ctl")
+        ("pg_stop", "pgserver"),
+        ("pg_stop", "pg_ctl"),
     ]
+    # Observability reflects the backend that actually served.
+    assert environ["LOCAL_PG_BACKEND"] == "pg_ctl"
+    assert settings.local_pg_backend == "pg_ctl"
+
+
+def test_run_does_not_rewrite_backend_when_it_did_not_fall_back(tmp_path):
+    environ: dict[str, str] = {}
+    events: list[tuple] = []
+    original_backend = settings.local_pg_backend
+
+    launcher.run(
+        _config(tmp_path), environ=environ,
+        pg_factory=_pg_factory(events, _info(tmp_path)),
+        app_factory=lambda: object(), server_factory=_FakeServer,
+    )
+
+    assert environ["LOCAL_PG_BACKEND"] == "pgserver"
+    assert settings.local_pg_backend == original_backend
 
 
 def test_run_fallback_uses_bundled_pgserver_binaries(tmp_path, monkeypatch):
@@ -190,7 +231,9 @@ def test_run_fallback_uses_bundled_pgserver_binaries(tmp_path, monkeypatch):
     bundled = tmp_path / "bundled" / "bin"
     bundled.mkdir(parents=True)
     monkeypatch.setattr(launcher, "_bundled_pgserver_bin_dir", lambda: bundled)
-    factory = _pg_factory(events, _info(tmp_path), failing=("pgserver",))
+    factory = _pg_factory(
+        events, _info(tmp_path, backend="pg_ctl"), failing=("pgserver",)
+    )
 
     launcher.run(
         _config(tmp_path), environ={}, pg_factory=factory,
@@ -220,6 +263,10 @@ def test_run_fallback_without_bin_dir_raises_actionable_error(tmp_path, monkeypa
     assert "LOCAL_PG_BIN_DIR" in message
     assert "已保留" in message or "preserved" in message
     assert [event[1] for event in events if event[0] == "pg_init"] == ["pgserver"]
+    # The failed pgserver instance is stopped even when fallback is impossible.
+    assert [event for event in events if event[0] == "pg_stop"] == [
+        ("pg_stop", "pgserver")
+    ]
     assert (tmp_path / "pgdata").is_dir()
     # The instance lock must be released even though startup raised.
     lock = launcher.InstanceLock(tmp_path / launcher.LOCK_NAME)
@@ -239,8 +286,76 @@ def test_run_never_falls_back_from_pg_ctl_to_pgserver(tmp_path):
         )
 
     assert [event[1] for event in events if event[0] == "pg_init"] == ["pg_ctl"]
+    assert [event for event in events if event[0] == "pg_stop"] == [
+        ("pg_stop", "pg_ctl")
+    ]
     assert str(tmp_path / "pgdata") in str(excinfo.value)
     assert "已保留" in str(excinfo.value) or "preserved" in str(excinfo.value)
+
+
+def test_run_aggregates_both_backend_failures(tmp_path):
+    events: list[tuple] = []
+    pgbin = _make_bin_dir(tmp_path / "pgbin")
+    factory = _pg_factory(
+        events, _info(tmp_path), failing=("pgserver", "pg_ctl")
+    )
+    config = _config(tmp_path, pgBinDir=str(pgbin))
+
+    with pytest.raises(RuntimeError) as excinfo:
+        launcher.run(
+            config, environ={}, pg_factory=factory,
+            app_factory=lambda: object(), server_factory=_FakeServer,
+        )
+
+    message = str(excinfo.value)
+    assert "pgserver" in message
+    assert "pg_ctl" in message
+    assert str(tmp_path / "pgdata") in message
+    assert "已保留" in message or "preserved" in message
+    # Both failed instances were given to stop().
+    assert [event for event in events if event[0] == "pg_stop"] == [
+        ("pg_stop", "pgserver"),
+        ("pg_stop", "pg_ctl"),
+    ]
+
+
+def test_run_stops_pg_when_server_run_raises(tmp_path):
+    events: list[tuple] = []
+
+    class ExplodingServer(_FakeServer):
+        def run(self):
+            events.append("server_run")
+            raise RuntimeError("server exploded")
+
+    with pytest.raises(RuntimeError, match="server exploded"):
+        launcher.run(
+            _config(tmp_path), environ={},
+            pg_factory=_pg_factory(events, _info(tmp_path)),
+            app_factory=lambda: object(), server_factory=ExplodingServer,
+        )
+
+    assert events[-2:] == ["server_run", ("pg_stop", "pgserver")]
+
+
+def test_run_stops_pg_when_dsn_override_raises(tmp_path, monkeypatch):
+    events: list[tuple] = []
+
+    def failing_override(dsn):
+        raise RuntimeError("settings unavailable")
+
+    monkeypatch.setattr(launcher, "_apply_dsn_override", failing_override)
+
+    with pytest.raises(RuntimeError, match="settings unavailable"):
+        launcher.run(
+            _config(tmp_path), environ={},
+            pg_factory=_pg_factory(events, _info(tmp_path)),
+            app_factory=lambda: object(), server_factory=_FakeServer,
+        )
+
+    assert [event for event in events if event[0] == "pg_stop"] == [
+        ("pg_stop", "pgserver")
+    ]
+    assert not (tmp_path / "pgdata" / "postmaster.pid").exists()
 
 
 def test_instance_lock_refuses_second_acquire_and_releases(tmp_path):
@@ -333,12 +448,26 @@ def test_logging_is_not_initialized_twice(tmp_path, monkeypatch):
 
 def test_fallback_bin_dir_prefers_configured_path(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "_bundled_pgserver_bin_dir", lambda: tmp_path / "bundled")
+    custom = _make_bin_dir(tmp_path / "custom")
 
-    resolved = launcher._resolve_pgctl_bin_dir(
-        {"LOCAL_PG_BIN_DIR": str(tmp_path / "custom")}
-    )
+    resolved = launcher._resolve_pgctl_bin_dir({"LOCAL_PG_BIN_DIR": str(custom)})
 
-    assert resolved == str(tmp_path / "custom")
+    assert resolved == str(custom)
+
+
+def test_fallback_bin_dir_skips_configured_path_without_binaries(
+    tmp_path, monkeypatch
+):
+    bundled = tmp_path / "bundled"
+    monkeypatch.setattr(launcher, "_bundled_pgserver_bin_dir", lambda: bundled)
+    empty = tmp_path / "custom"
+    empty.mkdir()
+    suffix = ".exe" if os.name == "nt" else ""
+    (empty / f"pg_ctl{suffix}").write_text("", encoding="utf-8")  # no initdb
+
+    resolved = launcher._resolve_pgctl_bin_dir({"LOCAL_PG_BIN_DIR": str(empty)})
+
+    assert resolved == str(bundled)
 
 
 def test_fallback_bin_dir_uses_bundled_pgserver_package(tmp_path, monkeypatch):
