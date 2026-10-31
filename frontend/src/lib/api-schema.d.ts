@@ -864,6 +864,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open Local Repo */
+        post: operations["open_local_repo_api_v1_repos_local_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/upload": {
         parameters: {
             query?: never;
@@ -2957,6 +2974,13 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /** RepoLocalCreate */
+        RepoLocalCreate: {
+            /** Name */
+            name?: string | null;
+            /** Path */
+            path: string;
+        };
         /** RepoOut */
         RepoOut: {
             /** Created At */
@@ -2972,6 +2996,11 @@ export interface components {
             kind: string;
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @default upload
+             */
+            origin: string;
             /** Smoke */
             smoke?: {
                 [key: string]: unknown;
@@ -5110,6 +5139,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RepoImportGit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_local_repo_api_v1_repos_local_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepoLocalCreate"];
             };
         };
         responses: {

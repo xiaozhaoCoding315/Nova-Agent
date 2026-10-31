@@ -272,6 +272,11 @@ class ChatRequest(BaseModel):
 
 # ---------- Workspace ----------
 
+class RepoLocalCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=2000)
+    name: Optional[str] = Field(default=None, max_length=120)
+
+
 class RepoImportGit(BaseModel):
     git_url: str
     name: Optional[str] = None
@@ -306,6 +311,7 @@ class RepoOut(BaseModel):
     source: str = ""
     status: str = "pending"
     kind: str = "import"          # import | builder
+    origin: str = "upload"        # upload | git | local
     error: Optional[str] = None
     stats: dict = Field(default_factory=dict)
     created_at: Optional[datetime] = None

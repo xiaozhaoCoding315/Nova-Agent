@@ -109,3 +109,58 @@ def iter_source_files(root: str, max_file_bytes: int):
                 if looks_binary(head):
                     continue
             yield rel, str(abspath), size
+
+
+def _git_listed_files(root: Path) -> list[str] | None:
+    """Tracked + untracked (non-ignored) files. None means fall back to walk."""
+    git = shutil.which("git")
+    if not git:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                git, "-C", str(root), "ls-files", "-z",
+                "--cached", "--others", "--exclude-standard",
+            ],
+            capture_output=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return [p for p in result.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
+def iter_local_project_files(root: str, max_file_bytes: int):
+    """Yield project files, honoring .gitignore; skip symlinks escaping root."""
+    root_path = Path(root).resolve()
+    listed = _git_listed_files(root_path)
+    if listed is None:
+        yield from iter_source_files(str(root_path), max_file_bytes)
+        return
+    for raw in listed:
+        rel = raw.replace("\\", "/")
+        if not is_supported(rel) or is_secret_path(rel):
+            continue
+        try:
+            abspath = (root_path / rel).resolve(strict=True)
+        except OSError:
+            continue
+        if root_path not in abspath.parents and abspath != root_path:
+            continue
+        if not abspath.is_file():
+            continue
+        try:
+            size = abspath.stat().st_size
+        except OSError:
+            continue
+        if size == 0 or size > max_file_bytes:
+            continue
+        if not rel.lower().endswith(".pdf"):
+            try:
+                head = abspath.open("rb").read(2048)
+            except OSError:
+                continue
+            if looks_binary(head):
+                continue
+        yield rel, str(abspath), size

@@ -875,6 +875,10 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         """,
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS llm_overrides JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]),
+    (18, [
+        "ALTER TABLE repos ADD COLUMN IF NOT EXISTS origin VARCHAR(12) NOT NULL DEFAULT 'upload'",
+        "UPDATE repos SET origin = 'git' WHERE source LIKE 'git:%' AND origin = 'upload'",
+    ]),
 ]
 
 

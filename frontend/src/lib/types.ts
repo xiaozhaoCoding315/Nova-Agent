@@ -359,6 +359,7 @@ export type Repo = {
   source: string
   status: RepoStatus
   kind?: 'import' | 'builder'
+  origin?: 'upload' | 'git' | 'local'
   error?: string | null
   stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number; dependencies?: number }
   created_at?: string

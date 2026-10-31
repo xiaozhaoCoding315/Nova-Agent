@@ -3364,6 +3364,33 @@
         "title": "RepoImportGit",
         "type": "object"
       },
+      "RepoLocalCreate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "path": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "RepoLocalCreate",
+        "type": "object"
+      },
       "RepoOut": {
         "properties": {
           "created_at": {
@@ -3400,6 +3427,11 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "default": "upload",
+            "title": "Origin",
             "type": "string"
           },
           "smoke": {
@@ -6806,6 +6838,47 @@
           }
         },
         "summary": "Import Git Repo",
+        "tags": [
+          "repos"
+        ]
+      }
+    },
+    "/api/v1/repos/local": {
+      "post": {
+        "operationId": "open_local_repo_api_v1_repos_local_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepoLocalCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Local Repo",
         "tags": [
           "repos"
         ]

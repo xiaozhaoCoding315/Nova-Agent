@@ -28,6 +28,7 @@ from app.core.security.paths import UnsafePathError, normalize_relpath, resolve_
 from app.core.security.redaction import redact_text
 from app.core.storage.user_storage import repo_container
 from app.db import query as db_query
+from app.local.projects import register_local_project
 from app.models.schemas import (
     BrainOut,
     DebtReportOut,
@@ -37,6 +38,7 @@ from app.models.schemas import (
     ImpactOut,
     OkOut,
     RepoImportGit,
+    RepoLocalCreate,
     RepoOut,
     SearchHitOut,
     SearchResponseOut,
@@ -162,11 +164,24 @@ async def import_git_repo(body: RepoImportGit, user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail=str(exc))
 
     name = body.name or body.git_url.rstrip("/").split("/")[-1].removesuffix(".git")
-    repo = await create_repo_row(user["id"], name, f"git:{body.git_url}", repo_id)
+    repo = await create_repo_row(user["id"], name, f"git:{body.git_url}", repo_id,
+                                 origin="git")
     await enqueue_index(repo_id, user_id=user["id"])
     await log_audit(AuditAction.REPO_IMPORT, user_id=str(user["id"]),
                     details={"repo_id": repo_id, "source": "git", "url": body.git_url})
     return repo
+
+
+@router.post("/repos/local", response_model=RepoOut)
+async def open_local_repo(
+    body: RepoLocalCreate, user: dict = Depends(get_current_user)
+):
+    if not settings.is_local:
+        raise HTTPException(status_code=404, detail="仅本地模式支持打开本地文件夹")
+    try:
+        return await register_local_project(user, body.path, body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/repos", response_model=list[RepoOut])

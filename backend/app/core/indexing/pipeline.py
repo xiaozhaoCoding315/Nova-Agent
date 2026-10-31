@@ -25,18 +25,33 @@ EMBED_BATCH = 10
 EMBEDDING_CHAR_LIMIT = 2000
 
 
-async def create_repo_row(user_id: int, name: str, source: str, repo_id: str) -> dict:
+async def create_repo_row(
+    user_id: int, name: str, source: str, repo_id: str, origin: str = "upload"
+) -> dict:
     from app.core.storage.user_storage import repo_container
     root = repo_container(user_id, repo_id)
     root.mkdir(parents=True, exist_ok=True)
     root_path = str(root)
     await execute(
-        "INSERT INTO repos (id, user_id, name, source, root_path, status) "
-        "VALUES (%s, %s, %s, %s, %s, 'pending')",
+        "INSERT INTO repos (id, user_id, name, source, root_path, status, origin) "
+        "VALUES (%s, %s, %s, %s, %s, 'pending', %s)",
+        (repo_id, user_id, name[:200], source[:500], root_path, origin),
+    )
+    return {"id": repo_id, "name": name[:200], "source": source[:500],
+            "root_path": root_path, "status": "pending", "origin": origin}
+
+
+async def create_local_repo_row(
+    user_id: int, name: str, root_path: str, repo_id: str
+) -> dict:
+    source = f"local:{root_path}"
+    await execute(
+        "INSERT INTO repos (id, user_id, name, source, root_path, status, origin) "
+        "VALUES (%s, %s, %s, %s, %s, 'pending', 'local')",
         (repo_id, user_id, name[:200], source[:500], root_path),
     )
     return {"id": repo_id, "name": name[:200], "source": source[:500],
-            "root_path": root_path, "status": "pending"}
+            "root_path": root_path, "status": "pending", "origin": "local"}
 
 
 async def set_status(repo_id: str, status: str, error: str | None = None) -> None:
@@ -48,7 +63,7 @@ async def set_status(repo_id: str, status: str, error: str | None = None) -> Non
 
 async def get_repo(repo_id: str, user_id: int | None = None) -> dict | None:
     sql = ("SELECT id, user_id, name, source, root_path, status, error, stats, created_at, kind, rules, "
-           "stack_mode, brief, smoke FROM repos WHERE id = %s")
+           "stack_mode, brief, smoke, origin FROM repos WHERE id = %s")
     params: tuple = (repo_id,)
     if user_id is not None:
         sql += " AND user_id = %s"
@@ -62,18 +77,20 @@ async def get_repo(repo_id: str, user_id: int | None = None) -> dict | None:
         "root_path": r[4], "status": r[5], "error": r[6], "stats": r[7] or {},
         "created_at": r[8], "kind": r[9] or "import", "rules": r[10] or "",
         "stack_mode": r[11] or "python", "brief": r[12] or "", "smoke": r[13],
+        "origin": r[14] or "upload",
     }
 
 
 async def list_repos(user_id: int) -> list[dict]:
     rows = await query(
-        "SELECT id, name, source, status, error, stats, created_at, kind FROM repos "
+        "SELECT id, name, source, status, error, stats, created_at, kind, origin FROM repos "
         "WHERE user_id = %s ORDER BY created_at DESC",
         (user_id,),
     )
     return [
         {"id": str(r[0]), "name": r[1], "source": r[2], "status": r[3],
-         "error": r[4], "stats": r[5] or {}, "created_at": r[6], "kind": r[7] or "import"}
+         "error": r[4], "stats": r[5] or {}, "created_at": r[6], "kind": r[7] or "import",
+         "origin": r[8] or "upload"}
         for r in rows
     ]
 
@@ -88,9 +105,12 @@ async def delete_repo(repo_id: str, user_id: int) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.warning("repo_resource_cleanup_failed", repo_id=repo_id, error=str(exc))
     await execute("DELETE FROM repos WHERE id = %s AND user_id = %s", (repo_id, user_id))
-    from app.core.storage.user_storage import repo_container
-    shutil.rmtree(repo_container(user_id, repo_id), ignore_errors=True)
-    shutil.rmtree(Path(settings.repos_dir) / repo_id, ignore_errors=True)
+    if repo.get("origin") == "local":
+        logger.info("local_project_unregistered", repo_id=repo_id)
+    else:
+        from app.core.storage.user_storage import repo_container
+        shutil.rmtree(repo_container(user_id, repo_id), ignore_errors=True)
+        shutil.rmtree(Path(settings.repos_dir) / repo_id, ignore_errors=True)
     try:
         from app.db.qdrant import delete_repo_points
         await delete_repo_points(repo_id)
@@ -245,8 +265,10 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.02, step="扫描文件")
-        from app.core.indexing.walker import strip_root_dir
-        root = strip_root_dir(root)
+        from app.core.indexing.walker import iter_local_project_files, strip_root_dir
+
+        if repo.get("origin") != "local":
+            root = strip_root_dir(root)
         # Persist the resolved root so the file-viewer endpoint reads the
         # same directory the indexer walked (zips often nest one top dir).
         await execute("UPDATE repos SET root_path = %s WHERE id = %s", (root, repo_id))
@@ -273,7 +295,11 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
             for row in rows
         }
 
-        files = list(iter_source_files(root, settings.max_file_kb * 1024))[: settings.max_repo_files]
+        if repo.get("origin") == "local":
+            iterator = iter_local_project_files(root, settings.max_file_kb * 1024)
+        else:
+            iterator = iter_source_files(root, settings.max_file_kb * 1024)
+        files = list(iterator)[: settings.max_repo_files]
         stats = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0, "embedded": 0}
         pending: list[tuple[int, dict, str]] = []
         file_meta: list[dict] = []
