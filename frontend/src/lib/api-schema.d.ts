@@ -1048,7 +1048,7 @@ export interface paths {
         get?: never;
         /**
          * Replace Repo Files
-         * @description Replace the whole workspace from a zip (local bridge push). Re-indexes.
+         * @description Replace the whole workspace from a zip. Re-indexes.
          */
         put: operations["replace_repo_files_api_v1_repos__repo_id__files_put"];
         post?: never;

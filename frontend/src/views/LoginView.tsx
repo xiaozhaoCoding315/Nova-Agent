@@ -679,7 +679,7 @@ export function LoginView() {
                 <h2 className="text-[20px] font-bold">装到你的桌面上</h2>
                 <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-dim">
                   Windows / macOS / Linux 原生安装包，数据全部留在你的服务器。
-                  配合 nova bridge 把本机项目目录接入 Nova，配合 nova agent 让 Nova 直接在你的电脑上执行命令、生成文件——每一步都经你确认。
+                  配合 nova agent 让 Nova 直接在你的电脑上执行命令、生成文件——每一步都经你确认。
                 </p>
               </div>
               <a

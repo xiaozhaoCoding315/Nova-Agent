@@ -165,7 +165,7 @@ npm run dev                   # http://localhost:5173
 
 ## 桌面客户端
 
-Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
+Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 
 1. **桌面安装包（Electron 壳）**：`desktop/` 目录用 `npm install && npm run dist:win` 打包出
    `Nova-Agent-Setup-<版本>.exe`（macOS / Linux 同理）。把安装包放进服务器 `data/downloads/`
@@ -173,7 +173,6 @@ Nova 提供两种「装到电脑上」的方式，数据都保存在服务器：
    安装后首次启动填服务器地址即可使用。也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
    打包版可设置 `NOVA_UPDATE_URL`（generic 更新目录，需托管 `latest.yml` 与安装包）启用自动更新；
    代码签名/公证仍需自备证书。
-2. **PWA**：用 Chrome / Edge 打开站点，地址栏点「安装」，无需任何下载。
 
 ## 配置项（.env 关键项）
 
@@ -348,22 +347,17 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 只支持 stdio + newline-delimited JSON-RPC；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
-## 本地桥接（nova bridge）与本地执行器（nova agent）
+## 本地执行器（nova agent）
 
-让 Nova 直接工作在你电脑的真实项目目录上：本地改动推上去、agent 的产出拉回来。
+让 Nova 直接工作在你电脑的真实项目目录上。
 
 ```bash
 cd backend
 export NOVA_URL=http://你的服务器:8000 NOVA_USERNAME=... NOVA_PASSWORD=...
 
-python nova.py bridge init ~/my-project   # 首次关联：打包上传并创建仓库
-python nova.py bridge watch ~/my-project  # 后台挂着：本地一改就自动推送
-python nova.py bridge pull ~/my-project   # agent 改完代码后拉回本地（不覆盖你本地已改的文件，--force 强制）
-
 python nova.py agent --dir ~/my-project   # 本地执行器：Agent 可派发命令到本机执行
 ```
 
-- 同步时自动跳过 `.git / node_modules / 构建产物`；关联信息存在目录下的 `.nova-bridge.json`
 - 生成项目想落到本地：网页里批准写入后点项目面板的下载图标，或 `nova.py export --repo <名字> --out 项目.zip`
 - 对话里的 `run_command` 工具在仓库上执行真实 shell（脚手架 / git 提交 / 移动文件），改动持久化在仓库中，`pull` 即可取回
 - **本地执行器**：挂着 `nova.py agent` 后，对话里的 `local_run_command` 工具会把命令派发到你的本机执行

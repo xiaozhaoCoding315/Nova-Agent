@@ -100,8 +100,6 @@ scp desktop/out/Nova-Agent-Setup-2.0.0.exe server:~/nova-agent/data/downloads/
 无需重启。用户从登录页点「下载桌面客户端」或直接访问 `http://<服务器>:8000/downloads` 下载；
 安装后首次启动填服务器地址（如 `http://<服务器IP>:8000`），登录即用。
 
-> 也可以不装任何东西：用 Chrome/Edge 打开站点，地址栏点「安装」即得 PWA 桌面应用。
-
 ## 四、日常运维
 
 ```bash
