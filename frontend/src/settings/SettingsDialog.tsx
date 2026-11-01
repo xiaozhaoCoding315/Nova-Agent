@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Activity, Brain, Cpu, FolderOpen, KeyRound, RefreshCw, Server, Settings, TrendingUp, Users, X,
+  Activity, Blocks, Brain, Cpu, FolderOpen, KeyRound, RefreshCw, Server, Settings, TrendingUp, Users, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spinner } from '../components/common'
@@ -11,6 +11,7 @@ import { useLlm } from '../stores/llm'
 import { useMode } from '../stores/mode'
 import { AccountSection } from './sections/AccountSection'
 import { AdminSection } from './sections/AdminSection'
+import { ExtensionsSection } from './sections/ExtensionsSection'
 import { FilesSection } from './sections/FilesSection'
 import { MemorySection } from './sections/MemorySection'
 import { MetricsSection } from './sections/MetricsSection'
@@ -19,7 +20,8 @@ import { SystemSection } from './sections/SystemSection'
 import { UsageSection } from './sections/UsageSection'
 
 export type SettingsSection =
-  | 'model' | 'usage' | 'metrics' | 'files' | 'memory' | 'system' | 'account' | 'admin'
+  | 'model' | 'usage' | 'metrics' | 'files' | 'memory' | 'extensions' | 'system'
+  | 'account' | 'admin'
 
 const SECTIONS: { key: SettingsSection; label: string; icon: typeof Cpu }[] = [
   { key: 'model', label: '模型与密钥', icon: Cpu },
@@ -27,6 +29,7 @@ const SECTIONS: { key: SettingsSection; label: string; icon: typeof Cpu }[] = [
   { key: 'metrics', label: '交付指标', icon: TrendingUp },
   { key: 'files', label: '文件与存储', icon: FolderOpen },
   { key: 'memory', label: '长期记忆', icon: Brain },
+  { key: 'extensions', label: '扩展与技能', icon: Blocks },
   { key: 'system', label: '系统状态', icon: Server },
   { key: 'account', label: '账号与安全', icon: KeyRound },
   { key: 'admin', label: '用户管理', icon: Users },
@@ -38,6 +41,7 @@ const DESCRIPTIONS: Record<SettingsSection, string> = {
   metrics: '用量、交付指标与运行状态。',
   files: '聊天附件与手动上传的个人文件，计入存储配额。',
   memory: '用量、交付指标与运行状态。',
+  extensions: '操作员预置的 MCP 工具与技能手册；只读展示，配置在部署目录完成。',
   system: '用量、交付指标与运行状态。',
   account: '个人资料、密码与会话安全。',
   admin: '管理系统账号、禁用账号与重置密码。',
@@ -249,6 +253,7 @@ function SettingsDialogBody({
               )}
               {section === 'files' && <FilesSection key={refreshToken} />}
               {section === 'memory' && <MemorySection refreshToken={refreshToken} />}
+              {section === 'extensions' && <ExtensionsSection refreshToken={refreshToken} />}
               {section === 'system' && (
                 <SystemSection health={health} loading={healthLoading} error={healthError} />
               )}

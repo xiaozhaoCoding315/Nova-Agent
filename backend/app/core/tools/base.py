@@ -59,9 +59,9 @@ class ToolDefinition:
 # Tools the model should not even see in a given mode / availability state.
 _READONLY_HIDDEN = {
     "write_files", "edit_file", "run_code", "install_deps", "fetch_url",
-    "local_run_command", "local_write_file",
+    "web_search", "local_run_command", "local_write_file",
 }
-_ASK_HIDDEN = {"fetch_url"}
+_ASK_HIDDEN = {"fetch_url", "web_search"}
 _SANDBOX_TOOLS = {"run_code", "run_command", "install_deps"}
 _LOCAL_TOOLS = {"local_run_command", "local_write_file"}
 

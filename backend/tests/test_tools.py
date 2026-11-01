@@ -21,8 +21,8 @@ def test_registry_has_all_tools_with_openai_specs():
     assert names == {
         "run_code", "run_command", "read_file", "list_files", "read_uploaded_file",
         "search_code", "impact_analysis", "diagnose_error", "write_files", "install_deps",
-        "json_tool", "sql_tool", "fetch_url", "local_run_command", "local_write_file",
-        "edit_file", "grep", "glob", "update_plan",
+        "json_tool", "sql_tool", "fetch_url", "web_search", "local_run_command",
+        "local_write_file", "edit_file", "grep", "glob", "update_plan",
     }
     for spec in specs:
         assert spec["type"] == "function"
@@ -37,12 +37,14 @@ def test_specs_trim_by_mode_and_availability():
     assert "edit_file" not in readonly
     assert "run_code" not in readonly
     assert "fetch_url" not in readonly
+    assert "web_search" not in readonly
     assert "local_run_command" not in readonly
     assert "read_file" in readonly and "run_command" in readonly
 
     ask = {s["function"]["name"] for s in registry.specs(permission_mode="ask")}
     assert "write_files" in ask
     assert "fetch_url" not in ask
+    assert "web_search" not in ask
 
     offline = {s["function"]["name"] for s in registry.specs(local_available=False)}
     assert "local_run_command" not in offline
@@ -431,6 +433,113 @@ async def test_fetch_url_rejects_bad_scheme():
 async def test_fetch_url_blocks_private_host():
     r = await build_registry().execute("fetch_url", {"url": "http://192.168.150.128:8000/"}, CTX)
     assert r["ok"] is False and "内网" in r["error"]
+
+
+# ---------- web_search ----------
+
+def test_web_search_parser_unwraps_ddg_redirects():
+    from app.core.tools.web_search import _DDGParser
+
+    parser = _DDGParser()
+    parser.feed(
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg='
+        'https%3A%2F%2Fexample.com%2Fdocs">Example <b>Docs</b></a>'
+        '<a class="result__snippet">A page about <b>things</b>.</a>'
+        '<a class="result__a" href="https://direct.test/page">Direct</a>'
+        '<a class="result__snippet">Second result.</a>'
+    )
+    assert [item["url"] for item in parser.results] == [
+        "https://example.com/docs",
+        "https://direct.test/page",
+    ]
+    assert parser.results[0]["title"] == "Example Docs"
+    assert parser.results[0]["snippet"] == "A page about things."
+
+
+def test_web_search_parser_reads_bing_results():
+    from app.core.tools.web_search import _BingParser
+
+    parser = _BingParser()
+    parser.feed(
+        '<li class="b_algo"><h2><a href="https://example.com/a">Example '
+        '<strong>Docs</strong></a></h2><div class="b_caption"><p>First</p></div></li>'
+        '<li class="b_algo"><h2><a href="https://example.com/b">Second</a></h2>'
+        '<p>Another result.</p></li>'
+        '<li class="b_algo"><h2><a href="javascript:void(0)">Bad</a></h2></li>'
+    )
+    assert [item["url"] for item in parser.results] == [
+        "https://example.com/a",
+        "https://example.com/b",
+    ]
+    assert parser.results[0]["title"] == "Example Docs"
+    assert parser.results[0]["snippet"] == "First"
+    assert parser.results[1]["snippet"] == "Another result."
+
+
+@pytest.mark.asyncio
+async def test_web_search_auto_falls_back_to_duckduckgo(monkeypatch):
+    import app.core.tools.web_search as ws
+    from app.core.tools.base import ToolBusinessError
+
+    async def failing_bing(query: str, limit: int) -> list[dict]:
+        raise ToolBusinessError("bing blocked")
+
+    async def fake_ddg(query: str, limit: int) -> list[dict]:
+        return [{"title": "Docs", "url": "https://docs.test/", "snippet": "docs"}]
+
+    monkeypatch.setattr(settings, "web_search_provider", "auto")
+    monkeypatch.setattr(settings, "web_search_api_key", "")
+    monkeypatch.setattr(ws, "_search_bing", failing_bing)
+    monkeypatch.setattr(ws, "_search_duckduckgo", fake_ddg)
+
+    output = await ws.web_search({"query": "docs"}, CTX)
+    assert output["provider"] == "duckduckgo"
+    assert output["results"][0]["url"] == "https://docs.test/"
+
+
+@pytest.mark.asyncio
+async def test_web_search_dedupes_and_caps_results(monkeypatch):
+    import app.core.tools.web_search as ws
+
+    async def fake_search(query: str, limit: int) -> list[dict]:
+        return [
+            {"title": "A", "url": "https://a.test/", "snippet": "a"},
+            {"title": "A again", "url": "https://a.test/", "snippet": "a"},
+            {"title": "B", "url": "https://b.test/", "snippet": "b"},
+        ][:limit]
+
+    monkeypatch.setattr(ws, "_search_duckduckgo", fake_search)
+    monkeypatch.setattr(settings, "web_search_provider", "duckduckgo")
+
+    output = await ws.web_search({"query": "docs", "max_results": 5}, CTX)
+    assert output["provider"] == "duckduckgo"
+    assert output["count"] == 2
+    assert [item["url"] for item in output["results"]] == [
+        "https://a.test/",
+        "https://b.test/",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_web_search_brave_requires_key(monkeypatch):
+    import app.core.tools.web_search as ws
+    from app.core.tools.base import ToolBusinessError
+
+    monkeypatch.setattr(settings, "web_search_provider", "brave")
+    monkeypatch.setattr(settings, "web_search_api_key", "")
+    with pytest.raises(ToolBusinessError, match="WEB_SEARCH_API_KEY"):
+        await ws.web_search({"query": "docs"}, CTX)
+
+
+@pytest.mark.asyncio
+async def test_web_search_rejects_unknown_provider(monkeypatch):
+    import app.core.tools.web_search as ws
+    from app.core.tools.base import ToolBusinessError
+
+    monkeypatch.setattr(settings, "web_search_provider", "nope")
+    with pytest.raises(ToolBusinessError, match="未知的搜索提供方"):
+        await ws.web_search({"query": "docs"}, CTX)
+
 
 @pytest.mark.asyncio
 async def test_install_deps_full_mode_bypasses_admin_gate():

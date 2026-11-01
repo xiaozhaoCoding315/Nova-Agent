@@ -1,6 +1,6 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord, Extensions,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
@@ -205,6 +205,8 @@ export const api = {
     metrics: (days = 7) => request<Metrics>(`/status/metrics?days=${days}`),
     mode: () => request<ModeInfo>('/status/mode'),
   },
+
+  extensions: () => request<Extensions>('/extensions'),
 
   files: {
     list: (params: { repoId?: string; sessionId?: string } = {}) => {

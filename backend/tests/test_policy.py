@@ -59,6 +59,25 @@ def test_fetch_is_blocked_in_readonly_and_ask(monkeypatch):
         assert "不允许联网抓取" in decision.reason
 
 
+def test_web_search_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "enable_web_search", False)
+    decision = decide_tool("web_search", "network", None, {"query": "python"}, ctx())
+    assert not decision.allowed and "ENABLE_WEB_SEARCH" in decision.reason
+
+
+def test_web_search_is_blocked_in_readonly_and_ask(monkeypatch):
+    monkeypatch.setattr(settings, "enable_web_search", True)
+    for mode in ("readonly", "ask"):
+        decision = decide_tool(
+            "web_search", "network", None, {"query": "python"}, ctx(mode)
+        )
+        assert not decision.allowed
+        assert "不允许联网搜索" in decision.reason
+    assert decide_tool(
+        "web_search", "network", None, {"query": "python"}, ctx("auto")
+    ).allowed
+
+
 def test_fetch_domain_allowlist(monkeypatch):
     monkeypatch.setattr(settings, "enable_fetch_url", True)
     monkeypatch.setattr(settings, "fetch_url_allowed_domains", "docs.python.org,example.com")

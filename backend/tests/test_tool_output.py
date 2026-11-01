@@ -68,3 +68,17 @@ def test_preview_prefers_stderr_tail_for_exec_tools():
 def test_preview_for_error_result():
     preview = build_preview("grep", {"ok": False, "error": "bad regex", "ms": 0})
     assert preview == "错误：bad regex"
+
+
+def test_web_search_preview_keeps_parsable_results():
+    results = [
+        {"title": f"Result {i}", "url": f"https://example.com/{i}", "snippet": "x" * 120}
+        for i in range(6)
+    ]
+    result = {
+        "ok": True,
+        "output": {"query": "python asyncio", "provider": "duckduckgo", "count": 6, "results": results},
+        "ms": 20,
+    }
+    parsed = json.loads(build_preview("web_search", result))
+    assert [item["url"] for item in parsed["results"]] == [item["url"] for item in results]

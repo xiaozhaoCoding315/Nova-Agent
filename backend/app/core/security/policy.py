@@ -32,6 +32,7 @@ CAPABILITIES_BY_TOOL = {
     "run_code": ["proc.exec"],
     "install_deps": ["proc.exec", "net.fetch", "fs.write"],
     "fetch_url": ["net.fetch"],
+    "web_search": ["net.fetch"],
     "json_tool": [],
     "sql_tool": [],
 }
@@ -366,6 +367,17 @@ def decide_tool(
             return PolicyDecision(
                 False,
                 f"域名不在允许列表内：{host or 'unknown'}（见 FETCH_URL_ALLOWED_DOMAINS）",
+                caps,
+            )
+
+    if name == "web_search":
+        if not settings.enable_web_search:
+            return PolicyDecision(False, "联网搜索已关闭（ENABLE_WEB_SEARCH=false）", caps)
+        if mode in ("readonly", "ask"):
+            return PolicyDecision(
+                False,
+                f"当前模式（{mode}）不允许联网搜索，避免只读/确认模式下外发查询；"
+                "请切换到「自主」或「完全访问」后重试",
                 caps,
             )
 

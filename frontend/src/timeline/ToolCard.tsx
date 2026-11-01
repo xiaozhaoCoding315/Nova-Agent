@@ -8,6 +8,7 @@ import {
 import { FileCard } from './FileCard'
 import { SearchCard } from './SearchCard'
 import { ToolTerminal } from './ToolTerminal'
+import { WebSearchCard } from './WebSearchCard'
 
 /** 通用折叠卡：未归类的工具，保持旧 ToolCard 的信息密度。 */
 export function GenericToolCard({
@@ -141,6 +142,8 @@ export function ToolCardView({
       return <FileCard card={card} onOpenFile={onOpenFile} />
     case 'search':
       return <SearchCard card={card} onOpenFile={onOpenFile} />
+    case 'web':
+      return <WebSearchCard card={card} />
     default:
       return <GenericToolCard card={card} onCancel={onCancel} onOpenFile={onOpenFile} />
   }

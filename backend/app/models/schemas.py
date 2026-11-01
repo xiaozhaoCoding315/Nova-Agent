@@ -410,6 +410,33 @@ class HealthOut(BaseModel):
     components: dict
 
 
+# ---------- Extensions (MCP servers + operator skills) ----------
+
+class ExtensionToolOut(BaseModel):
+    name: str
+    description: str
+    admin_only: bool = False
+
+
+class ExtensionServerOut(BaseModel):
+    name: str
+    tools: list[ExtensionToolOut] = Field(default_factory=list)
+
+
+class SkillInfoOut(BaseModel):
+    name: str
+    description: str = ""
+    triggers: list[str] = Field(default_factory=list)
+
+
+class ExtensionsOut(BaseModel):
+    mcp_enabled: bool
+    mcp_ready: bool
+    mcp_servers: list[ExtensionServerOut] = Field(default_factory=list)
+    skills_enabled: bool
+    skills: list[SkillInfoOut] = Field(default_factory=list)
+
+
 class UsageOut(BaseModel):
     today_tokens: int
     daily_token_budget: int        # 0 = unlimited

@@ -32,7 +32,8 @@
 | **契约对齐（OpenAPI → TS）** | 仓库提交 `contracts/openapi.*` 与生成的前端类型后，验证门会用 `openapi-typescript` 重新生成并逐字节对比；字段漂移直接失败并给出 drift；工作区「契约」页签展示 source / target / 最近检查结果。 |
 | **修复任务流水线（红-绿）** | 在对话里输入 `/fix` 描述一个 bug：自动生成失败测试复现（红，校验测试确实运行且失败）→ 产出最小补丁 → 全量测试复跑（绿，失败摘要回喂，最多自动修复 3 次）→ 只读审查 → 人工批准后写入并重建索引；文件在生成后被改动会拒绝覆盖。 |
 | **预览部署** | 管理员在工作区「预览」页签一键部署 **Python/FastAPI 或 Node** 项目：复制工作区到临时目录 → 隔离容器启动 → 健康检查 → 返回本地 URL；重复部署复用同一预览；超时自动下线；一键清理容器。 |
-| **MCP 外接工具** | 通过 stdio 或 streamable HTTP 接入 MCP server（HTTP 支持静态鉴权头）：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。 |
+| **MCP 外接工具** | 通过 stdio 或 streamable HTTP 接入 MCP server（HTTP 支持静态鉴权头）：工具必须显式 allowlist，按能力进入同一权限引擎；默认仅管理员可用，调用记录审计。设置页「扩展与技能」只读展示已加载的 server、工具与技能手册。 |
+| **联网搜索** | `web_search` 默认 `auto`：优先 Bing（大陆服务器可直连），失败回退 DuckDuckGo；也可切换 Brave Search API。返回标题、URL 与摘要，按需再对结果调用 `fetch_url` 读全文。只在自主/完全访问模式可用。 |
 
 ## 界面结构
 
@@ -76,7 +77,7 @@
 | **复现 bug 并交付补丁** | 贴 bug 描述，输入 `/fix` 在对话内启动 | 失败测试（红）→ 最小补丁 → 复跑（绿）→ 人工批准后写入仓库 |
 | **评估改动风险** | 「改这个函数会影响什么？」 | 依赖图 + 符号引用算出受影响文件/测试与风险等级，并建议测试命令 |
 | **从 0 建一个新项目** | 对话右侧「项目」→「新建」，或完整工作区「新建项目」 | 方案 → 确认 → 文件提案 → 审阅 → 写入/索引，全程有审批栅栏 |
-| **日常杂活** | JSON/YAML 校验转换、SQL 审阅、抓取在线文档 | json_tool / sql_tool / fetch_url，全部确定性实现，结果即真相 |
+| **日常杂活** | JSON/YAML 校验转换、SQL 审阅、搜索并抓取在线文档 | json_tool / sql_tool / web_search / fetch_url，结果可回看 |
 
 ## 核心特性
 
@@ -86,7 +87,7 @@
 - **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
 ### Agent 循环 + Function-Calling
-- **内置工具 + MCP**：19 个内置工具（含 `update_plan` 计划卡）：`read_file` / `read_uploaded_file`（读取聊天附件） / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`local_write_file`（写回用户本机文件）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）；另可接入 allowlist 内的 MCP 工具
+- **内置工具 + MCP**：20 个内置工具（含 `update_plan` 计划卡）：`read_file` / `read_uploaded_file`（读取聊天附件） / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`local_write_file`（写回用户本机文件）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）、`web_search`（Bing / DuckDuckGo / Brave 公开网络搜索）；另可接入 allowlist 内的 MCP 工具
 - 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
@@ -197,6 +198,10 @@ Nova 提供「装到电脑上」的方式，数据都保存在服务器：
 | `SANDBOX_ENABLED` | 沙箱总开关 |
 | `SANDBOX_BUILDER_IMAGE` / `SANDBOX_NODE_IMAGE` | Python 验证镜像 / Node 验证镜像（默认 nova-builder / nova-node） |
 | `TOOL_PRE_HOOK` / `TOOL_POST_HOOK` | 可选工具 Hook 命令；pre-hook 收到 JSON stdin，退出码 2 阻断工具 |
+| `ENABLE_FETCH_URL` / `FETCH_URL_ALLOWED_DOMAINS` | 网页抓取开关 / 域名 allowlist（空 = 任意公网域名） |
+| `ENABLE_WEB_SEARCH` / `WEB_SEARCH_PROVIDER` | 联网搜索开关 / `auto`（默认，Bing 优先、DuckDuckGo 兜底）、`bing`、`duckduckgo` 或 `brave` |
+| `WEB_SEARCH_API_KEY` / `WEB_SEARCH_MAX_RESULTS` | Brave Search Key / 默认返回条数（1–10） |
+| `MAX_ROUNDS` / `MAX_CONTINUATIONS` / `TURN_TIMEOUT` | 长任务：每段工具轮次 / 自动续段次数 / 单轮总时长（秒，到点暂停后可手动继续） |
 | `MCP_ENABLED` / `MCP_CONFIG_PATH` | MCP 开关 / server allowlist 配置文件路径 |
 | `MCP_ADMIN_ONLY` / `MCP_SERVERS_JSON` | MCP 工具是否仅管理员 / 用内联 JSON 覆盖配置文件；单个 server 可写 `"admin_only": false` 显式开放给所有用户（`secrets.read` 能力仍对非管理员拒绝） |
 | `LLM_ROUTE_PLAN` / `LLM_ROUTE_UTILITY` | 服务端共享 Key 的按用途模型路由：规划/审查/生成用强模型，摘要/事实抽取用小模型（对 BYOK 用户不生效）；模型名需兼容 `LLM_MODEL_PRIORITY` 中第一个有 Key 的服务商 |

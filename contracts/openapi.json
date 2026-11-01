@@ -1490,6 +1490,86 @@
         "title": "EmailResetRequest",
         "type": "object"
       },
+      "ExtensionServerOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionToolOut"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExtensionServerOut",
+        "type": "object"
+      },
+      "ExtensionToolOut": {
+        "properties": {
+          "admin_only": {
+            "default": false,
+            "title": "Admin Only",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "ExtensionToolOut",
+        "type": "object"
+      },
+      "ExtensionsOut": {
+        "properties": {
+          "mcp_enabled": {
+            "title": "Mcp Enabled",
+            "type": "boolean"
+          },
+          "mcp_ready": {
+            "title": "Mcp Ready",
+            "type": "boolean"
+          },
+          "mcp_servers": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionServerOut"
+            },
+            "title": "Mcp Servers",
+            "type": "array"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillInfoOut"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "skills_enabled": {
+            "title": "Skills Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mcp_enabled",
+          "mcp_ready",
+          "skills_enabled"
+        ],
+        "title": "ExtensionsOut",
+        "type": "object"
+      },
       "FileContentOut": {
         "properties": {
           "content": {
@@ -4101,6 +4181,31 @@
         "title": "SessionUpdateRequest",
         "type": "object"
       },
+      "SkillInfoOut": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Triggers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SkillInfoOut",
+        "type": "object"
+      },
       "SourceUsageOut": {
         "description": "Token spend aggregated per (source, model) — cost attribution.",
         "properties": {
@@ -6322,6 +6427,27 @@
         "summary": "Review Edit Endpoint",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/api/v1/extensions": {
+      "get": {
+        "operationId": "list_extensions_api_v1_extensions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extensions",
+        "tags": [
+          "extensions"
         ]
       }
     },

@@ -105,4 +105,5 @@ TOOL = ToolDefinition(
     func=fetch_url,
     category="network",
     timeout=25,
+    parallel_safe=True,
 )

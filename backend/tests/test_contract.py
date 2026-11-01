@@ -22,6 +22,7 @@ def test_key_endpoints_have_typed_responses():
     for name in (
         "LlmCredentialOut", "LlmProviderOut", "JobOut", "TaskOut",
         "VerifyResultOut", "BrainOut", "ImpactOut", "ReviewOut",
+        "ExtensionsOut",
     ):
         assert name in schemas
 
@@ -32,6 +33,7 @@ def test_key_endpoints_have_typed_responses():
         ("/api/v1/tasks", "get"),
         ("/api/v1/repos/{repo_id}/brain", "get"),
         ("/api/v1/repos/{repo_id}/impact", "get"),
+        ("/api/v1/extensions", "get"),
     ):
         operation = spec["paths"][path][method]
         response = operation["responses"]["200"]["content"]["application/json"]["schema"]

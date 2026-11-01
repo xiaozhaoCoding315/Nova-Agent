@@ -85,7 +85,14 @@ def serialize_tool_result(name: str, result: dict) -> str:
     return json.dumps(shrunk, ensure_ascii=False, default=str)
 
 
-def build_preview(name: str, result: dict, limit: int = 400) -> str:
+# Search results are shown as links in the timeline, so their preview keeps
+# enough JSON for the client to parse instead of cutting it at 400 chars.
+_PREVIEW_LIMITS = {"web_search": 6000}
+
+
+def build_preview(name: str, result: dict, limit: int | None = None) -> str:
+    if limit is None:
+        limit = _PREVIEW_LIMITS.get(name, 400)
     if not result.get("ok"):
         return f"错误：{result.get('error', 'unknown error')}"[:limit]
 

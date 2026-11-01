@@ -565,6 +565,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Extensions */
+        get: operations["list_extensions_api_v1_extensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files": {
         parameters: {
             query?: never;
@@ -2235,6 +2252,38 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** ExtensionServerOut */
+        ExtensionServerOut: {
+            /** Name */
+            name: string;
+            /** Tools */
+            tools?: components["schemas"]["ExtensionToolOut"][];
+        };
+        /** ExtensionToolOut */
+        ExtensionToolOut: {
+            /**
+             * Admin Only
+             * @default false
+             */
+            admin_only: boolean;
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
+        };
+        /** ExtensionsOut */
+        ExtensionsOut: {
+            /** Mcp Enabled */
+            mcp_enabled: boolean;
+            /** Mcp Ready */
+            mcp_ready: boolean;
+            /** Mcp Servers */
+            mcp_servers?: components["schemas"]["ExtensionServerOut"][];
+            /** Skills */
+            skills?: components["schemas"]["SkillInfoOut"][];
+            /** Skills Enabled */
+            skills_enabled: boolean;
+        };
         /** FileContentOut */
         FileContentOut: {
             /** Content */
@@ -3293,6 +3342,18 @@ export interface components {
             llm_overrides?: components["schemas"]["LlmOverrides"] | null;
             /** Title */
             title?: string | null;
+        };
+        /** SkillInfoOut */
+        SkillInfoOut: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /** Triggers */
+            triggers?: string[];
         };
         /**
          * SourceUsageOut
@@ -4736,6 +4797,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_extensions_api_v1_extensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionsOut"];
                 };
             };
         };

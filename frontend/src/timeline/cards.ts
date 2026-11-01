@@ -16,6 +16,7 @@ const TOOL_LABELS: Record<string, string> = {
   json_tool: 'JSON/YAML 处理',
   sql_tool: 'SQL 审阅',
   fetch_url: '抓取网页',
+  web_search: '网络搜索',
 }
 
 export function toolLabel(name: string): string {
@@ -24,17 +25,18 @@ export function toolLabel(name: string): string {
   return name
 }
 
-export type ToolCardKind = 'terminal' | 'file' | 'search' | 'generic'
+export type ToolCardKind = 'terminal' | 'file' | 'search' | 'web' | 'generic'
 
 const TERMINAL_TOOLS = new Set(['run_code', 'run_command', 'install_deps'])
 const FILE_TOOLS = new Set(['read_file', 'write_files', 'edit_file', 'read_uploaded_file'])
 const SEARCH_TOOLS = new Set(['search_code', 'grep', 'glob', 'impact_analysis', 'diagnose_error'])
 
-/** 按工具名把结果分发到终端卡 / 文件卡 / 检索卡 / 通用卡。 */
+/** 按工具名把结果分发到终端卡 / 文件卡 / 检索卡 / 网页搜索卡 / 通用卡。 */
 export function toolCardKind(name: string): ToolCardKind {
   if (TERMINAL_TOOLS.has(name)) return 'terminal'
   if (FILE_TOOLS.has(name)) return 'file'
   if (SEARCH_TOOLS.has(name)) return 'search'
+  if (name === 'web_search') return 'web'
   return 'generic'
 }
 
@@ -113,6 +115,27 @@ export function searchHitCount(result: Record<string, unknown> | null): number |
     if (list.length > 0) return list.length
   }
   return null
+}
+
+export type WebResult = { title: string; url: string; snippet: string }
+
+/** 网络搜索结果；只放行 http(s) 链接，其余条目忽略。 */
+export function webResults(card: StreamToolCard): WebResult[] {
+  const parsed = parsePreviewJson(card.result?.preview)
+  const results: WebResult[] = []
+  for (const item of asArray(parsed?.results)) {
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    const url = typeof record.url === 'string' ? record.url.trim() : ''
+    if (!/^https?:\/\//i.test(url)) continue
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    results.push({
+      title: title || url,
+      url,
+      snippet: typeof record.snippet === 'string' ? record.snippet.trim() : '',
+    })
+  }
+  return results
 }
 
 /** 命中路径：优先结构化字段，其次从被截断的 JSON 文本里扫 "path"。 */

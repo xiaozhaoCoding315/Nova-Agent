@@ -152,5 +152,9 @@ class MCPManager:
     def tool_names(self) -> list[str]:
         return [info.exposed_name for info in self._tools]
 
+    def tool_infos(self) -> list[MCPToolInfo]:
+        """Public, read-only view for the extensions status API."""
+        return list(self._tools)
+
 
 manager = MCPManager()

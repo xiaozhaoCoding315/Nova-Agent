@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     anthropic_context_window: int = 200_000
     llm_timeout: int = 300         # seconds per LLM call (长任务的生成可能持续数分钟)
     task_llm_timeout: int = 180    # red-green task generation is heavier (thinking models)
-    max_rounds: int = 12           # 每段工具调用轮次（触顶后自动续段，见 max_continuations）
-    max_continuations: int = 3     # 段触顶后自动注入"继续"指令的次数（长任务不断档）
-    turn_timeout: int = 1800       # 单轮任务总时长上限（秒），到点暂停并可手动继续
+    max_rounds: int = 16           # 每段工具调用轮次（触顶后自动续段，见 max_continuations）
+    max_continuations: int = 6     # 段触顶后自动注入"继续"指令的次数（长任务不断档）
+    turn_timeout: int = 3600       # 单轮任务总时长上限（秒），到点暂停并可手动继续
     llm_round_retries: int = 1     # 单轮模型调用失败且无产出时的自动重试次数
     # Deployment switch: false forces every user to bring their own key.
     llm_allow_server_fallback: bool = True
@@ -151,6 +151,12 @@ class Settings(BaseSettings):
     fetch_url_max_kb: int = 512
     # 逗号分隔的域名 allowlist；为空表示任意公网域名（仍受只读/确认模式门禁）
     fetch_url_allowed_domains: str = ""
+    # 联网搜索：默认 DuckDuckGo（无需 Key）；也可用 Brave Search API。
+    enable_web_search: bool = True
+    web_search_provider: str = "auto"   # auto | bing | duckduckgo | brave
+    web_search_api_key: str = ""
+    web_search_max_results: int = 6
+    web_search_timeout: int = 20
 
     # ---------- Skills ----------
     skills_enabled: bool = True

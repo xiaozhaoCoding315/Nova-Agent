@@ -540,6 +540,31 @@ export type Health = {
   components: Record<string, unknown>
 }
 
+export type ExtensionTool = {
+  name: string
+  description: string
+  admin_only: boolean
+}
+
+export type ExtensionServer = {
+  name: string
+  tools: ExtensionTool[]
+}
+
+export type SkillInfo = {
+  name: string
+  description: string
+  triggers: string[]
+}
+
+export type Extensions = {
+  mcp_enabled: boolean
+  mcp_ready: boolean
+  mcp_servers: ExtensionServer[]
+  skills_enabled: boolean
+  skills: SkillInfo[]
+}
+
 export type Usage = {
   today_tokens: number
   daily_token_budget: number
