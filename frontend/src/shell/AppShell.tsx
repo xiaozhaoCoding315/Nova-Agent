@@ -67,8 +67,16 @@ export function AppShell() {
   const [railOpen, setRailOpen] = useState(false)
   /** 右侧上下文栏的 `< lg` 覆盖层；桌面可见性由 collapsed 决定。 */
   const [contextRailOpen, setContextRailOpen] = useState(false)
-  const [contextRailCollapsed, setContextRailCollapsed] = useState(
-    () => localStorage.getItem('nova.rail.collapsed') === '1',
+  const [contextRailCollapsed, setContextRailCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('nova.rail.collapsed') === '1'
+    } catch {
+      return false
+    }
+  })
+  /** 桌面断点：`lg+` 的右栏由 collapsed 控制可见性，窄屏由覆盖层 open 控制。 */
+  const [desktopRail, setDesktopRail] = useState(
+    () => window.matchMedia('(min-width: 1024px)').matches,
   )
   const [localAgentOpen, setLocalAgentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -146,6 +154,13 @@ export function AppShell() {
     }
   }, [contextRailCollapsed])
 
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)')
+    const onChange = () => setDesktopRail(query.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+
   const openSettings = () => {
     setOverlay('settings')
     setRailOpen(false)
@@ -183,6 +198,7 @@ export function AppShell() {
   }
 
   const currentRepoId = historyRepoId ?? selectedRepoIds[0] ?? undefined
+  const contextRailActive = desktopRail ? !contextRailCollapsed : contextRailOpen
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -349,6 +365,7 @@ export function AppShell() {
       <ContextRail
         open={contextRailOpen}
         collapsed={contextRailCollapsed}
+        active={contextRailActive}
         repoId={currentRepoId}
         onClose={() => setContextRailOpen(false)}
         onToggle={toggleContextRail}

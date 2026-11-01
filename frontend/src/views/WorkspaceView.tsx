@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
   Activity, ArrowLeft, CheckCircle2, ChevronDown, FilePlus2, FlaskConical, FolderOpen, GitBranch, GitCompare,
-  Radar, RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
+  MoreHorizontal, Radar, RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
@@ -132,7 +132,7 @@ export function WorkspaceView({
   embedded?: boolean
   onClose?: () => void
 } = {}) {
-  const { repos, refresh, remove, reindex } = useRepos()
+  const { repos, refresh, remove, reindex, clearError } = useRepos()
   const localMode = useMode((s) => s.mode?.local ?? false)
   const [localOpen, setLocalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -144,6 +144,10 @@ export function WorkspaceView({
   const [treeError, setTreeError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [projectBusy, setProjectBusy] = useState<'reindex' | 'remove' | null>(null)
+  const [projectMessage, setProjectMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -292,6 +296,48 @@ export function WorkspaceView({
     moreItems.push({ key: 'deploy', label: '预览部署', icon: <Rocket size={12} /> })
   }
 
+  const closeProjectMenu = () => {
+    setProjectMenuOpen(false)
+    setConfirmRemove(false)
+  }
+
+  // 内嵌抽屉隐藏了左侧项目列表，重建索引改从这里发起；store 已处理并记录错误。
+  const reindexProject = async () => {
+    if (!selected || projectBusy) return
+    setProjectBusy('reindex')
+    setProjectMessage(null)
+    clearError()
+    await reindex(selected.id)
+    const failure = useRepos.getState().error
+    setProjectBusy(null)
+    if (failure) {
+      setProjectMessage({ tone: 'err', text: failure })
+      return
+    }
+    setProjectMessage({ tone: 'ok', text: '已开始重建索引' })
+    closeProjectMenu()
+  }
+
+  // 移除成功后关闭抽屉；失败时保持抽屉打开并展示原因。
+  const removeProject = async () => {
+    if (!selected || projectBusy) return
+    const repoId = selected.id
+    setProjectBusy('remove')
+    setProjectMessage(null)
+    clearError()
+    await remove(repoId)
+    const stillExists = useRepos.getState().repos.some((repo) => repo.id === repoId)
+    setProjectBusy(null)
+    if (stillExists) {
+      setProjectMessage({ tone: 'err', text: useRepos.getState().error ?? '移除项目失败' })
+      return
+    }
+    closeProjectMenu()
+    setSelectedId(null)
+    setSelectedPath(null)
+    onClose?.()
+  }
+
   return (
     <div className="flex h-full min-h-0">
       {!embedded && (
@@ -392,6 +438,85 @@ export function WorkspaceView({
               >
                 {selected.name}
               </p>
+              {embedded && (
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => {
+                      setProjectMenuOpen((value) => !value)
+                      setConfirmRemove(false)
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors duration-150 hover:bg-raised hover:text-ink"
+                    title={`项目操作 · ${selected.name}`}
+                    aria-label="项目操作"
+                    aria-haspopup="menu"
+                    aria-expanded={projectMenuOpen}
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
+                  {projectMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={closeProjectMenu} aria-hidden="true" />
+                      <div
+                        role="menu"
+                        aria-label="项目操作"
+                        className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-edge bg-panel p-1 shadow-pop"
+                      >
+                        <p
+                          className="truncate px-2 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-faint"
+                          title={selected.name}
+                        >
+                          {selected.name}
+                        </p>
+                        {confirmRemove ? (
+                          <div className="rounded-md border border-err/40 bg-err/5 p-2">
+                            <p className="text-xs leading-relaxed text-err">
+                              确认移除项目？索引会被删除，此操作不可撤销。
+                            </p>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <button
+                                role="menuitem"
+                                onClick={() => void removeProject()}
+                                disabled={projectBusy != null}
+                                className="flex h-6 flex-1 items-center justify-center gap-1 rounded-sm border border-err/50 px-1.5 text-2xs text-err transition-colors duration-150 hover:bg-err/10 disabled:opacity-50"
+                              >
+                                {projectBusy === 'remove' && <Spinner className="h-3 w-3" />}
+                                确认移除
+                              </button>
+                              <button
+                                onClick={() => setConfirmRemove(false)}
+                                disabled={projectBusy != null}
+                                className="flex h-6 flex-1 items-center justify-center rounded-sm border border-edge px-1.5 text-2xs text-dim transition-colors duration-150 hover:text-ink disabled:opacity-50"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              role="menuitem"
+                              onClick={() => void reindexProject()}
+                              disabled={projectBusy != null}
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-dim transition-colors duration-150 hover:bg-raised hover:text-ink disabled:opacity-50"
+                            >
+                              {projectBusy === 'reindex' ? <Spinner className="h-3 w-3" /> : <RefreshCw size={12} />}
+                              重建索引
+                            </button>
+                            <button
+                              role="menuitem"
+                              onClick={() => setConfirmRemove(true)}
+                              disabled={projectBusy != null}
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-dim transition-colors duration-150 hover:bg-raised hover:text-err disabled:opacity-50"
+                            >
+                              <Trash2 size={12} /> 移除项目
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <button
                 className="shrink-0 text-[11px] text-dim hover:text-ink lg:hidden"
                 onClick={() => setImportOpen(true)}
@@ -407,6 +532,17 @@ export function WorkspaceView({
                 <Sparkles size={13} />
               </button>
             </div>
+            {embedded && projectMessage && (
+              <div
+                className={clsx(
+                  'shrink-0 border-b border-edge/70 px-3 py-1.5 text-xs leading-relaxed',
+                  projectMessage.tone === 'ok' ? 'text-ok' : 'text-err',
+                )}
+                role="status"
+              >
+                {projectMessage.text}
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto px-1">
               {treeLoading && (
                 <p className="flex items-center gap-2 px-3 py-3 text-[12.5px] text-dim">

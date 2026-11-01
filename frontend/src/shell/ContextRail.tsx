@@ -81,6 +81,7 @@ function runTone(status: string | undefined): 'dim' | 'ok' | 'warn' | 'err' | 'a
 export function ContextRail({
   open,
   collapsed,
+  active,
   repoId,
   onClose,
   onToggle,
@@ -91,6 +92,8 @@ export function ContextRail({
   open: boolean
   /** `lg+` 收起状态（持久化在 nova.rail.collapsed）。 */
   collapsed: boolean
+  /** 右栏当前是否可见：可见时才会拉取文件树与 diff。 */
+  active: boolean
   repoId?: string
   onClose: () => void
   onToggle: () => void
@@ -109,6 +112,7 @@ export function ContextRail({
   const [tree, setTree] = useState<FileNode[]>([])
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeError, setTreeError] = useState<string | null>(null)
+  const [treeTick, setTreeTick] = useState(0)
   const [diff, setDiff] = useState<string | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | null>(null)
@@ -128,10 +132,21 @@ export function ContextRail({
     setLastPath(null)
   }, [repoId])
 
-  const activeRepoId = repoOverride ?? repoId ?? repos[0]?.id ?? null
+  // 项目被移除后，手动覆盖的 id 不应继续生效（否则下拉框选不中任何项）。
+  useEffect(() => {
+    if (repoOverride && !repos.some((repo) => repo.id === repoOverride)) {
+      setRepoOverride(null)
+    }
+  }, [repoOverride, repos])
+
+  const overrideRepoId = repoOverride && repos.some((repo) => repo.id === repoOverride)
+    ? repoOverride
+    : null
+  const activeRepoId = overrideRepoId ?? repoId ?? repos[0]?.id ?? null
   const activeRepo = repos.find((repo) => repo.id === activeRepoId) ?? null
 
   useEffect(() => {
+    if (!active) return
     if (tab !== 'files' || !activeRepo || activeRepo.status !== 'ready') {
       if (activeRepo?.status !== 'ready') {
         setTree([])
@@ -156,9 +171,10 @@ export function ContextRail({
     return () => {
       cancelled = true
     }
-  }, [tab, activeRepo?.id, activeRepo?.status])
+  }, [active, tab, activeRepo?.id, activeRepo?.status, treeTick])
 
   useEffect(() => {
+    if (!active) return
     if (tab !== 'changes' || !activeRepo || activeRepo.status !== 'ready') {
       setDiff(null)
       setDiffError(null)
@@ -185,9 +201,10 @@ export function ContextRail({
     return () => {
       cancelled = true
     }
-  }, [tab, activeRepo?.id, activeRepo?.status, diffTick])
+  }, [active, tab, activeRepo?.id, activeRepo?.status, diffTick])
 
-  const runActive = runOpen && Boolean(runTask)
+  // 恢复任务失败时 task 为 null 但 open 仍为 true：仍要挂载 RunPanel 展示错误。
+  const runActive = runOpen
   const diffFiles = countDiffFiles(diff)
   const counts = useMemo<Record<RailTab, number>>(() => ({
     files: countFiles(tree),
@@ -202,7 +219,12 @@ export function ContextRail({
     void useRun.getState().refresh()
   }
 
-  const diffLines = (diff ?? '').split('\n')
+  // 末尾换行会 split 出一个空元素，计数前去掉，避免 200 行显示成 201。
+  const diffLines = useMemo(() => {
+    const lines = (diff ?? '').split('\n')
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+    return lines
+  }, [diff])
   const diffPreview = diffLines.slice(0, 200)
 
   return (
@@ -348,7 +370,16 @@ export function ContextRail({
                         <Spinner /> 加载文件树…
                       </p>
                     ) : treeError ? (
-                      <p className="px-3 py-3 text-xs text-err">{treeError}</p>
+                      <div className="space-y-1.5 px-3 py-3">
+                        <p className="text-xs leading-relaxed text-err">{treeError}</p>
+                        <button
+                          onClick={() => setTreeTick((value) => value + 1)}
+                          className="flex h-6 items-center gap-1 rounded-sm border border-edge px-1.5 text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+                          aria-label="重试加载文件树"
+                        >
+                          <RefreshCw size={11} /> 重试
+                        </button>
+                      </div>
                     ) : (
                       <FileTree
                         nodes={tree}
