@@ -21,8 +21,15 @@ type RunState = {
 }
 
 const POLL_INTERVAL = 1500
+const MAX_POLL_FAILURES = 5
+const RUN_PREFIX = 'nova.run.'
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollFailures = 0
+/** 同一时刻只允许一个轮询请求；手动刷新与轮询共用这个令牌。 */
+let refreshInFlight = false
+/** 递增令牌让晚到的响应失效（切换任务、关闭面板或换会话后不得回写）。 */
+let refreshGeneration = 0
 
 function isActive(status: string | undefined | null): boolean {
   return status === 'running' || status === 'queued'
@@ -32,6 +39,23 @@ function stopPolling() {
   if (pollTimer != null) {
     clearInterval(pollTimer)
     pollTimer = null
+  }
+  pollFailures = 0
+  refreshGeneration += 1
+  refreshInFlight = false
+}
+
+/** 账号切换时清掉所有运行记录，避免把上一账号的任务带进新账号。 */
+export function clearStoredRuns(): void {
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (key?.startsWith(RUN_PREFIX)) keys.push(key)
+    }
+    for (const key of keys) localStorage.removeItem(key)
+  } catch {
+    /* localStorage 不可用时没有持久化记录可清 */
   }
 }
 
@@ -75,6 +99,7 @@ export const useRun = create<RunState>((set, get) => {
   const schedulePolling = () => {
     if (pollTimer != null) return
     pollTimer = setInterval(() => {
+      if (refreshInFlight) return
       void get().refresh()
     }, POLL_INTERVAL)
   }
@@ -96,24 +121,48 @@ export const useRun = create<RunState>((set, get) => {
     restore: async (taskId) => {
       stopPolling()
       set({ taskId, task: null, open: true, error: null })
+      const sessionId = useChat.getState().sessionId
+      const requestId = ++refreshGeneration
+      refreshInFlight = true
       try {
         const task = await api.tasks.get(taskId)
-        if (get().taskId !== taskId) return
+        if (
+          requestId !== refreshGeneration
+          || get().taskId !== taskId
+          || useChat.getState().sessionId !== sessionId
+        ) return
         set({ task, error: null })
         if (isActive(task.status)) schedulePolling()
       } catch (err) {
-        writeStoredRun(useChat.getState().sessionId, null)
+        if (
+          requestId !== refreshGeneration
+          || get().taskId !== taskId
+          || useChat.getState().sessionId !== sessionId
+        ) return
+        // 只清理发起本次恢复的会话 key，绝不误删刚切换到的另一个会话。
+        writeStoredRun(sessionId, null)
         set({ taskId: null, task: null, error: errorText(err, '加载修复任务失败') })
+      } finally {
+        if (requestId === refreshGeneration) refreshInFlight = false
       }
     },
 
     refresh: async () => {
       const taskId = get().taskId
-      if (!taskId) return
+      // 面板关闭后不再刷新；重新打开由入口先置 open=true 再调用 refresh。
+      if (!taskId || !get().open) return
+      const sessionId = useChat.getState().sessionId
       const before = get().task
+      const requestId = ++refreshGeneration
+      refreshInFlight = true
       try {
         const task = await api.tasks.get(taskId)
-        if (get().taskId !== taskId) return
+        if (
+          requestId !== refreshGeneration
+          || get().taskId !== taskId
+          || useChat.getState().sessionId !== sessionId
+        ) return
+        pollFailures = 0
         set({ task, error: null })
         if (isActive(task.status)) {
           schedulePolling()
@@ -123,7 +172,16 @@ export const useRun = create<RunState>((set, get) => {
           if (before && isActive(before.status)) void useRepos.getState().refresh()
         }
       } catch (err) {
+        if (
+          requestId !== refreshGeneration
+          || get().taskId !== taskId
+          || useChat.getState().sessionId !== sessionId
+        ) return
+        pollFailures += 1
         set({ error: errorText(err, '刷新修复任务失败') })
+        if (pollFailures >= MAX_POLL_FAILURES) stopPolling()
+      } finally {
+        if (requestId === refreshGeneration) refreshInFlight = false
       }
     },
 
@@ -144,10 +202,12 @@ export const useRun = create<RunState>((set, get) => {
       set({ error: null })
       try {
         await api.tasks.apply(taskId)
+        if (get().taskId !== taskId) return
         await get().refresh()
         await useRepos.getState().refresh()
         await get().loadRecent(get().task?.repo_id ?? null)
       } catch (err) {
+        if (get().taskId !== taskId) return
         set({ error: errorText(err, '应用补丁失败') })
       }
     },
@@ -158,15 +218,21 @@ export const useRun = create<RunState>((set, get) => {
       set({ error: null })
       try {
         await api.tasks.reject(taskId)
+        if (get().taskId !== taskId) return
         await get().refresh()
         await useRepos.getState().refresh()
         await get().loadRecent(get().task?.repo_id ?? null)
       } catch (err) {
+        if (get().taskId !== taskId) return
         set({ error: errorText(err, '拒绝修复失败') })
       }
     },
 
-    close: () => set({ open: false }),
+    close: () => {
+      // 关闭面板后不再轮询；重新打开时会主动 refresh 并恢复轮询。
+      stopPolling()
+      set({ open: false })
+    },
 
     reset: () => {
       stopPolling()

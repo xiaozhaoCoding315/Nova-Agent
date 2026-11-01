@@ -17,6 +17,7 @@ const STATUS_META: Record<string, { label: string; tone: 'dim' | 'ok' | 'warn' |
   applied: { label: '已应用', tone: 'ok' },
   rejected: { label: '已拒绝', tone: 'dim' },
   failed: { label: '失败', tone: 'err' },
+  canceled: { label: '已取消', tone: 'dim' },
 }
 
 const STEP_LABEL: Record<string, string> = {
@@ -27,6 +28,7 @@ const STEP_LABEL: Record<string, string> = {
   error: '执行出错',
   running: '执行中',
   done: '完成',
+  canceled: '已取消',
 }
 
 type StepState = 'ok' | 'warn' | 'err' | 'idle'
@@ -301,9 +303,11 @@ export function RunPanel() {
               </p>
             </div>
 
-            {steps.length > 0 && (
+            {(steps.length > 0 || task.status === 'running' || task.status === 'queued') && (
               <section className="space-y-1.5">
-                <h3 className="text-[10.5px] uppercase tracking-[0.12em] text-dim">步骤</h3>
+                {steps.length > 0 && (
+                  <h3 className="text-[10.5px] uppercase tracking-[0.12em] text-dim">步骤</h3>
+                )}
                 {steps.map((step, index) => <StepRow key={`${step.step}-${index}`} step={step} />)}
                 {(task.status === 'running' || task.status === 'queued') && (
                   <p className="flex items-center gap-2 px-1 pt-0.5 text-[11px] text-dim">

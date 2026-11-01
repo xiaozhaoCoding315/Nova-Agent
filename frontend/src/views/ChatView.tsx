@@ -73,6 +73,10 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const prevSessionId = useRef<string | null | undefined>(undefined)
+  /** 本次会话 id 是新对话发送后由 meta 创建的，而不是用户从列表打开的历史会话。 */
+  const sessionCreatedBySend = useRef(false)
+  /** 发送时的会话选择版本；期间用户从列表选过会话就不再迁移新对话任务。 */
+  const sendSelectionRevision = useRef(0)
 
   useEffect(() => {
     void refresh()
@@ -99,18 +103,25 @@ export function ChatView({
       else run.close()
       return
     }
-    if (sessionId === null && previous !== null) {
-      run.reset()
+    if (sessionId === null) {
+      sessionCreatedBySend.current = false
+      if (previous !== null) run.reset()
       return
     }
-    if (previous === null && sessionId) {
-      if (run.taskId) {
+    if (previous === null) {
+      const saved = readStoredRun(sessionId)
+      const createdBySend = sessionCreatedBySend.current
+      const selectedSinceSend = useChat.getState().selectionRevision !== sendSelectionRevision.current
+      sessionCreatedBySend.current = false
+      if (createdBySend && !selectedSinceSend && run.taskId && (!saved || saved === run.taskId)) {
+        // 新对话刚通过发送变成真实会话：把 `nova.run.new` 迁移到该会话。
         writeStoredRun(sessionId, run.taskId)
         writeStoredRun(null, null)
+      } else if (saved) {
+        // 用户从会话列表打开已有会话：恢复它自己的运行，绝不迁移新对话的任务。
+        void run.restore(saved)
       } else {
-        // 从新对话切回已有会话时，恢复该会话上次的运行面板。
-        const saved = readStoredRun(sessionId)
-        if (saved) void run.restore(saved)
+        run.reset()
       }
       return
     }
@@ -159,7 +170,21 @@ export function ChatView({
 
   const openRunPanel = (repoId?: string) => {
     if (onOpenRun) onOpenRun(repoId)
-    else useRun.setState({ open: true })
+    // 关闭面板会停轮询；重新打开时先取一次最新状态并恢复轮询。
+    useRun.setState({ open: true })
+    void useRun.getState().refresh()
+  }
+
+  /** 发送消息，并记录本次 sessionId 是否由这次「新对话发送」产生。 */
+  const sendPrompt = (content: string, repoIds: string[]) => {
+    if (useChat.getState().sessionId === null) {
+      sessionCreatedBySend.current = true
+      sendSelectionRevision.current = useChat.getState().selectionRevision
+    }
+    void send(content, repoIds).finally(() => {
+      // 发送失败、没有被后端分配会话时，别让标记泄漏到下一次选择会话。
+      if (useChat.getState().sessionId === null) sessionCreatedBySend.current = false
+    })
   }
 
   /** 斜杠命令入口；返回 false 时 Composer 保留草稿，方便修改后重试。 */
@@ -198,7 +223,7 @@ export function ChatView({
         notice('请在 /plan 后写明目标，例如 /plan 给登录接口加分页', 'error')
         return false
       }
-      void chat.send(
+      sendPrompt(
         `请先给出实施计划，不要修改文件或执行会改变状态的命令。\n\n目标：${args}`,
         chat.selectedRepoIds,
       )
@@ -215,7 +240,7 @@ export function ChatView({
           notice('当前仓库没有未提交的改动')
           return true
         }
-        void chat.send(
+        sendPrompt(
           `请审查下面的 git diff，指出正确性风险、回归风险与缺失测试；不要修改文件。\n\n\`\`\`diff\n${diff.slice(0, 6000)}\n\`\`\``,
           chat.selectedRepoIds,
         )
@@ -433,7 +458,7 @@ export function ChatView({
                     <button
                       key={example.title}
                       className="rounded-xl border border-edge bg-panel/60 p-3 text-left transition-colors hover:border-accentSoft hover:bg-panel"
-                      onClick={() => void send(example.text, selectedRepoIds)}
+                      onClick={() => sendPrompt(example.text, selectedRepoIds)}
                     >
                       <p className="text-[12.5px] font-medium text-ink">{example.title}</p>
                       <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-dim">{example.text}</p>
@@ -483,7 +508,7 @@ export function ChatView({
               <button
                 onClick={() => {
                   useChat.setState({ turnNotice: null })
-                  void send('请从中断处继续完成刚才的任务，完成所有步骤后给出总结。', selectedRepoIds)
+                  sendPrompt('请从中断处继续完成刚才的任务，完成所有步骤后给出总结。', selectedRepoIds)
                 }}
                 className="shrink-0 rounded-lg border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accentSoft/40"
               >
@@ -540,7 +565,7 @@ export function ChatView({
           onRemoveAttachment={(id) => void removeAttachment(id)}
           onConfigureModel={onOpenSettings}
           onSend={(content) => {
-            void send(content, selectedRepoIds)
+            sendPrompt(content, selectedRepoIds)
           }}
           onCommand={executeCommand}
           onStop={stop}

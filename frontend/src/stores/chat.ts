@@ -14,6 +14,8 @@ import { useLlm } from './llm'
 type ChatState = {
   sessions: Session[]
   sessionId: string | null
+  /** 用户主动选择/新建会话时递增，用来区分「发送后 meta 创建」与「从列表打开」。 */
+  selectionRevision: number
   messages: Message[]
   streaming: boolean
   streamText: string
@@ -84,6 +86,7 @@ function activeProviderSpec(provider: string | null | undefined): LlmProvider | 
 export const useChat = create<ChatState>((set, get) => ({
   sessions: [],
   sessionId: null,
+  selectionRevision: 0,
   messages: [],
   streaming: false,
   streamText: '',
@@ -237,6 +240,7 @@ export const useChat = create<ChatState>((set, get) => ({
       )
       set({
         sessionId: id,
+        selectionRevision: get().selectionRevision + 1,
         messages,
         refs: [],
         error: null,
@@ -262,7 +266,9 @@ export const useChat = create<ChatState>((set, get) => ({
     if (get().streaming) return
     const inherited = get().historyRepoId
     set({
-      sessionId: null, messages: [], refs: [], model: null, provider: null,
+      sessionId: null,
+      selectionRevision: get().selectionRevision + 1,
+      messages: [], refs: [], model: null, provider: null,
       reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null, error: null, plan: null,
       approvals: [], selectedRepoIds: inherited ? [inherited] : [], attachments: [],
       contextMeter: null,

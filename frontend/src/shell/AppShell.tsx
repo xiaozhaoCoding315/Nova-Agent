@@ -178,23 +178,35 @@ export function AppShell() {
           setOverlay('settings')
           setRailOpen(false)
         }
-      } else if (event.key === 'Escape') {
-        // 内层（如命令面板输入框）已处理的 Esc 不再关闭下层。
-        if (event.defaultPrevented) return
-        // 每次只关闭最上层：命令面板 → 对话框 → 覆盖层 → 抽屉。
-        if (paletteOpen) {
-          setPaletteOpen(false)
-        } else if (setupOpen) {
-          setSetupOpen(false)
-        } else if (overlay) {
-          setOverlay(null)
-        } else if (railOpen) {
-          setRailOpen(false)
-        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Esc 必须在捕获阶段处理：AppShell 会随覆盖层状态重订阅监听器，若留在冒泡阶段，
+  // 后挂载的 RunPanel 可能先收到事件并关闭自己，反而留下设置覆盖层。
+  // 每次只关闭最上层：命令面板 → 对话框 → 覆盖层 → 抽屉；标记已处理后下层忽略。
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (paletteOpen) {
+        event.preventDefault()
+        setPaletteOpen(false)
+      } else if (setupOpen) {
+        event.preventDefault()
+        setSetupOpen(false)
+      } else if (overlay) {
+        event.preventDefault()
+        setOverlay(null)
+      } else if (railOpen) {
+        event.preventDefault()
+        setRailOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onEscape, true)
+    return () => window.removeEventListener('keydown', onEscape, true)
   }, [paletteOpen, setupOpen, overlay, railOpen])
 
   const actions = useMemo<PaletteAction[]>(() => {

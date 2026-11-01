@@ -204,9 +204,12 @@ export function Composer({
         return
       }
       if (e.key === 'Tab') {
-        e.preventDefault()
         const command = slashMatches[slashIndex] ?? slashMatches[0]
-        if (command) applySlash(command.name)
+        if (command) {
+          e.preventDefault()
+          applySlash(command.name)
+        }
+        // 无匹配时不拦截 Tab，让键盘焦点可以正常离开输入框。
         return
       }
       if (e.key === 'Escape') {

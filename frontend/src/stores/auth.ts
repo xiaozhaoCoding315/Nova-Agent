@@ -4,11 +4,18 @@ import type { AuthConfig, RegisterResult, User } from '../lib/types'
 import { useChat } from './chat'
 import { useLlm } from './llm'
 import { useRepos } from './repos'
+import { clearStoredRuns, useRun } from './run'
 
-function resetUserData() {
+function resetUserData(options: { clearRunStorage?: boolean } = {}) {
   useChat.getState().reset()
   useRepos.getState().reset()
   useLlm.getState().reset()
+  // 运行面板不属于 chat store：必须单独停轮询并清空，否则上一个账号的任务会
+  // 被下一个账号看到，失败的轮询也会在后台一直重试。
+  useRun.getState().reset()
+  // 登录/登出等明确的账号切换要连按会话保存的运行记录一起清掉；初始 auth
+  // 校验不清，保留同一浏览器刷新后的会话恢复能力。
+  if (options.clearRunStorage) clearStoredRuns()
 }
 
 type AuthState = {
@@ -41,10 +48,11 @@ export const useAuth = create<AuthState>((set, get) => ({
   check: async () => {
     try {
       const user = await api.me()
-      if (get().user?.id !== user.id) resetUserData()
+      const previous = get().user
+      if (previous?.id !== user.id) resetUserData({ clearRunStorage: Boolean(previous) })
       set({ user, checked: true })
     } catch {
-      resetUserData()
+      resetUserData({ clearRunStorage: Boolean(get().user) })
       set({ user: null, checked: true })
     }
   },
@@ -60,7 +68,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   login: async (username, password) => {
     try {
       const user = await api.login(username, password)
-      resetUserData()
+      resetUserData({ clearRunStorage: true })
       set({ user })
     } catch (err) {
       throw new ApiError(err instanceof ApiError ? err.status : 0,
@@ -71,14 +79,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   register: async (username, password, options) => {
     const opts = options ?? {}
     const result = await api.register(username, password, opts.displayName, opts.inviteCode, opts.email, opts.emailCode)
-    resetUserData()
+    resetUserData({ clearRunStorage: true })
     set({ user: result.user, pendingRecoveryCode: result.recovery_code })
     return result
   },
 
   guest: async () => {
     const user = await api.guest()
-    resetUserData()
+    resetUserData({ clearRunStorage: true })
     set({ user })
   },
 
@@ -86,7 +94,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       await api.logout()
     } finally {
-      resetUserData()
+      resetUserData({ clearRunStorage: true })
       set({ user: null, pendingRecoveryCode: null })
     }
   },
