@@ -171,3 +171,39 @@ async def test_cleanup_expired_stops_old_running(monkeypatch):
 async def test_cleanup_expired_disabled(monkeypatch):
     monkeypatch.setattr(service.settings, "preview_ttl_minutes", 0)
     assert await service.cleanup_expired() == 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_repo_resources_is_inert_in_local_mode(monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    docker = AsyncMock()
+    query = AsyncMock(side_effect=AssertionError("local cleanup must not query DB"))
+    monkeypatch.setattr(service, "_docker", docker)
+    monkeypatch.setattr(db, "query", query)
+
+    result = await service.cleanup_repo_resources("repo-1", 1)
+
+    assert result == {"containers": 0, "workspaces": 0, "volumes": 0}
+    docker.assert_not_awaited()
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_repo_resources_server_mode_removes_containers_and_volumes(monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    query = AsyncMock(return_value=[("d1", "nova-preview-abc", None)])
+    execute = AsyncMock(return_value=[])
+    docker = AsyncMock()
+    monkeypatch.setattr(db, "query", query)
+    monkeypatch.setattr(db, "execute", execute)
+    monkeypatch.setattr(service, "_docker", docker)
+
+    result = await service.cleanup_repo_resources("repo-1", 1)
+
+    assert result == {"containers": 1, "workspaces": 0, "volumes": 2}
+    commands = [call.args[0][:2] for call in docker.await_args_list]
+    assert commands == [["docker", "rm"], ["docker", "volume"], ["docker", "volume"]]

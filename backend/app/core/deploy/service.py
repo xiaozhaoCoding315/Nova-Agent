@@ -348,6 +348,10 @@ async def teardown_preview(user: dict, deploy_id: str) -> dict:
 
 async def cleanup_repo_resources(repo_id: str, user_id: int) -> dict:
     """Best-effort removal of previews, workspaces and dependency volumes."""
+    if settings.is_local:
+        # Local mode has no Docker; stay inert even if a future caller bypasses
+        # the server-only API gate.
+        return {"containers": 0, "workspaces": 0, "volumes": 0}
     from app.db import execute, query
 
     rows = await query(

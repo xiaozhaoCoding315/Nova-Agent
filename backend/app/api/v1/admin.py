@@ -1,6 +1,8 @@
-"""Admin user management."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+"""Admin user management (server mode only)."""
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.routing import APIRoute
 
+from app.config import settings
 from app.core.security.accounts import (
     admin_delete_user,
     admin_reset_password,
@@ -26,7 +28,29 @@ from app.models.schemas import (
     UserOut,
 )
 
-router = APIRouter()
+def require_server_mode() -> None:
+    """Local mode has no accounts or guests; admin routes never apply there."""
+    if settings.is_local:
+        raise HTTPException(status_code=404, detail="本地模式不提供管理接口")
+
+
+class _ServerModeRoute(APIRoute):
+    """Reject local mode before FastAPI reads the body or resolves auth."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            require_server_mode()
+            return await original(request)
+
+        return handler
+
+
+router = APIRouter(
+    route_class=_ServerModeRoute,
+    dependencies=[Depends(require_server_mode)],
+)
 
 
 @router.get("/admin/usage/sources", response_model=list[SourceUsageOut])
