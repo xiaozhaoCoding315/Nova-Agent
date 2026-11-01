@@ -1,0 +1,542 @@
+import clsx from 'clsx'
+import { Check, Loader2, Search, Star, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ProviderIcon } from '../components/ProviderIcon'
+import { ApiError } from '../lib/api'
+import { providerSupportsReasoning, providerSupportsTemperature } from '../lib/overrides'
+import type { LlmOverrides, LlmProvider, LlmSettings } from '../lib/types'
+import { useChat } from '../stores/chat'
+import { useLlm } from '../stores/llm'
+
+const REASONING_OPTIONS: { value: '' | 'low' | 'medium' | 'high'; label: string }[] = [
+  { value: '', label: '自动' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+]
+
+const CONTEXT_PRESETS = [32_000, 64_000, 128_000, 200_000]
+
+const optionClass = (selected: boolean, disabled = false) => clsx(
+  'rounded-sm border px-1.5 py-1 text-xs transition-colors',
+  selected
+    ? 'border-accent/50 bg-accentSoft/40 text-ink'
+    : 'border-edge text-dim hover:border-accent/30 hover:text-ink',
+  disabled && 'cursor-not-allowed opacity-40 hover:border-edge hover:text-dim',
+)
+
+const inputClass =
+  'rounded-md border border-edge bg-base/60 px-2 py-1 text-xs text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50 disabled:opacity-50'
+
+function formatWindow(value: number): string {
+  return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)
+}
+
+export function ModelPicker({
+  open,
+  onClose,
+  settings,
+  value,
+  onChange,
+  onSetDefault,
+  onConfigure,
+  placement = 'above',
+}: {
+  open: boolean
+  onClose: () => void
+  settings: LlmSettings | null
+  value: LlmOverrides
+  onChange: (patch: LlmOverrides) => void
+  onSetDefault: () => Promise<void>
+  onConfigure: () => void
+  /** 输入框内的 popover 向上展开；项目头里的向下展开。 */
+  placement?: 'above' | 'below'
+}) {
+  const [query, setQuery] = useState('')
+  const [customModel, setCustomModel] = useState('')
+  const [customContext, setCustomContext] = useState('')
+  const [tempDraft, setTempDraft] = useState(1)
+  const [savingDefault, setSavingDefault] = useState(false)
+  const [defaultFeedback, setDefaultFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+  const feedbackTimer = useRef<number | null>(null)
+
+  const providers = settings?.providers ?? []
+  const credentials = settings?.credentials ?? []
+  const credentialMap = useMemo(
+    () => new Map(credentials.map((credential) => [credential.provider, credential])),
+    [credentials],
+  )
+  const defaultCredential = credentials.find((credential) => credential.is_default) ?? credentials[0] ?? null
+  const activeProviderId = value.provider ?? defaultCredential?.provider ?? settings?.provider ?? null
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? null
+  const activeCredential = activeProviderId ? credentialMap.get(activeProviderId) ?? null : null
+
+  const orderedProviders = useMemo(() => {
+    const configured = credentials
+      .map((credential) => providers.find((provider) => provider.id === credential.provider))
+      .filter((provider): provider is LlmProvider => Boolean(provider))
+    const rest = providers.filter((provider) => !credentialMap.has(provider.id))
+    return [...configured, ...rest]
+  }, [credentials, providers, credentialMap])
+
+  const currentModel = value.model ?? activeCredential?.model ?? null
+  const currentEffort = value.reasoning_effort ?? ''
+  const currentContext = value.context_window ?? null
+  const maxWindow = activeProvider?.context_window && activeProvider.context_window > 0
+    ? activeProvider.context_window
+    : null
+
+  const modelChoices = useMemo(() => {
+    const models = activeProvider?.models ?? []
+    const extra = currentModel && !models.includes(currentModel) ? [currentModel] : []
+    const all = [...extra, ...models]
+    const needle = query.trim().toLowerCase()
+    return needle ? all.filter((model) => model.toLowerCase().includes(needle)) : all
+  }, [activeProvider, currentModel, query])
+
+  useEffect(() => {
+    if (!open) return
+    setQuery('')
+    setCustomModel('')
+    setCustomContext(
+      currentContext != null && !CONTEXT_PRESETS.includes(currentContext) ? String(currentContext) : '',
+    )
+    setTempDraft(value.temperature ?? 1)
+    setDefaultFeedback(null)
+    if (feedbackTimer.current != null) {
+      window.clearTimeout(feedbackTimer.current)
+      feedbackTimer.current = null
+    }
+    // 只在打开时重置；打开期间的选择应立即可见。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    setTempDraft(value.temperature ?? 1)
+  }, [value.temperature])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  useEffect(() => () => {
+    if (feedbackTimer.current != null) window.clearTimeout(feedbackTimer.current)
+  }, [])
+
+  if (!open) return null
+
+  const selectProvider = (provider: LlmProvider) => {
+    const credential = credentialMap.get(provider.id)
+    if (!credential) return
+    onChange({ provider: provider.id, model: credential.model || provider.models[0] || null })
+  }
+
+  const commitCustomModel = () => {
+    const next = customModel.trim()
+    if (!next) return
+    onChange({ model: next })
+    setCustomModel('')
+  }
+
+  const commitContext = () => {
+    const parsed = Number(customContext.replace(/[^0-9]/g, ''))
+    if (!parsed) return
+    const capped = maxWindow != null ? Math.min(parsed, maxWindow) : parsed
+    onChange({ context_window: capped })
+    setCustomContext(String(capped))
+  }
+
+  const commitTemperature = () => {
+    const next = Math.round(tempDraft * 10) / 10
+    if (next !== value.temperature) onChange({ temperature: next })
+  }
+
+  const handleSetDefault = async () => {
+    setSavingDefault(true)
+    setDefaultFeedback(null)
+    try {
+      await onSetDefault()
+      setDefaultFeedback({ ok: true, text: '已设为默认' })
+      if (feedbackTimer.current != null) window.clearTimeout(feedbackTimer.current)
+      feedbackTimer.current = window.setTimeout(() => {
+        setDefaultFeedback(null)
+        feedbackTimer.current = null
+      }, 2000)
+    } catch (err) {
+      setDefaultFeedback({
+        ok: false,
+        text: err instanceof ApiError ? err.message : '设为默认失败',
+      })
+    } finally {
+      setSavingDefault(false)
+    }
+  }
+
+  const handleConfigure = () => {
+    onClose()
+    onConfigure()
+  }
+
+  const canSetDefault = Boolean(activeCredential && currentModel)
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-label="模型选择"
+        className={clsx(
+          'z-50 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-panel shadow-pop',
+          placement === 'below'
+            ? 'fixed inset-x-2 top-12 sm:absolute sm:inset-x-auto sm:left-0 sm:top-full sm:mt-1.5'
+            : 'absolute bottom-full right-0 mb-2',
+        )}
+      >
+        <div className="flex items-center justify-between border-b border-edge/70 px-3 py-2">
+          <p className="text-sm font-medium text-ink">
+            模型 <span className="font-mono text-2xs uppercase tracking-[0.12em] text-faint">仅本会话</span>
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-5 w-5 items-center justify-center rounded-sm text-dim transition-colors hover:bg-raised hover:text-ink"
+            aria-label="关闭模型选择"
+          >
+            <X size={12} />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(100vh-190px)] space-y-3 overflow-y-auto px-3 py-2.5">
+          <section>
+            <p className="mb-1.5 text-2xs uppercase tracking-[0.12em] text-faint">厂商</p>
+            <div className="max-h-40 space-y-0.5 overflow-y-auto pr-0.5">
+              {orderedProviders.length === 0 && (
+                <p className="px-1 py-1 text-xs text-dim">还没有可用的厂商配置。</p>
+              )}
+              {orderedProviders.map((provider) => {
+                const credential = credentialMap.get(provider.id)
+                if (!credential) {
+                  return (
+                    <div
+                      key={provider.id}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 opacity-50"
+                    >
+                      <ProviderIcon id={provider.id} size={15} className="text-faint" />
+                      <span className="min-w-0 flex-1 truncate text-sm text-dim">{provider.label}</span>
+                      <button
+                        type="button"
+                        onClick={onConfigure}
+                        className="shrink-0 rounded-sm border border-edge px-1.5 py-0.5 text-2xs text-dim transition-colors hover:text-ink"
+                        aria-label={`配置 ${provider.label}`}
+                      >
+                        配置
+                      </button>
+                    </div>
+                  )
+                }
+                const selected = provider.id === activeProviderId
+                return (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() => selectProvider(provider)}
+                    aria-pressed={selected}
+                    className={clsx(
+                      'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors',
+                      selected
+                        ? 'border-accent/40 bg-accentSoft/30 text-ink'
+                        : 'border-transparent text-dim hover:bg-raised hover:text-ink',
+                    )}
+                  >
+                    <ProviderIcon
+                      id={provider.id}
+                      size={15}
+                      className={selected ? 'text-accent' : 'text-faint'}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{provider.label}</span>
+                      <span className="block truncate font-mono text-2xs text-faint">
+                        {credential.key_hint || '无 Key'} · {credential.model}
+                      </span>
+                    </span>
+                    {selected && <Check size={12} className="shrink-0 text-accent" />}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section>
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-2xs uppercase tracking-[0.12em] text-faint">模型</p>
+              {activeProvider && (
+                <span className="font-mono text-2xs text-faint">{activeProvider.label}</span>
+              )}
+            </div>
+            {activeProvider && activeCredential ? (
+              <>
+                <label className="relative block">
+                  <Search
+                    size={12}
+                    className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-faint"
+                  />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="搜索模型"
+                    aria-label="搜索模型"
+                    spellCheck={false}
+                    className={clsx(inputClass, 'w-full pl-7')}
+                  />
+                </label>
+                <div className="mt-1.5 max-h-36 space-y-0.5 overflow-y-auto pr-0.5">
+                  {modelChoices.length === 0 && (
+                    <p className="px-1 py-1 text-xs text-dim">没有匹配的模型。</p>
+                  )}
+                  {modelChoices.map((model) => {
+                    const selected = model === currentModel
+                    return (
+                      <button
+                        key={model}
+                        type="button"
+                        onClick={() => onChange({ model })}
+                        aria-pressed={selected}
+                        className={clsx(
+                          'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left font-mono text-xs transition-colors',
+                          selected
+                            ? 'bg-accentSoft/40 text-ink'
+                            : 'text-dim hover:bg-raised hover:text-ink',
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{model}</span>
+                        {selected && <Check size={11} className="shrink-0 text-accent" />}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <input
+                    value={customModel}
+                    onChange={(event) => setCustomModel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      commitCustomModel()
+                    }}
+                    placeholder="自定义模型 ID"
+                    aria-label="自定义模型 ID"
+                    spellCheck={false}
+                    className={clsx(inputClass, 'min-w-0 flex-1 font-mono')}
+                  />
+                  <button
+                    type="button"
+                    onClick={commitCustomModel}
+                    disabled={!customModel.trim()}
+                    className="shrink-0 rounded-sm border border-edge px-2 py-1 text-xs text-dim transition-colors hover:border-accent/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    使用
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="px-1 py-1 text-xs leading-relaxed text-dim">
+                {activeProvider
+                  ? '这家厂商还没有保存 Key，先配置后再选择模型。'
+                  : '先在上面选择一家已配置的厂商。'}
+              </p>
+            )}
+          </section>
+
+          {activeProvider && providerSupportsReasoning(activeProvider) && (
+            <section>
+              <p className="mb-1.5 text-2xs uppercase tracking-[0.12em] text-faint">推理强度</p>
+              <div className="grid grid-cols-4 gap-1" role="group" aria-label="推理强度">
+                {REASONING_OPTIONS.map((option) => (
+                  <button
+                    key={option.value || 'auto'}
+                    type="button"
+                    aria-pressed={currentEffort === option.value}
+                    onClick={() => onChange({ reasoning_effort: option.value })}
+                    className={optionClass(currentEffort === option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {activeProvider && (
+            <section>
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-2xs uppercase tracking-[0.12em] text-faint">上下文窗口</p>
+                {maxWindow != null && (
+                  <span className="font-mono text-2xs text-faint">≤ {formatWindow(maxWindow)}</span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  aria-pressed={currentContext == null}
+                  onClick={() => onChange({ context_window: null })}
+                  className={optionClass(currentContext == null)}
+                >
+                  自动
+                </button>
+                {CONTEXT_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    aria-pressed={currentContext === preset}
+                    disabled={maxWindow != null && preset > maxWindow}
+                    onClick={() => onChange({ context_window: preset })}
+                    className={optionClass(
+                      currentContext === preset,
+                      maxWindow != null && preset > maxWindow,
+                    )}
+                  >
+                    {formatWindow(preset)}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  value={customContext}
+                  onChange={(event) => setCustomContext(event.target.value.replace(/[^0-9]/g, ''))}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    commitContext()
+                  }}
+                  inputMode="numeric"
+                  placeholder="自定义 tokens"
+                  aria-label="自定义上下文窗口"
+                  spellCheck={false}
+                  className={clsx(inputClass, 'min-w-0 flex-1 font-mono')}
+                />
+                <button
+                  type="button"
+                  onClick={commitContext}
+                  disabled={!customContext}
+                  className="shrink-0 rounded-sm border border-edge px-2 py-1 text-xs text-dim transition-colors hover:border-accent/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  使用
+                </button>
+              </div>
+            </section>
+          )}
+
+          {activeProvider && providerSupportsTemperature(activeProvider) && (
+            <section>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-2xs uppercase tracking-[0.12em] text-faint">温度</p>
+                <span className="font-mono text-2xs text-faint">
+                  {value.temperature == null ? '自动' : value.temperature.toFixed(1)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={0.1}
+                value={tempDraft}
+                onChange={(event) => setTempDraft(Number(event.target.value))}
+                onPointerUp={commitTemperature}
+                onKeyUp={commitTemperature}
+                onBlur={commitTemperature}
+                aria-label="温度"
+                className="w-full accent-accent"
+              />
+              <div className="flex justify-between font-mono text-2xs text-faint">
+                <span>0</span>
+                <span>2</span>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 border-t border-edge/70 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => void handleSetDefault()}
+            disabled={!canSetDefault || savingDefault}
+            className="flex items-center gap-1 rounded-md border border-edge bg-raised px-2 py-1 text-xs text-ink transition-colors hover:border-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingDefault
+              ? <Loader2 size={11} className="animate-spin" />
+              : <Star size={11} className="text-accent" />}
+            设为默认
+          </button>
+          <button
+            type="button"
+            onClick={handleConfigure}
+            className="rounded-md px-2 py-1 text-xs text-dim transition-colors hover:text-ink"
+          >
+            管理密钥
+          </button>
+          {defaultFeedback && (
+            <span className={clsx('ml-auto text-2xs', defaultFeedback.ok ? 'text-ok' : 'text-err')}>
+              {defaultFeedback.text}
+            </span>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+/** 把 store 的会话参数与默认 credential 合成 ModelPicker 需要的 props。 */
+export function useModelPicker(): {
+  settings: LlmSettings | null
+  value: LlmOverrides
+  onChange: (patch: LlmOverrides) => void
+  onSetDefault: () => Promise<void>
+} {
+  const settings = useLlm((state) => state.settings)
+  const saveCredential = useLlm((state) => state.saveCredential)
+  const provider = useChat((state) => state.provider)
+  const model = useChat((state) => state.model)
+  const reasoningEffort = useChat((state) => state.reasoningEffort)
+  const contextWindow = useChat((state) => state.contextWindow)
+  const temperature = useChat((state) => state.temperature)
+  const applyOverrides = useChat((state) => state.applyOverrides)
+
+  const credentials = settings?.credentials ?? []
+  const defaultCredential = credentials.find((credential) => credential.is_default) ?? credentials[0] ?? null
+  const activeProviderId = provider ?? defaultCredential?.provider ?? settings?.provider ?? null
+  const activeCredential = credentials.find((credential) => credential.provider === activeProviderId) ?? null
+
+  const value: LlmOverrides = {
+    provider: activeProviderId,
+    model: model ?? activeCredential?.model ?? settings?.model ?? null,
+    reasoning_effort: reasoningEffort
+      || (activeCredential?.reasoning_effort as LlmOverrides['reasoning_effort'])
+      || '',
+    context_window: contextWindow ?? activeCredential?.context_window ?? null,
+    temperature,
+  }
+
+  const onChange = (patch: LlmOverrides) => {
+    void applyOverrides(patch)
+  }
+
+  const onSetDefault = async () => {
+    if (!activeProviderId) throw new Error('请先选择厂商')
+    if (!value.model) throw new Error('请先选择模型')
+    await saveCredential(activeProviderId, {
+      model: value.model,
+      context_window: value.context_window ?? 0,
+      reasoning_effort: value.reasoning_effort ?? '',
+      is_default: true,
+    })
+  }
+
+  return { settings, value, onChange, onSetDefault }
+}

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { StatusDot } from '../components/common'
+import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
 import { api } from '../lib/api'
 import type { GitInfo, Health, PermissionMode, RepoStatus, Usage } from '../lib/types'
 import { useChat } from '../stores/chat'
@@ -60,8 +61,10 @@ export function ChatHeader({
   const setPermissionMode = useChat((state) => state.setPermissionMode)
   const repos = useRepos((state) => state.repos)
   const llmSettings = useLlm((state) => state.settings)
+  const picker = useModelPicker()
 
   const [permissionOpen, setPermissionOpen] = useState(false)
+  const [modelOpen, setModelOpen] = useState(false)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [gitChecked, setGitChecked] = useState(false)
 
@@ -99,11 +102,13 @@ export function ChatHeader({
   }, [currentRepoId, repoStatus])
 
   const permission = PERMISSIONS.find((item) => item.value === permissionMode) ?? PERMISSIONS[1]
-  const modelLabel = llmSettings?.source === 'user'
-    ? [llmSettings.provider, llmSettings.model].filter(Boolean).join('/') || '默认模型'
+  const modelLabel = picker.value.provider && picker.value.model
+    ? `${picker.value.provider}/${picker.value.model}`
     : llmSettings?.source === 'server'
       ? `服务端/${llmSettings.server_model ?? '默认模型'}`
-      : '未配置模型'
+      : llmSettings?.source === 'user'
+        ? [llmSettings.provider, llmSettings.model].filter(Boolean).join('/') || '默认模型'
+        : '未配置模型'
   const modelSource = llmSettings?.source === 'user'
     ? '个人密钥'
     : llmSettings?.source === 'server' ? '服务端密钥' : '未配置'
@@ -151,7 +156,10 @@ export function ChatHeader({
 
       <div className="relative">
         <button
-          onClick={() => setPermissionOpen((value) => !value)}
+          onClick={() => {
+            setModelOpen(false)
+            setPermissionOpen((value) => !value)
+          }}
           className={clsx(
             'flex h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors duration-150',
             permissionMode === 'full'
@@ -206,15 +214,35 @@ export function ChatHeader({
         )}
       </div>
 
-      <button
-        onClick={onOpenSettings}
-        className="flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
-        title={`模型：${modelLabel}（${modelSource}）· 点击配置`}
-        aria-label={`模型：${modelLabel}，打开模型设置`}
-      >
-        <Cpu size={12} className={llmSettings?.source === 'user' ? 'text-accent' : 'text-faint'} />
-        <span className="hidden max-w-[200px] truncate lg:inline">{modelLabel}</span>
-      </button>
+      <div className="relative">
+        <button
+          onClick={() => {
+            setPermissionOpen(false)
+            setModelOpen((value) => !value)
+          }}
+          className="flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+          title={`模型：${modelLabel}（${modelSource}）· 仅本会话，点击切换`}
+          aria-label={`模型：${modelLabel}，打开模型选择`}
+          aria-haspopup="dialog"
+          aria-expanded={modelOpen}
+        >
+          <Cpu size={12} className={llmSettings?.source === 'user' ? 'text-accent' : 'text-faint'} />
+          <span className="hidden max-w-[200px] truncate font-mono lg:inline">{modelLabel}</span>
+        </button>
+        <ModelPicker
+          open={modelOpen}
+          onClose={() => setModelOpen(false)}
+          settings={picker.settings}
+          value={picker.value}
+          onChange={picker.onChange}
+          onSetDefault={picker.onSetDefault}
+          onConfigure={() => {
+            setModelOpen(false)
+            onOpenSettings()
+          }}
+          placement="below"
+        />
+      </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <button

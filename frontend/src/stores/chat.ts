@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
+import { compactOverrides } from '../lib/overrides'
 import { streamChat } from '../lib/sse'
 import type {
-  ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, Message, PermissionMode,
-  PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage, ToolApproval,
+  ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, Message,
+  PermissionMode, PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage, ToolApproval,
   ToolCall, ToolResult,
 } from '../lib/types'
 
@@ -19,6 +20,11 @@ type ChatState = {
   approvals: ToolApproval[]
   permissionMode: PermissionMode
   model: string | null
+  provider: string | null
+  reasoningEffort: '' | 'low' | 'medium' | 'high'
+  contextWindow: number | null
+  temperature: number | null
+  overridesSaving: boolean
   selectedRepoIds: string[]
   historyRepoId: string | null
   attachments: FileAttachment[]
@@ -32,6 +38,7 @@ type ChatState = {
   error: string | null
   setPermissionMode: (mode: PermissionMode) => void
   setModel: (model: string | null) => void
+  applyOverrides: (patch: LlmOverrides) => Promise<void>
   setSelectedRepoIds: (ids: string[]) => void
   toggleRepo: (id: string) => void
   setHistoryRepoId: (id: string | null) => Promise<void>
@@ -50,6 +57,8 @@ type ChatState = {
 }
 
 let abortController: AbortController | null = null
+/** 丢弃乱序返回的会话参数 PATCH，避免旧响应覆盖新状态。 */
+let overridesSeq = 0
 
 export const useChat = create<ChatState>((set, get) => ({
   sessions: [],
@@ -63,6 +72,11 @@ export const useChat = create<ChatState>((set, get) => ({
   approvals: [],
   permissionMode: 'ask',
   model: null,
+  provider: null,
+  reasoningEffort: '',
+  contextWindow: null,
+  temperature: null,
+  overridesSaving: false,
   selectedRepoIds: [],
   historyRepoId: null,
   attachments: [],
@@ -77,6 +91,47 @@ export const useChat = create<ChatState>((set, get) => ({
 
   setPermissionMode: (mode) => set({ permissionMode: mode }),
   setModel: (model) => set({ model }),
+
+  applyOverrides: async (patch) => {
+    const current = get()
+    const next = compactOverrides({
+      provider: patch.provider !== undefined ? patch.provider : current.provider,
+      model: patch.model !== undefined ? patch.model : current.model,
+      reasoning_effort: patch.reasoning_effort !== undefined
+        ? patch.reasoning_effort
+        : current.reasoningEffort || undefined,
+      context_window: patch.context_window !== undefined
+        ? patch.context_window
+        : current.contextWindow,
+      temperature: patch.temperature !== undefined ? patch.temperature : current.temperature,
+    })
+    set({
+      provider: next.provider ?? null,
+      model: next.model ?? null,
+      reasoningEffort: next.reasoning_effort ?? '',
+      contextWindow: next.context_window ?? null,
+      temperature: next.temperature ?? null,
+    })
+
+    const sessionId = current.sessionId
+    if (!sessionId) return
+    const seq = ++overridesSeq
+    set({ overridesSaving: true })
+    try {
+      const updated = await api.sessions.update(sessionId, { llm_overrides: next })
+      if (seq !== overridesSeq) return
+      set((state) => ({
+        sessions: state.sessions.map((item) => (item.id === sessionId ? { ...item, ...updated } : item)),
+      }))
+    } catch (err) {
+      if (seq === overridesSeq) {
+        set({ error: err instanceof ApiError ? err.message : '保存会话模型参数失败' })
+      }
+    } finally {
+      if (seq === overridesSeq) set({ overridesSaving: false })
+    }
+  },
+
   setSelectedRepoIds: (ids) => set({ selectedRepoIds: Array.from(new Set(ids)).slice(0, 5) }),
   toggleRepo: (id) => set((state) => ({
     selectedRepoIds: state.selectedRepoIds.includes(id)
@@ -124,12 +179,17 @@ export const useChat = create<ChatState>((set, get) => ({
     try {
       const messages = await api.sessions.messages(id)
       const session = get().sessions.find((s) => s.id === id)
+      const overrides = session?.llm_overrides ?? {}
       set({
         sessionId: id,
         messages,
         refs: [],
         error: null,
-        model: session?.model ?? null,
+        model: overrides.model ?? session?.model ?? null,
+        provider: overrides.provider ?? null,
+        reasoningEffort: overrides.reasoning_effort ?? '',
+        contextWindow: overrides.context_window ?? null,
+        temperature: overrides.temperature ?? null,
         selectedRepoIds: session?.repo_ids ?? [],
         attachments: [],
         contextMeter: null,
@@ -146,7 +206,8 @@ export const useChat = create<ChatState>((set, get) => ({
     if (get().streaming) return
     const inherited = get().historyRepoId
     set({
-      sessionId: null, messages: [], refs: [], model: null, error: null, plan: null,
+      sessionId: null, messages: [], refs: [], model: null, provider: null,
+      reasoningEffort: '', contextWindow: null, temperature: null, error: null, plan: null,
       approvals: [], selectedRepoIds: inherited ? [inherited] : [], attachments: [],
       contextMeter: null,
     })
@@ -158,7 +219,10 @@ export const useChat = create<ChatState>((set, get) => ({
       set((s) => ({
         sessions: s.sessions.filter((x) => x.id !== id),
         ...(s.sessionId === id
-          ? { sessionId: null, messages: [], refs: [], selectedRepoIds: [], attachments: [] }
+          ? {
+              sessionId: null, messages: [], refs: [], selectedRepoIds: [], attachments: [],
+              provider: null, reasoningEffort: '' as const, contextWindow: null, temperature: null,
+            }
           : {}),
       }))
     } catch (err) {
@@ -203,7 +267,9 @@ export const useChat = create<ChatState>((set, get) => ({
     set({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
       toolCards: [], streamEdits: [], plan: null, approvals: [], permissionMode: 'ask',
-      model: null, selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false,
+      model: null, provider: null, reasoningEffort: '', contextWindow: null, temperature: null,
+      overridesSaving: false,
+      selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false,
       refs: [],
       evidence: null, report: null, streamUsage: null, contextMeter: null, turnNotice: null, error: null,
     })
@@ -244,6 +310,13 @@ export const useChat = create<ChatState>((set, get) => ({
           repo_ids: repoIds,
           permission_mode: get().permissionMode,
           model: get().model ?? undefined,
+          llm_overrides: compactOverrides({
+            provider: get().provider,
+            model: get().model,
+            reasoning_effort: get().reasoningEffort || undefined,
+            context_window: get().contextWindow,
+            temperature: get().temperature,
+          }),
           file_ids: pendingAttachments.map((item) => item.id),
         },
         (event, data) => {
@@ -252,6 +325,9 @@ export const useChat = create<ChatState>((set, get) => ({
               set((s) => ({
                 sessionId: s.sessionId ?? data.session_id,
                 ...(data.model ? { model: data.model as string } : {}),
+                provider: data.provider ?? s.provider,
+                reasoningEffort: data.reasoning_effort ?? s.reasoningEffort,
+                contextWindow: data.context_window ?? s.contextWindow,
                 ...(Array.isArray(data.repo_ids) ? { selectedRepoIds: data.repo_ids as string[] } : {}),
                 sessions: data.title
                   ? s.sessions.some((x) => x.id === data.session_id)

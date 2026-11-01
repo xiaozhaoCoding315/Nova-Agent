@@ -1,4 +1,5 @@
 import { ApiError, friendlyHttpError } from './api'
+import type { LlmOverrides } from './types'
 
 export type SSEPayload = Record<string, any>
 export type SSEHandler = (event: string, data: SSEPayload) => void
@@ -9,6 +10,7 @@ export type ChatStreamBody = {
   repo_ids: string[]
   permission_mode?: 'readonly' | 'ask' | 'auto' | 'full'
   model?: string
+  llm_overrides?: LlmOverrides
   file_ids?: string[]
 }
 

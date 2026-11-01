@@ -129,6 +129,15 @@ export type RegisterResult = {
   recovery_code: string
 }
 
+export type LlmOverrides = {
+  provider?: string | null
+  model?: string | null
+  reasoning_effort?: '' | 'low' | 'medium' | 'high' | null
+  context_window?: number | null
+  temperature?: number | null
+  max_tokens?: number | null
+}
+
 export type Session = {
   id: string
   title: string
@@ -137,6 +146,7 @@ export type Session = {
   repo_ids?: string[]
   primary_repo_id?: string | null
   model?: string | null
+  llm_overrides?: LlmOverrides
   created_at?: string
   updated_at?: string
 }

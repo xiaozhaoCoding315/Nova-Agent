@@ -3,8 +3,8 @@ import type {
   ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
-  LlmCredential, LlmCredentialInput, LlmProvider, LlmSettings, LlmSettingsInput, LlmTestResult,
-  Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
+  LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
+  LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
   Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
@@ -131,6 +131,8 @@ export const api = {
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),
+    update: (id: string, patch: { title?: string; llm_overrides?: LlmOverrides }) =>
+      request<Session>(`/chat/sessions/${id}`, { ...json(patch), method: 'PATCH' }),
     remove: (id: string) => request<{ ok: boolean }>(`/chat/sessions/${id}`, { method: 'DELETE' }),
     cancelTool: (sessionId: string, toolCallId: string) =>
       request<{ ok: boolean; killed: number }>(
