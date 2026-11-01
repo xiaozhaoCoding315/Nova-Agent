@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.core.security.paths import (
     SecretPathError,
     UnsafePathError,
+    is_nova_secret_path,
     is_secret_path,
     normalize_relpath,
     resolve_repo_path,
@@ -29,6 +31,24 @@ def test_secret_file_detection():
         assert is_secret_path(secret), secret
     for allowed in (".env.example", ".gitignore", "app/main.py", "README.md"):
         assert not is_secret_path(allowed), allowed
+
+
+def test_local_nova_config_files_are_secret(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for secret in (
+        "nova-config.json", "Nova/nova-config.json",
+        ".nova-instance.lock", "data/pgpassword",
+    ):
+        assert is_secret_path(secret), secret
+        assert is_nova_secret_path(secret), secret
+    assert not is_secret_path("app/main.py")
+    assert not is_nova_secret_path("app/main.py")
+
+
+def test_server_mode_nova_config_is_not_a_repo_secret(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    assert not is_secret_path("nova-config.json")
+    assert not is_nova_secret_path("nova-config.json")
 
 
 def test_resolve_blocks_prefix_sibling_and_symlink_style_paths(tmp_path: Path):

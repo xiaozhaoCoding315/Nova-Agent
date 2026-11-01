@@ -12,7 +12,11 @@ from urllib.parse import urlparse
 
 from app.config import settings
 from app.core.security.commands import CommandClass, classify_command
-from app.core.security.paths import is_secret_path, try_normalize_relpath
+from app.core.security.paths import (
+    is_nova_secret_path,
+    is_secret_path,
+    try_normalize_relpath,
+)
 from app.core.security.risk import RiskLevel, grade_risk
 
 CAPABILITIES_BY_TOOL = {
@@ -116,8 +120,51 @@ def _secret_reference(command: str) -> str | None:
         if not parts:
             continue
         tail = "/".join(parts[-2:])
+        if is_nova_secret_path(tail):
+            # Nova's own config/data files are approval-gated (below), not
+            # flat-denied: an approved retry must be able to run.
+            continue
         if is_secret_path(tail):
             return candidate
+    return None
+
+
+_NOVA_SECRET_MARKERS = ("nova-config.json", ".nova-instance.lock", "pgpassword")
+_NOVA_DATA_DIR_NAMES = {"novadata", "nova-data", "nova_data"}
+
+
+def _local_data_root() -> tuple[str, str]:
+    """Normalized (path, basename) of the Nova data root, when configured."""
+    try:
+        raw = str(settings.data_root)
+    except (RuntimeError, OSError):
+        raw = str(settings.nova_data_dir or "")
+    text = raw.replace("\\", "/").rstrip("/").lower()
+    if len(text) < 4 or ("/" not in text and ":" not in text):
+        return "", ""
+    return text, text.rsplit("/", 1)[-1]
+
+
+def _nova_secret_reference(command: str) -> str | None:
+    """Return a marker when a shell command reaches Nova's own local files.
+
+    Local mode runs commands on the host as the signed-in user, so ``type``
+    or ``cat`` of ``%APPDATA%\\Nova\\nova-config.json`` would print the JWT
+    signer.  ``shlex`` tokenisation cannot see Windows backslash paths, so
+    this scans the raw command (normalized, lowercased).  Never returns or
+    logs the command itself.  Server mode is unaffected.
+    """
+    if not settings.is_local or not command:
+        return None
+    raw = command.replace("\\", "/").lower()
+    for marker in _NOVA_SECRET_MARKERS:
+        if marker in raw:
+            return marker
+    root_path, root_name = _local_data_root()
+    if root_path and root_path in raw:
+        return "Nova 数据目录"
+    if root_name in _NOVA_DATA_DIR_NAMES and root_name in raw:
+        return "Nova 数据目录"
     return None
 
 
@@ -160,7 +207,16 @@ def decide_tool(
             return PolicyDecision(False, f"拒绝访问密钥/凭据文件：{rel}", caps)
 
     if name == "run_command":
-        secret = _secret_reference(str(args.get("command") or ""))
+        command = str(args.get("command") or "")
+        nova = _nova_secret_reference(command)
+        if nova and not getattr(ctx, "approval_granted", False):
+            return PolicyDecision(
+                False,
+                f"命令会访问 Nova 的本地配置/数据文件（{nova}），需要你批准后执行",
+                caps,
+                requires_approval=True,
+            )
+        secret = _secret_reference(command)
         if secret:
             return PolicyDecision(
                 False, f"拒绝访问密钥/凭据文件：{secret}", caps

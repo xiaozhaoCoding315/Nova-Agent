@@ -8,12 +8,19 @@ rejected consistently.
 import re
 from pathlib import Path, PurePosixPath
 
+from app.config import settings
+
 _SECRET_DIRS = {".git", ".ssh", ".aws", ".kube", ".gnupg"}
 _SECRET_NAMES = {
     ".npmrc", ".pypirc", "credentials.json", "secrets.json",
     "credentials.yaml", "credentials.yml", "secrets.yaml", "secrets.yml",
     "id_rsa", "id_ed25519",
 }
+# Nova's own local config/data files.  In local mode the host child process
+# can reach %APPDATA% and the Nova data root, so these names are secrets
+# there.  Server-mode sandboxes only mount the repository, so their behavior
+# is unchanged.
+_NOVA_SECRET_NAMES = {"nova-config.json", ".nova-instance.lock", "pgpassword"}
 _SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore")
 _SAFE_EXAMPLES = (".example", ".sample", ".template", ".dist")
 
@@ -41,6 +48,23 @@ def normalize_relpath(path: str) -> str:
     return "/".join(parts)
 
 
+def is_nova_secret_path(path: str) -> bool:
+    """True for Nova's own config/data filenames, in local mode only.
+
+    ``nova-config.json`` holds the local JWT signer; ``.nova-instance.lock``
+    and ``pgpassword`` live in the data root.  Server-mode sandboxes only
+    mount the repository, so these names are ordinary repo files there.
+    """
+    if not settings.is_local:
+        return False
+    try:
+        rel = normalize_relpath(path)
+    except UnsafePathError:
+        return False
+    name = PurePosixPath(rel).parts[-1].lower()
+    return name in _NOVA_SECRET_NAMES
+
+
 def is_secret_path(path: str) -> bool:
     """True for .env / credentials / private keys and similar files."""
     try:
@@ -53,6 +77,8 @@ def is_secret_path(path: str) -> bool:
 
     name = parts[-1].lower()
     if name in _SECRET_NAMES:
+        return True
+    if settings.is_local and name in _NOVA_SECRET_NAMES:
         return True
     if name == ".env" or name.startswith(".env."):
         return not name.endswith(_SAFE_EXAMPLES)

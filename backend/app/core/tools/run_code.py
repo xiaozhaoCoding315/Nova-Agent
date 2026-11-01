@@ -1,4 +1,5 @@
 """run_code tool: execute code and tests in the locked-down Docker sandbox."""
+import asyncio
 import os
 import uuid
 from pathlib import Path
@@ -103,6 +104,9 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
             )
             raise ToolBusinessError("代码被安全规则拦截：" + "；".join(reasons[:3]))
 
+    if settings.use_host_executor:
+        return await _run_host_code(files, args, ctx, repo_id, copy_stats)
+
     status = await sandbox_status()
     if not status["available"]:
         raise ToolBusinessError(f"沙箱不可用（{status['reason']}），无法执行代码")
@@ -136,8 +140,6 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
 
     on_output = None
     if ctx.output_queue is not None:
-        import asyncio
-
         loop = asyncio.get_running_loop()
         queue_ref = ctx.output_queue
 
@@ -183,6 +185,84 @@ async def run_code(args: dict, ctx: ToolContext) -> dict:
                 " 仓库文件超过沙箱复制上限，部分文件未进入沙箱；"
                 "测试结果可能不完整，请缩小测试范围或分批验证。"
             )
+    return payload
+
+
+async def _run_host_code(
+    files: dict, args: dict, ctx: ToolContext, repo_id: str | None,
+    copy_stats: dict | None,
+) -> dict:
+    """Local-mode branch: run model files in a throwaway host directory.
+
+    Same guarantees as the server branch's sanitized copy: the files run in a
+    temporary workspace under ``settings.local_tmp_root`` which is deleted
+    afterwards, so nothing persists into the repo.  ``env`` is fixed to None:
+    tool arguments never shape the child environment; only the project's
+    .venv PATH (detected by the executor itself) is added.
+    """
+    from app.core.exec.service import run_code_host
+    from app.core.indexing.pipeline import get_repo
+
+    env_kind = args.get("env")
+    command = args.get("command")
+    if env_kind == "node":
+        command = command or "node main.js"
+    else:
+        command = command or "python main.py"
+
+    root = settings.data_root
+    if repo_id:
+        repo = await get_repo(str(repo_id), ctx.user["id"])
+        if not repo:
+            raise ToolBusinessError("仓库不存在或无权访问")
+        root = Path(repo["root_path"])
+
+    on_output = None
+    if ctx.output_queue is not None:
+        loop = asyncio.get_running_loop()
+        queue_ref = ctx.output_queue
+
+        def on_output(stream: str, text: str) -> None:
+            loop.call_soon_threadsafe(queue_ref.put_nowait, (stream, text))
+
+    result = await run_code_host(
+        files,
+        command,
+        root=root,
+        timeout=min(settings.sandbox_timeout, 300),
+        env=None,
+        on_output=on_output,
+        job_id=ctx.tool_call_id or None,
+        user_id=ctx.user.get("id"),
+    )
+    await log_audit(
+        AuditAction.SANDBOX_RUN,
+        user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
+        details={
+            "executor": "host",
+            "exit_code": result.get("exit_code"),
+            "timed_out": result.get("timed_out"),
+            "kill_failed": bool(result.get("kill_failed")),
+        },
+    )
+    payload = {
+        "exit_code": result["exit_code"],
+        "timed_out": result["timed_out"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "command": result["command"],
+        "env": "host",
+        "sandboxed": False,
+        "isolation": "none",
+        "executor": "host",
+        "warning": result["warning"],
+        "hint": "退出码 0 表示成功" if result["exit_code"] == 0 else "执行失败：请阅读 stderr，修正后重试",
+    }
+    if copy_stats is not None:
+        payload["repo_copy"] = copy_stats
+        if copy_stats.get("truncated"):
+            payload["repo_copy_truncated"] = True
+            payload["hint"] += " 仓库文件超过主机执行复制上限，测试结果可能不完整。"
     return payload
 
 

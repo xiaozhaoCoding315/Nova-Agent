@@ -101,6 +101,64 @@ def test_shell_secret_scan_keeps_plain_commands():
         assert decision.allowed, command
 
 
+def test_local_nova_config_reads_require_approval(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        r"type %APPDATA%\Nova\nova-config.json",
+        "cat Nova/nova-config.json",
+        "cat .nova-instance.lock",
+        "cat pgpassword",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("ask"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
+        assert "需要你批准" in decision.reason
+
+    approved = ctx("ask")
+    approved.approval_granted = True
+    allowed = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": r"type %APPDATA%\Nova\nova-config.json"}, approved,
+    )
+    assert allowed.allowed
+
+
+def test_local_nova_data_root_requires_approval(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    root = tmp_path / "NovaData"
+    monkeypatch.setattr(settings, "nova_data_dir", str(root))
+    command = f'ls "{root.as_posix()}"'
+    decision = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": command}, ctx("ask"),
+    )
+    assert not decision.allowed
+    assert decision.requires_approval
+    assert "需要你批准" in decision.reason
+    assert command not in decision.reason
+
+
+def test_local_unrelated_paths_are_unaffected(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    allowed = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "cat README.md"}, ctx("ask"),
+    )
+    assert allowed.allowed
+
+
+def test_server_mode_nova_config_reads_unchanged(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    allowed = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": r"type %APPDATA%\Nova\nova-config.json"}, ctx("ask"),
+    )
+    assert allowed.allowed
+
+
 def test_ask_blocks_mutating_shell_but_allows_readonly():
     decision = decide_tool(
         "run_command", "execute", ["proc.exec", "fs.write"],

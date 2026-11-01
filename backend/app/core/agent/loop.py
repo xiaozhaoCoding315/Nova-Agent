@@ -252,9 +252,10 @@ async def run_chat(
         permission_mode=session.get("permission_mode", "ask"),
         file_ids=[item["id"] for item in (attachments or [])][:5],
     )
+    local_available = False if settings.is_local else await local_agent_online(user["id"])
     specs = registry.specs(
         permission_mode=ctx.permission_mode,
-        local_available=await local_agent_online(user["id"]),
+        local_available=local_available,
     )
     holder: dict = {"message_id": 0, "evidence": None, "report": None}
 

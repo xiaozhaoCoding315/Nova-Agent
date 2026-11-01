@@ -212,6 +212,20 @@ def is_docker_available() -> bool:
 
 async def sandbox_status() -> dict:
     """Report availability honestly — never silently degrade."""
+    if settings.use_host_executor:
+        # Local mode: the host executor is the runtime. Honest about what it
+        # is (no container) so callers and the UI can show the warning.
+        return {
+            "available": True,
+            "reason": "",
+            "executor": "host",
+            "isolation": "none",
+            "docker": False,
+            "default_available": True,
+            "builder_available": True,
+            "node_available": True,
+            "warning": "本地执行无容器隔离",
+        }
     if not settings.sandbox_enabled:
         return {"available": False, "reason": "disabled by config"}
 
@@ -579,6 +593,9 @@ async def kill_job_containers(job_id: str, user_id: int | str | None = None) -> 
     chat tool-cancel endpoint.  The sandbox still has its own timeout as a
     backstop; this makes cancellation take effect immediately.
     """
+    if settings.is_local:
+        from app.core.exec.host import cancel_host_processes
+        return await cancel_host_processes(job_id, user_id)
     safe_job = "".join(ch for ch in str(job_id) if ch.isalnum() or ch in "-_")
     if not safe_job or shutil.which("docker") is None:
         return 0

@@ -42,6 +42,9 @@ async def run_command(args: dict, ctx: ToolContext) -> dict:
     # regex layer and the blast radius is the sandbox (no network, caps
     # dropped, only this repo directory mounted).
 
+    if settings.use_host_executor:
+        return await _run_host_command(command, root=root, ctx=ctx, args=args)
+
     status = await sandbox_status()
     if not status["available"]:
         raise ToolBusinessError(f"沙箱不可用（{status['reason']}），无法执行命令")
@@ -142,6 +145,68 @@ async def run_command(args: dict, ctx: ToolContext) -> dict:
         "persisted": persisted,
         "isolated": isolated,
         "hint": hint,
+    }
+
+
+async def _run_host_command(
+    command: str, *, root: Path, ctx: ToolContext, args: dict
+) -> dict:
+    """Local-mode branch: run on the host with no container isolation.
+
+    The policy gate (``decide_tool``) has already run in
+    ``ToolRegistry.execute``: ask/deny rules, readonly-command allowlist and
+    the secret-path scan all apply exactly as in server mode.  The command
+    runs as the signed-in user in the project directory — that is the
+    product's local-mode promise, and every result says so.
+    """
+    from app.core.exec.service import run_command_host
+
+    on_output = None
+    if ctx.output_queue is not None:
+        loop = asyncio.get_running_loop()
+        queue_ref = ctx.output_queue
+
+        def on_output(stream: str, text: str) -> None:
+            loop.call_soon_threadsafe(queue_ref.put_nowait, (stream, text))
+
+    result = await run_command_host(
+        command,
+        root=root,
+        timeout=min(int(args.get("timeout") or 120), 300),
+        on_output=on_output,
+        job_id=ctx.tool_call_id or None,
+        user_id=ctx.user.get("id"),
+    )
+    await log_audit(
+        AuditAction.SANDBOX_RUN,
+        user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
+        details={
+            "executor": "host",
+            "exit_code": result.get("exit_code"),
+            "timed_out": result.get("timed_out"),
+            "kill_failed": bool(result.get("kill_failed")),
+            "persisted": True,
+            "isolated": False,
+        },
+    )
+    ok = result["exit_code"] == 0 and not result["timed_out"]
+    return {
+        "exit_code": result["exit_code"],
+        "timed_out": result["timed_out"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "command": result["command"],
+        "persisted": True,
+        "isolated": False,
+        "sandboxed": False,
+        "isolation": "none",
+        "executor": "host",
+        "warning": result["warning"],
+        "hint": (
+            "命令已在你的项目目录真实执行；如需保留改动请检查 git diff"
+            if ok else
+            "执行失败：请阅读 stderr，修正命令后重试"
+        ),
     }
 
 
