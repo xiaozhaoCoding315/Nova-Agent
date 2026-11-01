@@ -11,13 +11,15 @@ import { useLlm } from '../stores/llm'
 import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
 import { useRun } from '../stores/run'
+import type { WorkspaceTab } from '../views/WorkspaceView'
 import { ChatHeader } from './ChatHeader'
+import { ContextRail } from './ContextRail'
 import { ProjectRail } from './ProjectRail'
+import { WorkspaceDrawer } from './WorkspaceDrawer'
 
 const ChatView = lazy(() => import('../views/ChatView').then((m) => ({ default: m.ChatView })))
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsView = lazy(() => import('../views/SettingsView').then((m) => ({ default: m.SettingsView })))
-const WorkspaceView = lazy(() => import('../views/WorkspaceView').then((m) => ({ default: m.WorkspaceView })))
 
 const PERMISSION_LABEL = {
   readonly: '计划模式',
@@ -26,7 +28,7 @@ const PERMISSION_LABEL = {
   full: '完全访问',
 } as const
 
-type Overlay = 'settings' | 'workspace' | null
+type Overlay = 'settings' | null
 
 const ViewFallback = () => (
   <div className="flex h-full min-h-[40vh] flex-1 items-center justify-center font-mono text-sm text-dim">
@@ -61,11 +63,17 @@ export function AppShell() {
 
   const [setupOpen, setSetupOpen] = useState(false)
   const setupPrompted = useRef(false)
+  /** 左侧项目栏的 `< md` 覆盖层。 */
   const [railOpen, setRailOpen] = useState(false)
+  /** 右侧上下文栏的 `< lg` 覆盖层；桌面可见性由 collapsed 决定。 */
+  const [contextRailOpen, setContextRailOpen] = useState(false)
+  const [contextRailCollapsed, setContextRailCollapsed] = useState(
+    () => localStorage.getItem('nova.rail.collapsed') === '1',
+  )
   const [localAgentOpen, setLocalAgentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [overlay, setOverlay] = useState<Overlay>(null)
-  const [workspaceTarget, setWorkspaceTarget] = useState<{ repoId?: string; path?: string }>({})
+  const [drawer, setDrawer] = useState<{ repoId?: string; path?: string; tab?: WorkspaceTab } | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
   const [healthState, setHealthState] = useState<'ok' | 'warn' | 'err'>('warn')
@@ -130,26 +138,48 @@ export function AppShell() {
     }
   }, [user])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('nova.rail.collapsed', contextRailCollapsed ? '1' : '0')
+    } catch {
+      /* localStorage 不可用时只失去折叠记忆 */
+    }
+  }, [contextRailCollapsed])
+
   const openSettings = () => {
     setOverlay('settings')
     setRailOpen(false)
+    setDrawer(null)
   }
 
-  const openWorkspace = (repoId?: string, path?: string) => {
-    setWorkspaceTarget({ repoId, path })
-    setOverlay('workspace')
+  /** 工作区只通过项目头 / 右栏进入：打开右侧抽屉而不是独立页面。 */
+  const openWorkspace = (repoId?: string, path?: string, tab?: WorkspaceTab) => {
     setRailOpen(false)
+    setDrawer({ repoId, path, tab })
   }
 
   const openRun = () => {
     useRun.setState({ open: true })
     setRailOpen(false)
+    setContextRailCollapsed(false)
+    if (!window.matchMedia('(min-width: 1024px)').matches) setContextRailOpen(true)
+  }
+
+  /** 桌面折叠 / 展开，窄屏切换右侧覆盖层。 */
+  const toggleContextRail = () => {
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      setContextRailCollapsed((value) => !value)
+    } else {
+      setContextRailOpen((value) => !value)
+    }
   }
 
   const startNewChat = () => {
     newSession()
     setOverlay(null)
     setRailOpen(false)
+    setContextRailOpen(false)
+    setDrawer(null)
   }
 
   const currentRepoId = historyRepoId ?? selectedRepoIds[0] ?? undefined
@@ -178,6 +208,7 @@ export function AppShell() {
         } else {
           setOverlay('settings')
           setRailOpen(false)
+          setDrawer(null)
         }
       }
     }
@@ -188,7 +219,8 @@ export function AppShell() {
 
   // Esc 必须在捕获阶段处理：AppShell 会随覆盖层状态重订阅监听器，若留在冒泡阶段，
   // 后挂载的 RunPanel 可能先收到事件并关闭自己，反而留下设置覆盖层。
-  // 每次只关闭最上层：命令面板 → 对话框 → 覆盖层 → 抽屉；标记已处理后下层忽略。
+  // 每次只关闭最上层：命令面板 → 对话框 → 工作区抽屉 → 设置 → 左栏 → 右栏覆盖层；
+  // 标记已处理后下层忽略。WorkspaceDrawer 自己也会捕获 Esc，靠 defaultPrevented 保证只关一层。
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
@@ -198,17 +230,23 @@ export function AppShell() {
       } else if (setupOpen) {
         event.preventDefault()
         setSetupOpen(false)
+      } else if (drawer) {
+        event.preventDefault()
+        setDrawer(null)
       } else if (overlay) {
         event.preventDefault()
         setOverlay(null)
       } else if (railOpen) {
         event.preventDefault()
         setRailOpen(false)
+      } else if (contextRailOpen) {
+        event.preventDefault()
+        setContextRailOpen(false)
       }
     }
     window.addEventListener('keydown', onEscape, true)
     return () => window.removeEventListener('keydown', onEscape, true)
-  }, [paletteOpen, setupOpen, overlay, railOpen])
+  }, [paletteOpen, setupOpen, drawer, overlay, railOpen, contextRailOpen])
 
   const actions = useMemo<PaletteAction[]>(() => {
     const items: PaletteAction[] = [
@@ -260,6 +298,7 @@ export function AppShell() {
       <main className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           onOpenRail={() => setRailOpen(true)}
+          onToggleContextRail={toggleContextRail}
           onNewChat={startNewChat}
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenSettings={openSettings}
@@ -307,6 +346,16 @@ export function AppShell() {
         </div>
       </main>
 
+      <ContextRail
+        open={contextRailOpen}
+        collapsed={contextRailCollapsed}
+        repoId={currentRepoId}
+        onClose={() => setContextRailOpen(false)}
+        onToggle={toggleContextRail}
+        onOpenFile={(path, repoId) => openWorkspace(repoId, path)}
+        onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
+      />
+
       {overlay && (
         <div className="fixed inset-0 z-50 flex flex-col bg-base">
           {overlay === 'settings' && (
@@ -325,18 +374,18 @@ export function AppShell() {
           <div className="min-h-0 flex-1">
             <Suspense fallback={<ViewFallback />}>
               {overlay === 'settings' && <SettingsView />}
-              {overlay === 'workspace' && (
-                <WorkspaceView
-                  key={`${workspaceTarget.repoId ?? 'all'}-${workspaceTarget.path ?? ''}`}
-                  initialRepoId={workspaceTarget.repoId}
-                  initialPath={workspaceTarget.path}
-                  onClose={() => setOverlay(null)}
-                />
-              )}
             </Suspense>
           </div>
         </div>
       )}
+
+      <WorkspaceDrawer
+        open={drawer !== null}
+        repoId={drawer?.repoId}
+        path={drawer?.path}
+        tab={drawer?.tab}
+        onClose={() => setDrawer(null)}
+      />
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={actions} />
 

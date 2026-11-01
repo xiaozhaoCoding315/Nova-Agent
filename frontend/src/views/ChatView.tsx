@@ -222,6 +222,8 @@ export function ChatView({
       try {
         const task = await api.tasks.create(repoId, args, `/fix: ${args}`.slice(0, 120))
         useRun.getState().start(task)
+        // 新工作台把运行面板放在右栏：/fix 创建后主动把右栏（或窄屏覆盖层）打开。
+        onOpenRun?.(repoId)
         void useRun.getState().loadRecent(repoId)
         return true
       } catch (err) {
@@ -571,7 +573,8 @@ export function ChatView({
         />
       </main>
 
-      {runOpen && (
+      {/* 旧 Shell 仍在对话右侧临时挂运行面板；新工作台由 ContextRail 承载（Task 5）。 */}
+      {!embedded && runOpen && (
         <>
           <div
             className="fixed inset-0 z-30 bg-black/50 lg:hidden"

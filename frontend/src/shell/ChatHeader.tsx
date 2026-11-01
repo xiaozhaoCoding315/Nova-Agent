@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
   Activity, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown, PanelLeft,
-  Plus, ShieldCheck,
+  PanelRight, Plus, ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { StatusDot } from '../components/common'
@@ -42,6 +42,7 @@ const HEALTH_LABEL = {
 
 export function ChatHeader({
   onOpenRail,
+  onToggleContextRail,
   onNewChat,
   onOpenPalette,
   onOpenSettings,
@@ -53,10 +54,12 @@ export function ChatHeader({
   onLocalOpenChange,
 }: {
   onOpenRail: () => void
+  /** 桌面切换右栏折叠，窄屏切换右栏覆盖层。 */
+  onToggleContextRail: () => void
   onNewChat: () => void
   onOpenPalette: () => void
   onOpenSettings: () => void
-  onOpenWorkspace: (repoId?: string) => void
+  onOpenWorkspace: (repoId?: string, path?: string) => void
   healthState: 'ok' | 'warn' | 'err'
   health: Health | null
   usage: Usage | null
@@ -209,7 +212,7 @@ export function ChatHeader({
             setPermissionOpen((value) => !value)
           }}
           className={clsx(
-            'flex h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors duration-150',
+            'flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border px-2 text-xs transition-colors duration-150',
             permissionMode === 'full'
               ? 'border-err/40 text-err hover:bg-err/10'
               : 'border-edge text-dim hover:border-accent/40 hover:text-ink',
@@ -220,7 +223,7 @@ export function ChatHeader({
           aria-expanded={permissionOpen}
         >
           <ShieldCheck size={12} />
-          <span className="hidden lg:inline">{permission.label}</span>
+          <span className="hidden xl:inline">{permission.label}</span>
           <ChevronDown size={11} className="text-faint" />
         </button>
         {permissionOpen && (
@@ -268,7 +271,7 @@ export function ChatHeader({
             setPermissionOpen(false)
             setModelOpen((value) => !value)
           }}
-          className="flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+          className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
           title={`模型：${modelLabel}（${modelSource}）· 仅本会话，点击切换`}
           aria-label={`模型：${modelLabel}，打开模型选择`}
           aria-haspopup="dialog"
@@ -364,7 +367,7 @@ export function ChatHeader({
         </div>
         <button
           onClick={onNewChat}
-          className="hidden h-7 items-center gap-1 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink lg:flex"
+          className="hidden h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink xl:flex"
           title="新建对话 · Ctrl/⌘ N"
         >
           <Plus size={12} />
@@ -390,9 +393,17 @@ export function ChatHeader({
           </span>
         </span>
         <button
+          onClick={onToggleContextRail}
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+          title="切换上下文栏（文件 / 引用 / 影响 / 变更）"
+          aria-label="切换上下文栏"
+        >
+          <PanelRight size={13} />
+        </button>
+        <button
           onClick={() => onOpenWorkspace(currentRepoId ?? undefined)}
           className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
-          title="打开工作区"
+          title="打开工作区抽屉"
           aria-label="打开工作区"
         >
           <FolderTree size={13} />

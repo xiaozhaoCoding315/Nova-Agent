@@ -34,7 +34,9 @@ const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'war
   review: { label: '待审阅代码', tone: 'accent' },
 }
 
-type Tab = 'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'
+export type WorkspaceTab = 'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'
+
+type Tab = WorkspaceTab
 
 /** 收进「更多」菜单的低频页签（分析类能力仍在对话里作为工具自动使用）。 */
 const MORE_LABEL = { brain: '项目地图', impact: '影响分析', debt: '技术债', contract: '契约对齐', deploy: '预览部署' }
@@ -119,10 +121,15 @@ function RepoCard({
 export function WorkspaceView({
   initialRepoId = null,
   initialPath = null,
+  initialTab = 'code',
+  embedded = false,
   onClose,
 }: {
   initialRepoId?: string | null
   initialPath?: string | null
+  initialTab?: WorkspaceTab
+  /** 抽屉内嵌：隐藏左侧项目列表，只保留文件树与主区，顶部返回按钮关闭抽屉。 */
+  embedded?: boolean
   onClose?: () => void
 } = {}) {
   const { repos, refresh, remove, reindex } = useRepos()
@@ -135,7 +142,7 @@ export function WorkspaceView({
   const [treeLoading, setTreeLoading] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   const [treeError, setTreeError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('code')
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [moreOpen, setMoreOpen] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
@@ -165,6 +172,11 @@ export function WorkspaceView({
   }, [repos])
 
   const selected = repos.find((r) => r.id === selectedId) ?? null
+
+  // 抽屉可以直接以 Git 页签打开；项目尚未就绪时没有该页签，退回代码视图。
+  useEffect(() => {
+    if (tab === 'git' && selected && selected.status !== 'ready') setTab('code')
+  }, [selected, tab])
 
   useEffect(() => {
     if (!selected || selected.status !== 'ready') {
@@ -282,6 +294,7 @@ export function WorkspaceView({
 
   return (
     <div className="flex h-full min-h-0">
+      {!embedded && (
       <aside className="hidden w-80 shrink-0 flex-col border-r border-edge bg-panel lg:flex">
         <div className="flex items-center justify-between px-3 py-2.5">
           <div className="flex items-center gap-1.5">
@@ -339,13 +352,22 @@ export function WorkspaceView({
           ))}
         </div>
       </aside>
+      )}
 
       {selected ? (
         <>
-          <aside className="flex w-64 shrink-0 flex-col border-r border-edge bg-panel/50 lg:w-72">
+          <aside
+            className={clsx(
+              'flex shrink-0 flex-col border-r border-edge bg-panel/50',
+              embedded ? 'w-36 sm:w-56 lg:w-72' : 'w-64 lg:w-72',
+            )}
+          >
             <div className="flex items-center gap-2 px-3 py-2.5">
               <select
-                className="min-w-0 flex-1 rounded-md border border-edge bg-raised px-2 py-1 text-[12px] outline-none lg:hidden"
+                className={clsx(
+                  'min-w-0 flex-1 rounded-md border border-edge bg-raised px-2 py-1 text-[12px] outline-none',
+                  !embedded && 'lg:hidden',
+                )}
                 value={selected.id}
                 onChange={(e) => {
                   setSelectedId(e.target.value)
@@ -362,7 +384,10 @@ export function WorkspaceView({
                 ))}
               </select>
               <p
-                className="hidden min-w-0 flex-1 truncate text-[12px] font-medium uppercase tracking-wide text-dim lg:block"
+                className={clsx(
+                  'min-w-0 flex-1 truncate text-[12px] font-medium uppercase tracking-wide text-dim',
+                  embedded ? 'hidden' : 'hidden lg:block',
+                )}
                 title={selected.name}
               >
                 {selected.name}
@@ -396,6 +421,16 @@ export function WorkspaceView({
           </aside>
           <main className="flex min-w-0 flex-1 flex-col bg-base">
             <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
+              {embedded && onClose && (
+                <button
+                  onClick={onClose}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-dim transition-colors hover:bg-raised hover:text-ink"
+                  title="关闭工作区 · Esc"
+                  aria-label="关闭工作区"
+                >
+                  <ArrowLeft size={14} />
+                </button>
+              )}
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                 {(
                   [
@@ -598,7 +633,10 @@ export function WorkspaceView({
             </p>
             {repos.length > 0 && (
               <select
-                className="rounded-lg border border-edge bg-raised px-3 py-1.5 text-[13px] outline-none lg:hidden"
+                className={clsx(
+                  'rounded-lg border border-edge bg-raised px-3 py-1.5 text-[13px] outline-none',
+                  !embedded && 'lg:hidden',
+                )}
                 defaultValue=""
                 onChange={(e) => {
                   if (e.target.value) {
