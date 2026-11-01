@@ -162,6 +162,14 @@ body {
   animation: nova-dash 2.6s ease-in-out infinite alternate;
 }
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .nova-float, .nova-drift, .anim-pop, .anim-rise, .nova-caret, .nova-pulse,
   .nova-sweep::after, .nova-flow-line {
     animation: none !important;

@@ -35,6 +35,7 @@ export default {
         '2xl': ['22px', '30px'],
         '3xl': ['28px', '36px'],
       },
+      transitionTimingFunction: { DEFAULT: 'ease-out' },
       borderRadius: { sm: '4px', md: '6px', lg: '10px', xl: '14px' },
       boxShadow: {
         pop: '0 16px 48px rgba(0,0,0,0.55)',

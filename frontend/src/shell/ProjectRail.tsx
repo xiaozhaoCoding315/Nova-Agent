@@ -70,6 +70,7 @@ export function ProjectRail({
   const sessions = useChat((state) => state.sessions)
   const sessionId = useChat((state) => state.sessionId)
   const historyRepoId = useChat((state) => state.historyRepoId)
+  const selectedRepoIds = useChat((state) => state.selectedRepoIds)
   const setHistoryRepoId = useChat((state) => state.setHistoryRepoId)
   const selectSession = useChat((state) => state.selectSession)
   const newSession = useChat((state) => state.newSession)
@@ -83,6 +84,7 @@ export function ProjectRail({
   const [newProjectOpen, setNewProjectOpen] = useState(false)
 
   const local = Boolean(mode?.local)
+  const currentRepoId = historyRepoId ?? selectedRepoIds[0] ?? null
   const displayName = user?.display_name || user?.username || ''
   const guestRemaining = user ? guestHoursLeft(user.expires_at) : null
   const roleText = user?.is_guest
@@ -140,7 +142,7 @@ export function ProjectRail({
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accentSoft">
             <Bot size={14} className="text-accent" />
           </div>
-          <span className="font-mono text-md font-medium uppercase tracking-[0.18em]">NOVA</span>
+          <span className="font-mono text-sm font-medium uppercase tracking-[0.12em]">NOVA</span>
           <ModeBadge />
           <button
             onClick={onClose}
@@ -154,7 +156,7 @@ export function ProjectRail({
 
         <section aria-label="项目" className="shrink-0 border-b border-edge">
           <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-            <span className="text-2xs font-medium uppercase tracking-[0.14em] text-faint">项目</span>
+            <span className="font-mono text-sm font-medium uppercase tracking-[0.12em] text-faint">项目</span>
             <span className="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-2xs text-dim">{repos.length}</span>
             <div className="ml-auto flex items-center gap-0.5">
               {local && (
@@ -178,7 +180,7 @@ export function ProjectRail({
               </p>
             ) : (
               repos.map((repo) => {
-                const active = repo.id === historyRepoId
+                const active = repo.id === currentRepoId
                 return (
                   <button
                     key={repo.id}

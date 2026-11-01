@@ -162,8 +162,9 @@ export function AppShell() {
         event.preventDefault()
         setPaletteOpen((value) => !value)
       } else if (mod && event.key.toLowerCase() === 'b') {
-        event.preventDefault()
+        // 桌面端栏位固定展示，不拦截浏览器快捷键；仅抽屉模式（< md）切换。
         if (!window.matchMedia('(min-width: 768px)').matches) {
+          event.preventDefault()
           setRailOpen((value) => !value)
         }
       } else if (mod && event.key.toLowerCase() === 'n') {
@@ -184,14 +185,23 @@ export function AppShell() {
           setRailOpen(false)
         }
       } else if (event.key === 'Escape') {
-        setPaletteOpen(false)
-        setRailOpen(false)
-        setOverlay(null)
+        // 内层（如命令面板输入框）已处理的 Esc 不再关闭下层。
+        if (event.defaultPrevented) return
+        // 每次只关闭最上层：命令面板 → 对话框 → 覆盖层 → 抽屉。
+        if (paletteOpen) {
+          setPaletteOpen(false)
+        } else if (setupOpen) {
+          setSetupOpen(false)
+        } else if (overlay) {
+          setOverlay(null)
+        } else if (railOpen) {
+          setRailOpen(false)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [paletteOpen, setupOpen, overlay, railOpen])
 
   const actions = useMemo<PaletteAction[]>(() => {
     const items: PaletteAction[] = [
