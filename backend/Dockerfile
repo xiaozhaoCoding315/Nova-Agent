@@ -2,7 +2,13 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /web
 COPY frontend/package*.json ./
-RUN npm ci --no-audit --no-fund
+# 国内服务器直连 registry.npmjs.org 经常超时；默认走 npmmirror，
+# 海外构建可用 --build-arg NPM_REGISTRY=https://registry.npmjs.org 覆盖。
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry "$NPM_REGISTRY" \
+ && npm config set fetch-retries 5 \
+ && npm config set fetch-retry-maxtimeout 120000 \
+ && npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 

@@ -2,6 +2,7 @@
 """阿里云 ECS 远程部署 Nova Agent（本机运行，通过 SSH 操作服务器）。
 
 用法（在本机 Git Bash / PowerShell 运行）：
+  python deploy/remote-deploy.py backup                                  # 备份数据库 / Qdrant / 仓库卷
   python deploy/remote-deploy.py upload  --dashscope-key sk-xxxx          # 打包上传 + 写 .env
   python deploy/remote-deploy.py build                                   # 后台启动 docker compose build
   python deploy/remote-deploy.py status                                  # 查看构建/服务状态
@@ -107,6 +108,10 @@ BUILDER_SMOKE_ENABLED=true
 PREVIEW_TTL_MINUTES=120
 SKILLS_ENABLED=true
 MCP_ENABLED=true
+
+# ---- 联网搜索 ----
+ENABLE_WEB_SEARCH=true
+WEB_SEARCH_PROVIDER=auto
 """
 
 
@@ -121,10 +126,10 @@ def run(ssh: paramiko.SSHClient, cmd: str, timeout: int = 120) -> tuple[int, str
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=["upload", "build", "status", "logs", "health"])
+    parser.add_argument("phase", choices=["backup", "upload", "build", "status", "logs", "health"])
     parser.add_argument("--host", default="60.205.0.224")
     parser.add_argument("--user", default="root")
-    parser.add_argument("--password", required=True)
+    parser.add_argument("--password", default=None, help="SSH 密码；省略时使用密钥/agent 认证")
     parser.add_argument("--remote-dir", default="/opt/nova-agent")
     parser.add_argument("--dashscope-key", default="")
     parser.add_argument("--llm-provider", choices=["dashscope", "deepseek"], default="dashscope")
@@ -135,7 +140,31 @@ def main() -> int:
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     print(f"==> 连接 {args.user}@{args.host}")
-    ssh.connect(args.host, username=args.user, password=args.password, timeout=15)
+    if args.password:
+        ssh.connect(args.host, username=args.user, password=args.password, timeout=15)
+    else:
+        print("    未提供 --password，使用 SSH 密钥 / agent 认证")
+        ssh.connect(args.host, username=args.user, timeout=15)
+
+    if args.phase == "backup":
+        script = f"{args.remote_dir}/deploy/backup.sh"
+        code, out = run(ssh, f"test -f {script} && echo FOUND || echo MISSING")
+        if "MISSING" in out:
+            print(f"!! 服务器上找不到 {script}，请先执行 upload 上传源码")
+            ssh.close()
+            return 1
+        print("==> 备份 PostgreSQL / Qdrant / 仓库卷到 /opt/nova-backups")
+        code, out = run(
+            ssh,
+            f"mkdir -p /opt/nova-backups && cd {args.remote_dir} && "
+            "BACKUP_DIR=/opt/nova-backups bash deploy/backup.sh",
+            timeout=900,
+        )
+        print(out[-4000:])
+        code, out = run(ssh, "ls -lh /opt/nova-backups | tail -n 8")
+        print(out.strip())
+        ssh.close()
+        return code
 
     if args.phase == "upload":
         code, out = run(ssh, "command -v docker || echo NO_DOCKER")
@@ -148,7 +177,14 @@ def main() -> int:
             f.write(blob)
         sftp.close()
         print("==> 解压到服务器")
-        code, out = run(ssh, f"mkdir -p {args.remote_dir} && cd {args.remote_dir} && tar xzf /tmp/nova-src.tar.gz && ls | tr '\\n' ' '")
+        # 先清掉旧源码目录：tar 只覆盖同名文件，本地已删除的旧组件会残留并参与构建。
+        # 只清代码目录，data/、.env、日志和上传目录都不动。
+        code, out = run(
+            ssh,
+            f"mkdir -p {args.remote_dir} && cd {args.remote_dir} && "
+            "rm -rf frontend/src backend/app backend/tests && "
+            "tar xzf /tmp/nova-src.tar.gz && ls | tr '\\n' ' '",
+        )
         print(out.strip())
         # .env 只在首次生成，避免覆盖已填好的 Key
         code, out = run(ssh, f"test -f {args.remote_dir}/.env && echo EXISTS || echo MISSING")
@@ -181,11 +217,14 @@ def main() -> int:
             print(out[-2000:])
         cmd = (
             f"cd {args.remote_dir} && "
-            "nohup docker compose up -d --build > build.log 2>&1 & "
+            "setsid docker compose up -d --build < /dev/null > build.log 2>&1 & "
             "echo BUILD_STARTED"
         )
-        code, out = run(ssh, cmd)
-        print(out.strip())
+        try:
+            _, out = run(ssh, cmd, timeout=20)
+            print(out.strip())
+        except Exception:  # noqa: BLE001 - 后台构建仍会继续，连接超时不是失败
+            print("BUILD_STARTED（未等待远端输出）")
         print("构建已在后台启动。镜像下载耗时取决于带宽，用 status/logs 查看进度。")
 
     elif args.phase == "status":
