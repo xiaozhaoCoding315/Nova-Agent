@@ -83,6 +83,27 @@ async def test_mode_endpoint_local(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mode_endpoint_local_reports_configured_data_dir(monkeypatch, tmp_path):
+    from app.api.v1 import status as status_api
+
+    data_dir = tmp_path / "NovaData"
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", str(data_dir))
+    info = await status_api.mode()
+    assert info.data_dir == str(data_dir.resolve())
+
+
+@pytest.mark.asyncio
+async def test_mode_endpoint_local_without_data_dir_reports_empty(monkeypatch):
+    from app.api.v1 import status as status_api
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", "")
+    info = await status_api.mode()
+    assert info.data_dir == ""
+
+
+@pytest.mark.asyncio
 async def test_health_local_does_not_report_qdrant_failure(monkeypatch):
     from app.api.v1 import status as status_api
 
@@ -105,7 +126,7 @@ async def test_init_all_local_skips_qdrant_and_seeds_local_user(monkeypatch):
     monkeypatch.setattr(init_db, "check_connectivity", AsyncMock(return_value={"postgres": "connected"}))
     monkeypatch.setattr(init_db, "init_postgres", AsyncMock(return_value="already_exists"))
     monkeypatch.setattr(
-        init_db, "migrate_legacy_repos",
+        "app.core.storage.user_storage.migrate_legacy_repos",
         AsyncMock(side_effect=AssertionError("must not migrate legacy cloud repos")),
     )
     monkeypatch.setattr(
@@ -204,6 +225,36 @@ async def test_mode_endpoint_server(monkeypatch):
     assert info.features.semantic_search is True
     assert info.features.registration is True
     assert info.data_dir == ""
+
+
+def test_local_data_dir_is_empty_in_server_mode_even_when_configured(monkeypatch, tmp_path):
+    from app.api.v1 import status as status_api
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+    assert status_api._local_data_dir() == ""
+
+
+def test_mode_endpoint_over_http_without_auth_in_local_mode(monkeypatch, tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.v1 import status as status_api
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+
+    app = FastAPI()
+    app.include_router(status_api.router, prefix="/api/v1")
+    # No ``with`` block: no lifespan runs, so no DB init is attempted.
+    response = TestClient(app).get("/api/v1/status/mode")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "local"
+    assert body["local"] is True
+    assert body["auth"] == "none"
+    assert body["data_dir"] == str((tmp_path / "NovaData").resolve())
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,6 @@ import psycopg
 import structlog
 
 from app.config import settings
-from app.core.storage.user_storage import migrate_legacy_repos
 from app.db import query, transaction
 
 logger = structlog.get_logger()
@@ -988,7 +987,11 @@ async def init_all() -> dict:
     if settings.is_local:
         result["storage"] = "skipped: local mode"
     else:
+        # Imported lazily: user_storage imports app.db, which imports this
+        # module, so a module-level import would be circular.
         try:
+            from app.core.storage.user_storage import migrate_legacy_repos
+
             result["storage"] = await migrate_legacy_repos()
         except Exception as exc:  # noqa: BLE001
             result["storage"] = f"failed: {exc}"
