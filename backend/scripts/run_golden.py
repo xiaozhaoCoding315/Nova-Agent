@@ -60,7 +60,8 @@ async def main() -> int:
         )
         try:
             result = await run_verification(
-                {"id": repo_id, "name": name, "root_path": str(root)}, user
+                {"id": repo_id, "name": name, "root_path": str(root)}, user,
+                permission_mode="ask", approval_granted=True,
             )
             steps = [(step["name"], step["status"]) for step in result.get("steps", [])]
             ok = result.get("status") == expected

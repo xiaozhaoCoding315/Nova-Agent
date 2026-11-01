@@ -133,19 +133,35 @@ def _node_steps(files: dict[str, str], paths: list[str]) -> tuple[list[VerifySte
     return steps, notes
 
 
-def detect_profile(files: dict[str, str]) -> VerifyProfile:
+def detect_profile(
+    files: dict[str, str], *, platform: str | None = None
+) -> VerifyProfile:
+    """Detect the verification profile.
+
+    ``platform`` selects shell quoting for generated commands.  The default
+    (``None``) targets the POSIX Docker sandbox; local host verification
+    passes ``sys.platform`` so a Windows host never receives POSIX quoting
+    for model-controlled paths.
+    """
     paths = list(files)
     has_node = any(path.lower().endswith("package.json") for path in paths)
     has_python = _has_python(paths)
-    contract = contract_step(files)
+    notes: list[str] = []
+    contract = None
+    try:
+        contract = contract_step(files, platform=platform or "posix")
+    except ValueError as exc:
+        # A model-controlled nova.yaml path can contain shell syntax.  Skip
+        # the check with a visible note instead of assembling that command.
+        notes.append(f"契约检查已跳过：{exc}")
     if not has_python and not has_node and not contract:
         return VerifyProfile(
             stack="unknown",
+            notes=notes,
             unsupported_reason="未检测到可验证的 Python 或 Node 项目",
         )
 
     steps: list[VerifyStep] = []
-    notes: list[str] = []
 
     if has_python:
         steps.append(VerifyStep("语法检查", "python -m compileall -q .", required=True, timeout=60))

@@ -371,15 +371,10 @@ def decide_tool(
 
     if name == "install_deps" and settings.is_local:
         # Local installs have no container/network boundary: the project's
-        # own .venv / node_modules are modified on the host.  Readonly keeps
-        # Task 8's flat deny, ask requires a per-call approval, and the
-        # explicit opt-in replaces the server's admin/network gates.
-        if mode == "readonly":
-            return PolicyDecision(
-                False,
-                "本地模式下只读/计划权限不执行主机命令，请切换到确认模式后再执行",
-                caps,
-            )
+        # own .venv / node_modules are modified on the host.  Readonly is
+        # already flat-denied by the generic WRITE_CAPABILITIES gate above;
+        # ask requires a per-call approval, and the explicit opt-in replaces
+        # the server's admin/network gates.
         if not settings.local_allow_install_deps:
             return PolicyDecision(
                 False,

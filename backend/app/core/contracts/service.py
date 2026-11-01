@@ -4,11 +4,11 @@ The Gate only reads a committed contract and compares a generated TypeScript
 client against the committed client.  Refreshing the contract from a running
 FastAPI app is a developer/CI action, not something the sandbox performs.
 """
-import shlex
 from pathlib import Path
 
 import yaml
 
+from app.core.exec.host import quote_shell_arg
 from app.core.security.paths import UnsafePathError, resolve_repo_path, try_normalize_relpath
 
 CONTRACT_SOURCES = (
@@ -95,12 +95,20 @@ def discover_contract_from_root(root: Path | str) -> dict:
     return discover_contract(paths)
 
 
-def contract_step(files: dict[str, str]) -> dict | None:
+def contract_step(files: dict[str, str], *, platform: str | None = None) -> dict | None:
+    """Build the contract check step.
+
+    Paths come from model-controlled ``nova.yaml``.  ``platform`` selects the
+    quoting rules of the shell that will run the step (POSIX for the Docker
+    sandbox, ``sys.platform`` for local host verification); unsafe values
+    raise ``ValueError`` and must be skipped by the caller.
+    """
     info = discover_contract(files)
     if not info["source"]:
         return None
-    source = shlex.quote(info["source"])
-    target = shlex.quote(info["target"])
+    shell_platform = platform or "posix"
+    source = quote_shell_arg(info["source"], platform=shell_platform)
+    target = quote_shell_arg(info["target"], platform=shell_platform)
     script = (
         "const fs=require('fs');"
         f"const a=fs.readFileSync('{_CONTRACT_TARGET}','utf8').replace(/\\r\\n/g,'\\n');"

@@ -1,9 +1,13 @@
 """Contract discovery and Gate step generation."""
+import pytest
+
 from app.core.contracts.service import (
     contract_step, contract_step_name, discover_contract, discover_contract_from_root,
     parse_nova_config,
 )
 from app.core.verify.profiles import detect_profile
+
+_UNSAFE_CONFIG = "contract:\n  source: \"x & echo NOVA_INJECTED & rem\"\n"
 
 
 def test_discover_contract_auto_detects_source_and_target():
@@ -45,6 +49,49 @@ def test_profile_includes_contract_check_even_without_package_json():
     })
     assert profile.stack == "node"
     assert any(step.name == "契约检查" and step.image == "node" for step in profile.steps)
+
+
+def test_contract_step_posix_keeps_shlex_quoting():
+    step = contract_step({
+        "nova.yaml": "contract:\n  source: \"api docs/openapi.json\"\n",
+    })
+    assert step is not None
+    assert "'api docs/openapi.json'" in step["command"]
+
+
+def test_contract_step_windows_rejects_shell_syntax():
+    with pytest.raises(ValueError, match="特殊字符"):
+        contract_step({"nova.yaml": _UNSAFE_CONFIG}, platform="win32")
+
+
+def test_profile_skips_unsafe_contract_source_on_windows():
+    profile = detect_profile(
+        {
+            "app.py": "print(1)",
+            "tests/test_app.py": "def test_a(): pass",
+            "nova.yaml": _UNSAFE_CONFIG,
+        },
+        platform="win32",
+    )
+    assert profile.stack == "python"
+    assert all("NOVA_INJECTED" not in step.command for step in profile.steps)
+    assert any("契约检查已跳过" in note for note in profile.notes)
+
+
+def test_contract_step_windows_quotes_paths_with_spaces():
+    step = contract_step(
+        {
+            "nova.yaml": (
+                "contract:\n"
+                "  source: \"api docs/openapi.json\"\n"
+                "  target: \"web src/api-schema.d.ts\"\n"
+            ),
+        },
+        platform="win32",
+    )
+    assert step is not None
+    assert '"api docs/openapi.json"' in step["command"]
+    assert '"web src/api-schema.d.ts"' in step["command"]
 
 
 def test_contract_missing_target_is_flagged():

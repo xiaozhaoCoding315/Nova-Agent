@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core.exec.host import execute_host, project_python
+from app.core.exec.host import execute_host, project_python, quote_shell_arg
 from app.core.indexing.pipeline import get_repo
 from app.core.sandbox.runtime import deps_volume_name, execute, sandbox_status
 from app.core.security.audit import AuditAction, log_audit
@@ -178,7 +178,7 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
     default_manifest = "package.json" if kind == "node" else "requirements.txt"
     raw_rel = str(args.get("requirements") or default_manifest)
     rel = try_normalize_relpath(raw_rel)
-    if not rel or '"' in rel or "\x00" in rel:
+    if not rel:
         raise ToolBusinessError("依赖文件路径不安全")
     if kind == "node" and rel.lower().endswith("requirements.txt"):
         kind = "python"
@@ -191,7 +191,13 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
             )
         if _read_repo_file(root, rel) is None:
             raise ToolBusinessError(f"未找到依赖文件：{rel}")
-        command = f'"{python}" -m pip install -r "{rel}"'
+        try:
+            command = (
+                f"{quote_shell_arg(str(python))} -m pip install -r "
+                f"{quote_shell_arg(rel)}"
+            )
+        except ValueError as exc:
+            raise ToolBusinessError(f"依赖文件路径不安全：{exc}") from exc
     else:
         if "/" in rel:
             raise ToolBusinessError("Node 依赖安装目前只支持仓库根目录 package.json")
@@ -236,6 +242,13 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
         raise ToolBusinessError(
             f"依赖安装失败（exit {result.get('exit_code')}）：\n{tail[-1500:]}"
         )
+    hint = (
+        "依赖已安装到项目自身的 .venv；后续 Python 验证会直接使用该环境。"
+        "本地模式暂不支持 Node/前端验证。"
+        if kind == "python" else
+        "依赖已安装到项目自身的 node_modules；本地模式暂不支持 Node/前端验证，"
+        "请在服务器模式运行验证或手动执行。"
+    )
     return {
         "installed": True,
         "kind": kind,
@@ -243,7 +256,7 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
         "command": command,
         "output_tail": tail[-1500:],
         "isolation": "none",
-        "hint": "依赖已安装到项目自身的 .venv / node_modules；后续验证直接使用。",
+        "hint": hint,
     }
 
 

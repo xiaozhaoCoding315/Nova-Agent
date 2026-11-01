@@ -8,7 +8,7 @@ Pipeline (deterministic, LLM used only where it adds value):
 """
 import difflib
 import json
-import shlex
+import sys
 import time
 from pathlib import Path
 
@@ -16,6 +16,7 @@ import structlog
 
 from app.config import settings
 from app.core.conflicts import ConflictError
+from app.core.exec.host import quote_shell_arg
 from app.core.exec.service import run_staged_host
 from app.core.indexing.pipeline import get_repo
 from app.core.llm.json_call import llm_json
@@ -100,18 +101,28 @@ def _common_root(paths: list[str]) -> str | None:
     return None
 
 
+def _shell_platform() -> str:
+    """Shell that will run task commands: host locally, POSIX sandbox otherwise."""
+    return sys.platform if settings.use_host_executor else "posix"
+
+
 def _pytest_command(test_paths: list[str], root_prefix: str | None) -> str:
+    platform = _shell_platform()
     paths = list(test_paths)
     prefix = ""
     if root_prefix:
         stripped = [p[len(root_prefix) + 1:] if p.startswith(root_prefix + "/") else p for p in paths]
         paths = stripped
-        prefix = f"cd {shlex.quote(root_prefix)} && "
-    return prefix + "python -m pytest -q " + " ".join(shlex.quote(p) for p in paths)
+        prefix = f"cd {quote_shell_arg(root_prefix, platform=platform)} && "
+    quoted = " ".join(quote_shell_arg(p, platform=platform) for p in paths)
+    return prefix + "python -m pytest -q " + quoted
 
 
 def _full_suite_command(root_prefix: str | None) -> str:
-    prefix = f"cd {shlex.quote(root_prefix)} && " if root_prefix else ""
+    prefix = (
+        f"cd {quote_shell_arg(root_prefix, platform=_shell_platform())} && "
+        if root_prefix else ""
+    )
     return prefix + "python -m compileall -q . && python -m pytest -q"
 
 

@@ -95,8 +95,11 @@ def test_red_phase_classification(result, ok):
 @pytest.mark.asyncio
 async def test_run_verification_aggregates_steps(monkeypatch):
     monkeypatch.setattr(
-        verify_service, "_collect_repo_files",
-        AsyncMock(return_value={"app.py": "print(1)", "tests/test_app.py": "def test_a(): pass"}),
+        verify_service, "_collect_repo_files_with_stats",
+        AsyncMock(return_value=(
+            {"app.py": "print(1)", "tests/test_app.py": "def test_a(): pass"},
+            {"files": 2, "truncated": False},
+        )),
     )
     monkeypatch.setattr(
         verify_service, "sandbox_status",
@@ -120,10 +123,11 @@ async def test_run_verification_aggregates_steps(monkeypatch):
 @pytest.mark.asyncio
 async def test_node_verification_uses_node_image_and_volume(monkeypatch):
     monkeypatch.setattr(
-        verify_service, "_collect_repo_files",
-        AsyncMock(return_value={
-            "package.json": '{"scripts": {"test": "node --test", "build": "node build.js"}}',
-        }),
+        verify_service, "_collect_repo_files_with_stats",
+        AsyncMock(return_value=(
+            {"package.json": '{"scripts": {"test": "node --test", "build": "node build.js"}}'},
+            {"files": 1, "truncated": False},
+        )),
     )
     monkeypatch.setattr(
         verify_service, "sandbox_status",
@@ -153,8 +157,11 @@ async def test_node_verification_uses_node_image_and_volume(monkeypatch):
 @pytest.mark.asyncio
 async def test_node_verification_fails_honestly_without_image(monkeypatch):
     monkeypatch.setattr(
-        verify_service, "_collect_repo_files",
-        AsyncMock(return_value={"package.json": '{"scripts": {"test": "node --test"}}'}),
+        verify_service, "_collect_repo_files_with_stats",
+        AsyncMock(return_value=(
+            {"package.json": '{"scripts": {"test": "node --test"}}'},
+            {"files": 1, "truncated": False},
+        )),
     )
     monkeypatch.setattr(
         verify_service, "sandbox_status",

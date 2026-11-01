@@ -37,6 +37,7 @@ import os
 import queue
 import re
 import select
+import shlex
 import shutil
 import signal
 import subprocess
@@ -54,6 +55,10 @@ _KILL_VERIFY_SECONDS = 1.0
 _READER_JOIN_SECONDS = 0.5
 _READ_CHUNK = 65_536
 _DRIVE = re.compile(r"^[A-Za-z]:")
+# cmd.exe expands %VAR% inside double quotes and treats these as syntax even
+# when quoted in some contexts.  Values containing them are rejected rather
+# than escaped: command construction must never turn repo data into syntax.
+_WINDOWS_SHELL_SPECIAL = frozenset('"%!^&|<>()')
 
 _WIN_ALLOW = {
     "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC",
@@ -140,12 +145,47 @@ def resolve_cwd(root: str | Path, cwd: str = ".") -> Path:
     return candidate
 
 
+def require_single_line(value: str, *, label: str = "参数") -> str:
+    """Reject embedded newlines/NULs: cmd.exe truncates at a newline.
+
+    Every command and every value interpolated into one goes through this or
+    ``quote_shell_arg``; a silent truncation could turn a partial command into
+    a different (privileged) one.
+    """
+    text = str(value or "")
+    if "\n" in text or "\r" in text:
+        raise ValueError(f"{label} 不能包含换行：命令行会被截断或拆分为多条")
+    if "\x00" in text:
+        raise ValueError(f"{label} 包含非法空字符")
+    return text
+
+
+def quote_shell_arg(value: str, *, platform: str | None = None) -> str:
+    """Quote one value for the platform shell; reject cmd.exe syntax.
+
+    POSIX uses ``shlex.quote`` (server sandboxes and POSIX hosts).  Windows
+    ``cmd.exe`` has no escaping that is safe for all of ``" % ! ^ & | < > ( )``
+    inside the raw line form used by this executor, so such values raise
+    ``ValueError`` instead of being assembled into a command.  Legitimate
+    paths containing spaces are wrapped in double quotes and keep working.
+    Newlines are rejected on every platform.
+    """
+    text = require_single_line(value, label="参数")
+    if (platform or sys.platform) == "win32":
+        if any(char in _WINDOWS_SHELL_SPECIAL for char in text):
+            raise ValueError(
+                "参数包含 Windows Shell 特殊字符，已拒绝执行"
+                "（不允许 \" % ! ^ & | < > ( ) 与换行）"
+            )
+        return f'"{text}"'
+    return shlex.quote(text)
+
+
 def build_shell_argv(command: str, *, platform: str | None = None) -> list[str]:
     """Build the platform shell invocation. ``/d`` disables cmd AutoRun."""
     if not command.strip():
         raise ValueError("command 不能为空")
-    if "\x00" in command:
-        raise ValueError("command 包含非法字符")
+    command = require_single_line(command, label="command")
     if (platform or sys.platform) == "win32":
         comspec = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe")
         return [comspec, "/d", "/s", "/c", command]

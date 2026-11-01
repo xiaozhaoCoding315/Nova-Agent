@@ -1,8 +1,11 @@
 """Run the verification profile for one repo.
 
-Server mode keeps using the builder sandbox images; local mode runs the same
-profile on the host in a throwaway workspace (no container isolation).
+Server mode keeps using the builder sandbox images; local mode runs Python
+profiles on the host in a throwaway workspace (no container isolation).
+Node/fullstack profiles are reported as unsupported locally: their commands
+are POSIX shell snippets, so running them through cmd.exe would be broken.
 """
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -11,7 +14,7 @@ import structlog
 from app.config import settings
 from app.core.exec.service import run_staged_host
 from app.core.sandbox.runtime import deps_volume_name, execute as sandbox_execute, sandbox_status
-from app.core.tools.run_code import _collect_repo_files
+from app.core.tools.run_code import _collect_repo_files_with_stats
 from app.core.verify.profiles import detect_profile
 
 logger = structlog.get_logger()
@@ -20,15 +23,78 @@ LOCAL_READONLY_DENY = "本地模式下只读/计划权限不执行主机命令�
 LOCAL_APPROVAL_REQUIRED = (
     "本地模式确认执行：验证会在你的电脑上运行命令（无容器隔离），需要你批准后执行"
 )
+LOCAL_HOST_NOTE = "本地模式在主机执行，无容器隔离"
+LOCAL_NODE_UNSUPPORTED = "本地模式暂不支持 Node/前端验证，请在服务器模式运行或手动执行"
+TRUNCATED_NOTE = "仓库文件较多，仅验证了部分文件（已截断）"
 
 
-def _host_denial(permission_mode: str, approval_granted: bool) -> str | None:
-    """Explicit entry-point gate: verify does not go through run_command policy."""
-    if permission_mode == "readonly":
+def _host_denial(permission_mode: str | None, approval_granted: bool) -> str | None:
+    """Explicit entry-point gate: verify does not go through run_command policy.
+
+    ``None`` (the call default) is treated as ask locally: a host execution
+    path must never run because a caller forgot to pass a mode.  Server mode
+    ignores this gate, so its defaults are unchanged.
+    """
+    effective = permission_mode if permission_mode is not None else "ask"
+    if effective == "readonly":
         return LOCAL_READONLY_DENY
-    if permission_mode == "ask" and not approval_granted:
+    if effective == "ask" and not approval_granted:
         return LOCAL_APPROVAL_REQUIRED
     return None
+
+
+def _copy_note(copy_stats: dict) -> list[str]:
+    return [TRUNCATED_NOTE] if copy_stats.get("truncated") else []
+
+
+def _base_notes(profile, copy_stats: dict) -> list[str]:
+    return list(profile.notes) + _copy_note(copy_stats)
+
+
+def _local_notes(profile) -> list[str]:
+    """Drop Docker-image wording: local steps never use an image."""
+    return [note for note in profile.notes if "镜像" not in note]
+
+
+def _node_unsupported_result(profile, copy_stats: dict, started: float, now: str) -> dict:
+    """Local mode cannot safely run the Node snippets (POSIX shell syntax).
+
+    Steps are reported as skipped, never executed, and the result is marked
+    unsupported instead of pretending a partial run proves anything.
+    """
+    steps = [
+        {
+            "name": step.name,
+            "command": step.command,
+            "required": step.required,
+            "status": "skipped",
+            "exit_code": -1,
+            "timed_out": False,
+            "stdout": "",
+            "stderr": LOCAL_NODE_UNSUPPORTED,
+            "duration_ms": 0,
+        }
+        for step in profile.steps
+    ]
+    return {
+        "status": "unsupported",
+        "stack": profile.stack,
+        "notes": _local_notes(profile) + _copy_note(copy_stats) + [LOCAL_NODE_UNSUPPORTED],
+        "steps": steps,
+        "exit_code": -1,
+        "stdout": "",
+        "stderr": LOCAL_NODE_UNSUPPORTED,
+        "command": " → ".join(step.command for step in profile.steps),
+        "image": "host",
+        "at": now,
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+    }
+
+
+def _profile_needs_node(profile) -> bool:
+    return profile.stack in ("node", "fullstack") or any(
+        getattr(step, "image", "") == "node" for step in profile.steps
+    )
 
 
 def _tail(text: str | None, limit: int) -> str:
@@ -40,23 +106,33 @@ async def run_verification(
     user: dict,
     overrides: dict[str, str] | None = None,
     *,
-    permission_mode: str = "auto",
+    permission_mode: str | None = None,
     approval_granted: bool = False,
     job_id: str | None = None,
 ) -> dict:
     started = time.perf_counter()
-    files = await _collect_repo_files(str(repo["id"]), user)
+    files, copy_stats = await _collect_repo_files_with_stats(str(repo["id"]), user)
     if overrides:
         # Gate runs before the proposal is written to disk.
         files.update({str(k): str(v) for k, v in overrides.items()})
-    profile = detect_profile(files)
+    profile = detect_profile(
+        files,
+        platform=sys.platform if settings.use_host_executor else "posix",
+    )
     now = datetime.now(timezone.utc).isoformat()
 
     if not profile.steps:
+        notes = (
+            _local_notes(profile) if settings.use_host_executor
+            else list(profile.notes)
+        )
+        notes += _copy_note(copy_stats)
+        if profile.unsupported_reason:
+            notes.append(profile.unsupported_reason)
         return {
             "status": "unsupported",
             "stack": profile.stack,
-            "notes": profile.notes + ([profile.unsupported_reason] if profile.unsupported_reason else []),
+            "notes": notes,
             "steps": [],
             "exit_code": -1,
             "stdout": "",
@@ -78,7 +154,7 @@ async def run_verification(
             return {
                 "status": "failed",
                 "stack": profile.stack,
-                "notes": list(profile.notes) + [denial],
+                "notes": _local_notes(profile) + _copy_note(copy_stats) + [denial],
                 "steps": [],
                 "exit_code": -1,
                 "stdout": "",
@@ -88,8 +164,14 @@ async def run_verification(
                 "at": now,
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
             }
+        if _profile_needs_node(profile):
+            logger.info(
+                "verification_unsupported_local",
+                repo_id=str(repo["id"]), stack=profile.stack,
+            )
+            return _node_unsupported_result(profile, copy_stats, started, now)
         return await _run_verification_host(
-            repo, files, profile, started, now,
+            repo, files, profile, started, now, copy_stats,
             job_id=job_id, user_id=user.get("id"),
         )
 
@@ -99,7 +181,7 @@ async def run_verification(
         return {
             "status": "failed",
             "stack": profile.stack,
-            "notes": profile.notes,
+            "notes": _base_notes(profile, copy_stats),
             "steps": [],
             "exit_code": -1,
             "stdout": "",
@@ -111,7 +193,7 @@ async def run_verification(
         }
 
     allow_network = settings.sandbox_allow_network and user.get("role") == "admin"
-    notes = list(profile.notes)
+    notes = _base_notes(profile, copy_stats)
     if needs_builder and not status.get("builder_available"):
         notes.append("builder 镜像不可用，Python 步骤将退回 slim 镜像；依赖可能不完整")
     if any(step.image == "node" for step in profile.steps) and not status.get("node_available"):
@@ -233,21 +315,39 @@ async def run_verification(
     }
 
 
+async def _check_cancelled(job_id: str | None) -> None:
+    """Between-step cancellation check backed by the jobs table.
+
+    Verification gets only a job id, not a ``JobContext``; this is the cheap
+    check the jobs API exposes.  Runs without a job id (scripts, direct
+    callers) skip it.
+    """
+    if not job_id:
+        return
+    from app.core.jobs.models import JobCanceled
+    from app.core.jobs.runner import runner
+
+    if await runner.is_cancel_requested(str(job_id)):
+        raise JobCanceled()
+
+
 async def _run_verification_host(
     repo: dict,
     files: dict,
     profile,
     started: float,
     now: str,
+    copy_stats: dict,
     *,
     job_id: str | None = None,
     user_id=None,
 ) -> dict:
     """Local mode: run every profile step on the host, in a fresh workspace."""
-    notes = list(profile.notes) + ["本地模式在主机执行，无容器隔离"]
+    notes = _local_notes(profile) + _copy_note(copy_stats) + [LOCAL_HOST_NOTE]
     steps: list[dict] = []
     stopped_early = False
     for index, step in enumerate(profile.steps):
+        await _check_cancelled(job_id)
         step_started = time.perf_counter()
         result = await run_staged_host(
             files,

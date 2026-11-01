@@ -40,7 +40,7 @@ async def enqueue_verify(
     repo_id: str,
     user_id: int,
     *,
-    permission_mode: str = "auto",
+    permission_mode: str | None = None,
     approval_granted: bool = False,
 ) -> str:
     return await runner.enqueue(

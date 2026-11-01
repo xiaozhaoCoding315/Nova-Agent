@@ -23,6 +23,9 @@ from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.tools.base import ToolBusinessError
 
 WARNING = "本地执行无容器隔离：命令以当前 Windows 用户权限在你的项目目录运行"
+STAGED_WARNING = (
+    "本地暂存工作区执行无容器隔离：命令以当前用户权限在临时目录运行"
+)
 KILL_WARNING = "（警告：命令超时后未能完全结束其进程，请手动检查残留进程）"
 
 
@@ -45,8 +48,7 @@ def _clamp_timeout(timeout, default: int = 120) -> int:
     return max(1, min(value, 300))
 
 
-def _with_warnings(result: dict) -> dict:
-    warning = WARNING
+def _with_warnings(result: dict, warning: str = WARNING) -> dict:
     if result.get("kill_failed"):
         warning += KILL_WARNING
     result["warning"] = warning
@@ -167,7 +169,12 @@ async def run_staged_host(
     the command runs there with the project ``.venv`` on PATH, and the
     workspace is always removed afterwards.  The project root itself is only
     used to locate that virtual environment (``venv_root``).
+
+    ``command`` is caller-built from repository/model data by verification
+    profiles, so it is validated (no newlines) and rejected as a business
+    error before any workspace is created.
     """
+    command = _no_multiline(command)
     payload = _safe_files(files)
     try:
         base = settings.local_tmp_root / f"stage-{uuid.uuid4().hex}"
@@ -195,7 +202,7 @@ async def run_staged_host(
             )
         except (ValueError, OSError) as exc:
             raise ToolBusinessError(f"本地执行失败：{exc}") from exc
-        _with_warnings(result)
+        _with_warnings(result, STAGED_WARNING)
         result["workspace"] = "temporary"
         return result
     finally:
