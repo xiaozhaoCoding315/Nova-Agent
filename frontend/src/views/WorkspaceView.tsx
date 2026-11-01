@@ -19,7 +19,7 @@ import { NewProjectDialog } from '../components/NewProjectDialog'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { FileNode, Job, Repo, VerifyResult } from '../lib/types'
-import { REPO_STATUS, selectClass } from '../lib/ui'
+import { repoStatus, selectClass } from '../lib/ui'
 import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
 
@@ -44,7 +44,7 @@ function RepoCard({
   onRemove: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
-  const meta = REPO_STATUS[repo.status]
+  const meta = repoStatus(repo.status)
 
   return (
     <div

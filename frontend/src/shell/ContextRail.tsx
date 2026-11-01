@@ -10,7 +10,7 @@ import { RefPanel } from '../components/RefPanel'
 import { Badge, EmptyState, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { FileNode } from '../lib/types'
-import { REPO_STATUS, RUN_STATUS, selectClass } from '../lib/ui'
+import { repoStatus, RUN_STATUS, selectClass } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useRepos } from '../stores/repos'
 import { useRun } from '../stores/run'
@@ -325,7 +325,7 @@ export function ContextRail({
                       {repos.map((repo) => (
                         <option key={repo.id} value={repo.id}>
                           {repo.name}
-                          {repo.status === 'ready' ? '' : `（${REPO_STATUS[repo.status].label}）`}
+                          {repo.status === 'ready' ? '' : `（${repoStatus(repo.status).label}）`}
                         </option>
                       ))}
                     </select>
@@ -337,7 +337,7 @@ export function ContextRail({
                       </p>
                     ) : activeRepo.status !== 'ready' ? (
                       <p className="px-3 py-4 text-xs leading-relaxed text-dim">
-                        项目{REPO_STATUS[activeRepo.status].label}，索引完成后显示文件树。
+                        项目{repoStatus(activeRepo.status).label}，索引完成后显示文件树。
                       </p>
                     ) : treeLoading ? (
                       <p className="flex items-center gap-2 px-3 py-3 text-xs text-dim">
@@ -383,7 +383,7 @@ export function ContextRail({
                 ) : activeRepo.status !== 'ready' ? (
                   <EmptyState
                     title="项目尚未就绪"
-                    hint={`项目${REPO_STATUS[activeRepo.status].label}，索引完成后可以分析影响范围。`}
+                    hint={`项目${repoStatus(activeRepo.status).label}，索引完成后可以分析影响范围。`}
                   />
                 ) : (
                   <ImpactPanel
@@ -440,7 +440,7 @@ export function ContextRail({
                         </p>
                       ) : activeRepo.status !== 'ready' ? (
                         <p className="text-xs leading-relaxed text-dim">
-                          项目{REPO_STATUS[activeRepo.status].label}，索引完成后可以查看工作区变更。
+                          项目{repoStatus(activeRepo.status).label}，索引完成后可以查看工作区变更。
                         </p>
                       ) : diffLoading ? (
                         <p className="flex items-center gap-2 text-xs text-dim">

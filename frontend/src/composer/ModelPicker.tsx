@@ -135,7 +135,7 @@ export function ModelPicker({
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       onClose()
     }
@@ -304,7 +304,7 @@ export function ModelPicker({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">{provider.label}</span>
                       <span className="block truncate font-mono text-2xs text-faint">
-                        {credential.key_hint || '无 Key'} · {credential.model}
+                        {credential.model}
                       </span>
                     </span>
                     {selected && <Check size={12} className="shrink-0 text-accent" />}

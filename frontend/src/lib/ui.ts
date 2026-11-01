@@ -28,6 +28,11 @@ export const REPO_STATUS: Record<RepoStatus, { label: string; tone: StatusTone }
   review: { label: '待审阅', tone: 'accent' },
 }
 
+/** 后端未来新增状态时降级为原样文案，渲染不因查表失败而抛错。 */
+export function repoStatus(status: string): { label: string; tone: StatusTone } {
+  return REPO_STATUS[status as RepoStatus] ?? { label: status, tone: 'dim' }
+}
+
 /** /fix 任务状态：文案与色调的唯一来源（运行面板 / 右栏徽标）。 */
 export const RUN_STATUS: Record<string, { label: string; tone: StatusTone }> = {
   queued: { label: '排队中', tone: 'warn' },

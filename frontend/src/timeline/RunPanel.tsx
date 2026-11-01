@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FlaskConical, X, XOctagon,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FlaskConical, ShieldCheck, X, XOctagon,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { DiffView } from '../components/DiffView'
@@ -171,7 +171,7 @@ export function RunPanel() {
   const selectedRepoId = useChat((state) => state.selectedRepoIds[0] ?? null)
   const [recentOpen, setRecentOpen] = useState(false)
   const [confirmReject, setConfirmReject] = useState(false)
-  const [busy, setBusy] = useState<'apply' | 'reject' | null>(null)
+  const [busy, setBusy] = useState<'apply' | 'reject' | 'review' | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const repoId = task?.repo_id ?? selectedRepoId
@@ -213,12 +213,13 @@ export function RunPanel() {
     return () => window.removeEventListener('keydown', onKey)
   }, [recentOpen, confirmReject])
 
-  const act = async (kind: 'apply' | 'reject') => {
+  const act = async (kind: 'apply' | 'reject' | 'review') => {
     if (busy) return
     setBusy(kind)
     setConfirmReject(false)
     if (kind === 'apply') await useRun.getState().apply()
-    else await useRun.getState().reject()
+    else if (kind === 'reject') await useRun.getState().reject()
+    else await useRun.getState().review()
     setBusy(null)
   }
 
@@ -330,6 +331,19 @@ export function RunPanel() {
             )}
 
             {result.review && <ReviewPanel review={result.review} />}
+
+            {(task.status === 'ready' || task.status === 'failed') && (
+              <section className="flex flex-wrap items-center gap-2 border-t border-edge/70 pt-3">
+                <Button
+                  onClick={() => void act('review')}
+                  disabled={busy != null}
+                  title="只读审查当前 diff，不会修改文件"
+                >
+                  {busy === 'review' ? <Spinner /> : <ShieldCheck size={13} />} 审查
+                </Button>
+                <span className="text-xs text-dim">只读审查当前 diff，不会修改文件</span>
+              </section>
+            )}
 
             {task.status === 'ready' && (
               <section className="space-y-2 border-t border-edge/70 pt-3">

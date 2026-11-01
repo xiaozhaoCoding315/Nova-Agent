@@ -16,6 +16,7 @@ type RunState = {
   loadRecent: (repoId?: string | null) => Promise<void>
   apply: () => Promise<void>
   reject: () => Promise<void>
+  review: () => Promise<void>
   close: () => void
   reset: () => void
 }
@@ -228,6 +229,21 @@ export const useRun = create<RunState>((set, get) => {
       }
     },
 
+    review: async () => {
+      const taskId = get().taskId
+      if (!taskId) return
+      set({ error: null })
+      try {
+        await api.tasks.review(taskId)
+        if (get().taskId !== taskId) return
+        // 审查结果由后端持久化在 result.review；刷新一次让面板渲染出来。
+        await get().refresh()
+      } catch (err) {
+        if (get().taskId !== taskId) return
+        set({ error: errorText(err, '审查失败') })
+      }
+    },
+
     close: () => {
       // 关闭面板后不再轮询；重新打开时会主动 refresh 并恢复轮询。
       stopPolling()
@@ -235,8 +251,10 @@ export const useRun = create<RunState>((set, get) => {
     },
 
     reset: () => {
+      // 只清内存，不碰 localStorage：启动时 auth.check() 也会调用这里，
+      // 而那时 chat.sessionId 还是 null，写存储会把 `nova.run.new` 误删。
+      // 账号切换需要清空运行记录时走 auth 的 clearRunStorage / clearStoredRuns。
       stopPolling()
-      writeStoredRun(useChat.getState().sessionId, null)
       set({ taskId: null, task: null, recent: [], open: false, error: null })
     },
   }

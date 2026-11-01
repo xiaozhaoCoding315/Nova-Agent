@@ -11,7 +11,7 @@ import { api } from '../lib/api'
 import type {
   GitInfo, Health, LocalExecStatus, PermissionMode, Usage,
 } from '../lib/types'
-import { REPO_STATUS } from '../lib/ui'
+import { repoStatus } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
@@ -75,12 +75,14 @@ export function ChatHeader({
 
   const currentRepoId = historyRepoId ?? selectedRepoIds[0] ?? null
   const currentRepo = repos.find((repo) => repo.id === currentRepoId) ?? null
-  const repoStatus = currentRepo?.status ?? null
+  const currentStatus = currentRepo?.status ?? null
 
   useEffect(() => {
     if (!permissionOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPermissionOpen(false)
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      event.preventDefault()
+      setPermissionOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -124,7 +126,7 @@ export function ChatHeader({
     let cancelled = false
     setGitInfo(null)
     setGitChecked(false)
-    if (!currentRepoId || repoStatus !== 'ready') return
+    if (!currentRepoId || currentStatus !== 'ready') return
     api.git
       .status(currentRepoId)
       .then((info) => {
@@ -138,7 +140,7 @@ export function ChatHeader({
     return () => {
       cancelled = true
     }
-  }, [currentRepoId, repoStatus])
+  }, [currentRepoId, currentStatus])
 
   const permission = PERMISSIONS.find((item) => item.value === permissionMode) ?? PERMISSIONS[1]
   const modelLabel = picker.value.provider && picker.value.model
@@ -188,7 +190,7 @@ export function ChatHeader({
             )
           ) : (
             <span className="hidden text-xs text-faint sm:inline">
-              {REPO_STATUS[currentRepo.status].label}
+              {repoStatus(currentRepo.status).label}
             </span>
           )
         )}

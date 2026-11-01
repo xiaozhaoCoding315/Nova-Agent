@@ -85,7 +85,7 @@ export function Composer({
   useEffect(() => {
     if (!modelOpen && !permissionOpen) return
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       setModelOpen(false)
       setPermissionOpen(false)
@@ -235,6 +235,7 @@ export function Composer({
         return
       }
       if (e.key === 'Escape') {
+        if (e.defaultPrevented) return
         e.preventDefault()
         setSlashOpen(false)
         return
@@ -259,6 +260,8 @@ export function Composer({
         return
       }
       if (e.key === 'Escape') {
+        if (e.defaultPrevented) return
+        e.preventDefault()
         setMentionOpen(false)
         return
       }
