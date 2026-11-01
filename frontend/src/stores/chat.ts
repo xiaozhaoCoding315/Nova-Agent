@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
-import { compactOverrides, sanitizeOverrides } from '../lib/overrides'
+import {
+  compactOverrides, providerSupportsReasoning, sanitizeOverrides,
+} from '../lib/overrides'
 import { streamChat } from '../lib/sse'
 import type {
   ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, LlmProvider,
@@ -122,6 +124,13 @@ export const useChat = create<ChatState>((set, get) => ({
         : current.contextWindow,
       temperature: patch.temperature !== undefined ? patch.temperature : current.temperature,
     })
+    // 后端用 JSONB || 合并覆盖、无法删键：对不支持推理的厂商显式写空串，
+    // 覆盖会话里残留的 reasoning_effort（factory 会把 "" 视为未设置）。
+    // 仅在确实不支持时写，避免支持推理的厂商丢掉 credential 默认 effort。
+    const spec = activeProviderSpec(next.provider ?? null)
+    if (spec && !providerSupportsReasoning(spec)) {
+      next.reasoning_effort = ''
+    }
     set({
       provider: next.provider ?? null,
       model: next.model ?? null,
@@ -330,13 +339,19 @@ export const useChat = create<ChatState>((set, get) => ({
     abortController = controller
 
     // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
+    const providerSpec = activeProviderSpec(get().provider)
     const overrides = compactOverrides(sanitizeOverrides({
       provider: get().provider,
       model: get().model,
       reasoning_effort: get().reasoningEffort || undefined,
       context_window: get().contextWindow,
       temperature: get().temperature,
-    }, activeProviderSpec(get().provider)))
+    }, providerSpec))
+    // 后端会先把请求覆盖并入会话持久化覆盖再读取；JSONB || 不能删键，必须显式
+    // 用空串覆盖旧的 reasoning_effort。同 PATCH：仅对不支持推理的厂商这样做。
+    if (providerSpec && !providerSupportsReasoning(providerSpec)) {
+      overrides.reasoning_effort = ''
+    }
 
     try {
       await streamChat(

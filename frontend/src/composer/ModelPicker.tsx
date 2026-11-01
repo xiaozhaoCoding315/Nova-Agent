@@ -151,6 +151,7 @@ export function ModelPicker({
   const selectProvider = (provider: LlmProvider) => {
     const credential = credentialMap.get(provider.id)
     if (!credential) return
+    setContextError(null)
     const nextModel = credential.model || provider.models[0] || null
     // 新厂商不支持的参数立即清空、上下文收敛到新上限，UI 与发送保持一致。
     const sanitized = sanitizeOverrides(
@@ -427,7 +428,10 @@ export function ModelPicker({
                 <button
                   type="button"
                   aria-pressed={currentContext == null}
-                  onClick={() => onChange({ context_window: null })}
+                  onClick={() => {
+                    setContextError(null)
+                    onChange({ context_window: null })
+                  }}
                   className={optionClass(currentContext == null)}
                 >
                   自动
@@ -438,7 +442,10 @@ export function ModelPicker({
                     type="button"
                     aria-pressed={currentContext === preset}
                     disabled={maxWindow != null && preset > maxWindow}
-                    onClick={() => onChange({ context_window: preset })}
+                    onClick={() => {
+                      setContextError(null)
+                      onChange({ context_window: preset })
+                    }}
                     className={optionClass(
                       currentContext === preset,
                       maxWindow != null && preset > maxWindow,
@@ -585,22 +592,25 @@ export function useModelPicker(): {
     if (!activeProviderId) throw new Error('请先选择厂商')
     if (!activeCredential) throw new Error('请先配置该厂商的 Key')
     if (!value.model) throw new Error('请先选择模型')
-    // 「自动」时按默认 credential 的生效值保存，避免写空值或 0。
-    const effective = sanitizeOverrides(
-      {
-        reasoning_effort: reasoningEffort
-          || (activeCredential.reasoning_effort as LlmOverrides['reasoning_effort'])
-          || '',
-        context_window: contextWindow ?? activeCredential.context_window ?? null,
-      },
-      activeSpec,
-    )
+    // 「自动」时按默认 credential 的生效值保存，避免写空值或 0；
+    // 厂商不支持推理时不保存，避免写入无效值。
+    const reasoning = activeSpec && !providerSupportsReasoning(activeSpec)
+      ? ''
+      : reasoningEffort
+        || (activeCredential.reasoning_effort as LlmOverrides['reasoning_effort'])
+        || ''
+    // 上下文不做厂商上限收敛：自定义端点可能配置了高于 preset 的上限，
+    // 与 ModelSettings 保持一致；只保证后端 2048 下界，空值按 0（自动）保存。
+    const rawContext = contextWindow ?? activeCredential.context_window ?? null
+    const contextForDefault = rawContext != null && rawContext > 0 && rawContext < MIN_CONTEXT_WINDOW
+      ? MIN_CONTEXT_WINDOW
+      : rawContext ?? 0
     await saveCredential(activeProviderId, {
       model: value.model,
       // 后端会拿 preset 覆盖缺失的 base_url：unlocked 厂商必须带回已保存的地址。
       base_url: activeSpec?.base_url_locked ? null : activeCredential.base_url ?? null,
-      context_window: effective.context_window ?? 0,
-      reasoning_effort: effective.reasoning_effort ?? '',
+      context_window: contextForDefault,
+      reasoning_effort: reasoning,
       is_default: true,
     })
   }
