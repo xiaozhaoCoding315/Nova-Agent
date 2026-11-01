@@ -1,10 +1,11 @@
-import { ArrowLeft, MonitorDown, X } from 'lucide-react'
+import { MonitorDown, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { CommandPalette, type PaletteAction } from '../components/CommandPalette'
 import { LocalSetupDialog } from '../components/LocalSetupDialog'
 import { RecoveryCodeModal } from '../components/RecoveryCodeModal'
 import { api } from '../lib/api'
 import type { Health, Usage } from '../lib/types'
+import { SettingsDialog, type SettingsSection } from '../settings/SettingsDialog'
 import { useAuth } from '../stores/auth'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
@@ -19,7 +20,6 @@ import { WorkspaceDrawer } from './WorkspaceDrawer'
 
 const ChatView = lazy(() => import('../views/ChatView').then((m) => ({ default: m.ChatView })))
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
-const SettingsView = lazy(() => import('../views/SettingsView').then((m) => ({ default: m.SettingsView })))
 
 const PERMISSION_LABEL = {
   readonly: '计划模式',
@@ -27,8 +27,6 @@ const PERMISSION_LABEL = {
   auto: '自主模式',
   full: '完全访问',
 } as const
-
-type Overlay = 'settings' | null
 
 const ViewFallback = () => (
   <div className="flex h-full min-h-[40vh] flex-1 items-center justify-center font-mono text-sm text-dim">
@@ -80,7 +78,8 @@ export function AppShell() {
   )
   const [localAgentOpen, setLocalAgentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [overlay, setOverlay] = useState<Overlay>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined)
   const [drawer, setDrawer] = useState<{ repoId?: string; path?: string; tab?: WorkspaceTab } | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
@@ -161,8 +160,10 @@ export function AppShell() {
     return () => query.removeEventListener('change', onChange)
   }, [])
 
-  const openSettings = () => {
-    setOverlay('settings')
+  /** 打开设置弹层；默认从「模型与密钥」开始，ModelPicker 的「管理密钥」也走这里。 */
+  const openSettings = (section?: SettingsSection) => {
+    setSettingsSection(section)
+    setSettingsOpen(true)
     setRailOpen(false)
     setDrawer(null)
   }
@@ -191,7 +192,7 @@ export function AppShell() {
 
   const startNewChat = () => {
     newSession()
-    setOverlay(null)
+    setSettingsOpen(false)
     setRailOpen(false)
     setContextRailOpen(false)
     setDrawer(null)
@@ -215,14 +216,15 @@ export function AppShell() {
       } else if (mod && event.key.toLowerCase() === 'n') {
         event.preventDefault()
         useChat.getState().newSession()
-        setOverlay(null)
+        setSettingsOpen(false)
         setRailOpen(false)
       } else if (mod && ['1', '3'].includes(event.key)) {
         event.preventDefault()
         if (event.key === '1') {
-          setOverlay(null)
+          setSettingsOpen(false)
         } else {
-          setOverlay('settings')
+          setSettingsSection(undefined)
+          setSettingsOpen(true)
           setRailOpen(false)
           setDrawer(null)
         }
@@ -249,9 +251,9 @@ export function AppShell() {
       } else if (drawer) {
         event.preventDefault()
         setDrawer(null)
-      } else if (overlay) {
+      } else if (settingsOpen) {
         event.preventDefault()
-        setOverlay(null)
+        setSettingsOpen(false)
       } else if (railOpen) {
         event.preventDefault()
         setRailOpen(false)
@@ -262,7 +264,7 @@ export function AppShell() {
     }
     window.addEventListener('keydown', onEscape, true)
     return () => window.removeEventListener('keydown', onEscape, true)
-  }, [paletteOpen, setupOpen, drawer, overlay, railOpen, contextRailOpen])
+  }, [paletteOpen, setupOpen, drawer, settingsOpen, railOpen, contextRailOpen])
 
   const actions = useMemo<PaletteAction[]>(() => {
     const items: PaletteAction[] = [
@@ -307,8 +309,8 @@ export function AppShell() {
       <ProjectRail
         open={railOpen}
         onClose={() => setRailOpen(false)}
-        onOpenSettings={openSettings}
-        onShowChat={() => setOverlay(null)}
+        onOpenSettings={() => openSettings()}
+        onShowChat={() => setSettingsOpen(false)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -317,7 +319,7 @@ export function AppShell() {
           onToggleContextRail={toggleContextRail}
           onNewChat={startNewChat}
           onOpenPalette={() => setPaletteOpen(true)}
-          onOpenSettings={openSettings}
+          onOpenSettings={() => openSettings()}
           onOpenWorkspace={openWorkspace}
           healthState={healthState}
           health={health}
@@ -353,7 +355,7 @@ export function AppShell() {
           <Suspense fallback={<ViewFallback />}>
             <ChatView
               embedded
-              onOpenSettings={openSettings}
+              onOpenSettings={() => openSettings()}
               onOpenWorkspace={openWorkspace}
               onOpenRun={openRun}
               onOpenLocalAgent={() => setLocalAgentOpen(true)}
@@ -373,28 +375,11 @@ export function AppShell() {
         onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
       />
 
-      {overlay && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-base">
-          {overlay === 'settings' && (
-            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-edge bg-panel px-3">
-              <button
-                onClick={() => setOverlay(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors duration-150 hover:bg-raised hover:text-ink"
-                title="返回对话 · Esc"
-                aria-label="返回对话"
-              >
-                <ArrowLeft size={14} />
-              </button>
-              <span className="font-mono text-sm text-dim">设置</span>
-            </div>
-          )}
-          <div className="min-h-0 flex-1">
-            <Suspense fallback={<ViewFallback />}>
-              {overlay === 'settings' && <SettingsView />}
-            </Suspense>
-          </div>
-        </div>
-      )}
+      <SettingsDialog
+        open={settingsOpen}
+        section={settingsSection}
+        onClose={() => setSettingsOpen(false)}
+      />
 
       <WorkspaceDrawer
         open={drawer !== null}

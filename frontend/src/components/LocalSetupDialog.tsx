@@ -1,8 +1,12 @@
-import { FolderOpen, KeyRound } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { FolderOpen, KeyRound, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { LocalSetupStatus } from '../lib/types'
-import { Button, Modal, Spinner } from './common'
+import { ModeBadge } from '../shell/ModeBadge'
+import { Button, Spinner } from './common'
+
+const inputClass =
+  'w-full rounded-md border border-edge bg-base/60 px-2.5 py-1.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50'
 
 export function LocalSetupDialog({
   open,
@@ -21,6 +25,8 @@ export function LocalSetupDialog({
   const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -29,6 +35,18 @@ export function LocalSetupDialog({
     setApiKey('')
     setError(null)
   }, [open, status?.default_provider, status?.default_model])
+
+  useEffect(() => {
+    if (!open) return
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    panelRef.current?.focus()
+    return () => {
+      const target = returnFocusRef.current
+      if (target && document.contains(target)) target.focus()
+    }
+  }, [open])
 
   const submit = async () => {
     if (!path.trim()) {
@@ -65,74 +83,104 @@ export function LocalSetupDialog({
     }
   }
 
+  if (!open) return null
+
   return (
-    <Modal open={open} onClose={onClose} title="首次启动：连接你的项目与模型">
-      <div className="space-y-3">
-        <p className="text-[11.5px] leading-relaxed text-dim">
-          选择本机上的项目文件夹。Nova 只读取该目录并在本机建立索引，不会复制或上传代码；
-          <span className="text-warn"> 本地执行无容器隔离</span>。
-        </p>
-        {status?.data_dir && (
-          <p className="break-all font-mono text-[10.5px] text-dim/70">
-            数据目录：{status.data_dir}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="local-setup-title"
+        tabIndex={-1}
+        onClick={(event) => event.stopPropagation()}
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-edge bg-panel shadow-pop outline-none"
+      >
+        <header className="flex items-center gap-2 border-b border-edge px-4 py-3">
+          <ModeBadge />
+          <h3 id="local-setup-title" className="min-w-0 flex-1 truncate text-md font-semibold">
+            首次启动：连接你的项目与模型
+          </h3>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-dim transition-colors duration-150 hover:bg-raised hover:text-ink"
+            title="关闭 · Esc"
+            aria-label="关闭首次启动向导"
+          >
+            <X size={14} />
+          </button>
+        </header>
+
+        <div className="space-y-3 overflow-y-auto p-4">
+          <p className="text-xs leading-relaxed text-dim">
+            选择本机上的项目文件夹。Nova 只读取该目录并在本机建立索引，不会复制或上传代码；
+            <span className="text-warn"> 本地执行无容器隔离</span>。
           </p>
-        )}
-        <label className="block space-y-1">
-          <span className="text-[11px] text-dim">项目文件夹（绝对路径）</span>
-          <input
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-            placeholder={'D:\\code\\my-project'}
-            className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none transition-colors focus:border-accent/60"
-          />
-          <span className="text-[10px] text-dim/60">
-            原生文件夹选择器将在后续桌面版提供；当前请粘贴绝对路径。
-          </span>
-        </label>
-        <div className="grid gap-2 sm:grid-cols-2">
+          {status?.data_dir && (
+            <p className="break-all font-mono text-2xs text-faint">
+              数据目录：{status.data_dir}
+            </p>
+          )}
           <label className="block space-y-1">
-            <span className="text-[11px] text-dim">模型厂商</span>
+            <span className="text-xs text-dim">项目文件夹（绝对路径）</span>
             <input
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
-              placeholder="zhipu"
-              className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-accent/60"
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+              placeholder={'D:\\code\\my-project'}
+              className={inputClass}
             />
+            <span className="text-2xs text-faint">
+              原生文件夹选择器将在后续桌面版提供；当前请粘贴绝对路径。
+            </span>
           </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block space-y-1">
+              <span className="text-xs text-dim">模型厂商</span>
+              <input
+                value={provider}
+                onChange={(event) => setProvider(event.target.value)}
+                placeholder="zhipu"
+                className={inputClass}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-dim">模型</span>
+              <input
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="glm-4.7-flash"
+                className={inputClass}
+              />
+            </label>
+          </div>
           <label className="block space-y-1">
-            <span className="text-[11px] text-dim">模型</span>
+            <span className="flex items-center gap-1 text-xs text-dim">
+              <KeyRound size={11} /> API Key
+            </span>
             <input
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              placeholder="glm-4.7-flash"
-              className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-accent/60"
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder={status?.has_llm_key ? '已保存；留空保持不变' : '首次启动必填'}
+              autoComplete="off"
+              className={inputClass}
             />
+            <span className="text-2xs text-faint">
+              Key 仅加密保存在本机，不会写入日志或返回给前端。
+            </span>
           </label>
-        </div>
-        <label className="block space-y-1">
-          <span className="flex items-center gap-1 text-[11px] text-dim">
-            <KeyRound size={11} /> API Key
-          </span>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder={status?.has_llm_key ? '已保存；留空保持不变' : '首次启动必填'}
-            autoComplete="off"
-            className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-accent/60"
-          />
-          <span className="text-[10px] text-dim/60">
-            Key 仅加密保存在本机，不会写入日志或返回给前端。
-          </span>
-        </label>
-        {error && <p className="text-[11.5px] text-err">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button size="sm" onClick={onClose} disabled={busy}>稍后</Button>
-          <Button size="sm" variant="primary" onClick={() => void submit()} disabled={busy}>
-            {busy ? <Spinner /> : <FolderOpen size={12} />} 保存并打开项目
-          </Button>
+          {error && <p className="text-xs text-err" role="alert">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" onClick={onClose} disabled={busy}>稍后</Button>
+            <Button size="sm" variant="primary" onClick={() => void submit()} disabled={busy}>
+              {busy ? <Spinner /> : <FolderOpen size={12} />} 保存并打开项目
+            </Button>
+          </div>
         </div>
       </div>
-    </Modal>
+    </div>
   )
 }
