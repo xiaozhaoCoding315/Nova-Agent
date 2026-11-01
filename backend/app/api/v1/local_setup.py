@@ -1,5 +1,7 @@
 """First-run local setup: register a folder and save an encrypted LLM key."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 
 from app.config import settings
 from app.core.llm.user_settings import save_user_config
@@ -13,12 +15,39 @@ from app.models.schemas import (
     LocalSetupStatusOut,
 )
 
-router = APIRouter()
-
 
 def require_local_mode() -> None:
     if not settings.is_local:
         raise HTTPException(status_code=404, detail="仅本地模式提供首次启动接口")
+
+
+class _LocalSetupRoute(APIRoute):
+    """Reject server mode before FastAPI reads the request body.
+
+    Router-level dependencies run only after the JSON body has been decoded,
+    so a malformed or oversized body would otherwise produce 400/422 before
+    the 404 gate. Validation failures are also collapsed to a fixed message:
+    FastAPI's default 422 echoes the submitted input, which contains the
+    plaintext ``api_key``.
+    """
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            require_local_mode()
+            try:
+                return await original(request)
+            except RequestValidationError as exc:
+                raise HTTPException(status_code=400, detail="请求参数无效") from exc
+
+        return handler
+
+
+router = APIRouter(
+    route_class=_LocalSetupRoute,
+    dependencies=[Depends(require_local_mode)],
+)
 
 
 @router.get("/local/setup", response_model=LocalSetupStatusOut)

@@ -135,6 +135,99 @@ async def test_local_setup_rejects_server_mode(monkeypatch):
     assert "本地模式" in response.json()["detail"]
 
 
+def _router_client(user=None):
+    """Real API router mounted at /api/v1; auth override only when given."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.v1.router import api_router
+    from app.core.security.auth import get_current_user
+
+    app = FastAPI()
+    app.include_router(api_router, prefix="/api/v1")
+    if user is not None:
+        app.dependency_overrides[get_current_user] = lambda: user
+    return TestClient(app)
+
+
+def test_server_mode_returns_404_before_auth(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    client = _router_client()  # no auth override: the gate must win over 401
+
+    response = client.get("/api/v1/local/setup")
+    assert response.status_code == 404
+    assert "本地模式" in response.json()["detail"]
+
+    response = client.post("/api/v1/local/setup")
+    assert response.status_code == 404
+    assert "本地模式" in response.json()["detail"]
+
+    response = client.post(
+        "/api/v1/local/setup",
+        json={"project_path": "D:/code/demo", "api_key": "sk-dummy-0001"},
+    )
+    assert response.status_code == 404
+
+
+def test_server_mode_returns_404_before_body_validation(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    client = _router_client()  # no auth override
+
+    secret = "sk-oversized-secret-1234"
+    response = client.post(
+        "/api/v1/local/setup",
+        json={"project_path": "D:/code/demo", "api_key": secret * 200},
+    )
+    assert response.status_code == 404
+    assert secret not in response.text
+
+    malformed = '{"project_path": "D:/code/demo", "api_key": "' + secret
+    response = client.post(
+        "/api/v1/local/setup",
+        content=malformed,
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 404
+    assert secret not in response.text
+
+
+def test_local_validation_errors_hide_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    client = _router_client({"id": 1, "role": "local"})
+    secret = "sk-local-validation-secret-1234"
+    oversized = "sk-" + "a" * 4001
+
+    # (json payload, raw body) — one of the two is set per case.
+    cases = [
+        ({"api_key": secret}, None),                     # missing project_path
+        ({"project_path": "D:/code/demo", "api_key": oversized}, None),
+        ([secret], None),                                # wrong top-level type
+        (None, '{"project_path": "D:/code/demo", "api_key": "' + secret),
+        (None, '{"project_path": "D:/code/demo", "api_key": "' + oversized + '"}'),
+    ]
+    for payload, raw in cases:
+        if raw is not None:
+            response = client.post(
+                "/api/v1/local/setup",
+                content=raw,
+                headers={"content-type": "application/json"},
+            )
+        else:
+            response = client.post("/api/v1/local/setup", json=payload)
+        assert response.status_code == 400
+        assert response.json() == {"detail": "请求参数无效"}
+        assert secret not in response.text
+        assert oversized not in response.text
+
+
+def test_server_mode_other_validation_errors_stay_422(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+
+    response = _router_client().post("/api/v1/auth/login", json={})
+
+    assert response.status_code == 422
+
+
 def test_local_setup_defaults_are_zhipu_flash():
     body = LocalSetupIn(project_path="D:/code/demo")
     assert body.provider == "zhipu"
