@@ -110,8 +110,8 @@ export function SessionList({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 px-3 pb-2 pt-1">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-dim">会话</span>
-        <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-dim">{sessions.length}</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-dim">会话</span>
+        <span className="rounded bg-raised px-1.5 py-0.5 text-2xs text-dim">{sessions.length}</span>
         <button
           onClick={onNew}
           className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors hover:bg-raised hover:text-ink"
@@ -126,7 +126,7 @@ export function SessionList({
         <select
           value={projectFilter}
           onChange={(event) => onProjectFilterChange(event.target.value)}
-          className="mb-2 w-full rounded-md border border-edge bg-base/60 px-2 py-1.5 text-[11.5px] text-dim outline-none focus:border-accentSoft"
+          className="mb-2 w-full rounded-md border border-edge bg-base/60 px-2 py-1.5 text-sm text-dim outline-none focus:border-accentSoft"
           title="按项目筛选会话；新建对话会继承当前项目"
         >
           <option value="">全部项目</option>
@@ -140,20 +140,20 @@ export function SessionList({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="搜索会话"
-            className="min-w-0 flex-1 bg-transparent text-[11.5px] outline-none placeholder:text-dim/60"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-dim/60"
           />
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {groups.length === 0 && (
-          <div className="px-2 py-6 text-center text-[11.5px] leading-relaxed text-dim">
+          <div className="px-2 py-6 text-center text-sm leading-relaxed text-dim">
             {search ? '没有匹配的会话。' : '还没有会话。新建一个对话，或直接开始提问。'}
           </div>
         )}
         {groups.map((group) => (
           <div key={group.label} className="mb-2">
-            <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-dim/70">{group.label}</p>
+            <p className="px-2 py-1 text-2xs font-medium uppercase tracking-wide text-dim/70">{group.label}</p>
             {group.items.map((session) => {
               const date = sessionDate(session)
               const active = session.id === activeId
@@ -192,12 +192,12 @@ export function SessionList({
                         }}
                         onBlur={() => commitRename(session.id)}
                         onClick={(event) => event.stopPropagation()}
-                        className="w-full rounded border border-accentSoft bg-base px-1 py-0.5 text-[12px] text-ink outline-none"
+                        className="w-full rounded border border-accentSoft bg-base px-1 py-0.5 text-sm text-ink outline-none"
                       />
                     ) : (
-                      <p className="truncate text-[12.5px]" title={session.title}>{session.title}</p>
+                      <p className="truncate text-base text-ink" title={session.title}>{session.title}</p>
                     )}
-                    <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-dim/70">
+                    <p className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-dim/70">
                       {project && <span className="truncate text-accent/70">{project}</span>}
                       <span className="shrink-0">{session.message_count} 条</span>
                       {date && <span className="shrink-0">· {relativeTime(date)}</span>}
@@ -224,7 +224,7 @@ export function SessionList({
                       <div className="fixed inset-0 z-20" onClick={() => setMenuId(null)} />
                       <div className="absolute right-1 top-8 z-30 w-28 overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-xl">
                         <button
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] text-ink hover:bg-raised"
+                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-ink hover:bg-raised"
                           onClick={(event) => {
                             event.stopPropagation()
                             startRename(session)
@@ -233,7 +233,7 @@ export function SessionList({
                           <Pencil size={12} /> 重命名
                         </button>
                         <button
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] text-err hover:bg-err/10"
+                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-err hover:bg-err/10"
                           onClick={(event) => {
                             event.stopPropagation()
                             setMenuId(null)
@@ -258,7 +258,7 @@ export function SessionList({
         title="删除会话"
         width="max-w-sm"
       >
-        <p className="text-[13px] leading-relaxed text-dim">
+        <p className="text-base leading-relaxed text-dim">
           确定删除「{deleteTarget?.title}」？消息与轨迹将一并删除，此操作无法撤销。
         </p>
         <div className="mt-5 flex justify-end gap-2">

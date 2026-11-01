@@ -80,28 +80,28 @@ export function CommandPalette({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="搜索命令：切换视图 / 新建对话 / 权限模式…"
-            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-dim/60"
+            className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-dim/60"
           />
-          <kbd className="rounded border border-edge px-1.5 py-0.5 text-[10px] text-dim">Esc</kbd>
+          <kbd className="rounded border border-edge px-1.5 py-0.5 text-2xs text-dim">Esc</kbd>
         </div>
         <ul className="max-h-72 overflow-y-auto py-1">
-          {filtered.length === 0 && <li className="px-3 py-3 text-[12.5px] text-dim">没有匹配的命令</li>}
+          {filtered.length === 0 && <li className="px-3 py-3 text-base text-dim">没有匹配的命令</li>}
           {filtered.map((action, i) => (
             <li key={action.id}>
               <button
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] ${
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-base ${
                   i === index ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised hover:text-ink'
                 }`}
                 onMouseEnter={() => setIndex(i)}
                 onClick={() => run(action)}
               >
                 <span className="flex-1">{action.label}</span>
-                {action.hint && <span className="text-[10.5px] text-dim">{action.hint}</span>}
+                {action.hint && <span className="text-xs text-dim">{action.hint}</span>}
               </button>
             </li>
           ))}
         </ul>
-        <div className="border-t border-edge px-3 py-1.5 text-[10.5px] text-dim">
+        <div className="border-t border-edge px-3 py-1.5 text-xs text-dim">
           ↑↓ 选择 · Enter 执行 · Esc 关闭
         </div>
       </div>

@@ -46,7 +46,7 @@ body {
 
 /* Markdown content */
 .md-body {
-  @apply text-[14px] leading-relaxed;
+  @apply text-md leading-relaxed;
 }
 .md-body p {
   @apply my-2;
@@ -73,28 +73,25 @@ body {
   @apply my-2 border-l-2 border-edge pl-3 text-dim;
 }
 .md-body table {
-  @apply my-2 w-full border-collapse text-[13px];
+  /* text-base 同时命中 font-size 与 color（色板里的 base），必须显式补回文字色。 */
+  @apply my-2 w-full border-collapse text-base text-ink;
 }
 .md-body th,
 .md-body td {
   @apply border border-edge px-2 py-1 text-left;
 }
 .md-body code {
-  @apply rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-accent;
+  @apply rounded bg-raised px-1.5 py-0.5 font-mono text-base text-accent;
 }
 .md-body pre code {
   @apply bg-transparent p-0 text-inherit;
 }
 .md-body pre {
-  @apply my-0 overflow-x-auto p-3 font-mono text-[12.5px] leading-relaxed;
+  @apply my-0 overflow-x-auto p-3 font-mono text-base leading-relaxed text-ink;
 }
 /* ---------- 启动光标（AppShell 引导行） ---------- */
-@keyframes nova-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.nova-caret { animation: nova-blink 1s step-end infinite; }
+/* 光标保持静态，不再做 1s 无限闪烁；其余 landing 动画已随旧登录页删除。 */
+.nova-caret { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -104,8 +101,5 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
-  }
-  .nova-caret {
-    animation: none !important;
   }
 }

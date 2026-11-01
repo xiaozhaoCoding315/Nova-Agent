@@ -7,18 +7,9 @@ import { DiffView } from '../components/DiffView'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Spinner, StatusDot } from '../components/common'
 import type { TaskResult, TaskStep } from '../lib/types'
+import { RUN_STATUS } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useRun } from '../stores/run'
-
-const STATUS_META: Record<string, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
-  queued: { label: '排队中', tone: 'warn' },
-  running: { label: '运行中', tone: 'warn' },
-  ready: { label: '待确认', tone: 'accent' },
-  applied: { label: '已应用', tone: 'ok' },
-  rejected: { label: '已拒绝', tone: 'dim' },
-  failed: { label: '失败', tone: 'err' },
-  canceled: { label: '已取消', tone: 'dim' },
-}
 
 const STEP_LABEL: Record<string, string> = {
   locate: '定位相关代码',
@@ -48,17 +39,17 @@ function StepRow({ step }: { step: TaskStep }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-ink">{STEP_LABEL[step.step] ?? step.step}</span>
+          <span className="text-sm text-ink">{STEP_LABEL[step.step] ?? step.step}</span>
           {step.status === 'running' && <Spinner className="h-3 w-3" />}
           {typeof step.exit_code === 'number' && (
-            <code className="ml-auto shrink-0 font-mono text-[10px] text-dim">exit {step.exit_code}</code>
+            <code className="ml-auto shrink-0 font-mono text-2xs text-dim">exit {step.exit_code}</code>
           )}
         </div>
         {step.detail && (
-          <p className="truncate text-[10.5px] text-dim" title={step.detail}>{step.detail}</p>
+          <p className="truncate text-xs text-dim" title={step.detail}>{step.detail}</p>
         )}
         {step.command && (
-          <p className="break-all font-mono text-[10px] text-faint" title={step.command}>$ {step.command}</p>
+          <p className="break-all font-mono text-2xs text-faint" title={step.command}>$ {step.command}</p>
         )}
       </div>
     </div>
@@ -89,30 +80,30 @@ function OutputSection({
         aria-expanded={open}
       >
         {open ? <ChevronDown size={12} className="shrink-0 text-dim" /> : <ChevronRight size={12} className="shrink-0 text-dim" />}
-        <span className={clsx('min-w-0 flex-1 truncate text-[12px]', tone === 'err' ? 'text-err' : 'text-ok')}>
+        <span className={clsx('min-w-0 flex-1 truncate text-sm', tone === 'err' ? 'text-err' : 'text-ok')}>
           {label}
         </span>
         {typeof output.exit_code === 'number' && (
-          <span className="shrink-0 font-mono text-[10.5px] text-dim">exit {output.exit_code}</span>
+          <span className="shrink-0 font-mono text-xs text-dim">exit {output.exit_code}</span>
         )}
       </button>
       {open && (
         <div className="space-y-1 border-t border-edge/70 px-2.5 py-2">
           {output.command && (
-            <p className="break-all font-mono text-[10px] text-dim">$ {output.command}</p>
+            <p className="break-all font-mono text-2xs text-dim">$ {output.command}</p>
           )}
           {output.stdout && (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-[10.5px] leading-relaxed text-dim">
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-xs leading-relaxed text-dim">
               {output.stdout}
             </pre>
           )}
           {output.stderr && (
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-[10.5px] leading-relaxed text-err">
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-xs leading-relaxed text-err">
               {output.stderr}
             </pre>
           )}
           {!output.stdout && !output.stderr && (
-            <p className="text-[11px] text-dim">
+            <p className="text-xs text-dim">
               {output.detail || '没有输出。'}
             </p>
           )}
@@ -140,10 +131,10 @@ function RecentMenu({
         className="absolute right-0 top-full z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-edge bg-panel p-1 shadow-pop"
       >
         {recent.length === 0 ? (
-          <p className="px-2 py-2 text-[11.5px] leading-relaxed text-dim">这个项目还没有修复任务。</p>
+          <p className="px-2 py-2 text-sm leading-relaxed text-dim">这个项目还没有修复任务。</p>
         ) : (
           recent.map((item) => {
-            const meta = STATUS_META[item.status] ?? { label: item.status, tone: 'dim' as const }
+            const meta = RUN_STATUS[item.status] ?? { label: item.status, tone: 'dim' as const }
             return (
               <button
                 key={item.id}
@@ -153,10 +144,10 @@ function RecentMenu({
                 className="block w-full rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-raised"
               >
                 <span className="flex items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink">{item.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{item.title}</span>
                   <Badge tone={meta.tone}>{meta.label}</Badge>
                 </span>
-                <span className="mt-0.5 block truncate text-[10px] text-dim">
+                <span className="mt-0.5 block truncate text-2xs text-dim">
                   {item.repo_name}
                   {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ''}
                 </span>
@@ -236,7 +227,7 @@ export function RunPanel() {
     void useRun.getState().restore(taskId)
   }
 
-  const meta = task ? STATUS_META[task.status] ?? { label: task.status, tone: 'dim' as const } : null
+  const meta = task ? RUN_STATUS[task.status] ?? { label: task.status, tone: 'dim' as const } : null
   const result: TaskResult = task?.result ?? {}
   // 引擎会为同一阶段先写 running 再写 done，只展示最后一次状态。
   const steps = task
@@ -251,13 +242,13 @@ export function RunPanel() {
     <div ref={rootRef} className="flex h-full min-h-0 flex-col" aria-label="运行面板">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-edge/70 px-3 font-mono">
         <FlaskConical size={13} className="shrink-0 text-accent" />
-        <span className="shrink-0 text-[11.5px] text-ink">运行 · /fix</span>
+        <span className="shrink-0 text-sm text-ink">运行 · /fix</span>
         {meta && <Badge tone={meta.tone}>{meta.label}</Badge>}
         <div className="relative ml-auto shrink-0">
           <button
             type="button"
             onClick={() => setRecentOpen((value) => !value)}
-            className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10.5px] text-dim transition-colors hover:bg-raised hover:text-ink"
+            className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-dim transition-colors hover:bg-raised hover:text-ink"
             aria-haspopup="menu"
             aria-expanded={recentOpen}
           >
@@ -278,7 +269,7 @@ export function RunPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {errorText && (
-          <div className="mb-3 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-2.5 py-2 text-[11.5px] text-err">
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-2.5 py-2 text-sm text-err">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{errorText}</span>
           </div>
@@ -287,8 +278,8 @@ export function RunPanel() {
         {!task ? (
           <div className="px-2 py-10 text-center">
             <FlaskConical size={18} className="mx-auto text-dim" />
-            <p className="mt-2 text-[12.5px] text-ink">还没有运行中的任务</p>
-            <p className="mx-auto mt-1 max-w-[260px] text-[11px] leading-relaxed text-dim">
+            <p className="mt-2 text-base text-ink">还没有运行中的任务</p>
+            <p className="mx-auto mt-1 max-w-[260px] text-xs leading-relaxed text-dim">
               在输入框输入 <code className="font-mono text-accent">/fix 描述问题</code>，
               Nova 会先写失败测试复现，再修复到测试通过。
             </p>
@@ -296,8 +287,8 @@ export function RunPanel() {
         ) : (
           <div className="space-y-4">
             <div>
-              <h2 className="text-[13px] font-medium leading-snug text-ink" title={task.title}>{task.title}</h2>
-              <p className="mt-0.5 text-[10.5px] text-dim">
+              <h2 className="text-base font-medium leading-snug text-ink" title={task.title}>{task.title}</h2>
+              <p className="mt-0.5 text-xs text-dim">
                 {task.repo_name}
                 {task.created_at ? ` · ${new Date(task.created_at).toLocaleString()}` : ''}
               </p>
@@ -306,11 +297,11 @@ export function RunPanel() {
             {(steps.length > 0 || task.status === 'running' || task.status === 'queued') && (
               <section className="space-y-1.5">
                 {steps.length > 0 && (
-                  <h3 className="text-[10.5px] uppercase tracking-[0.12em] text-dim">步骤</h3>
+                  <h3 className="text-xs uppercase tracking-[0.12em] text-dim">步骤</h3>
                 )}
                 {steps.map((step, index) => <StepRow key={`${step.step}-${index}`} step={step} />)}
                 {(task.status === 'running' || task.status === 'queued') && (
-                  <p className="flex items-center gap-2 px-1 pt-0.5 text-[11px] text-dim">
+                  <p className="flex items-center gap-2 px-1 pt-0.5 text-xs text-dim">
                     <Spinner /> 正在沙箱中执行，请稍候…
                   </p>
                 )}
@@ -319,7 +310,7 @@ export function RunPanel() {
 
             {(result.red || result.green) && (
               <section className="space-y-1.5">
-                <h3 className="text-[10.5px] uppercase tracking-[0.12em] text-dim">红-绿验证</h3>
+                <h3 className="text-xs uppercase tracking-[0.12em] text-dim">红-绿验证</h3>
                 {result.red && (
                   <OutputSection label="红 · 修复前测试失败" tone="err" output={result.red} />
                 )}
@@ -331,7 +322,7 @@ export function RunPanel() {
 
             {result.diff && (
               <section>
-                <h3 className="mb-1 text-[10.5px] uppercase tracking-[0.12em] text-dim">
+                <h3 className="mb-1 text-xs uppercase tracking-[0.12em] text-dim">
                   变更预览{result.applied ? '（已应用）' : ''}
                 </h3>
                 <DiffView diff={result.diff} maxHeight="max-h-64" />
@@ -350,11 +341,11 @@ export function RunPanel() {
                     <Button variant="danger" onClick={() => setConfirmReject(true)} disabled={busy != null}>
                       <XOctagon size={13} /> 拒绝
                     </Button>
-                    <span className="text-[10.5px] text-dim">应用后自动更新项目分析</span>
+                    <span className="text-xs text-dim">应用后自动更新项目分析</span>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-err/40 bg-err/5 p-2.5">
-                    <p className="text-[11.5px] leading-relaxed text-err">确认拒绝这次修复？不会写入任何文件。</p>
+                    <p className="text-sm leading-relaxed text-err">确认拒绝这次修复？不会写入任何文件。</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Button variant="danger" onClick={() => void act('reject')} disabled={busy != null}>
                         {busy === 'reject' ? <Spinner /> : <XOctagon size={13} />} 确认拒绝
@@ -367,17 +358,17 @@ export function RunPanel() {
             )}
 
             {task.status === 'applied' && (
-              <p className="flex items-center gap-2 text-[11.5px] text-ok">
+              <p className="flex items-center gap-2 text-sm text-ok">
                 <CheckCircle2 size={13} /> 已写入项目，代码阅读正在更新。
               </p>
             )}
             {task.status === 'rejected' && (
-              <p className="flex items-center gap-2 text-[11.5px] text-dim">
+              <p className="flex items-center gap-2 text-sm text-dim">
                 <XOctagon size={13} /> 已拒绝该修复，仓库未改动。
               </p>
             )}
             {task.status === 'failed' && !errorText && (
-              <p className="flex items-center gap-2 text-[11.5px] text-err">
+              <p className="flex items-center gap-2 text-sm text-err">
                 <AlertCircle size={13} /> 任务失败，请重新发起或查看最近任务。
               </p>
             )}

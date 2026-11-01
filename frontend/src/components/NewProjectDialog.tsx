@@ -99,7 +99,7 @@ export function NewProjectDialog({
   return (
     <Modal open={open} onClose={() => { if (!thinking && !creating) onClose() }} title="新建项目 · 对话式设计" width="max-w-xl">
       <div className="space-y-3">
-        <p className="text-[11.5px] leading-relaxed text-dim">
+        <p className="text-sm leading-relaxed text-dim">
           和设计搭档聊几轮（目标用户、核心功能、数据模型…），聊够了它会给出「方案定稿」，确认后直接生成项目。已有现成代码？
           {onStartImport ? (
             <button className="ml-1 text-accent hover:underline" onClick={() => { onClose(); onStartImport() }}>导入文件夹 / ZIP →</button>
@@ -117,8 +117,8 @@ export function NewProjectDialog({
               onClick={() => setStack(key)}
               className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors ${stack === key ? 'border-accent bg-accentSoft/25' : 'border-edge hover:border-accentSoft'}`}
             >
-              <p className="text-[12.5px] font-medium">{label}</p>
-              <p className="mt-0.5 text-[10.5px] text-dim">{hint}</p>
+              <p className="text-base font-medium text-ink">{label}</p>
+              <p className="mt-0.5 text-xs text-dim">{hint}</p>
             </button>
           ))}
         </div>
@@ -127,7 +127,7 @@ export function NewProjectDialog({
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[86%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[12.5px] leading-relaxed ${
+                className={`max-w-[86%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-base text-ink leading-relaxed ${
                   m.role === 'user'
                     ? 'rounded-br-md bg-accentSoft/55'
                     : 'rounded-bl-md border border-edge bg-panel'
@@ -138,7 +138,7 @@ export function NewProjectDialog({
             </div>
           ))}
           {thinking && (
-            <div className="flex items-center gap-2 text-[12px] text-dim">
+            <div className="flex items-center gap-2 text-sm text-dim">
               <Spinner /> 设计搭档思考中…
             </div>
           )}
@@ -151,7 +151,7 @@ export function NewProjectDialog({
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), void send())}
             placeholder="描述你的想法，或回答上面的问题…"
             disabled={thinking || creating}
-            className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2 text-[13px] outline-none placeholder:text-dim/60 focus:border-accentSoft disabled:opacity-60"
+            className="flex-1 rounded-lg border border-edge bg-raised px-3 py-2 text-base text-ink outline-none placeholder:text-dim/60 focus:border-accentSoft disabled:opacity-60"
           />
           <Button variant="primary" onClick={() => void send()} disabled={thinking || creating || !input.trim()}>
             {thinking ? <Spinner /> : <Send size={13} />}
@@ -160,10 +160,10 @@ export function NewProjectDialog({
 
         {spec && (
           <div className="rounded-lg border border-ok/40 bg-ok/5 p-3">
-            <p className="flex items-center gap-1.5 text-[12px] font-medium text-ok">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-ok">
               <MessageSquare size={12} /> 方案已定稿，预览：
             </p>
-            <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap text-[11.5px] leading-relaxed text-dim">
+            <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-dim">
               {spec.slice(0, 600)}{spec.length > 600 ? '…' : ''}
             </p>
           </div>
@@ -171,28 +171,28 @@ export function NewProjectDialog({
 
         <div className="grid gap-2 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-[11.5px] text-dim">项目名称</label>
+            <label className="mb-1 block text-sm text-dim">项目名称</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如：todo-api"
               disabled={creating}
-              className="w-full rounded-lg border border-edge bg-raised px-3 py-2 text-[13px] outline-none focus:border-accentSoft"
+              className="w-full rounded-lg border border-edge bg-raised px-3 py-2 text-base text-ink outline-none focus:border-accentSoft"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[11.5px] text-dim">项目约定（可选 → AGENTS.md）</label>
+            <label className="mb-1 block text-sm text-dim">项目约定（可选 → AGENTS.md）</label>
             <input
               value={rules}
               onChange={(e) => setRules(e.target.value)}
               placeholder="如：统一返回 {code, data, message}"
               disabled={creating}
-              className="w-full rounded-lg border border-edge bg-raised px-3 py-2 text-[13px] outline-none focus:border-accentSoft"
+              className="w-full rounded-lg border border-edge bg-raised px-3 py-2 text-base text-ink outline-none focus:border-accentSoft"
             />
           </div>
         </div>
 
-        {error && <p className="text-[12.5px] text-err">{error}</p>}
+        {error && <p className="text-base text-err">{error}</p>}
 
         <Button
           variant="primary"
@@ -203,7 +203,7 @@ export function NewProjectDialog({
           {creating ? <Spinner /> : <Sparkles size={13} />} 按定稿方案生成项目
         </Button>
         {!spec && (
-          <p className="flex items-center justify-center gap-1 text-[10.5px] text-dim/60">
+          <p className="flex items-center justify-center gap-1 text-xs text-dim/60">
             <ArrowUpRight size={11} /> 聊到方案定稿后即可生成；也可以直接说「直接出方案」
           </p>
         )}

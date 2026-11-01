@@ -16,12 +16,12 @@ export function RecoveryCodeModal({ code, onClose }: { code: string; onClose: ()
 
   return (
     <Modal open onClose={onClose} title="保存你的恢复码" width="max-w-sm">
-      <div className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11.5px] leading-relaxed text-warn">
+      <div className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm leading-relaxed text-warn">
         <ShieldAlert size={14} className="mt-0.5 shrink-0" />
         这是重置密码的唯一凭证，只显示一次。请立即保存到密码管理器。
       </div>
       <div className="mt-3 flex items-center gap-2 rounded-lg border border-edge bg-base px-3 py-3">
-        <code className="flex-1 text-center font-mono text-[18px] tracking-[0.18em]">{code}</code>
+        <code className="flex-1 text-center font-mono text-xl tracking-[0.18em]">{code}</code>
         <button
           onClick={() => void copy()}
           className="text-dim transition-colors hover:text-ink"

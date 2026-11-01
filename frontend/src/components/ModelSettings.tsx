@@ -6,10 +6,8 @@ import { ProviderIcon } from './ProviderIcon'
 import { Badge, Button, Modal, Spinner } from './common'
 import type { LlmCredential, LlmProvider, LlmSettings } from '../lib/types'
 import { ApiError } from '../lib/api'
+import { inputClass } from '../lib/ui'
 import { useLlm } from '../stores/llm'
-
-const inputClass =
-  'w-full rounded-lg border border-edge bg-base/60 px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60 disabled:opacity-50'
 
 const GROUP_LABEL: Record<string, string> = {
   domestic: '国内厂商',
@@ -162,7 +160,7 @@ export function ModelSettings({
 
   if (!settings) {
     return (
-      <p className="flex items-center gap-2 text-[12.5px] text-dim">
+      <p className="flex items-center gap-2 text-base text-dim">
         {loading ? <Spinner /> : null} 加载模型配置…
       </p>
     )
@@ -181,7 +179,7 @@ export function ModelSettings({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[13px] font-medium">
+              <p className="text-base font-medium text-ink">
                 {sourceUser
                   ? '正在使用你自己的 API Key'
                   : settings.source === 'server'
@@ -192,19 +190,19 @@ export function ModelSettings({
                 {sourceUser ? '个人' : settings.source === 'server' ? '共享' : '未配置'}
               </Badge>
             </div>
-            <p className="mt-1 break-all text-[11.5px] text-dim">
+            <p className="mt-1 break-all text-sm text-dim">
               {defaultCredential
                 ? `${defaultCredential.label} · ${defaultCredential.model}`
                 : settings.model ?? '—'}
               {defaultCredential?.key_hint ? ` · ${defaultCredential.key_hint}` : ''}
             </p>
             {!sourceUser && settings.source === 'server' && (
-              <p className="mt-1 text-[11px] leading-relaxed text-dim/80">
+              <p className="mt-1 text-xs leading-relaxed text-dim/80">
                 对话会消耗部署者的额度。保存自己的 Key 后将完全改用你的配置，不回退到共享密钥。
               </p>
             )}
             {settings.source === 'none' && !settings.allow_server_fallback && (
-              <p className="mt-1 text-[11px] leading-relaxed text-warn">
+              <p className="mt-1 text-xs leading-relaxed text-warn">
                 当前账号需使用个人 API Key：请在下方配置后即可开始对话（Key 加密存储，仅供你自己的对话使用）。
               </p>
             )}
@@ -215,8 +213,8 @@ export function ModelSettings({
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <Star size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">已配置厂商</h3>
-          <span className="text-[10.5px] text-dim">
+          <h3 className="text-base font-medium text-ink">已配置厂商</h3>
+          <span className="text-xs text-dim">
             {credentials.length > 0 ? `${credentials.length} 家` : '还没有配置'}
           </span>
           <Button size="sm" className="ml-auto" onClick={() => setEditing('__add__')}>
@@ -225,7 +223,7 @@ export function ModelSettings({
         </div>
 
         {credentials.length === 0 ? (
-          <p className="text-[12px] leading-relaxed text-dim">
+          <p className="text-sm leading-relaxed text-dim">
             先添加一家厂商。推荐智谱 GLM：注册后即可使用免费的 glm-4.7-flash。
           </p>
         ) : (
@@ -237,11 +235,11 @@ export function ModelSettings({
               >
                 <ProviderIcon id={credential.provider} size={20} />
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-1.5 truncate text-[12.5px] font-medium">
+                  <p className="flex items-center gap-1.5 truncate text-base font-medium text-ink">
                     {credential.label}
                     {credential.is_default && <Badge tone="accent">默认</Badge>}
                   </p>
-                  <p className="truncate font-mono text-[10.5px] text-dim">
+                  <p className="truncate font-mono text-xs text-dim">
                     {credential.model} · {credential.key_hint || '无 Key'}
                   </p>
                 </div>
@@ -267,7 +265,7 @@ export function ModelSettings({
           </div>
         )}
         {actionError && (
-          <p className="mt-2 text-[11.5px] text-err">{actionError}</p>
+          <p className="mt-2 text-sm text-err">{actionError}</p>
         )}
       </section>
 
@@ -275,13 +273,13 @@ export function ModelSettings({
         <section className="rounded-xl border border-edge bg-panel p-4">
           <div className="mb-3 flex items-center gap-2">
             <Plus size={14} className="text-accent" />
-            <h3 className="text-[13px] font-medium">选择厂商</h3>
+            <h3 className="text-base font-medium text-ink">选择厂商</h3>
             <Button size="sm" className="ml-auto" onClick={close}>取消</Button>
           </div>
           <div className="space-y-3">
             {grouped.map(([group, items]) => (
               <div key={group}>
-                <p className="mb-1.5 text-[10.5px] uppercase tracking-[0.12em] text-dim/70">
+                <p className="mb-1.5 text-xs uppercase tracking-[0.12em] text-dim/70">
                   {GROUP_LABEL[group] ?? group}
                 </p>
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
@@ -296,10 +294,10 @@ export function ModelSettings({
                       >
                         <ProviderIcon id={provider.id} size={20} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium">
+                          <span className="block truncate text-sm font-medium">
                             {provider.label}
                           </span>
-                          <span className="block truncate text-[10px] text-dim">
+                          <span className="block truncate text-2xs text-dim">
                             {existing
                               ? '已配置'
                               : provider.free_tier
@@ -328,15 +326,15 @@ export function ModelSettings({
             <div className="flex items-center gap-2 rounded-lg border border-edge/70 bg-base/30 px-3 py-2">
               <ProviderIcon id={spec.id} size={22} />
               <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-medium">{spec.label}</p>
-                <p className="truncate font-mono text-[10px] text-dim">{spec.base_url}</p>
+                <p className="text-base font-medium text-ink">{spec.label}</p>
+                <p className="truncate font-mono text-2xs text-dim">{spec.base_url}</p>
               </div>
               {spec.free_tier && <Badge tone="ok">免费</Badge>}
             </div>
 
             {!spec.base_url_locked && (
               <label className="block">
-                <span className="mb-1 block text-[11.5px] text-dim">Base URL</span>
+                <span className="mb-1 block text-sm text-dim">Base URL</span>
                 <input
                   className={inputClass}
                   value={baseUrl}
@@ -348,7 +346,7 @@ export function ModelSettings({
             )}
 
             <label className="block">
-              <span className="mb-1 block text-[11.5px] text-dim">
+              <span className="mb-1 block text-sm text-dim">
                 API Key
                 {current?.has_key ? `（已保存 ${current.key_hint}，留空保持不变）` : ''}
               </span>
@@ -371,13 +369,13 @@ export function ModelSettings({
                   {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-              <span className="mt-1 block text-[10px] text-dim/70">
+              <span className="mt-1 block text-2xs text-dim/70">
                 Key 以 SECRET_KEY 派生密钥加密；接口只返回掩码。
               </span>
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-[11.5px] text-dim">模型</span>
+              <span className="mb-1 block text-sm text-dim">模型</span>
               {spec.models.length > 0 ? (
                 <select
                   className={inputClass}
@@ -403,7 +401,7 @@ export function ModelSettings({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-[11.5px] text-dim">上下文窗口（tokens）</span>
+                <span className="mb-1 block text-sm text-dim">上下文窗口（tokens）</span>
                 <input
                   className={inputClass}
                   value={contextWindow}
@@ -415,7 +413,7 @@ export function ModelSettings({
               </label>
               {spec.supports_reasoning && (
                 <label className="block">
-                  <span className="mb-1 block text-[11.5px] text-dim">推理强度</span>
+                  <span className="mb-1 block text-sm text-dim">推理强度</span>
                   <select
                     className={inputClass}
                     value={reasoningEffort}
@@ -431,11 +429,11 @@ export function ModelSettings({
             </div>
 
             {current?.is_default ? (
-              <p className="text-[12px] text-dim">
+              <p className="text-sm text-dim">
                 当前为默认厂商；如需更换，请在列表中将其他厂商设为默认。
               </p>
             ) : (
-              <label className="flex items-center gap-2 text-[12px] text-dim">
+              <label className="flex items-center gap-2 text-sm text-dim">
                 <input
                   type="checkbox"
                   checked={makeDefault}
@@ -446,7 +444,7 @@ export function ModelSettings({
             )}
 
             {feedback && (
-              <p className={`flex items-start gap-1.5 text-[11.5px] ${
+              <p className={`flex items-start gap-1.5 text-sm ${
                 feedback.ok ? 'text-ok' : 'text-err'
               }`}>
                 {feedback.ok
@@ -475,7 +473,7 @@ export function ModelSettings({
         title="删除厂商配置"
         width="max-w-sm"
       >
-        <p className="text-[12.5px] leading-relaxed text-dim">
+        <p className="text-base leading-relaxed text-dim">
           删除「{deleteTarget}」后，其 Key 与模型设置会被移除；如果它是默认厂商，会自动切换到最近使用的另一家。
         </p>
         <div className="mt-4 flex justify-end gap-2">

@@ -20,7 +20,7 @@ function Node({
     return (
       <div>
         <button
-          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[12.5px] text-dim hover:bg-raised hover:text-ink"
+          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-base text-dim hover:bg-raised hover:text-ink"
           style={{ paddingLeft: depth * 12 + 6 }}
           onClick={() => setOpen(!open)}
         >
@@ -39,7 +39,7 @@ function Node({
   return (
     <button
       className={clsx(
-        'flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12.5px]',
+        'flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-base',
         selectedPath === node.path ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
       )}
       style={{ paddingLeft: depth * 12 + 20 }}
@@ -62,7 +62,7 @@ export function FileTree({
   onSelect: (path: string) => void
 }) {
   if (nodes.length === 0) {
-    return <p className="px-3 py-4 text-[12.5px] text-dim">索引完成后这里会显示文件树。</p>
+    return <p className="px-3 py-4 text-base text-dim">索引完成后这里会显示文件树。</p>
   }
   return (
     <div className="py-1">

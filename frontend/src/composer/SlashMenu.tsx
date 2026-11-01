@@ -29,7 +29,7 @@ export function SlashMenu({
       className="absolute bottom-full left-3 z-20 mb-1.5 w-[min(440px,92%)] overflow-hidden rounded-xl border border-edge bg-panel shadow-xl"
     >
       <div className="flex items-center justify-between border-b border-edge/60 px-3 py-1.5">
-        <span className="text-[10.5px] uppercase tracking-wide text-dim">斜杠命令</span>
+        <span className="text-xs uppercase tracking-wide text-dim">斜杠命令</span>
         <button
           type="button"
           onClick={onClose}
@@ -40,7 +40,7 @@ export function SlashMenu({
         </button>
       </div>
       {items.length === 0 ? (
-        <p className="px-3 py-2 text-[11.5px] leading-relaxed text-dim">
+        <p className="px-3 py-2 text-sm leading-relaxed text-dim">
           没有匹配的命令。输入 <code className="font-mono">/help</code> 查看全部命令。
         </p>
       ) : (
@@ -60,17 +60,17 @@ export function SlashMenu({
                 index === activeIndex ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised',
               )}
             >
-              <code className="w-16 shrink-0 font-mono text-[11.5px] text-accent">/{item.name}</code>
+              <code className="w-16 shrink-0 font-mono text-sm text-accent">/{item.name}</code>
               <span className="min-w-0 flex-1">
-                <span className="block text-[12px] text-ink">{item.label}</span>
-                <span className="block truncate text-[10.5px] text-dim">{item.hint}</span>
+                <span className="block text-sm text-ink">{item.label}</span>
+                <span className="block truncate text-xs text-dim">{item.hint}</span>
               </span>
-              {index === activeIndex && <kbd className="shrink-0 text-[9.5px] text-dim/70">Tab</kbd>}
+              {index === activeIndex && <kbd className="shrink-0 text-2xs text-dim/70">Tab</kbd>}
             </button>
           ))}
         </div>
       )}
-      <p className="border-t border-edge/60 px-3 py-1 text-[10px] text-dim/70">
+      <p className="border-t border-edge/60 px-3 py-1 text-2xs text-dim/70">
         ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
       </p>
     </div>

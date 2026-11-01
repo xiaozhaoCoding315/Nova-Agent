@@ -2,6 +2,7 @@ import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { Repo } from '../lib/types'
+import { inputClass } from '../lib/ui'
 import { Button, Modal, Spinner } from './common'
 
 export function LocalFolderDialog({
@@ -44,20 +45,20 @@ export function LocalFolderDialog({
   return (
     <Modal open={open} onClose={onClose} title="打开本地文件夹">
       <div className="space-y-3">
-        <p className="text-[11.5px] leading-relaxed text-dim">
+        <p className="text-sm leading-relaxed text-dim">
           输入本机项目目录的绝对路径。Nova 原地读取并建立索引，不复制文件；
           删除项目只取消登记，不会删除磁盘内容。<span className="text-warn">执行无容器隔离。</span>
         </p>
         <label className="block space-y-1">
-          <span className="text-[11px] text-dim">绝对路径</span>
+          <span className="text-xs text-dim">绝对路径</span>
           <input
             value={path}
             onChange={(event) => setPath(event.target.value)}
             placeholder={'D:\\code\\my-project'}
-            className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none transition-colors focus:border-accent/60"
+            className={inputClass}
           />
         </label>
-        {error && <p className="text-[11.5px] text-err">{error}</p>}
+        {error && <p className="text-sm text-err">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button size="sm" onClick={onClose} disabled={busy}>取消</Button>
           <Button size="sm" variant="primary" onClick={() => void submit()} disabled={busy}>

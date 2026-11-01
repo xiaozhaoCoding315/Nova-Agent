@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, Spinner, StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { SelfQuota } from '../lib/types'
+import { inputClass } from '../lib/ui'
 
 export function formatUptime(seconds: unknown): string {
   const s = Number(seconds) || 0
@@ -131,7 +132,7 @@ export function SelfBudgetEditor({ quota, onSaved }: { quota: SelfQuota; onSaved
               onChange={(event) => setForm({ ...form, [key]: event.target.value })}
               placeholder={hint}
               inputMode="numeric"
-              className="w-full rounded-md border border-edge bg-base/60 px-2.5 py-1.5 text-sm text-ink outline-none transition-colors focus:border-accent/60"
+              className={inputClass}
             />
           </label>
         ))}

@@ -9,8 +9,9 @@ import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
 import { api } from '../lib/api'
 import type {
-  GitInfo, Health, LocalExecStatus, PermissionMode, RepoStatus, Usage,
+  GitInfo, Health, LocalExecStatus, PermissionMode, Usage,
 } from '../lib/types'
+import { REPO_STATUS } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
@@ -21,18 +22,6 @@ const PERMISSIONS: { value: PermissionMode; label: string; hint: string }[] = [
   { value: 'auto', label: '自主模式', hint: '自动执行，可随时停止' },
   { value: 'full', label: '完全访问', hint: '跳过确认，谨慎使用' },
 ]
-
-const REPO_STATUS_LABEL: Record<RepoStatus, string> = {
-  pending: '排队中',
-  indexing: '索引中…',
-  ready: '',
-  failed: '索引失败',
-  planning: '规划中…',
-  plan_ready: '待确认方案',
-  approved: '已确认方案',
-  generating: '生成中…',
-  review: '待审阅',
-}
 
 const HEALTH_LABEL = {
   ok: '服务正常',
@@ -199,7 +188,7 @@ export function ChatHeader({
             )
           ) : (
             <span className="hidden text-xs text-faint sm:inline">
-              {REPO_STATUS_LABEL[currentRepo.status] || '索引中…'}
+              {REPO_STATUS[currentRepo.status].label}
             </span>
           )
         )}

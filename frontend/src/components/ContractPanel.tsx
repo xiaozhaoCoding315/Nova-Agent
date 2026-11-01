@@ -38,10 +38,10 @@ export function ContractPanel({
   }, [repoId, refreshToken])
 
   if (loading) {
-    return <p className="flex items-center gap-2 p-4 text-[12.5px] text-dim"><Spinner /> 读取契约状态…</p>
+    return <p className="flex items-center gap-2 p-4 text-base text-dim"><Spinner /> 读取契约状态…</p>
   }
   if (error) {
-    return <p className="p-4 text-[12.5px] text-err">{error}</p>
+    return <p className="p-4 text-base text-err">{error}</p>
   }
   if (!status) return null
 
@@ -53,7 +53,7 @@ export function ContractPanel({
       <div className="mx-auto max-w-3xl space-y-3">
         <div className="flex items-center gap-2">
           <GitCompare size={15} className="text-accent" />
-          <h2 className="text-[14px] font-semibold">契约对齐</h2>
+          <h2 className="text-md font-semibold">契约对齐</h2>
           {status.configured ? <Badge tone="accent">已配置</Badge> : <Badge tone="dim">未配置</Badge>}
           <div className="ml-auto flex gap-2">
             <Button size="sm" onClick={() => void load()}>
@@ -66,7 +66,7 @@ export function ContractPanel({
         </div>
 
         {!status.configured ? (
-          <div className="rounded-xl border border-edge bg-panel/60 p-4 text-[12.5px] leading-relaxed text-dim">
+          <div className="rounded-xl border border-edge bg-panel/60 p-4 text-base leading-relaxed text-dim">
             <p className="font-medium text-ink">未发现 OpenAPI 契约源</p>
             <p className="mt-1">
               在仓库提交 <code className="rounded bg-raised px-1 font-mono">contracts/openapi.yaml</code> 或
@@ -74,7 +74,7 @@ export function ContractPanel({
               并在 <code className="rounded bg-raised px-1 font-mono">nova.yaml</code> 中配置 source/target，
               验证门会生成前端类型并检查漂移。
             </p>
-            <pre className="mt-2 rounded bg-base p-2 font-mono text-[11px] text-dim">{`contract:
+            <pre className="mt-2 rounded bg-base p-2 font-mono text-xs text-dim">{`contract:
   source: contracts/openapi.yaml
   target: frontend/src/lib/api-schema.d.ts`}</pre>
           </div>
@@ -82,22 +82,22 @@ export function ContractPanel({
           <>
             <div className="grid gap-2 md:grid-cols-2">
               <div className="rounded-xl border border-edge bg-panel/60 p-3">
-                <p className="text-[11px] uppercase tracking-wide text-dim">契约源</p>
-                <p className="mt-1 break-all font-mono text-[12px] text-ink">{status.source}</p>
-                <p className={clsx('mt-1 text-[11px]', status.source_exists ? 'text-ok' : 'text-err')}>
+                <p className="text-xs uppercase tracking-wide text-dim">契约源</p>
+                <p className="mt-1 break-all font-mono text-sm text-ink">{status.source}</p>
+                <p className={clsx('mt-1 text-xs', status.source_exists ? 'text-ok' : 'text-err')}>
                   {status.source_exists ? '文件存在' : '文件缺失'}
                 </p>
               </div>
               <div className="rounded-xl border border-edge bg-panel/60 p-3">
-                <p className="text-[11px] uppercase tracking-wide text-dim">生成的前端类型</p>
-                <p className="mt-1 break-all font-mono text-[12px] text-ink">{status.target}</p>
-                <p className={clsx('mt-1 text-[11px]', status.target_exists ? 'text-ok' : 'text-err')}>
+                <p className="text-xs uppercase tracking-wide text-dim">生成的前端类型</p>
+                <p className="mt-1 break-all font-mono text-sm text-ink">{status.target}</p>
+                <p className={clsx('mt-1 text-xs', status.target_exists ? 'text-ok' : 'text-err')}>
                   {status.target_exists ? '文件存在' : '文件缺失，契约检查会失败'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-[11.5px] text-dim">
+            <div className="flex items-center gap-2 text-sm text-dim">
               <FileJson size={12} />
               {status.from_config ? '来自 nova.yaml 配置' : '自动发现'}
             </div>
@@ -107,20 +107,20 @@ export function ContractPanel({
                 <Icon size={13} className={clsx(
                   tone === 'ok' && 'text-ok', tone === 'err' && 'text-err', tone === 'dim' && 'text-dim',
                 )} />
-                <span className="text-[12.5px] font-medium">最近一次契约检查</span>
+                <span className="text-base font-medium text-ink">最近一次契约检查</span>
                 <Badge tone={tone}>{status.last_status ?? '未运行'}</Badge>
                 {status.checked_at && (
-                  <span className="ml-auto text-[11px] text-dim">
+                  <span className="ml-auto text-xs text-dim">
                     {new Date(status.checked_at).toLocaleString()}
                   </span>
                 )}
               </div>
               {status.last_detail ? (
-                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-[10.5px] text-dim">
+                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-xs text-dim">
                   {status.last_detail}
                 </pre>
               ) : (
-                <p className="mt-2 text-[11.5px] text-dim">
+                <p className="mt-2 text-sm text-dim">
                   运行一次验证后，这里会显示契约检查的 drift 输出。
                 </p>
               )}

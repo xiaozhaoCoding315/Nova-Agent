@@ -18,7 +18,7 @@ import { ContextRail } from './ContextRail'
 import { ProjectRail } from './ProjectRail'
 import { WorkspaceDrawer } from './WorkspaceDrawer'
 
-const ChatView = lazy(() => import('../views/ChatView').then((m) => ({ default: m.ChatView })))
+const Workbench = lazy(() => import('./Workbench').then((m) => ({ default: m.Workbench })))
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsDialog = lazy(() =>
   import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
@@ -33,6 +33,13 @@ const PERMISSION_LABEL = {
 
 const ViewFallback = () => (
   <div className="flex h-full min-h-[40vh] flex-1 items-center justify-center font-mono text-sm text-dim">
+    加载中…
+  </div>
+)
+
+/** 设置弹层按需加载：先给一行与 Shell 一致的加载提示，避免点开后无反馈。 */
+const DialogFallback = () => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 font-mono text-sm text-dim" role="status">
     加载中…
   </div>
 )
@@ -356,8 +363,7 @@ export function AppShell() {
 
         <div className="min-h-0 flex-1">
           <Suspense fallback={<ViewFallback />}>
-            <ChatView
-              embedded
+            <Workbench
               onOpenSettings={() => openSettings('model')}
               onOpenWorkspace={openWorkspace}
               onOpenRun={openRun}
@@ -379,7 +385,7 @@ export function AppShell() {
       />
 
       {settingsOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<DialogFallback />}>
           <SettingsDialog
             open={settingsOpen}
             section={settingsSection}

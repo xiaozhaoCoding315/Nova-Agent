@@ -23,7 +23,7 @@ function depGraph(brain: Brain) {
 
 function Graph({ brain, onOpenFile }: { brain: Brain; onOpenFile: (path: string) => void }) {
   const layout = depGraph(brain)
-  if (!layout) return <p className="text-[12.5px] text-dim">该仓库没有可展示的依赖关系。</p>
+  if (!layout) return <p className="text-base text-dim">该仓库没有可展示的依赖关系。</p>
   const { width, height, positions, edges, base } = layout
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
@@ -78,12 +78,12 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 p-4 text-[13px] text-dim">
+      <div className="flex items-center gap-2 p-4 text-base text-dim">
         <Spinner /> 生成项目地图…
       </div>
     )
   }
-  if (error) return <p className="p-4 text-[13px] text-err">{error}</p>
+  if (error) return <p className="p-4 text-base text-err">{error}</p>
   if (!brain) {
     return <EmptyState title="还没有项目地图" hint="对仓库执行一次「重建索引」后即可生成。" />
   }
@@ -101,14 +101,14 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
   return (
     <div className="h-full space-y-5 overflow-y-auto p-4">
       <section>
-        <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-ink">
+        <h4 className="mb-2 flex items-center gap-1.5 text-base font-medium text-ink">
           <Network size={13} className="text-accent" /> 仓库概览
         </h4>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {stats.map(([label, value]) => (
             <div key={label} className="rounded-lg border border-edge bg-panel/60 p-2 text-center">
-              <p className="text-[15px] font-semibold">{value}</p>
-              <p className="text-[10.5px] text-dim">{label}</p>
+              <p className="text-lg font-semibold">{value}</p>
+              <p className="text-xs text-dim">{label}</p>
             </div>
           ))}
         </div>
@@ -116,18 +116,18 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
 
       <div className="grid gap-4 md:grid-cols-2">
         <section>
-          <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
+          <h4 className="mb-2 flex items-center gap-1.5 text-base font-medium text-ink">
             <Compass size={13} className="text-accent" /> 推荐阅读顺序
           </h4>
           <ol className="space-y-1">
             {brain.reading_order.map((path, i) => (
               <li key={path}>
                 <button
-                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left font-mono text-[11.5px] text-dim hover:bg-raised hover:text-ink"
+                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left font-mono text-sm text-dim hover:bg-raised hover:text-ink"
                   onClick={() => onOpenFile(path)}
                   title={path}
                 >
-                  <span className="text-[10px] text-dim/60">{i + 1}</span>
+                  <span className="text-2xs text-dim/60">{i + 1}</span>
                   <span className="truncate">{path}</span>
                 </button>
               </li>
@@ -136,14 +136,14 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
         </section>
 
         <section>
-          <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
+          <h4 className="mb-2 flex items-center gap-1.5 text-base font-medium text-ink">
             <Flame size={13} className="text-warn" /> 核心文件（被依赖最多）
           </h4>
           <ul className="space-y-1">
             {brain.hot_files.map((f) => (
               <li key={f.path}>
                 <button
-                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11.5px] text-dim hover:bg-raised hover:text-ink"
+                  className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-sm text-dim hover:bg-raised hover:text-ink"
                   onClick={() => onOpenFile(f.path)}
                   title={`入度 ${f.inbound} / 出度 ${f.outbound}`}
                 >
@@ -157,7 +157,7 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
       </div>
 
       <section>
-        <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
+        <h4 className="mb-2 flex items-center gap-1.5 text-base font-medium text-ink">
           <Network size={13} className="text-accent" /> 依赖图（点击节点打开文件）
         </h4>
         <div className="rounded-lg border border-edge bg-panel/40 p-2">
@@ -166,11 +166,11 @@ export function BrainPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile:
       </section>
 
       <section>
-        <h4 className="mb-2 flex items-center gap-1.5 text-[13px] font-medium">
+        <h4 className="mb-2 flex items-center gap-1.5 text-base font-medium text-ink">
           <BookOpen size={13} className="text-accent" /> 术语表（从符号表生成）
         </h4>
         <div className="overflow-hidden rounded-lg border border-edge">
-          <table className="w-full text-[11.5px]">
+          <table className="w-full text-sm">
             <tbody>
               {brain.glossary.map((g) => (
                 <tr key={`${g.path}-${g.line}-${g.name}`} className="border-b border-edge/60 last:border-0">

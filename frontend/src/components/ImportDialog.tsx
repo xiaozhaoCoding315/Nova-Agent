@@ -171,7 +171,7 @@ export function ImportDialog({
         {tabs.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] ${
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-base ${
               tab === key ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:text-ink'
             }`}
             onClick={() => setTab(key)}
@@ -189,8 +189,8 @@ export function ImportDialog({
           onClick={() => folderInput.current?.click()}
         >
           <FolderUp size={26} className="text-accent" />
-          <p className="text-[13.5px]">点击选择你的项目文件夹</p>
-          <p className="text-[12px] leading-relaxed text-dim">
+          <p className="text-base text-ink">点击选择你的项目文件夹</p>
+          <p className="text-sm leading-relaxed text-dim">
             自动跳过 node_modules / .git / 构建产物与二进制文件，浏览器内打包后上传；
             单文件 ≤ 4MB，最多 {MAX_FILES} 个
           </p>
@@ -220,8 +220,8 @@ export function ImportDialog({
           onDrop={onDrop}
         >
           <UploadCloud size={26} className="text-accent" />
-          <p className="text-[13.5px]">拖拽 zip 到此处，或点击选择文件</p>
-          <p className="text-[12px] text-dim">支持代码 / Markdown / 文本；自动跳过 node_modules、构建产物与二进制文件</p>
+          <p className="text-base text-ink">拖拽 zip 到此处，或点击选择文件</p>
+          <p className="text-sm text-dim">支持代码 / Markdown / 文本；自动跳过 node_modules、构建产物与二进制文件</p>
           <input
             ref={fileInput}
             type="file"
@@ -237,9 +237,9 @@ export function ImportDialog({
             onChange={(e) => setGitUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void handleGit()}
             placeholder="https://github.com/user/repo（公开项目）"
-            className="w-full rounded-lg border border-edge bg-raised px-3 py-2 font-mono text-[13px] outline-none placeholder:text-dim/60 focus:border-accentSoft"
+            className="w-full rounded-lg border border-edge bg-raised px-3 py-2 font-mono text-base text-ink outline-none placeholder:text-dim/60 focus:border-accentSoft"
           />
-          <p className="text-[12px] text-dim">服务端会浅克隆该公开项目，项目较大时请耐心等待。</p>
+          <p className="text-sm text-dim">服务端会浅克隆该公开项目，项目较大时请耐心等待。</p>
           <Button variant="primary" onClick={() => void handleGit()} disabled={busy || !gitUrl.trim()}>
             {busy ? <Spinner /> : <GitBranch size={13} />} 开始导入
           </Button>
@@ -247,11 +247,11 @@ export function ImportDialog({
       )}
 
       {busy && (tab === 'zip' || tab === 'folder') && (
-        <p className="mt-3 flex items-center gap-2 text-[12.5px] text-dim">
+        <p className="mt-3 flex items-center gap-2 text-base text-dim">
           <Spinner /> {folderInfo ?? '上传中…'}
         </p>
       )}
-      {error && <p className="mt-3 text-[12.5px] text-err">{error}</p>}
+      {error && <p className="mt-3 text-base text-err">{error}</p>}
     </Modal>
   )
 }

@@ -3,13 +3,11 @@ import { KeyRound, Loader2, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '../lib/api'
+import { inputClass } from '../lib/ui'
 import { useAuth } from '../stores/auth'
 import { Spinner } from './common'
 
 export type AuthMode = 'login' | 'register' | 'reset'
-
-const inputClass =
-  'w-full rounded-md border border-edge bg-raised px-3 py-2 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50'
 
 /** 登录、注册与找回密码表单；从 LoginView 的 AuthModal 抽出，仅改变外观与布局。 */
 export function AuthPanel({

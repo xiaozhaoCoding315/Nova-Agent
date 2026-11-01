@@ -62,8 +62,8 @@ export function DebtPanel({ repoId }: { repoId: string }) {
     <div className="h-full overflow-y-auto p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Activity size={14} className="text-accent" />
-        <h3 className="text-[13px] font-medium">技术债雷达</h3>
-        <span className="text-[10.5px] text-dim">确定性指标，无模型参与；每周自动快照</span>
+        <h3 className="text-base font-medium text-ink">技术债雷达</h3>
+        <span className="text-xs text-dim">确定性指标，无模型参与；每周自动快照</span>
         <div className="ml-auto flex gap-1.5">
           <Button size="sm" onClick={() => void load()} disabled={loading}>
             {loading ? <Spinner /> : <RefreshCw size={12} />} 刷新
@@ -73,10 +73,10 @@ export function DebtPanel({ repoId }: { repoId: string }) {
           </Button>
         </div>
       </div>
-      {error && <p className="mb-2 text-[11.5px] text-err">{error}</p>}
+      {error && <p className="mb-2 text-sm text-err">{error}</p>}
 
       {!latest && !loading && (
-        <p className="py-4 text-[12px] leading-relaxed text-dim">
+        <p className="py-4 text-sm leading-relaxed text-dim">
           还没有快照。点「立即扫描」生成第一份技术债报告，之后每周自动更新，趋势会显示债的变化方向。
         </p>
       )}
@@ -85,42 +85,42 @@ export function DebtPanel({ repoId }: { repoId: string }) {
         <>
           <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">债务分</p>
-              <p className="mt-1 flex items-baseline gap-2 text-[20px] font-semibold tabular-nums">
+              <p className="text-2xs uppercase tracking-wide text-dim">债务分</p>
+              <p className="mt-1 flex items-baseline gap-2 text-2xl font-semibold tabular-nums">
                 {latest.score}
                 <Badge tone={scoreTone(latest.score)}>{scoreLabel(latest.score)}</Badge>
               </p>
               {delta !== null && (
-                <p className={`mt-0.5 text-[10px] ${delta > 0 ? 'text-err' : 'text-ok'}`}>
+                <p className={`mt-0.5 text-2xs ${delta > 0 ? 'text-err' : 'text-ok'}`}>
                   较上次 {delta > 0 ? '+' : ''}{delta}
                 </p>
               )}
             </div>
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">文件 / 测试文件</p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums">
+              <p className="text-2xs uppercase tracking-wide text-dim">文件 / 测试文件</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
                 {latest.metrics.file_count ?? 0}
-                <span className="text-[11px] font-normal text-dim"> / {latest.metrics.test_file_count ?? 0}</span>
+                <span className="text-xs font-normal text-dim"> / {latest.metrics.test_file_count ?? 0}</span>
               </p>
             </div>
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">超长函数</p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums">
+              <p className="text-2xs uppercase tracking-wide text-dim">超长函数</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
                 {latest.metrics.long_function_count ?? 0}
-                <span className="text-[11px] font-normal text-dim"> / {latest.metrics.symbol_count ?? 0} 函数</span>
+                <span className="text-xs font-normal text-dim"> / {latest.metrics.symbol_count ?? 0} 函数</span>
               </p>
             </div>
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">TODO/FIXME 文件</p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums">{latest.metrics.todo_chunk_count ?? 0}</p>
+              <p className="text-2xs uppercase tracking-wide text-dim">TODO/FIXME 文件</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{latest.metrics.todo_chunk_count ?? 0}</p>
             </div>
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">巨型文件</p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums">{latest.metrics.huge_files?.length ?? 0}</p>
+              <p className="text-2xs uppercase tracking-wide text-dim">巨型文件</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{latest.metrics.huge_files?.length ?? 0}</p>
             </div>
             <div className="rounded-lg border border-edge/80 bg-base/40 px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-dim">测试占比</p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums">
+              <p className="text-2xs uppercase tracking-wide text-dim">测试占比</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
                 {Math.round((latest.metrics.test_ratio ?? 0) * 100)}%
               </p>
             </div>
@@ -128,7 +128,7 @@ export function DebtPanel({ repoId }: { repoId: string }) {
 
           {history.length > 1 && (
             <div className="mb-3 rounded-lg border border-edge/80 bg-base/40 p-3">
-              <p className="mb-2 text-[11px] text-dim">趋势（每次快照的债务分）</p>
+              <p className="mb-2 text-xs text-dim">趋势（每次快照的债务分）</p>
               <div className="flex h-16 items-end gap-1.5">
                 {history.map((snap, i) => (
                   <div key={i} className="flex-1" title={`${snap.score} · ${snap.created_at ?? ''}`}>
@@ -145,11 +145,11 @@ export function DebtPanel({ repoId }: { repoId: string }) {
           <div className="grid gap-2 sm:grid-cols-2">
             {(latest.metrics.long_functions?.length ?? 0) > 0 && (
               <div className="rounded-lg border border-edge/80 bg-base/40 p-3">
-                <p className="mb-1.5 text-[11.5px] font-medium">最长的函数（行数）</p>
-                <ul className="space-y-1 text-[11.5px] text-dim">
+                <p className="mb-1.5 text-sm font-medium">最长的函数（行数）</p>
+                <ul className="space-y-1 text-sm text-dim">
                   {latest.metrics.long_functions!.map((f, i) => (
                     <li key={i} className="flex justify-between gap-2">
-                      <span className="truncate font-mono text-[10.5px]">{f.name}</span>
+                      <span className="truncate font-mono text-xs">{f.name}</span>
                       <span className="tabular-nums">{f.lines}</span>
                     </li>
                   ))}
@@ -158,11 +158,11 @@ export function DebtPanel({ repoId }: { repoId: string }) {
             )}
             {(latest.metrics.huge_files?.length ?? 0) > 0 && (
               <div className="rounded-lg border border-edge/80 bg-base/40 p-3">
-                <p className="mb-1.5 text-[11.5px] font-medium">巨型文件（&gt;800 行）</p>
-                <ul className="space-y-1 text-[11.5px] text-dim">
+                <p className="mb-1.5 text-sm font-medium">巨型文件（&gt;800 行）</p>
+                <ul className="space-y-1 text-sm text-dim">
                   {latest.metrics.huge_files!.map((f, i) => (
                     <li key={i} className="flex justify-between gap-2">
-                      <span className="truncate font-mono text-[10.5px]">{f.path}</span>
+                      <span className="truncate font-mono text-xs">{f.path}</span>
                       <span className="tabular-nums">{f.lines}</span>
                     </li>
                   ))}
@@ -170,7 +170,7 @@ export function DebtPanel({ repoId }: { repoId: string }) {
               </div>
             )}
           </div>
-          <p className="mt-3 text-[10px] leading-relaxed text-dim/60">
+          <p className="mt-3 text-2xs leading-relaxed text-dim/60">
             债务分 = 超长函数 40% + TODO 密度 25% + 测试缺口 25% + 巨型文件 10%，全部由索引表确定性计算，可复现。
           </p>
         </>

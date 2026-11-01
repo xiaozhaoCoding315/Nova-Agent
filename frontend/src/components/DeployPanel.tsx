@@ -68,7 +68,7 @@ export function DeployPanel({ repoId }: { repoId: string }) {
       <div className="mx-auto max-w-3xl space-y-3">
         <div className="flex items-center gap-2">
           <Rocket size={15} className="text-accent" />
-          <h2 className="text-[14px] font-semibold">预览部署</h2>
+          <h2 className="text-md font-semibold">预览部署</h2>
           {running && <Badge tone="ok">运行中</Badge>}
           <div className="ml-auto flex gap-2">
             <Button size="sm" onClick={() => void load()} disabled={Boolean(busy)}>
@@ -80,7 +80,7 @@ export function DeployPanel({ repoId }: { repoId: string }) {
           </div>
         </div>
 
-        <p className="text-[11.5px] leading-relaxed text-dim">
+        <p className="text-sm leading-relaxed text-dim">
           使用隔离容器启动项目并做健康检查：支持 Python/FastAPI（<code className="rounded bg-raised px-1 font-mono">app/main.py</code>）
           与 Node（<code className="rounded bg-raised px-1 font-mono">package.json</code> 的 start 脚本）。
           可在 <code className="rounded bg-raised px-1 font-mono">nova.yaml</code> 的 preview.runtime/command/port/health 覆盖；
@@ -88,7 +88,7 @@ export function DeployPanel({ repoId }: { repoId: string }) {
         </p>
 
         {error && (
-          <div className="rounded-lg border border-err/30 bg-err/10 px-3 py-2 text-[12px] text-err">
+          <div className="rounded-lg border border-err/30 bg-err/10 px-3 py-2 text-sm text-err">
             {error}
           </div>
         )}
@@ -97,18 +97,18 @@ export function DeployPanel({ repoId }: { repoId: string }) {
           <div className="rounded-xl border border-ok/30 bg-ok/5 p-4">
             <div className="flex items-center gap-2">
               <Badge tone="ok">running</Badge>
-              <span className="font-mono text-[11px] text-dim">{running.container_name}</span>
-              <span className="ml-auto text-[11px] text-dim">端口 {running.host_port}</span>
+              <span className="font-mono text-xs text-dim">{running.container_name}</span>
+              <span className="ml-auto text-xs text-dim">端口 {running.host_port}</span>
             </div>
             <a
               href={running.url || '#'}
               target="_blank"
               rel="noreferrer"
-              className="mt-2 flex items-center gap-1.5 text-[13px] text-accent hover:underline"
+              className="mt-2 flex items-center gap-1.5 text-base text-accent hover:underline"
             >
               <ExternalLink size={13} /> {running.url}
             </a>
-            <p className="mt-1 break-all font-mono text-[10.5px] text-dim">{running.command}</p>
+            <p className="mt-1 break-all font-mono text-xs text-dim">{running.command}</p>
             <Button
               size="sm"
               variant="danger"
@@ -120,25 +120,25 @@ export function DeployPanel({ repoId }: { repoId: string }) {
             </Button>
           </div>
         ) : (
-          <div className="rounded-xl border border-edge bg-panel/60 p-4 text-[12.5px] text-dim">
+          <div className="rounded-xl border border-edge bg-panel/60 p-4 text-base text-dim">
             当前没有运行中的预览。部署成功后这里会出现可访问的本地 URL。
           </div>
         )}
 
         <div className="rounded-xl border border-edge bg-panel/60 p-3">
-          <p className="mb-2 text-[11px] uppercase tracking-wide text-dim">部署历史</p>
+          <p className="mb-2 text-xs uppercase tracking-wide text-dim">部署历史</p>
           {loading ? (
-            <p className="flex items-center gap-2 text-[12px] text-dim"><Spinner /> 加载中…</p>
+            <p className="flex items-center gap-2 text-sm text-dim"><Spinner /> 加载中…</p>
           ) : deployments.length === 0 ? (
-            <p className="text-[12px] text-dim">还没有部署记录。</p>
+            <p className="text-sm text-dim">还没有部署记录。</p>
           ) : (
             <div className="space-y-1.5">
               {deployments.map((deployment) => (
                 <div key={deployment.id} className="flex items-start gap-2 rounded-lg border border-edge bg-base/40 px-2.5 py-2">
                   <Badge tone={STATUS_TONE[deployment.status] ?? 'dim'}>{deployment.status}</Badge>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-mono text-[11px] text-ink">{deployment.url || deployment.container_name}</p>
-                    <p className="mt-0.5 text-[10.5px] text-dim">
+                    <p className="truncate font-mono text-xs text-ink">{deployment.url || deployment.container_name}</p>
+                    <p className="mt-0.5 text-xs text-dim">
                       {deployment.created_at ? new Date(deployment.created_at).toLocaleString() : ''}
                       {deployment.error ? ` · ${deployment.error}` : ''}
                     </p>

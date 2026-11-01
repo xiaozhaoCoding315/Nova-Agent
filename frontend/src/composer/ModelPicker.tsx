@@ -7,6 +7,7 @@ import {
   providerSupportsReasoning, providerSupportsTemperature, sanitizeOverrides,
 } from '../lib/overrides'
 import type { LlmOverrides, LlmProvider, LlmSettings } from '../lib/types'
+import { inputClass } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 
@@ -29,9 +30,6 @@ const optionClass = (selected: boolean, disabled = false) => clsx(
     : 'border-edge text-dim hover:border-accent/30 hover:text-ink',
   disabled && 'cursor-not-allowed opacity-40 hover:border-edge hover:text-dim',
 )
-
-const inputClass =
-  'rounded-md border border-edge bg-base/60 px-2 py-1 text-xs text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50 disabled:opacity-50'
 
 function formatWindow(value: number): string {
   return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)

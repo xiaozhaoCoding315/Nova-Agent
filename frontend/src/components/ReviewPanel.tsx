@@ -16,11 +16,11 @@ const VERDICT: Record<
 function FindingRow({ item }: { item: ReviewFinding }) {
   return (
     <li className="rounded-md border border-edge bg-base/50 px-2.5 py-1.5">
-      <p className="text-[12px] leading-relaxed text-ink">{item.issue}</p>
-      <p className="mt-0.5 font-mono text-[10.5px] text-dim">
+      <p className="text-sm leading-relaxed text-ink">{item.issue}</p>
+      <p className="mt-0.5 font-mono text-xs text-dim">
         {item.file ? `${item.file}${item.line ? `:${item.line}` : ''}` : '整体'}
       </p>
-      {item.suggestion && <p className="mt-0.5 text-[11.5px] text-dim">建议：{item.suggestion}</p>}
+      {item.suggestion && <p className="mt-0.5 text-sm text-dim">建议：{item.suggestion}</p>}
     </li>
   )
 }
@@ -45,16 +45,16 @@ export function ReviewPanel({ review }: { review: Review | null | undefined }) {
           meta.tone === 'warn' && 'text-warn',
           meta.tone === 'err' && 'text-err',
         )} />
-        <span className="text-[12.5px] font-medium">只读审查</span>
+        <span className="text-base font-medium text-ink">只读审查</span>
         <Badge tone={meta.tone}>{meta.label}</Badge>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] text-dim">{review.summary}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-dim">{review.summary}</span>
         {open ? <ChevronDown size={13} className="text-dim" /> : <ChevronRight size={13} className="text-dim" />}
       </button>
       {open && (
         <div className="space-y-2 border-t border-edge px-3 py-2">
           {blocking.length > 0 && (
             <div>
-              <p className="mb-1 text-[11px] uppercase tracking-wide text-err">Blocking</p>
+              <p className="mb-1 text-xs uppercase tracking-wide text-err">Blocking</p>
               <ul className="space-y-1.5">
                 {blocking.map((item, i) => <FindingRow key={`b-${i}`} item={item} />)}
               </ul>
@@ -62,7 +62,7 @@ export function ReviewPanel({ review }: { review: Review | null | undefined }) {
           )}
           {nonBlocking.length > 0 && (
             <div>
-              <p className="mb-1 text-[11px] uppercase tracking-wide text-dim">Non-blocking</p>
+              <p className="mb-1 text-xs uppercase tracking-wide text-dim">Non-blocking</p>
               <ul className="space-y-1.5">
                 {nonBlocking.map((item, i) => <FindingRow key={`n-${i}`} item={item} />)}
               </ul>
@@ -70,14 +70,14 @@ export function ReviewPanel({ review }: { review: Review | null | undefined }) {
           )}
           {evidence.length > 0 && (
             <div>
-              <p className="mb-1 text-[11px] uppercase tracking-wide text-dim">依据</p>
-              <ul className="list-disc space-y-0.5 pl-4 text-[11.5px] text-dim">
+              <p className="mb-1 text-xs uppercase tracking-wide text-dim">依据</p>
+              <ul className="list-disc space-y-0.5 pl-4 text-sm text-dim">
                 {evidence.map((item, i) => <li key={`e-${i}`}>{item}</li>)}
               </ul>
             </div>
           )}
           {blocking.length === 0 && nonBlocking.length === 0 && (
-            <p className="text-[11.5px] text-dim">没有发现需要修复的问题。</p>
+            <p className="text-sm text-dim">没有发现需要修复的问题。</p>
           )}
         </div>
       )}

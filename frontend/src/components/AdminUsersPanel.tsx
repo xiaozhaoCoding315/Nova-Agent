@@ -2,11 +2,9 @@ import { Ban, CheckCircle2, Coins, Copy, Plus, RefreshCw, SlidersHorizontal, Tic
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { AdminUser, InviteCode } from '../lib/types'
+import { formatBytes, inputClass } from '../lib/ui'
 import { useAuth } from '../stores/auth'
 import { Badge, Button, Modal, Spinner } from './common'
-
-const inputClass =
-  'w-full rounded-lg border border-edge bg-base/60 px-3 py-2 text-[12.5px] text-ink outline-none transition-colors focus:border-accent/60'
 
 const QUOTA_FIELDS: { key: keyof AdminUser & string; label: string; hint: string }[] = [
   { key: 'quota_daily_tokens', label: '每日 token 上限', hint: '如 200000' },
@@ -18,11 +16,6 @@ const QUOTA_FIELDS: { key: keyof AdminUser & string; label: string; hint: string
 
 function hasCustomQuota(user: AdminUser): boolean {
   return QUOTA_FIELDS.some(({ key }) => user[key] != null)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function AdminUsersPanel() {
@@ -206,10 +199,10 @@ export function AdminUsersPanel() {
         <section className="rounded-xl border border-edge bg-panel p-4">
           <div className="mb-2 flex items-center gap-2">
             <Coins size={14} className="text-accent" />
-            <h3 className="text-[13px] font-medium">用量来源（近 7 天）</h3>
-            <span className="text-[10.5px] text-dim">按调用来源与模型聚合，用于成本归因</span>
+            <h3 className="text-base font-medium text-ink">用量来源（近 7 天）</h3>
+            <span className="text-xs text-dim">按调用来源与模型聚合，用于成本归因</span>
           </div>
-          <table className="w-full border-collapse text-[11.5px]">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-edge text-left text-dim">
                 <th className="py-1.5 pr-2 font-medium">来源</th>
@@ -221,8 +214,8 @@ export function AdminUsersPanel() {
             <tbody>
               {sources.map((row) => (
                 <tr key={`${row.source}:${row.model}`} className="border-b border-edge/50">
-                  <td className="py-1.5 pr-2 font-mono text-[10.5px]">{row.source}</td>
-                  <td className="px-2 py-1.5 font-mono text-[10.5px] text-dim">{row.model || '—'}</td>
+                  <td className="py-1.5 pr-2 font-mono text-xs">{row.source}</td>
+                  <td className="px-2 py-1.5 font-mono text-xs text-dim">{row.model || '—'}</td>
                   <td className="px-2 py-1.5 tabular-nums text-dim">{row.calls}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row.tokens.toLocaleString()}</td>
                 </tr>
@@ -235,8 +228,8 @@ export function AdminUsersPanel() {
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <Ticket size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">注册邀请码</h3>
-          <span className="text-[10.5px] text-dim">当前部署注册需邀请码；游客体验不受影响</span>
+          <h3 className="text-base font-medium text-ink">注册邀请码</h3>
+          <span className="text-xs text-dim">当前部署注册需邀请码；游客体验不受影响</span>
         </div>
         <div className="grid gap-2 sm:grid-cols-[1fr,90px,90px,auto]">
           <input
@@ -265,11 +258,11 @@ export function AdminUsersPanel() {
         </div>
         <div className="mt-3 overflow-x-auto">
           {invites.length === 0 ? (
-            <p className="py-2 text-[11.5px] text-dim">
+            <p className="py-2 text-sm text-dim">
               还没有邀请码。生成后把码发给需要注册的人，注册页输入即可创建账号。
             </p>
           ) : (
-            <table className="w-full border-collapse text-[11.5px]">
+            <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-edge text-left text-dim">
                   <th className="py-1.5 pr-2 font-medium">邀请码</th>
@@ -286,7 +279,7 @@ export function AdminUsersPanel() {
                   return (
                     <tr key={invite.id} className="border-b border-edge/50">
                       <td className="py-1.5 pr-2">
-                        <span className="font-mono text-[11px] text-ink">{invite.code}</span>
+                        <span className="font-mono text-xs text-ink">{invite.code}</span>
                       </td>
                       <td className="px-2 py-1.5 text-dim">{invite.note || '—'}</td>
                       <td className="px-2 py-1.5 tabular-nums text-dim">
@@ -301,7 +294,7 @@ export function AdminUsersPanel() {
                         <div className="flex justify-end gap-1">
                           <button
                             onClick={() => void copyCode(invite.code)}
-                            className="flex items-center gap-1 rounded px-1.5 py-1 text-[10.5px] text-dim hover:bg-raised hover:text-ink"
+                            className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-dim hover:bg-raised hover:text-ink"
                             title="复制邀请码"
                           >
                             {copiedCode === invite.code ? <CheckCircle2 size={12} className="text-ok" /> : <Copy size={12} />}
@@ -328,16 +321,16 @@ export function AdminUsersPanel() {
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <Users size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">用户管理</h3>
-          <span className="text-[10.5px] text-dim">共 {users.length} 个账号</span>
+          <h3 className="text-base font-medium text-ink">用户管理</h3>
+          <span className="text-xs text-dim">共 {users.length} 个账号</span>
           <Button size="sm" className="ml-auto" onClick={() => void load()} disabled={loading}>
             {loading ? <Spinner /> : <RefreshCw size={12} />} 刷新
           </Button>
         </div>
-        {error && <p className="mb-2 text-[11.5px] text-err">{error}</p>}
-        {notice && <p className="mb-2 text-[11.5px] text-ok">{notice}</p>}
+        {error && <p className="mb-2 text-sm text-err">{error}</p>}
+        {notice && <p className="mb-2 text-sm text-ok">{notice}</p>}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-[11.5px]">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-edge text-left text-dim">
                 <th className="py-1.5 pr-2 font-medium">用户</th>
@@ -353,7 +346,7 @@ export function AdminUsersPanel() {
                 <tr key={item.id} className="border-b border-edge/50">
                   <td className="py-2 pr-2">
                     <p className="text-ink">{item.display_name || item.username}</p>
-                    <p className="font-mono text-[10px] text-dim">@{item.username}</p>
+                    <p className="font-mono text-2xs text-dim">@{item.username}</p>
                   </td>
                   <td className="px-2 py-2">
                     <Badge tone={item.role === 'admin' ? 'accent' : 'dim'}>{item.role}</Badge>
@@ -366,14 +359,14 @@ export function AdminUsersPanel() {
                   </td>
                   <td className="px-2 py-2 text-dim">
                     <p>{item.tokens_total.toLocaleString()} tokens</p>
-                    <p className="text-[10px] text-dim/70">
+                    <p className="text-2xs text-dim/70">
                       {item.sessions} 会话 · {item.repos} 项目 · {item.files} 文件 · {formatBytes(item.storage_bytes)}
                     </p>
                     {hasCustomQuota(item) && (
                       <p className="mt-0.5"><Badge tone="accent">自定义限额</Badge></p>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-[10.5px] text-dim">
+                  <td className="px-2 py-2 text-xs text-dim">
                     {item.last_login_at ? new Date(item.last_login_at).toLocaleString() : '—'}
                   </td>
                   <td className="px-2 py-2">
@@ -397,7 +390,7 @@ export function AdminUsersPanel() {
                       <button
                         onClick={() => setResetTarget(item)}
                         disabled={busy === item.id}
-                        className="rounded px-1.5 py-1 text-[10.5px] text-dim hover:bg-raised hover:text-ink disabled:opacity-30"
+                        className="rounded px-1.5 py-1 text-xs text-dim hover:bg-raised hover:text-ink disabled:opacity-30"
                       >
                         重置密码
                       </button>
@@ -421,8 +414,8 @@ export function AdminUsersPanel() {
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="mb-3 flex items-center gap-2">
           <Plus size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">创建账号</h3>
-          <span className="text-[10.5px] text-dim">管理员直接开通，不受注册开关限制</span>
+          <h3 className="text-base font-medium text-ink">创建账号</h3>
+          <span className="text-xs text-dim">管理员直接开通，不受注册开关限制</span>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <input
@@ -479,7 +472,7 @@ export function AdminUsersPanel() {
           className={inputClass}
           autoFocus
         />
-        <p className="mt-2 text-[10.5px] text-dim">重置后该用户所有旧登录状态立即失效。</p>
+        <p className="mt-2 text-xs text-dim">重置后该用户所有旧登录状态立即失效。</p>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" onClick={() => { setResetTarget(null); setResetPassword('') }}>取消</Button>
           <Button size="sm" variant="primary" onClick={resetUserPassword} disabled={resetPassword.length < 8}>
@@ -494,7 +487,7 @@ export function AdminUsersPanel() {
         title={`删除账号：${deleteTarget?.username ?? ''}`}
         width="max-w-sm"
       >
-        <p className="text-[12px] leading-relaxed text-dim">
+        <p className="text-sm leading-relaxed text-dim">
           将删除该账号的会话、项目、文件与记忆，此操作无法撤销。
         </p>
         <div className="mt-4 flex justify-end gap-2">
@@ -509,13 +502,13 @@ export function AdminUsersPanel() {
         title={`配置限额：${quotaTarget?.username ?? ''}`}
         width="max-w-md"
       >
-        <p className="mb-3 text-[11px] leading-relaxed text-dim">
+        <p className="mb-3 text-xs leading-relaxed text-dim">
           留空表示跟随角色默认档；填 0 表示不限制；填正数则覆盖默认档。用户自己设置的「个人预算」只会在这些上限之内进一步收紧。
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {QUOTA_FIELDS.map(({ key, label, hint }) => (
             <label key={key} className="space-y-1">
-              <span className="text-[11px] text-dim">{label}</span>
+              <span className="text-xs text-dim">{label}</span>
               <input
                 value={quotaForm[key] ?? ''}
                 onChange={(event) => setQuotaForm({ ...quotaForm, [key]: event.target.value })}
@@ -526,7 +519,7 @@ export function AdminUsersPanel() {
             </label>
           ))}
         </div>
-        {quotaError && <p className="mt-2 text-[11.5px] text-err">{quotaError}</p>}
+        {quotaError && <p className="mt-2 text-sm text-err">{quotaError}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" onClick={() => setQuotaTarget(null)}>取消</Button>
           <Button size="sm" variant="primary" onClick={saveQuota}>

@@ -109,8 +109,8 @@ export function TrajectoryDrawer({
       >
         <header className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-3">
           <Activity size={14} className="text-accent" />
-          <span className="text-[13px] font-medium">会话轨迹</span>
-          <span className="text-[11px] text-dim">{events.length} 个事件</span>
+          <span className="text-base font-medium text-ink">会话轨迹</span>
+          <span className="text-xs text-dim">{events.length} 个事件</span>
           <button className="ml-auto text-dim hover:text-ink" onClick={onClose} aria-label="关闭">
             <X size={15} />
           </button>
@@ -118,13 +118,13 @@ export function TrajectoryDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {loading && (
-            <p className="flex items-center gap-2 text-[12.5px] text-dim">
+            <p className="flex items-center gap-2 text-base text-dim">
               <Spinner /> 加载中…
             </p>
           )}
-          {error && <p className="text-[12.5px] text-err">{error}</p>}
+          {error && <p className="text-base text-err">{error}</p>}
           {!loading && !error && events.length === 0 && (
-            <p className="text-[12.5px] leading-relaxed text-dim">
+            <p className="text-base leading-relaxed text-dim">
               当前会话还没有轨迹。发送一条消息后，这里会记录用户输入、检索、模型轮次、工具调用、审批与结果，可用于回放和排障。
             </p>
           )}
@@ -146,10 +146,10 @@ export function TrajectoryDrawer({
                     <Badge tone={KIND_TONE[event.kind] ?? 'dim'}>
                       {KIND_LABEL[event.kind] ?? event.kind}
                     </Badge>
-                    <span className="min-w-0 flex-1 truncate text-[11.5px] text-dim">
+                    <span className="min-w-0 flex-1 truncate text-sm text-dim">
                       {summarize(event)}
                     </span>
-                    <span className="shrink-0 text-[10px] text-dim/60">
+                    <span className="shrink-0 text-2xs text-dim/60">
                       {event.created_at ? new Date(event.created_at).toLocaleTimeString() : ''}
                     </span>
                   </button>
@@ -157,7 +157,7 @@ export function TrajectoryDrawer({
                     <pre
                       className={clsx(
                         'max-h-60 overflow-auto border-t border-edge bg-base p-2.5',
-                        'font-mono text-[10.5px] leading-relaxed text-dim',
+                        'font-mono text-xs leading-relaxed text-dim',
                       )}
                     >
                       {JSON.stringify(event.payload, null, 2)}

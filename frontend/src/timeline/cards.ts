@@ -41,8 +41,6 @@ export function toolCardKind(name: string): ToolCardKind {
 export const TOOL_CARD_CLASS =
   'overflow-hidden rounded-md border border-edge bg-panel/60 transition-colors duration-150 hover:border-faint/70'
 
-export const TOOL_CARD_HEADER_CLASS = 'flex h-8 w-full items-center gap-2 px-2.5 text-left'
-
 export function argString(card: StreamToolCard, ...keys: string[]): string | null {
   for (const key of keys) {
     const value = card.call.args?.[key]
@@ -180,12 +178,6 @@ export function diffEstimate(card: StreamToolCard): { add: number; del: number }
     else if (line.startsWith('-')) del += 1
   }
   return { add, del }
-}
-
-export function formatBytes(value: number): string {
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)}MB`
-  if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`
-  return `${value}B`
 }
 
 /** 从 preview JSON 里兜底取正文时允许的最大长度，避免异常结果撑爆高亮渲染。 */

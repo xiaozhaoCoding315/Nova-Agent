@@ -2,11 +2,9 @@ import { FolderOpen, KeyRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { LocalSetupStatus } from '../lib/types'
+import { inputClass } from '../lib/ui'
 import { ModeBadge } from '../shell/ModeBadge'
 import { Button, Spinner } from './common'
-
-const inputClass =
-  'w-full rounded-md border border-edge bg-base/60 px-2.5 py-1.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50'
 
 export function LocalSetupDialog({
   open,

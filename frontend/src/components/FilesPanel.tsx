@@ -2,13 +2,8 @@ import { Download, FileText, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { FileList } from '../lib/types'
+import { formatBytes } from '../lib/ui'
 import { Badge, Button, Modal, Spinner } from './common'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
 
 export function FilesPanel() {
   const [data, setData] = useState<FileList | null>(null)
@@ -67,7 +62,7 @@ export function FilesPanel() {
       <section className="rounded-xl border border-edge bg-panel p-4">
         <div className="flex flex-wrap items-center gap-2">
           <FileText size={14} className="text-accent" />
-          <h3 className="text-[13px] font-medium">个人文件库</h3>
+          <h3 className="text-base font-medium text-ink">个人文件库</h3>
           {data && (
             <Badge tone={usedPct >= 90 ? 'err' : usedPct >= 70 ? 'warn' : 'dim'}>
               {formatBytes(data.used_bytes)} / {formatBytes(data.limit_bytes)}
@@ -101,15 +96,15 @@ export function FilesPanel() {
             />
           </div>
         )}
-        <p className="mt-2 text-[10.5px] leading-relaxed text-dim/70">
+        <p className="mt-2 text-xs leading-relaxed text-dim/70">
           聊天附件和手动上传都会进入个人文件库；文件仅自己可见，计入个人存储配额。
         </p>
-        {error && <p className="mt-2 text-[11.5px] text-err">{error}</p>}
+        {error && <p className="mt-2 text-sm text-err">{error}</p>}
       </section>
 
       <section className="rounded-xl border border-edge bg-panel">
         {!data || data.files.length === 0 ? (
-          <p className="px-4 py-6 text-[12px] text-dim">
+          <p className="px-4 py-6 text-sm text-dim">
             {loading ? '加载中…' : '还没有文件。在对话里点击回形针上传，或在这里手动上传。'}
           </p>
         ) : (
@@ -118,8 +113,8 @@ export function FilesPanel() {
               <div key={file.id} className="flex items-center gap-2 px-4 py-2.5">
                 <FileText size={13} className="shrink-0 text-dim" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] text-ink" title={file.filename}>{file.filename}</p>
-                  <p className="text-[10px] text-dim">
+                  <p className="truncate text-sm text-ink" title={file.filename}>{file.filename}</p>
+                  <p className="text-2xs text-dim">
                     {formatBytes(file.size)} · {file.mime}
                     {file.created_at ? ` · ${new Date(file.created_at).toLocaleString()}` : ''}
                   </p>
@@ -150,7 +145,7 @@ export function FilesPanel() {
         title="删除文件"
         width="max-w-sm"
       >
-        <p className="text-[12px] leading-relaxed text-dim">
+        <p className="text-sm leading-relaxed text-dim">
           将删除文件数据。历史消息中的附件名称会保留，但无法再下载。确认删除？
         </p>
         <div className="mt-4 flex justify-end gap-2">

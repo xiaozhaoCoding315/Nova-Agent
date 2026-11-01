@@ -13,7 +13,7 @@ export function ProviderIcon({
   if (!paths) {
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[10px] font-semibold uppercase text-dim ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center rounded-md bg-raised font-mono text-2xs font-semibold uppercase text-dim ${className}`}
         style={{ width: size, height: size }}
         aria-hidden
       >

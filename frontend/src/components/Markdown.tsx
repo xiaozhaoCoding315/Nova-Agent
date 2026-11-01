@@ -24,8 +24,8 @@ function PreBlock({ children }: { children?: any }) {
   return (
     <div className="my-2 overflow-hidden rounded-lg border border-edge bg-[#0d1117]">
       <div className="flex items-center justify-between border-b border-edge bg-panel px-3 py-1">
-        <span className="font-mono text-[11px] text-dim">{lang ?? 'text'}</span>
-        <button className="text-[11px] text-dim transition-colors hover:text-ink" onClick={copy}>
+        <span className="font-mono text-xs text-dim">{lang ?? 'text'}</span>
+        <button className="text-xs text-dim transition-colors hover:text-ink" onClick={copy}>
           {copied ? '已复制' : '复制代码'}
         </button>
       </div>

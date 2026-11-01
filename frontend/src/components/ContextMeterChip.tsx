@@ -34,7 +34,7 @@ export function ContextMeterChip({ meter }: { meter: ContextMeter | null }) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={clsx(
-          'flex items-center gap-1.5 rounded-lg border bg-raised/70 px-2 py-1 text-[11px] transition-colors',
+          'flex items-center gap-1.5 rounded-lg border bg-raised/70 px-2 py-1 text-xs transition-colors',
           open ? 'border-accent/50 text-ink' : 'border-edge/80 text-dim hover:text-ink',
         )}
         title="本轮提示的上下文占用（估算）"
@@ -48,7 +48,7 @@ export function ContextMeterChip({ meter }: { meter: ContextMeter | null }) {
             style={{ width: `${Math.max(3, pct)}%` }}
           />
         </span>
-        <span className={clsx('hidden text-[10px] tabular-nums sm:inline', tone.text)}>{pct}%</span>
+        <span className={clsx('hidden text-2xs tabular-nums sm:inline', tone.text)}>{pct}%</span>
       </button>
 
       {open && (
@@ -56,25 +56,25 @@ export function ContextMeterChip({ meter }: { meter: ContextMeter | null }) {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-xl border border-edge bg-panel p-3 shadow-xl">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[12px] font-semibold">本轮上下文</span>
-              <span className={clsx('text-[11px] tabular-nums', tone.text)}>
+              <span className="text-sm font-semibold">本轮上下文</span>
+              <span className={clsx('text-xs tabular-nums', tone.text)}>
                 {formatTokens(meter.total)} / {formatTokens(meter.window)}（{pct}%）
               </span>
             </div>
-            <p className="mt-0.5 text-[10px] leading-relaxed text-dim/70">
+            <p className="mt-0.5 text-2xs leading-relaxed text-dim/70">
               按字符估算，实际以模型返回的用量为准
               {meter.actualPromptTokens ? `（本轮实际 ${formatTokens(meter.actualPromptTokens)}）` : ''}。
               接近窗口时可在设置里换更长上下文的模型或清空会话。
             </p>
             <div className="mt-2.5 space-y-1.5">
               {sections.length === 0 && (
-                <p className="text-[11px] text-dim">暂无构成数据。</p>
+                <p className="text-xs text-dim">暂无构成数据。</p>
               )}
               {sections.map(([label, tokens]) => {
                 const share = meter.total > 0 ? Math.round((tokens / meter.total) * 100) : 0
                 return (
                   <div key={label} className="space-y-0.5">
-                    <div className="flex items-baseline gap-2 text-[11px]">
+                    <div className="flex items-baseline gap-2 text-xs">
                       <span className="min-w-0 flex-1 truncate text-dim">{label}</span>
                       <span className="tabular-nums text-dim/80">{formatTokens(tokens)}</span>
                       <span className="w-8 text-right tabular-nums text-dim/60">{share}%</span>

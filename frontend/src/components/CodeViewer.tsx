@@ -53,24 +53,24 @@ export function CodeViewer({ repoId, path }: { repoId: string; path: string | nu
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-dim" title={path}>
+        <span className="min-w-0 flex-1 truncate font-mono text-sm text-dim" title={path}>
           {path}
         </span>
         {meta && <Badge tone="dim">{meta.language || 'text'}</Badge>}
-        {meta && <span className="text-[11px] text-dim">{meta.line_count} 行</span>}
+        {meta && <span className="text-xs text-dim">{meta.line_count} 行</span>}
         <button className="text-dim hover:text-ink" onClick={copyAll} aria-label="复制文件">
           {copied ? <Check size={13} className="text-ok" /> : <Copy size={13} />}
         </button>
       </div>
       <div className="flex-1 overflow-auto">
         {loading && (
-          <div className="flex items-center gap-2 p-4 text-[13px] text-dim">
+          <div className="flex items-center gap-2 p-4 text-base text-dim">
             <Spinner /> 加载中…
           </div>
         )}
-        {error && <p className="p-4 text-[13px] text-err">{error}</p>}
+        {error && <p className="p-4 text-base text-err">{error}</p>}
         {content !== null && !loading && !error && (
-          <table className="w-full border-collapse font-mono text-[12.5px] leading-[1.55]">
+          <table className="w-full border-collapse font-mono text-base leading-[1.55] text-ink">
             <tbody>
               {lines.map((line, i) => (
                 <tr key={i} className="hover:bg-panel/60">

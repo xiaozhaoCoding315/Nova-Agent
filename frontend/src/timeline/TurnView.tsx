@@ -7,12 +7,13 @@ import { api } from '../lib/api'
 import type {
   DeliveryReport, EditRef, Evidence, Message, PlanState, StreamToolCard, StreamUsage, ToolApproval,
 } from '../lib/types'
+import { formatBytes } from '../lib/ui'
 import { ApprovalCard } from './ApprovalCard'
 import { EvidenceStrip } from './EvidenceStrip'
 import { RunSummary } from './RunSummary'
 import { SignalGutter } from './SignalGutter'
 import { ToolCardView } from './ToolCard'
-import { eventToCard, formatBytes, toolLabel } from './cards'
+import { eventToCard, toolLabel } from './cards'
 
 export type TurnStream = {
   text: string

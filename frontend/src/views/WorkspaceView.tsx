@@ -18,21 +18,10 @@ import { LocalFolderDialog } from '../components/LocalFolderDialog'
 import { NewProjectDialog } from '../components/NewProjectDialog'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { FileNode, Job, Repo, RepoStatus, VerifyResult } from '../lib/types'
+import type { FileNode, Job, Repo, VerifyResult } from '../lib/types'
+import { REPO_STATUS, selectClass } from '../lib/ui'
 import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
-
-const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
-  pending: { label: '排队中', tone: 'dim' },
-  indexing: { label: '阅读中', tone: 'warn' },
-  ready: { label: '可用', tone: 'ok' },
-  failed: { label: '失败', tone: 'err' },
-  planning: { label: '规划中', tone: 'warn' },
-  plan_ready: { label: '待确认方案', tone: 'accent' },
-  approved: { label: '已确认方案', tone: 'accent' },
-  generating: { label: '生成中', tone: 'warn' },
-  review: { label: '待审阅代码', tone: 'accent' },
-}
 
 export type WorkspaceTab = 'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'
 
@@ -55,7 +44,7 @@ function RepoCard({
   onRemove: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
-  const meta = STATUS_META[repo.status]
+  const meta = REPO_STATUS[repo.status]
 
   return (
     <div
@@ -66,29 +55,29 @@ function RepoCard({
       onClick={onSelect}
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{repo.name}</span>
+        <span className="min-w-0 flex-1 truncate text-base font-medium text-ink">{repo.name}</span>
         {['indexing', 'pending', 'planning', 'generating'].includes(repo.status) && <Spinner />}
         {repo.kind === 'builder' && <Badge tone="accent">Builder</Badge>}
         {repo.origin === 'local' && <Badge tone="accent">本地</Badge>}
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </div>
-      <p className="mt-1 truncate font-mono text-[11px] text-dim" title={repo.source}>
+      <p className="mt-1 truncate font-mono text-xs text-dim" title={repo.source}>
         {repo.source}
       </p>
       {repo.status === 'ready' && repo.stats && (
-        <p className="mt-1.5 text-[11.5px] text-dim">
+        <p className="mt-1.5 text-sm text-dim">
           {repo.stats.files ?? 0} 文件 · {repo.stats.chunks ?? 0} 分块 · {repo.stats.symbols ?? 0} 符号
           {repo.stats.embedded ? ` · ${repo.stats.embedded} 向量` : ''}
         </p>
       )}
       {repo.status === 'failed' && repo.error && (
-        <p className="mt-1.5 line-clamp-3 text-[11.5px] text-err" title={repo.error}>
+        <p className="mt-1.5 line-clamp-3 text-sm text-err" title={repo.error}>
           {repo.error}
         </p>
       )}
       <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <button
-          className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-[11px] text-dim hover:text-ink"
+          className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-xs text-dim hover:text-ink"
           onClick={onReindex}
           title="重新阅读项目代码，更新检索索引"
         >
@@ -96,7 +85,7 @@ function RepoCard({
         </button>
         {confirming ? (
           <button
-            className="flex items-center gap-1 rounded-md border border-err/50 px-2 py-0.5 text-[11px] text-err"
+            className="flex items-center gap-1 rounded-md border border-err/50 px-2 py-0.5 text-xs text-err"
             onClick={() => {
               onRemove()
               setConfirming(false)
@@ -106,7 +95,7 @@ function RepoCard({
           </button>
         ) : (
           <button
-            className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-[11px] text-dim hover:text-err"
+            className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-xs text-dim hover:text-err"
             onClick={() => setConfirming(true)}
             title={repo.origin === 'local' ? '取消登记（不会删除磁盘文件）' : '删除仓库'}
           >
@@ -311,6 +300,8 @@ export function WorkspaceView({
     const failure = useRepos.getState().error
     setProjectBusy(null)
     if (failure) {
+      // 失败提示在菜单下方显示；先收起菜单，避免错误横幅被挡住。
+      closeProjectMenu()
       setProjectMessage({ tone: 'err', text: failure })
       return
     }
@@ -329,6 +320,7 @@ export function WorkspaceView({
     const stillExists = useRepos.getState().repos.some((repo) => repo.id === repoId)
     setProjectBusy(null)
     if (stillExists) {
+      closeProjectMenu()
       setProjectMessage({ tone: 'err', text: useRepos.getState().error ?? '移除项目失败' })
       return
     }
@@ -354,7 +346,7 @@ export function WorkspaceView({
                 <ArrowLeft size={14} />
               </button>
             )}
-            <span className="text-[12px] font-medium uppercase tracking-wide text-dim">工作区</span>
+            <span className="text-sm font-medium uppercase tracking-wide text-dim">工作区</span>
           </div>
           <div className="flex items-center gap-1">
             {localMode && (
@@ -372,7 +364,7 @@ export function WorkspaceView({
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
           {repos.length === 0 && (
-            <p className="py-4 text-[12.5px] leading-relaxed text-dim">
+            <p className="py-4 text-base leading-relaxed text-dim">
               导入你的项目后，Nova 就能回答「X 在哪实现」、定位报错到具体文件行号，并在沙箱里跑代码验证。
             </p>
           )}
@@ -405,13 +397,15 @@ export function WorkspaceView({
           <aside
             className={clsx(
               'flex shrink-0 flex-col border-r border-edge bg-panel/50',
-              embedded ? 'w-36 sm:w-56 lg:w-72' : 'w-64 lg:w-72',
+              // 375px 下项目操作菜单会挤占下拉框；内嵌时给小屏更宽的文件树列。
+              embedded ? 'w-48 sm:w-56 lg:w-72' : 'w-64 lg:w-72',
             )}
           >
             <div className="flex items-center gap-2 px-3 py-2.5">
               <select
                 className={clsx(
-                  'min-w-0 flex-1 rounded-md border border-edge bg-raised px-2 py-1 text-[12px] outline-none',
+                  selectClass,
+                  'min-w-0 flex-1',
                   !embedded && 'lg:hidden',
                 )}
                 value={selected.id}
@@ -431,7 +425,7 @@ export function WorkspaceView({
               </select>
               <p
                 className={clsx(
-                  'min-w-0 flex-1 truncate text-[12px] font-medium uppercase tracking-wide text-dim',
+                  'min-w-0 flex-1 truncate text-sm font-medium uppercase tracking-wide text-dim',
                   embedded ? 'hidden' : 'hidden lg:block',
                 )}
                 title={selected.name}
@@ -518,14 +512,14 @@ export function WorkspaceView({
                 </div>
               )}
               <button
-                className="shrink-0 text-[11px] text-dim hover:text-ink lg:hidden"
+                className="shrink-0 text-xs text-dim hover:text-ink lg:hidden"
                 onClick={() => setImportOpen(true)}
                 title="导入仓库"
               >
                 <FilePlus2 size={13} />
               </button>
               <button
-                className="shrink-0 text-[11px] text-dim hover:text-accent lg:hidden"
+                className="shrink-0 text-xs text-dim hover:text-accent lg:hidden"
                 onClick={() => setNewProjectOpen(true)}
                 title="新建项目"
               >
@@ -545,11 +539,11 @@ export function WorkspaceView({
             )}
             <div className="flex-1 overflow-y-auto px-1">
               {treeLoading && (
-                <p className="flex items-center gap-2 px-3 py-3 text-[12.5px] text-dim">
+                <p className="flex items-center gap-2 px-3 py-3 text-base text-dim">
                   <Spinner /> 加载文件树…
                 </p>
               )}
-              {treeError && <p className="px-3 py-3 text-[12.5px] text-err">{treeError}</p>}
+              {treeError && <p className="px-3 py-3 text-base text-err">{treeError}</p>}
               {!treeLoading && !treeError && (
                 <FileTree nodes={tree} selectedPath={selectedPath} onSelect={setSelectedPath} />
               )}
@@ -579,7 +573,7 @@ export function WorkspaceView({
                     key={key}
                     onClick={() => setTab(key)}
                     className={clsx(
-                      'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                      'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors',
                       tab === key ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
                     )}
                   >
@@ -593,7 +587,7 @@ export function WorkspaceView({
                     <button
                       onClick={() => setMoreOpen((value) => !value)}
                       className={clsx(
-                        'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                        'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors',
                         moreItems.some((item) => item.key === tab)
                           ? 'bg-accentSoft/50 text-ink'
                           : 'text-dim hover:bg-raised hover:text-ink',
@@ -614,7 +608,7 @@ export function WorkspaceView({
                                 setMoreOpen(false)
                               }}
                               className={clsx(
-                                'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors',
+                                'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
                                 tab === key ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
                               )}
                             >
@@ -631,7 +625,7 @@ export function WorkspaceView({
               {selected.status === 'ready' && (
                 <div className="flex shrink-0 items-center gap-2">
                   {verifyBusy && verifyJob && (
-                    <span className="flex items-center gap-1 text-[11px] text-dim">
+                    <span className="flex items-center gap-1 text-xs text-dim">
                       <Spinner />
                       验证中 {Math.round((verifyJob.progress || 0) * 100)}%
                       {verifyJob.step ? ` · ${verifyJob.step}` : ''}
@@ -640,7 +634,7 @@ export function WorkspaceView({
                   {verifyResult && !verifyBusy && (
                     <span
                       className={clsx(
-                        'flex items-center gap-1 text-[11px]',
+                        'flex items-center gap-1 text-xs',
                         verifyResult.status === 'passed' && 'text-ok',
                         verifyResult.status === 'failed' && 'text-err',
                         verifyResult.status === 'unsupported' && 'text-dim',
@@ -665,7 +659,7 @@ export function WorkspaceView({
             {(verifyError || verifyResult) && (
               <div
                 className={clsx(
-                  'shrink-0 border-b px-3 py-1.5 text-[11.5px]',
+                  'shrink-0 border-b px-3 py-1.5 text-sm',
                   verifyResult?.status === 'passed' ? 'border-ok/30 bg-ok/5' : 'border-err/30 bg-err/5',
                 )}
               >
@@ -692,7 +686,7 @@ export function WorkspaceView({
                 {verifyOpen && verifyResult && (
                   <div className="mt-1.5 space-y-1">
                     {verifyResult.steps?.map((step) => (
-                      <div key={step.name} className="flex items-center gap-2 text-[11px]">
+                      <div key={step.name} className="flex items-center gap-2 text-xs">
                         <span
                           className={clsx(
                             'h-1.5 w-1.5 rounded-full',
@@ -709,9 +703,9 @@ export function WorkspaceView({
                       </div>
                     ))}
                     {verifyResult.notes?.length ? (
-                      <p className="text-[11px] text-dim">{verifyResult.notes.join('；')}</p>
+                      <p className="text-xs text-dim">{verifyResult.notes.join('；')}</p>
                     ) : null}
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-[10.5px] text-dim">
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-base p-2 font-mono text-xs text-dim">
                       {(verifyResult.stdout || verifyResult.stderr || '（无输出）').slice(-3000)}
                     </pre>
                   </div>
@@ -763,14 +757,14 @@ export function WorkspaceView({
       ) : (
         <main className="min-w-0 flex-1">
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-[14px] text-ink">选择一个仓库，或从 0 新建一个项目</p>
-            <p className="max-w-md text-[12.5px] leading-relaxed text-dim">
+            <p className="text-md text-ink">选择一个仓库，或从 0 新建一个项目</p>
+            <p className="max-w-md text-base leading-relaxed text-dim">
               导入已有项目可以浏览代码、分析影响、让 Nova 修 bug；「新建项目」则会先给出方案，确认后生成完整代码提案，批准后写入并建立索引。
             </p>
             {repos.length > 0 && (
               <select
                 className={clsx(
-                  'rounded-lg border border-edge bg-raised px-3 py-1.5 text-[13px] outline-none',
+                  'rounded-lg border border-edge bg-raised px-3 py-1.5 text-base text-ink outline-none',
                   !embedded && 'lg:hidden',
                 )}
                 defaultValue=""

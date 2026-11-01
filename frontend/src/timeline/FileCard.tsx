@@ -3,8 +3,9 @@ import { ChevronDown, ChevronRight, ExternalLink, FileCode2 } from 'lucide-react
 import { useMemo, useState } from 'react'
 import { highlightCode, languageFromPath } from '../lib/highlight'
 import type { StreamToolCard } from '../lib/types'
+import { formatBytes } from '../lib/ui'
 import {
-  TOOL_CARD_CLASS, argString, diffEstimate, filePreview, formatBytes, toolFilePath, toolLabel,
+  TOOL_CARD_CLASS, argString, diffEstimate, filePreview, toolFilePath, toolLabel,
 } from './cards'
 
 /** 文件卡：read_file / write_files / edit_file / read_uploaded_file。 */

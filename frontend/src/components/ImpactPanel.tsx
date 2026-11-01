@@ -61,14 +61,14 @@ export function ImpactPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="输入函数名 / 类名 / 文件路径，例如 calculate_tax"
-          className="min-w-0 flex-1 rounded-lg border border-edge bg-raised px-3 py-1.5 font-mono text-[12.5px] outline-none placeholder:text-dim/60 focus:border-accentSoft"
+          className="min-w-0 flex-1 rounded-lg border border-edge bg-raised px-3 py-1.5 font-mono text-base text-ink outline-none placeholder:text-dim/60 focus:border-accentSoft"
         />
         <Button variant="primary" size="sm" onClick={() => void run()} disabled={loading || !query.trim()}>
           {loading ? <Spinner /> : <Search size={12} />} 分析
         </Button>
       </div>
 
-      {error && <p className="mt-3 text-[12.5px] text-err">{error}</p>}
+      {error && <p className="mt-3 text-base text-err">{error}</p>}
 
       {!result && !loading && (
         <div className="mt-6">
@@ -83,11 +83,11 @@ export function ImpactPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile
         <div className="mt-4 space-y-4">
           <section className={clsx('rounded-xl border p-3', risk?.level === 'high' ? 'border-err/40 bg-err/5' : risk?.level === 'medium' ? 'border-warn/40 bg-warn/5' : 'border-edge bg-panel/50')}>
             <div className="flex items-center gap-2">
-              <span className={clsx('text-[14px] font-semibold', meta.color)}>{meta.label}</span>
+              <span className={clsx('text-md font-semibold', meta.color)}>{meta.label}</span>
               {typeof risk?.score === 'number' && <Badge tone={meta.tone}>评分 {risk.score}</Badge>}
-              <span className="ml-auto text-[11.5px] text-dim">{result.targets?.join('，')}</span>
+              <span className="ml-auto text-sm text-dim">{result.targets?.join('，')}</span>
             </div>
-            <ul className="mt-2 space-y-1 text-[12px] text-dim">
+            <ul className="mt-2 space-y-1 text-sm text-dim">
               {(risk?.reasons ?? []).map((reason) => (
                 <li key={reason}>· {reason}</li>
               ))}
@@ -96,22 +96,22 @@ export function ImpactPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile
 
           <section className="grid gap-3 md:grid-cols-2">
             <div>
-              <h4 className="mb-1.5 text-[12.5px] font-medium">直接依赖（{result.direct_dependents?.length ?? 0}）</h4>
+              <h4 className="mb-1.5 text-base font-medium text-ink">直接依赖（{result.direct_dependents?.length ?? 0}）</h4>
               <PathList paths={result.direct_dependents ?? []} onOpen={onOpenFile} empty="没有直接依赖文件" />
             </div>
             <div>
-              <h4 className="mb-1.5 text-[12.5px] font-medium">间接依赖（{result.transitive_dependents?.length ?? 0}）</h4>
+              <h4 className="mb-1.5 text-base font-medium text-ink">间接依赖（{result.transitive_dependents?.length ?? 0}）</h4>
               <PathList paths={result.transitive_dependents ?? []} onOpen={onOpenFile} empty="没有间接依赖文件" />
             </div>
           </section>
 
           <section>
-            <h4 className="mb-1.5 text-[12.5px] font-medium">引用位置（{result.references?.length ?? 0} 个文件）</h4>
+            <h4 className="mb-1.5 text-base font-medium text-ink">引用位置（{result.references?.length ?? 0} 个文件）</h4>
             <div className="space-y-1">
               {result.references?.map((ref) => (
                 <button
                   key={ref.path}
-                  className="flex w-full items-center gap-2 rounded border border-edge bg-panel/40 px-2 py-1 text-left font-mono text-[11.5px] text-dim hover:text-ink"
+                  className="flex w-full items-center gap-2 rounded border border-edge bg-panel/40 px-2 py-1 text-left font-mono text-sm text-dim hover:text-ink"
                   onClick={() => onOpenFile(ref.path)}
                   title={ref.path}
                 >
@@ -119,28 +119,28 @@ export function ImpactPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile
                   <Badge tone="dim">{ref.occurrences} 次</Badge>
                 </button>
               ))}
-              {(result.references?.length ?? 0) === 0 && <p className="text-[12px] text-dim">没有发现符号引用。</p>}
+              {(result.references?.length ?? 0) === 0 && <p className="text-sm text-dim">没有发现符号引用。</p>}
             </div>
           </section>
 
           <section>
-            <h4 className="mb-1.5 text-[12.5px] font-medium">相关测试（{result.tests?.length ?? 0}）</h4>
+            <h4 className="mb-1.5 text-base font-medium text-ink">相关测试（{result.tests?.length ?? 0}）</h4>
             <PathList paths={result.tests ?? []} onOpen={onOpenFile} empty="未发现相关测试（回归风险需人工确认）" />
           </section>
 
           {result.suggested_command && (
             <section className="rounded-lg border border-edge bg-panel/50 p-2.5">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[11.5px] text-dim">建议测试命令</span>
+                <span className="text-sm text-dim">建议测试命令</span>
                 <button className="text-dim hover:text-ink" onClick={() => void copyCommand()} aria-label="复制命令">
                   {copied ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
                 </button>
               </div>
-              <code className="block break-all font-mono text-[11.5px] text-ink">{result.suggested_command}</code>
+              <code className="block break-all font-mono text-sm text-ink">{result.suggested_command}</code>
             </section>
           )}
 
-          {result.note && <p className="text-[11px] leading-relaxed text-dim">{result.note}</p>}
+          {result.note && <p className="text-xs leading-relaxed text-dim">{result.note}</p>}
         </div>
       )}
     </div>
@@ -148,13 +148,13 @@ export function ImpactPanel({ repoId, onOpenFile }: { repoId: string; onOpenFile
 }
 
 function PathList({ paths, onOpen, empty }: { paths: string[]; onOpen: (path: string) => void; empty: string }) {
-  if (paths.length === 0) return <p className="text-[12px] text-dim">{empty}</p>
+  if (paths.length === 0) return <p className="text-sm text-dim">{empty}</p>
   return (
     <div className="space-y-1">
       {paths.map((path) => (
         <button
           key={path}
-          className="block w-full truncate rounded border border-edge bg-panel/40 px-2 py-1 text-left font-mono text-[11.5px] text-dim hover:text-ink"
+          className="block w-full truncate rounded border border-edge bg-panel/40 px-2 py-1 text-left font-mono text-sm text-dim hover:text-ink"
           onClick={() => onOpen(path)}
           title={path}
         >

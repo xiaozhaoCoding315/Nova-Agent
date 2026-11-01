@@ -50,9 +50,7 @@ export function Composer({
   disabled: boolean
   streaming: boolean
   model: string | null
-  models: string[]
   modelLabel: string
-  onModelChange: (model: string) => void
   permissionMode: PermissionMode
   onPermissionChange: (mode: PermissionMode) => void
   contextCount: number

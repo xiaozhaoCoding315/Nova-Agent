@@ -22,7 +22,7 @@ function phaseOf(status: RepoStatus): string {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-4">
-      <h4 className="mb-1.5 text-[12.5px] font-medium text-ink">{title}</h4>
+      <h4 className="mb-1.5 text-base font-medium text-ink">{title}</h4>
       {children}
     </section>
   )
@@ -158,7 +158,7 @@ export function BuilderPanel({
 
   return (
     <div className="h-full overflow-y-auto p-4">
-      <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+      <div className="flex flex-wrap items-center gap-1.5 text-sm">
         {PHASES.map(([key, label], i) => {
           const active = key === currentPhase
           const done = PHASES.findIndex(([k]) => k === currentPhase) > i
@@ -182,12 +182,12 @@ export function BuilderPanel({
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg border border-err/40 bg-err/5 p-2.5 text-[12.5px] text-err">{error}</p>
+        <p className="mt-3 rounded-lg border border-err/40 bg-err/5 p-2.5 text-base text-err">{error}</p>
       )}
 
       {smoke && (
         <div
-          className={`mt-3 rounded-lg border p-2.5 text-[12px] leading-relaxed ${
+          className={`mt-3 rounded-lg border p-2.5 text-sm leading-relaxed ${
             smoke.ok
               ? 'border-ok/40 bg-ok/5 text-ok'
               : 'border-warn/40 bg-warn/5 text-ink'
@@ -203,7 +203,7 @@ export function BuilderPanel({
       )}
 
       {['planning', 'generating'].includes(localStatus) && (
-        <p className="mt-6 flex items-center gap-2 text-[13px] text-dim">
+        <p className="mt-6 flex items-center gap-2 text-base text-dim">
           <Spinner /> {localStatus === 'planning' ? '正在生成项目方案…' : '正在生成项目文件…'}（约 10–40 秒）
         </p>
       )}
@@ -211,7 +211,7 @@ export function BuilderPanel({
       {plan && (
         <>
           <Section title="方案概述">
-            <p className="rounded-lg border border-edge bg-panel/50 p-3 text-[12.5px] leading-relaxed text-dim">
+            <p className="rounded-lg border border-edge bg-panel/50 p-3 text-base leading-relaxed text-dim">
               {plan.summary}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -226,7 +226,7 @@ export function BuilderPanel({
           {plan.structure.length > 0 && (
             <Section title="目录结构">
               <div className="overflow-hidden rounded-lg border border-edge">
-                <table className="w-full text-[11.5px]">
+                <table className="w-full text-sm">
                   <tbody>
                     {plan.structure.map((item) => (
                       <tr key={item.path} className="border-b border-edge/60 last:border-0">
@@ -243,7 +243,7 @@ export function BuilderPanel({
           {plan.api.length > 0 && (
             <Section title="API 设计">
               <div className="overflow-hidden rounded-lg border border-edge">
-                <table className="w-full text-[11.5px]">
+                <table className="w-full text-sm">
                   <tbody>
                     {plan.api.map((item, i) => (
                       <tr key={`${item.method}-${item.path}-${i}`} className="border-b border-edge/60 last:border-0">
@@ -263,8 +263,8 @@ export function BuilderPanel({
               <div className="space-y-1.5">
                 {plan.data_model.map((model) => (
                   <div key={model.table} className="rounded-lg border border-edge bg-panel/40 p-2.5">
-                    <p className="font-mono text-[12px] text-ink">{model.table}</p>
-                    <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-dim">
+                    <p className="font-mono text-sm text-ink">{model.table}</p>
+                    <ul className="mt-1 space-y-0.5 font-mono text-xs text-dim">
                       {model.fields.map((field) => (
                         <li key={field}>· {field}</li>
                       ))}
@@ -279,13 +279,13 @@ export function BuilderPanel({
             <Section title="里程碑">
               <ol className="space-y-1.5">
                 {plan.milestones.map((ms, i) => (
-                  <li key={`${ms.name}-${i}`} className="rounded-lg border border-edge bg-panel/40 p-2.5 text-[12px]">
+                  <li key={`${ms.name}-${i}`} className="rounded-lg border border-edge bg-panel/40 p-2.5 text-sm">
                     <p className="font-medium">
                       {i + 1}. {ms.name}
                     </p>
                     <p className="mt-0.5 text-dim">{ms.tasks.join('；')}</p>
                     {ms.verification && (
-                      <p className="mt-0.5 font-mono text-[11px] text-dim">验证：{ms.verification}</p>
+                      <p className="mt-0.5 font-mono text-xs text-dim">验证：{ms.verification}</p>
                     )}
                   </li>
                 ))}
@@ -295,7 +295,7 @@ export function BuilderPanel({
 
           {plan.risks.length > 0 && (
             <Section title="风险提示">
-              <ul className="space-y-0.5 text-[12px] text-warn">
+              <ul className="space-y-0.5 text-sm text-warn">
                 {plan.risks.map((risk) => (
                   <li key={risk}>· {risk}</li>
                 ))}
@@ -318,13 +318,13 @@ export function BuilderPanel({
 
       {localStatus === 'approved' && (
         <div className="mt-4 rounded-lg border border-edge bg-panel/50 p-3">
-          <p className="mb-2 text-[12px] text-dim">方案已确认。可以补充要求后生成代码（不填则直接生成）。</p>
+          <p className="mb-2 text-sm text-dim">方案已确认。可以补充要求后生成代码（不填则直接生成）。</p>
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             rows={2}
             placeholder="例如：加上分页参数；错误统一返回 {code, message}"
-            className="w-full resize-y rounded-lg border border-edge bg-raised px-2.5 py-2 text-[12.5px] outline-none placeholder:text-dim/50 focus:border-accentSoft"
+            className="w-full resize-y rounded-lg border border-edge bg-raised px-2.5 py-2 text-base text-ink outline-none placeholder:text-dim/50 focus:border-accentSoft"
           />
           <Button
             variant="primary"
@@ -340,11 +340,11 @@ export function BuilderPanel({
       {localStatus === 'review' && proposal && (
         <div className="mt-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-[13px] font-medium">代码提案（{proposal.files.length} 个文件）</h3>
+            <h3 className="text-base font-medium text-ink">代码提案（{proposal.files.length} 个文件）</h3>
             <Badge tone="warn">待审阅</Badge>
           </div>
           {proposal.notes && (
-            <p className="mt-1.5 rounded-lg border border-edge bg-panel/40 p-2.5 text-[12px] text-dim">
+            <p className="mt-1.5 rounded-lg border border-edge bg-panel/40 p-2.5 text-sm text-dim">
               {proposal.notes}
             </p>
           )}
@@ -354,19 +354,19 @@ export function BuilderPanel({
                 <Badge tone={proposal.gate.status === 'passed' ? 'ok' : 'err'}>
                   双栈 Gate {proposal.gate.status}
                 </Badge>
-                <span className="text-[10.5px] text-dim">
+                <span className="text-xs text-dim">
                   exit {proposal.gate.exit_code} · {proposal.gate.stack || '—'}
                 </span>
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {(proposal.gate.steps || []).map((step) => (
-                  <span key={step.name} className="rounded bg-raised px-1.5 py-0.5 text-[10.5px] text-dim">
+                  <span key={step.name} className="rounded bg-raised px-1.5 py-0.5 text-xs text-dim">
                     {step.name}: {step.status}
                   </span>
                 ))}
               </div>
               {proposal.gate.status !== 'passed' && (
-                <p className="mt-1 text-[11px] text-err">Gate 未通过时不能写入项目；请退回重做。</p>
+                <p className="mt-1 text-xs text-err">Gate 未通过时不能写入项目；请退回重做。</p>
               )}
             </div>
           )}
@@ -381,11 +381,11 @@ export function BuilderPanel({
                   >
                     {open ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
                     <FileCode2 size={12} className="text-accent" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">{file.path}</span>
-                    <span className="text-[10.5px] text-dim">{(file.content.length / 1024).toFixed(1)} KB</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm">{file.path}</span>
+                    <span className="text-xs text-dim">{(file.content.length / 1024).toFixed(1)} KB</span>
                   </button>
                   {open && (
-                    <pre className="max-h-80 overflow-auto border-t border-edge bg-[#0d1117] p-2.5 font-mono text-[11px] leading-relaxed">
+                    <pre className="max-h-80 overflow-auto border-t border-edge bg-[#0d1117] p-2.5 font-mono text-xs leading-relaxed">
                       {file.content}
                     </pre>
                   )}
@@ -399,7 +399,7 @@ export function BuilderPanel({
               onChange={(e) => setFeedback(e.target.value)}
               rows={2}
               placeholder="审阅意见（填写后点「退回重做」会带上意见重新生成）"
-              className="w-full resize-y rounded-lg border border-edge bg-raised px-2.5 py-2 text-[12.5px] outline-none placeholder:text-dim/50 focus:border-accentSoft"
+              className="w-full resize-y rounded-lg border border-edge bg-raised px-2.5 py-2 text-base text-ink outline-none placeholder:text-dim/50 focus:border-accentSoft"
             />
             <div className="mt-2 flex items-center gap-2">
               <Button
@@ -412,14 +412,14 @@ export function BuilderPanel({
               <Button variant="danger" onClick={() => void act('reject_redo')} disabled={busy !== null}>
                 {busy === 'reject_redo' ? <Spinner /> : <XCircle size={13} />} 退回重做
               </Button>
-              <span className="text-[11px] text-dim">写入后会自动建立索引</span>
+              <span className="text-xs text-dim">写入后会自动建立索引</span>
             </div>
           </div>
         </div>
       )}
 
       {(localStatus === 'indexing' || localStatus === 'ready') && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-ok/30 bg-ok/5 p-3 text-[12.5px] text-ok">
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-ok/30 bg-ok/5 p-3 text-base text-ok">
           <CheckCircle2 size={14} />
           {localStatus === 'indexing'
             ? '已写入项目，正在建立索引…'

@@ -9,7 +9,8 @@ import { ImpactPanel } from '../components/ImpactPanel'
 import { RefPanel } from '../components/RefPanel'
 import { Badge, EmptyState, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
-import type { FileNode, RepoStatus } from '../lib/types'
+import type { FileNode } from '../lib/types'
+import { REPO_STATUS, RUN_STATUS, selectClass } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useRepos } from '../stores/repos'
 import { useRun } from '../stores/run'
@@ -26,28 +27,6 @@ const TABS = [
 ] as const
 
 type RailTab = (typeof TABS)[number]['key']
-
-const REPO_STATUS_LABEL: Record<RepoStatus, string> = {
-  pending: '排队中',
-  indexing: '索引中',
-  ready: '就绪',
-  failed: '索引失败',
-  planning: '规划中',
-  plan_ready: '待确认方案',
-  approved: '已确认方案',
-  generating: '生成中',
-  review: '待审阅',
-}
-
-const RUN_LABEL: Record<string, string> = {
-  queued: '排队中',
-  running: '运行中',
-  ready: '待确认',
-  applied: '已应用',
-  rejected: '已拒绝',
-  failed: '失败',
-  canceled: '已取消',
-}
 
 function readRailTab(): RailTab {
   try {
@@ -67,14 +46,6 @@ function countFiles(nodes: FileNode[]): number {
 
 function countDiffFiles(diff: string | null): number {
   return diff ? diff.match(/^diff --git /gm)?.length ?? 0 : 0
-}
-
-function runTone(status: string | undefined): 'dim' | 'ok' | 'warn' | 'err' | 'accent' {
-  if (status === 'running' || status === 'queued') return 'warn'
-  if (status === 'ready') return 'accent'
-  if (status === 'applied') return 'ok'
-  if (status === 'failed') return 'err'
-  return 'dim'
 }
 
 /** 右栏：文件 / 引用 / 影响 / 变更；有待查看的 /fix 任务时切换为运行面板。 */
@@ -205,6 +176,9 @@ export function ContextRail({
 
   // 恢复任务失败时 task 为 null 但 open 仍为 true：仍要挂载 RunPanel 展示错误。
   const runActive = runOpen
+  const runMeta = runTask
+    ? RUN_STATUS[runTask.status] ?? { label: runTask.status, tone: 'dim' as const }
+    : null
   const diffFiles = countDiffFiles(diff)
   const counts = useMemo<Record<RailTab, number>>(() => ({
     files: countFiles(tree),
@@ -258,8 +232,8 @@ export function ContextRail({
                 <ArrowLeft size={13} /> 返回
               </button>
               <span className="shrink-0 text-xs text-ink">运行</span>
-              {runTask && (
-                <Badge tone={runTone(runTask.status)}>{RUN_LABEL[runTask.status] ?? runTask.status}</Badge>
+              {runMeta && (
+                <Badge tone={runMeta.tone}>{runMeta.label}</Badge>
               )}
               <button
                 onClick={onToggle}
@@ -344,14 +318,14 @@ export function ContextRail({
                         setLastPath(null)
                       }}
                       disabled={repos.length === 0}
-                      className="w-full rounded-md border border-edge bg-raised px-2 py-1 text-xs text-ink outline-none transition-colors duration-150 focus:border-accent/50 disabled:opacity-50"
+                      className={selectClass}
                       aria-label="切换上下文项目"
                     >
                       {repos.length === 0 && <option value="">暂无项目</option>}
                       {repos.map((repo) => (
                         <option key={repo.id} value={repo.id}>
                           {repo.name}
-                          {repo.status === 'ready' ? '' : `（${REPO_STATUS_LABEL[repo.status]}）`}
+                          {repo.status === 'ready' ? '' : `（${REPO_STATUS[repo.status].label}）`}
                         </option>
                       ))}
                     </select>
@@ -363,7 +337,7 @@ export function ContextRail({
                       </p>
                     ) : activeRepo.status !== 'ready' ? (
                       <p className="px-3 py-4 text-xs leading-relaxed text-dim">
-                        项目{REPO_STATUS_LABEL[activeRepo.status]}，索引完成后显示文件树。
+                        项目{REPO_STATUS[activeRepo.status].label}，索引完成后显示文件树。
                       </p>
                     ) : treeLoading ? (
                       <p className="flex items-center gap-2 px-3 py-3 text-xs text-dim">
@@ -409,7 +383,7 @@ export function ContextRail({
                 ) : activeRepo.status !== 'ready' ? (
                   <EmptyState
                     title="项目尚未就绪"
-                    hint={`项目${REPO_STATUS_LABEL[activeRepo.status]}，索引完成后可以分析影响范围。`}
+                    hint={`项目${REPO_STATUS[activeRepo.status].label}，索引完成后可以分析影响范围。`}
                   />
                 ) : (
                   <ImpactPanel
@@ -466,7 +440,7 @@ export function ContextRail({
                         </p>
                       ) : activeRepo.status !== 'ready' ? (
                         <p className="text-xs leading-relaxed text-dim">
-                          项目{REPO_STATUS_LABEL[activeRepo.status]}，索引完成后可以查看工作区变更。
+                          项目{REPO_STATUS[activeRepo.status].label}，索引完成后可以查看工作区变更。
                         </p>
                       ) : diffLoading ? (
                         <p className="flex items-center gap-2 text-xs text-dim">
