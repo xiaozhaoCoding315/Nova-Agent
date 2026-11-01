@@ -21,32 +21,45 @@ VERSION = "2.0.0"
 _CLEANUP_INTERVAL_S = 3600
 
 
+async def _maintenance_once() -> dict:
+    """One maintenance pass. Local mode deliberately keeps the list small."""
+    from app.core.memory.cleanup import run_cleanup
+
+    summary = await run_cleanup()
+    if settings.is_local:
+        from app.core.indexing.retry import retry_pending_indexes
+
+        summary["index_retried"] = await retry_pending_indexes()
+        return summary
+
+    try:
+        from app.core.deploy.service import cleanup_expired
+        summary["previews_expired"] = await cleanup_expired()
+    except Exception:
+        logger.exception("preview_cleanup_failed")
+    try:
+        from app.core.account_cleanup import cleanup_expired_guests
+        summary["guests_expired"] = await cleanup_expired_guests()
+    except Exception:
+        logger.exception("guest_cleanup_failed")
+    try:
+        from app.core.debt.service import scan_stale_repos
+        summary["debt_scanned"] = await scan_stale_repos()
+    except Exception:
+        logger.exception("debt_scan_failed")
+    try:
+        from app.core.reflection.service import extract_lessons
+        summary["lessons_extracted"] = await extract_lessons()
+    except Exception:
+        logger.exception("reflection_failed")
+    return summary
+
+
 async def _cleanup_loop() -> None:
-    """Hourly maintenance: long-term memory decay + TTL expiry."""
+    """Hourly maintenance: long-term memory + mode-specific cleanup."""
     while True:
         try:
-            from app.core.memory.cleanup import run_cleanup
-            summary = await run_cleanup()
-            try:
-                from app.core.deploy.service import cleanup_expired
-                summary["previews_expired"] = await cleanup_expired()
-            except Exception:
-                logger.exception("preview_cleanup_failed")
-            try:
-                from app.core.account_cleanup import cleanup_expired_guests
-                summary["guests_expired"] = await cleanup_expired_guests()
-            except Exception:
-                logger.exception("guest_cleanup_failed")
-            try:
-                from app.core.debt.service import scan_stale_repos
-                summary["debt_scanned"] = await scan_stale_repos()
-            except Exception:
-                logger.exception("debt_scan_failed")
-            try:
-                from app.core.reflection.service import extract_lessons
-                summary["lessons_extracted"] = await extract_lessons()
-            except Exception:
-                logger.exception("reflection_failed")
+            summary = await _maintenance_once()
             logger.info("cleanup_done", **summary)
         except ImportError:
             pass

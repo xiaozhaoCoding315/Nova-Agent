@@ -281,6 +281,9 @@ class JobRunner:
             self._wake.clear()
 
     async def _claim_one(self) -> Job | None:
+        limit = settings.effective_job_max_concurrency
+        if limit > 0 and len(self._active) >= limit:
+            return None
         available = [
             kind
             for kind, spec in self._handlers.items()
