@@ -404,6 +404,49 @@ def test_shell_secret_paths_cover_windows_separators(monkeypatch):
         assert allowed.allowed, mode
 
 
+def test_shell_drive_root_paths_are_not_secret_files(monkeypatch):
+    """I-new-1: ``C:\\repo`` / ``D:\\`` are paths, not absolute secret files."""
+    for mode in ("server", "local"):
+        monkeypatch.setattr(settings, "nova_mode", mode)
+        for command in (
+            r"cd C:\repo",
+            r"git -C C:\repo status",
+            r"dir C:\Users",
+            "dir D:\\",
+            r"robocopy C:\src D:\dst",
+            r"python C:\main.py",
+        ):
+            decision = decide_tool(
+                "run_command", "execute", ["proc.exec", "fs.write"],
+                {"command": command}, ctx("auto"),
+            )
+            assert decision.allowed, (mode, command)
+
+
+def test_shell_drive_root_secret_files_stay_denied(monkeypatch):
+    """Dropping the drive element must still expose the secret tail."""
+    for mode in ("server", "local"):
+        monkeypatch.setattr(settings, "nova_mode", mode)
+        for command in (
+            r"type C:\.env",
+            r"type C:\repo\.env",
+            r"cat sub\.env",
+        ):
+            decision = decide_tool(
+                "run_command", "execute", ["proc.exec", "fs.write"],
+                {"command": command}, ctx("auto"),
+            )
+            assert not decision.allowed, (mode, command)
+            assert not decision.requires_approval, (mode, command)
+            assert "密钥" in decision.reason, (mode, command)
+
+        example = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": r"type C:\.env.example"}, ctx("auto"),
+        )
+        assert example.allowed, mode
+
+
 def test_local_readonly_denies_host_shell_and_code(monkeypatch):
     """I3: local readonly has no sanitized copy or secret masking."""
     monkeypatch.setattr(settings, "nova_mode", "local")

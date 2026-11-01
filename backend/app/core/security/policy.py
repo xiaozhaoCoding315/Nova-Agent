@@ -142,6 +142,12 @@ def _secret_reference(command: str) -> str | None:
         if not candidate or candidate in (".", "./", ".."):
             continue
         parts = [part for part in candidate.replace("\\", "/").split("/") if part]
+        if parts and re.fullmatch(r"[A-Za-z]:", parts[0]):
+            # ``C:\repo`` is a drive-rooted path, not a repo-relative one:
+            # without dropping the drive element the tail stays absolute
+            # (``C:/repo``) and ``is_secret_path`` rejects every drive-root
+            # path as a secret file.
+            parts = parts[1:]
         if not parts:
             continue
         tail = "/".join(parts[-2:])
