@@ -2,7 +2,7 @@
 
 本地模式让同一套 Nova 后端在你自己电脑上运行：内嵌 PostgreSQL（默认 `pgserver`，可回退系统 `pg_ctl`）、固定本地用户、直接打开本地文件夹、无容器 HostExecutor、无 Qdrant 的关键词/符号检索、单 worker 后台任务。
 
-**边界：Nova 不上传代码、不发送遥测、不访问 Nova 服务器。** 除你配置的 LLM API 外，只有你显式使用的联网工具或操作（`fetch_url`、`install_deps`、Git 导入）会访问外部网络，且受权限模式与审批约束。
+**边界：Nova 不向 Nova 服务器上传代码、不发送遥测、不访问 Nova 服务器。** 除你配置的 LLM API 外，只有你显式使用的联网工具或操作（`fetch_url`、`install_deps`、Git 导入，以及在 `auto` / `full` 下或 `ask` 中经批准后运行的 `run_command` / `run_code`）会访问外部网络，且受权限模式与审批约束。
 
 ## 1. 前置条件
 
@@ -57,8 +57,8 @@ python nova.py local --host 127.0.0.1     # 仅允许回环地址
 | 路径 | 内容 |
 |---|---|
 | `nova-config.json` | `secretKey`（JWT 与 Fernet 加密的主密钥）、`dataDir`、`pgBackend`、`allowInstallDeps`，以及 `version` / `mode` 与默认空的 `serverUrl`、`updateUrl` |
-| `pgdata/` | 本地 PostgreSQL 数据目录（`pgserver` 或 `pg_ctl`） |
-| `logs/` | 运行日志（不记录 API Key） |
+| `pgdata/` | 本地 PostgreSQL 数据目录（`pgserver` 或 `pg_ctl`）；`pg_ctl` 后端的服务端日志与命令输出在 `pgdata/postgres.log`、`pgdata/pg_ctl.log` |
+| `logs/` | 本地模式只输出到终端，不写文件日志（目录可能为空） |
 | `tmp/` | `run_code` 与验证的临时工作区，任务结束清理 |
 | `users/`、`skills/`、`legacy-repos/`、`downloads/`、`mcp.json` | 其他本地数据（用户文件、技能、旧仓库、下载、MCP 配置） |
 
@@ -75,9 +75,9 @@ API Key 只写入 PostgreSQL 的 `user_llm_providers.api_key_enc`（由 `secretK
   - `ask`（变更前确认 / 每步问我）：每次写入、`run_command` / `run_code` 都需要审批，批准后才真实执行。
   - `auto` / `full`：按现有策略放行；危险命令与 `git push` 仍在策略层拒绝。
 - HostExecutor 使用环境变量白名单（只保留 `PATH`、系统变量等），剥离 `*_KEY`、`*_TOKEN`、`*SECRET*`、`*PASSWORD*`、`*CREDENTIAL*`、`AWS_*` / `GOOGLE_*` / `AZURE_*`、`DATABASE_URL` 等敏感变量；命令工作目录与文件工具路径都被限制在项目根目录内（解析符号链接 / junction 后再校验）。
-- `install_deps` 默认禁用。只有把 `%APPDATA%\Nova\nova-config.json` 的 `"allowInstallDeps"` 改为 `true`（或启动前设置 `LOCAL_ALLOW_INSTALL_DEPS=true`）并重启后，才会在非 `readonly` 模式下按次审批执行；依赖安装到项目自己的 `.venv` / `node_modules`。`readonly` 始终拒绝。
+- `install_deps` 默认禁用。只有把 `%APPDATA%\Nova\nova-config.json` 的 `"allowInstallDeps"` 改为 `true`（或启动前在 shell 设置 `LOCAL_ALLOW_INSTALL_DEPS=true`）并重启后，才会在非 `readonly` 模式下按次审批执行；Python 依赖要求项目根目录已有 `.venv`（或 `venv`）且包含 pip，否则报“未找到项目虚拟环境 .venv…”；Node 依赖要求根目录 `package.json`。`readonly` 始终拒绝。
 - 本地检索不启用 Qdrant / embedding，使用关键词 + 符号检索；引用仍是 `文件:行号`，证据校验逻辑不变。
-- 验证与修复任务在主机临时工作区运行：`/verify` 对 Python 项目可用，Node / fullstack 项目在本地模式返回 `unsupported`（步骤标记 `skipped`）；`/fix` 红绿任务以 Python / pytest 仓库为准。点击验证按钮即视为批准主机执行。
+- 验证与修复任务在主机临时工作区运行：工作区的“验证”按钮对 Python 项目可用，Node / fullstack 项目在本地模式返回 `unsupported`（步骤标记 `skipped`）；“任务”视图中的修复任务（红-绿）以 Python / pytest 仓库为准。点击验证按钮即视为批准主机执行。
 - `GET /api/v1/status/mode` 返回 `mode: local`、`auth: none`、`isolation: none`、`semantic_search: false`、`jobs_concurrency: 1` 与 `data_dir`；`GET /api/v1/status/health` 的 `qdrant` / `embedding` 显示 `disabled: local mode`。
 
 ## 5. 退出与残留检查
@@ -89,7 +89,7 @@ Get-Process postgres -ErrorAction SilentlyContinue
 Get-Process python -ErrorAction SilentlyContinue
 ```
 
-两条命令都不应再显示 Nova 启动的进程（`python` 可能列出你另外运行的脚本，请按命令行确认）。若 PostgreSQL 残留，检查 `%APPDATA%\Nova\logs` 与 `pgdata\postgres.log`（`pg_ctl` 后端）；下一次启动会识别 stale PID 并清理，无法确认进程身份时会拒绝清理并提示手动处理。
+两条命令都不应再显示 Nova 启动的进程（`python` 可能列出你另外运行的脚本，请按命令行确认）。若 PostgreSQL 残留，先查看启动终端输出；`pg_ctl` 后端的日志在 `pgdata\postgres.log` 与 `pgdata\pg_ctl.log`。下一次启动会识别 stale PID 并清理；无法确认进程身份时会拒绝终止该进程并保留数据目录，但启动失败信息只显示异常类型（如 `RuntimeError`），请手动确认 `pgdata\postmaster.pid` 中的进程后再处理。
 
 同一数据目录同时只允许一个 Nova 实例：重复启动会在 PostgreSQL 启动前因实例锁失败。
 
@@ -99,16 +99,17 @@ Get-Process python -ErrorAction SilentlyContinue
 |---|---|
 | `pgserver 未安装` | 安装 `backend/requirements-local.txt`，或改用 `--pg-backend pg_ctl` |
 | `找不到 initdb` | 设置 `LOCAL_PG_BIN_DIR` 到 PostgreSQL 16 的 `bin` 目录 |
+| 安装依赖提示“未找到项目虚拟环境 .venv” | Python 依赖安装要求项目根目录已有 `.venv`（或 `venv`）且包含 pip；先在项目目录创建虚拟环境后重试 |
 | 启动即退出，提示 SECRET_KEY | 必须用 `python nova.py local`，不要直接 `uvicorn app.main:app` |
 | 首次向导提示没有 API Key | 填写 Key 后重试；已保存过可留空 |
 | 搜索只有关键词结果 | 本地模式预期行为；health 会显示 `qdrant: disabled: local mode` |
 | 端口冲突 | 不传 `--port` 使用随机端口 |
-| 想重置本地数据 | 退出后删除 `%APPDATA%\Nova\pgdata`；**不会**删除你的项目文件 |
+| 想重置本地数据库 | 退出后删除 `%APPDATA%\Nova\pgdata`；只重置数据库，`users/`、`skills/`、`downloads/`、`legacy-repos/`、`mcp.json` 与你的项目文件都会保留 |
 | 验证返回 `unsupported` | Node / fullstack 项目本地暂不支持，改用服务器模式或手动执行 |
 | pgserver 异常退出后无法重启 | 启动器会自动用同一数据目录尝试 `pg_ctl` 回退（使用 pgserver 自带或 `LOCAL_PG_BIN_DIR` 指定的二进制）；失败时数据目录会保留，按错误提示处理后重试，不要删除数据目录 |
 | 提示已有实例在运行 | 关闭另一个 `nova.py local` 进程；实例锁文件为数据目录旁的 `.nova-instance.lock` |
 | API Key 无法解密 | `secretKey` 已变化（例如删除/重建了 `nova-config.json`）；重新保存 Key |
-| 项目路径被拒绝 | 必须是不含 Nova 数据目录的本机绝对路径；不支持 UNC / 设备路径与磁盘根目录 |
+| 项目路径被拒绝 | 必须是本机绝对路径，且既不能包含、也不能位于 Nova 数据目录内；不支持 UNC / 设备路径与磁盘根目录 |
 
 ## 7. 与云端模式的关系
 
