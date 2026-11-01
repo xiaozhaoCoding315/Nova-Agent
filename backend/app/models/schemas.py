@@ -318,6 +318,31 @@ class RepoOut(BaseModel):
     smoke: Optional[dict] = None  # builder smoke-boot result (boot + health + teardown)
 
 
+class LocalSetupIn(BaseModel):
+    project_path: str = Field(min_length=1, max_length=2000)
+    project_name: Optional[str] = Field(default=None, max_length=120)
+    provider: str = Field(default="zhipu", max_length=32)
+    model: str = Field(default="glm-4.7-flash", max_length=120)
+    api_key: Optional[str] = Field(default=None, max_length=4000)
+
+
+class LocalSetupStatusOut(BaseModel):
+    configured: bool
+    data_dir: str
+    project_count: int
+    has_llm_key: bool
+    default_provider: Optional[str] = None
+    default_model: Optional[str] = None
+
+
+class LocalSetupResultOut(BaseModel):
+    ok: bool
+    repo: RepoOut
+    provider: str
+    model: str
+    has_key: bool
+
+
 class FileNodeOut(BaseModel):
     path: str
     name: str

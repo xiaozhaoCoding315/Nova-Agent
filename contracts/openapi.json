@@ -2901,6 +2901,139 @@
         "title": "LocalExecResult",
         "type": "object"
       },
+      "LocalSetupIn": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "model": {
+            "default": "glm-4.7-flash",
+            "maxLength": 120,
+            "title": "Model",
+            "type": "string"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "project_path": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Project Path",
+            "type": "string"
+          },
+          "provider": {
+            "default": "zhipu",
+            "maxLength": 32,
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_path"
+        ],
+        "title": "LocalSetupIn",
+        "type": "object"
+      },
+      "LocalSetupResultOut": {
+        "properties": {
+          "has_key": {
+            "title": "Has Key",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "$ref": "#/components/schemas/RepoOut"
+          }
+        },
+        "required": [
+          "ok",
+          "repo",
+          "provider",
+          "model",
+          "has_key"
+        ],
+        "title": "LocalSetupResultOut",
+        "type": "object"
+      },
+      "LocalSetupStatusOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "data_dir": {
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "default_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Model"
+          },
+          "default_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Provider"
+          },
+          "has_llm_key": {
+            "title": "Has Llm Key",
+            "type": "boolean"
+          },
+          "project_count": {
+            "title": "Project Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "configured",
+          "data_dir",
+          "project_count",
+          "has_llm_key"
+        ],
+        "title": "LocalSetupStatusOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "password": {
@@ -6652,6 +6785,66 @@
           }
         },
         "summary": "Submit Result",
+        "tags": [
+          "local"
+        ]
+      }
+    },
+    "/api/v1/local/setup": {
+      "get": {
+        "operationId": "get_local_setup_api_v1_local_setup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalSetupStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Local Setup",
+        "tags": [
+          "local"
+        ]
+      },
+      "post": {
+        "operationId": "run_local_setup_api_v1_local_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalSetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalSetupResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Local Setup",
         "tags": [
           "local"
         ]

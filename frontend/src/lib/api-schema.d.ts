@@ -742,6 +742,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/local/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Local Setup */
+        get: operations["get_local_setup_api_v1_local_setup_get"];
+        put?: never;
+        /** Run Local Setup */
+        post: operations["run_local_setup_api_v1_local_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory": {
         parameters: {
             query?: never;
@@ -2824,6 +2842,52 @@ export interface components {
              * @default
              */
             output: string;
+        };
+        /** LocalSetupIn */
+        LocalSetupIn: {
+            /** Api Key */
+            api_key?: string | null;
+            /**
+             * Model
+             * @default glm-4.7-flash
+             */
+            model: string;
+            /** Project Name */
+            project_name?: string | null;
+            /** Project Path */
+            project_path: string;
+            /**
+             * Provider
+             * @default zhipu
+             */
+            provider: string;
+        };
+        /** LocalSetupResultOut */
+        LocalSetupResultOut: {
+            /** Has Key */
+            has_key: boolean;
+            /** Model */
+            model: string;
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            repo: components["schemas"]["RepoOut"];
+        };
+        /** LocalSetupStatusOut */
+        LocalSetupStatusOut: {
+            /** Configured */
+            configured: boolean;
+            /** Data Dir */
+            data_dir: string;
+            /** Default Model */
+            default_model?: string | null;
+            /** Default Provider */
+            default_provider?: string | null;
+            /** Has Llm Key */
+            has_llm_key: boolean;
+            /** Project Count */
+            project_count: number;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -4993,6 +5057,59 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_local_setup_api_v1_local_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalSetupStatusOut"];
+                };
+            };
+        };
+    };
+    run_local_setup_api_v1_local_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalSetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalSetupResultOut"];
                 };
             };
             /** @description Validation Error */
