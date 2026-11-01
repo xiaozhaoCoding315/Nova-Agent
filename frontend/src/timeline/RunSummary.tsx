@@ -39,7 +39,6 @@ export function RunSummary({ report }: { report: Report | null | undefined }) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-label={`${open ? '收起' : '展开'}交付摘要`}
         className="flex h-8 w-full items-center gap-2 px-2.5 text-left"
       >
         {open
@@ -53,17 +52,17 @@ export function RunSummary({ report }: { report: Report | null | undefined }) {
         </span>
       </button>
 
+      <div className="grid grid-cols-3 gap-1.5 border-t border-edge/60 px-2.5 py-2">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-sm border border-edge bg-base/40 px-2 py-1.5">
+            <p className="font-mono text-2xs text-faint">{metric.label}</p>
+            <p className="mt-0.5 font-mono text-sm text-ink">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+
       {open && (
         <div className="space-y-3 border-t border-edge/60 px-2.5 py-2.5">
-          <div className="grid grid-cols-3 gap-1.5">
-            {metrics.map((metric) => (
-              <div key={metric.label} className="rounded-sm border border-edge bg-base/40 px-2 py-1.5">
-                <p className="font-mono text-2xs text-faint">{metric.label}</p>
-                <p className="mt-0.5 font-mono text-sm text-ink">{metric.value}</p>
-              </div>
-            ))}
-          </div>
-
           {report.checks.length > 0 && (
             <div>
               <p className="mb-1 font-mono text-2xs uppercase tracking-[0.12em] text-faint">检查结果</p>

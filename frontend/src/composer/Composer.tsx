@@ -162,14 +162,21 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }
 
-  /** `/` 工具按钮：在光标处插入斜杠并把焦点交回 textarea。 */
+  /**
+   * `/` 工具按钮：在光标处插入斜杠并把焦点交回 textarea。
+   * 插入点不一定在行首，`detectSlash` 的「整段以 / 开头」规则在这里不适用，
+   * 所以直接以空查询展开菜单，保证草稿非空时按钮也能打开命令列表。
+   */
   const insertSlash = () => {
     const el = ref.current
     const start = el?.selectionStart ?? value.length
     const end = el?.selectionEnd ?? value.length
     const next = `${value.slice(0, start)}/${value.slice(end)}`
     setValue(next)
-    detectSlash(next)
+    setMentionOpen(false)
+    setSlashQuery('')
+    setSlashIndex(0)
+    setSlashOpen(true)
     requestAnimationFrame(() => {
       const node = ref.current
       if (!node) return
@@ -505,7 +512,7 @@ export function Composer({
                   type="button"
                   onClick={() => void submit()}
                   disabled={disabled || uploading || commandBusy || !value.trim()}
-                  className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent text-base transition-colors duration-150 hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent text-graphite transition-colors duration-150 hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
                   title="发送"
                   aria-label="发送"
                 >

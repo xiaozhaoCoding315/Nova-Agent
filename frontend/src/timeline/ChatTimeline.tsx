@@ -75,8 +75,10 @@ export function ChatTimeline({
       stickRef.current = true
       return
     }
+    // stickRef 只在用户停在底部时为真；新审批/计划/编辑到达时同样只跟随底部，
+    // 不会打断正在向上翻看的读者。
     if (stickRef.current) el.scrollTop = el.scrollHeight
-  }, [turns.length, messages.length, streamText, toolCards.length, streaming])
+  }, [turns.length, messages.length, streamText, toolCards.length, streaming, approvals, plan, streamEdits])
 
   const onScroll = () => {
     const el = scrollRef.current

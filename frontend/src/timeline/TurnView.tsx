@@ -3,6 +3,7 @@ import { EditCard } from '../components/EditCard'
 import { Markdown } from '../components/Markdown'
 import { PlanCard } from '../components/PlanCard'
 import { Spinner } from '../components/common'
+import { api } from '../lib/api'
 import type {
   DeliveryReport, EditRef, Evidence, Message, PlanState, StreamToolCard, StreamUsage, ToolApproval,
 } from '../lib/types'
@@ -59,7 +60,7 @@ function UserLine({ message }: { message: Message }) {
             {attachments.map((file) => (
               <a
                 key={file.id}
-                href={`/api/v1/files/${file.id}/download`}
+                href={api.files.downloadUrl(file.id)}
                 className="flex max-w-[220px] items-center gap-1 rounded-sm border border-edge bg-raised/60 px-2 py-0.5 font-mono text-2xs text-dim transition-colors duration-150 hover:border-faint hover:text-ink"
                 title={`下载 ${file.filename}`}
               >

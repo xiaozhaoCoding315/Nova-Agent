@@ -359,7 +359,13 @@ export const useChat = create<ChatState>((set, get) => ({
       attachments: [],
       messages: [
         ...s.messages,
-        { id: Date.now(), role: 'user', content, attachments: pendingAttachments },
+        {
+          id: Date.now(),
+          role: 'user',
+          content,
+          attachments: pendingAttachments,
+          created_at: new Date().toISOString(),
+        },
       ],
     }))
 
@@ -540,6 +546,8 @@ export const useChat = create<ChatState>((set, get) => ({
               content: streamText,
               tool_json: {
                 ...(toolCards.length ? { tools_used: toolCards.map((c) => c.call.name) } : {}),
+                // 与后端 loop.py 持久化的 tool_events 同形：带上 stdout/stderr 尾部与
+                // 文件正文预览，避免本轮刚结束就退回只有 preview 的降级卡片。
                 ...(finishedEvents.length
                   ? {
                       tool_events: finishedEvents.map((card) => ({
@@ -547,9 +555,15 @@ export const useChat = create<ChatState>((set, get) => ({
                         ok: Boolean(card.result!.ok),
                         ms: card.result!.ms,
                         round: card.call.round,
+                        command: card.command ?? null,
+                        exit_code: card.exit_code ?? null,
+                        timed_out: Boolean(card.timedOut),
                         args: card.call.args,
                         error: card.result!.ok ? null : card.result!.preview,
                         preview: card.result!.preview,
+                        stdout_tail: card.result!.stdout_tail ?? null,
+                        stderr_tail: card.result!.stderr_tail ?? null,
+                        content_preview: card.result!.content_preview ?? null,
                       })),
                     }
                   : {}),

@@ -30,7 +30,6 @@ export function EvidenceStrip({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-label={`${open ? '收起' : '展开'}证据引用`}
         className="flex h-8 w-full items-center gap-2 px-2.5 text-left font-mono text-xs"
       >
         {open

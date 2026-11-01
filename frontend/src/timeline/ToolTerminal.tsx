@@ -115,7 +115,7 @@ export function ToolTerminal({
             {typeof card.exit_code === 'number' && <span>退出码 {card.exit_code}</span>}
             {card.timedOut && <span className="text-warn">已超时</span>}
             {result && <span>{result.ms}ms</span>}
-            <span className="text-faint/70">#{card.call.round + 1}</span>
+            <span className="text-faint/70">#{card.call.round}</span>
           </div>
 
           {result?.stdout_tail && (

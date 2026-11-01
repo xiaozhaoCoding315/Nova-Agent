@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, ChevronDown, ChevronRight, X } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { ToolApproval } from '../lib/types'
 import { toolLabel } from './cards'
@@ -16,16 +16,32 @@ export function ApprovalCard({
   onResolve: (approved: boolean) => void
 }) {
   const [argsOpen, setArgsOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  /** POST 结算后父组件移除本卡；结算前挡住连点与按键重复。 */
+  const resolving = useRef(false)
   const hasArgs = Object.keys(approval.args ?? {}).length > 0
+
+  const resolve = (approved: boolean) => {
+    if (resolving.current) return
+    resolving.current = true
+    setBusy(true)
+    try {
+      onResolve(approved)
+    } catch (error) {
+      resolving.current = false
+      setBusy(false)
+      throw error
+    }
+  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      onResolve(true)
+      resolve(true)
     } else if (event.key === 'Escape') {
       event.preventDefault()
-      onResolve(false)
+      resolve(false)
     }
   }
 
@@ -70,15 +86,17 @@ export function ApprovalCard({
       <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
-          onClick={() => onResolve(true)}
-          className="flex h-7 items-center gap-1 rounded-sm bg-accent px-2.5 font-medium text-base transition-colors duration-150 hover:bg-accent/85"
+          onClick={() => resolve(true)}
+          disabled={busy}
+          className="flex h-7 items-center gap-1 rounded-sm bg-accent px-2.5 font-medium text-base text-graphite transition-colors duration-150 hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Check size={12} /> 批准
         </button>
         <button
           type="button"
-          onClick={() => onResolve(false)}
-          className="flex h-7 items-center gap-1 rounded-sm border border-err/40 px-2.5 text-sm text-err transition-colors duration-150 hover:bg-err/10"
+          onClick={() => resolve(false)}
+          disabled={busy}
+          className="flex h-7 items-center gap-1 rounded-sm border border-err/40 px-2.5 text-sm text-err transition-colors duration-150 hover:bg-err/10 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <X size={12} /> 拒绝
         </button>

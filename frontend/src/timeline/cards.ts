@@ -188,7 +188,10 @@ export function formatBytes(value: number): string {
   return `${value}B`
 }
 
-/** 文件卡的预览体量：content_preview 优先，其次流式入参里的完整新内容。 */
+/** 从 preview JSON 里兜底取正文时允许的最大长度，避免异常结果撑爆高亮渲染。 */
+const PREVIEW_CONTENT_LIMIT = 20_000
+
+/** 文件卡的预览体量：content_preview 优先，其次 preview JSON 里的正文，最后是流式入参。 */
 export function filePreview(card: StreamToolCard): { text: string; lines: number; bytes: number } | null {
   const content = card.result?.content_preview
   if (content) {
@@ -196,6 +199,18 @@ export function filePreview(card: StreamToolCard): { text: string; lines: number
       text: content,
       lines: content.split('\n').length,
       bytes: new TextEncoder().encode(content).length,
+    }
+  }
+  // 旧事件或实时结果只有 build_preview 的 JSON（读文件时含 content 字段）。
+  // 解析失败（截断的 JSON）或内容异常长时安静放弃，交给后面的入参兜底。
+  const previewJson = parsePreviewJson(card.result?.preview)
+  const previewContent = previewJson?.content
+  if (typeof previewContent === 'string' && previewContent.length > 0
+    && previewContent.length <= PREVIEW_CONTENT_LIMIT) {
+    return {
+      text: previewContent,
+      lines: previewContent.split('\n').length,
+      bytes: new TextEncoder().encode(previewContent).length,
     }
   }
   const files = card.call.args?.files

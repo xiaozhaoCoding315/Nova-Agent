@@ -6,6 +6,9 @@ export default {
     extend: {
       colors: {
         base: '#0B0C0E',
+        // 与 colors.base 同值：深色文字放在 accent 上时用 text-graphite，
+        // 避免和 fontSize.base 生成的 .text-base 撞车（后者只应表示字号）。
+        graphite: '#0B0C0E',
         panel: '#121417',
         raised: '#1A1D21',
         edge: '#2A2E34',
