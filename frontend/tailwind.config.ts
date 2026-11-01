@@ -37,6 +37,9 @@ export default {
         xl: ['18px', '26px'],
         '2xl': ['22px', '30px'],
         '3xl': ['28px', '36px'],
+        // 登录/宣传页的展示字号；应用内仍以 3xl 为上限。
+        '4xl': ['36px', '44px'],
+        '5xl': ['48px', '56px'],
       },
       transitionTimingFunction: { DEFAULT: 'ease-out' },
       borderRadius: { sm: '4px', md: '6px', lg: '10px', xl: '14px' },

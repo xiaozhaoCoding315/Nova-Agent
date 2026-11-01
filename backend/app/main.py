@@ -187,6 +187,86 @@ def _human_size(size: int) -> str:
     return f"{size:.1f} GB"
 
 
+def _platform_label(filename: str) -> str:
+    lower = filename.lower()
+    if lower.endswith(".exe") or "windows" in lower or "win-" in lower:
+        return "Windows"
+    if lower.endswith(".dmg") or "macos" in lower or "darwin" in lower:
+        return "macOS"
+    if lower.endswith((".appimage", ".deb", ".rpm", ".tar.gz")):
+        return "Linux"
+    return "安装包"
+
+
+_DOWNLOADS_STYLE = """
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; background: #0B0C0E; color: #EDE8DE;
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+  "Microsoft YaHei", sans-serif;
+  display: flex; justify-content: center; padding: 40px 20px 64px;
+}
+.wrap { width: 100%; max-width: 640px; }
+.top { display: flex; align-items: center; gap: 10px; margin-bottom: 56px; }
+.wordmark {
+  display: flex; align-items: center; gap: 8px; font: 500 11px/1 ui-monospace,
+  "SFMono-Regular", "JetBrains Mono", Consolas, monospace; letter-spacing: .18em;
+  text-transform: uppercase; color: #9A958C;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #8FE388; }
+.top a {
+  margin-left: auto; color: #9A958C; text-decoration: none; font-size: 12px;
+  transition: color .15s ease;
+}
+.top a:hover { color: #EDE8DE; }
+.eyebrow {
+  font: 500 10px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .2em; text-transform: uppercase; color: #6B675F; margin: 0 0 14px;
+}
+h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.2; letter-spacing: -.02em; font-weight: 600; }
+.sub { margin: 0 0 32px; color: #9A958C; font-size: 13px; max-width: 46em; }
+.note {
+  margin: 0 0 28px; padding: 10px 12px; border-left: 2px solid #2A2E34;
+  color: #6B675F; font-size: 12px;
+}
+a.item {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; margin-bottom: 8px; border: 1px solid #2A2E34; border-radius: 6px;
+  background: #121417; text-decoration: none; color: #EDE8DE;
+  transition: border-color .15s ease, background .15s ease;
+}
+a.item:hover { border-color: #8FE388; background: #1A1D21; }
+.left { min-width: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.badge {
+  font: 500 9px/1 ui-monospace, Consolas, monospace; letter-spacing: .12em;
+  text-transform: uppercase; color: #8FE388; border: 1px solid #20351F;
+  background: #20351F; border-radius: 3px; padding: 3px 5px; white-space: nowrap;
+}
+.name { font: 500 13px/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace; word-break: break-all; }
+.meta { color: #6B675F; white-space: nowrap; font: 11px/1 ui-monospace, Consolas, monospace; }
+.empty {
+  color: #9A958C; font-size: 13px; border: 1px dashed #2A2E34; border-radius: 6px; padding: 20px;
+}
+code {
+  background: #1A1D21; border: 1px solid #2A2E34; border-radius: 3px;
+  padding: 1px 5px; font: 11px ui-monospace, Consolas, monospace; color: #9A958C;
+}
+.foot {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid #1A1D21;
+  color: #6B675F; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
+}
+.foot a { color: #9A958C; text-decoration: underline; text-underline-offset: 3px; }
+.foot a:hover { color: #8FE388; }
+@media (max-width: 520px) {
+  body { padding: 24px 16px 48px; }
+  .top { margin-bottom: 36px; }
+  h1 { font-size: 25px; }
+  a.item { align-items: flex-start; flex-direction: column; gap: 8px; }
+}
+"""
+
+
 @app.get("/downloads", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/downloads/", response_class=HTMLResponse, include_in_schema=False)
 async def downloads_page() -> HTMLResponse:
@@ -201,10 +281,12 @@ async def downloads_page() -> HTMLResponse:
         stat = path.stat()
         name = html.escape(path.name)
         href = urllib.parse.quote(path.name)
+        platform = html.escape(_platform_label(path.name))
         modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
         rows.append(
             f'<a class="item" href="/downloads/files/{href}" download>'
-            f'<span class="name">{name}</span>'
+            f'<span class="left"><span class="badge">{platform}</span>'
+            f'<span class="name">{name}</span></span>'
             f'<span class="meta">{_human_size(stat.st_size)} · {modified}</span></a>'
         )
     body = (
@@ -215,21 +297,19 @@ async def downloads_page() -> HTMLResponse:
     return HTMLResponse(
         "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<title>Nova Agent 桌面客户端下载</title><style>"
-        "body{background:#101014;color:#e8e8ee;font:14px/1.6 system-ui,'Segoe UI',sans-serif;"
-        "display:flex;justify-content:center;padding:48px 16px;margin:0}"
-        ".wrap{width:100%;max-width:560px}h1{font-size:18px;margin:0 0 4px}"
-        "p.sub{color:#9a9aa8;font-size:12.5px;margin:0 0 24px}"
-        "a.item{display:flex;justify-content:space-between;gap:16px;padding:12px 14px;margin-bottom:8px;"
-        "border:1px solid #26262e;border-radius:10px;text-decoration:none;color:#e8e8ee;font-size:13px}"
-        "a.item:hover{border-color:#4c6fff}"
-        ".name{font-weight:500;word-break:break-all}.meta{color:#9a9aa8;white-space:nowrap;font-size:11.5px}"
-        ".empty{color:#9a9aa8;font-size:12.5px;border:1px dashed #26262e;border-radius:10px;padding:16px}"
-        "code{background:#1a1a22;border-radius:4px;padding:1px 5px;font-size:11.5px}"
-        "</style></head><body><div class=\"wrap\">"
-        "<h1>Nova Agent 桌面客户端</h1>"
-        "<p class=\"sub\">安装后输入本服务器地址即可使用，数据仍保存在服务器上。</p>"
+        "<meta name=\"color-scheme\" content=\"dark\">"
+        "<title>桌面客户端 · Nova Agent</title><style>"
+        f"{_DOWNLOADS_STYLE}</style></head><body><div class=\"wrap\">"
+        "<div class=\"top\"><span class=\"wordmark\"><span class=\"dot\"></span>Nova Agent</span>"
+        "<a href=\"/\">返回工作台 →</a></div>"
+        "<p class=\"eyebrow\">Desktop client</p>"
+        "<h1>在桌面打开 Nova Agent</h1>"
+        "<p class=\"sub\">安装包是一个轻量桌面外壳：登录后连接本服务器，仓库、会话与执行结果仍保存在服务器上。</p>"
+        "<p class=\"note\">也可以不安装任何东西，直接在浏览器里使用相同的工作台。"
+        "安装包更新后重新下载覆盖安装即可，账号与会话不受影响。</p>"
         f"{body}"
+        "<div class=\"foot\"><a href=\"/\">在浏览器中打开</a>"
+        "<span>安装后填写本服务器地址即可登录。</span></div>"
         "</div></body></html>"
     )
 
