@@ -3,8 +3,9 @@ import {
   ArrowLeft, Bot, Command, Cpu, ListTodo, LogOut, MessageSquarePlus, MessagesSquare,
   MonitorDown, PanelLeft, Plus, Settings, X,
 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { CommandPalette, type PaletteAction } from './components/CommandPalette'
+import { LocalSetupDialog } from './components/LocalSetupDialog'
 import { RecoveryCodeModal } from './components/RecoveryCodeModal'
 import { SessionList } from './components/SessionList'
 import { StatusDot } from './components/common'
@@ -13,6 +14,7 @@ import type { Health, Usage } from './lib/types'
 import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { useLlm } from './stores/llm'
+import { useMode } from './stores/mode'
 import { useRepos } from './stores/repos'
 const ChatView = lazy(() => import('./views/ChatView').then((m) => ({ default: m.ChatView })))
 const LoginView = lazy(() => import('./views/LoginView').then((m) => ({ default: m.LoginView })))
@@ -71,6 +73,11 @@ export default function App() {
   } = useChat()
   const { settings: llmSettings, load: loadLlm } = useLlm()
   const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos()
+  const {
+    mode, setup, load: loadMode, loadSetup, markConfigured,
+  } = useMode()
+  const [setupOpen, setSetupOpen] = useState(false)
+  const setupPrompted = useRef(false)
 
   const [view, setView] = useState<ViewKey>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -91,6 +98,22 @@ export default function App() {
     void check()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    void loadMode()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!user || !mode?.local) return
+    void loadSetup().then((status) => {
+      if (status && !status.configured && !setupPrompted.current) {
+        setupPrompted.current = true
+        setSetupOpen(true)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, mode?.local])
 
   useEffect(() => {
     if (!user) return
@@ -263,10 +286,12 @@ export default function App() {
         run: () => setPermissionMode(mode),
       })
     }
-    items.push({ id: 'logout', label: '退出登录', run: () => void logout() })
+    if (!mode?.local) {
+      items.push({ id: 'logout', label: '退出登录', run: () => void logout() })
+    }
     return items
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionMode, setPermissionMode, logout, llmSettings?.source])
+  }, [permissionMode, setPermissionMode, logout, llmSettings?.source, mode?.local])
 
   if (!checked) {
     return <div className="flex min-h-screen items-center justify-center text-[13px] text-dim">加载中…</div>
@@ -380,16 +405,18 @@ export default function App() {
               <p className="truncate text-[10px] text-dim">
                 {user.is_guest
                   ? `游客体验${guestRemaining == null ? '' : ` · 剩余 ${guestRemaining}h`}`
-                  : user.role === 'admin' ? '管理员' : '普通用户'}
+                  : user.role === 'admin' ? '管理员' : user.role === 'local' ? '本地用户' : '普通用户'}
               </p>
             </div>
-            <button
-              onClick={() => void logout()}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-dim hover:bg-raised hover:text-ink"
-              title="退出登录"
-            >
-              <LogOut size={14} />
-            </button>
+            {!mode?.local && (
+              <button
+                onClick={() => void logout()}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-dim hover:bg-raised hover:text-ink"
+                title="退出登录"
+              >
+                <LogOut size={14} />
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -453,7 +480,7 @@ export default function App() {
         </header>
 
         <div className="min-h-0 flex-1">
-          {user.is_guest && !guestBannerHidden && (
+          {!mode?.local && user.is_guest && !guestBannerHidden && (
             <div className="flex shrink-0 items-center gap-2 border-b border-accentSoft/40 bg-accentSoft/15 px-3 py-1.5 text-[11.5px] text-ink">
               <MonitorDown size={13} className="shrink-0 text-accent" />
               <span className="min-w-0 flex-1 truncate">
@@ -515,7 +542,9 @@ export default function App() {
           </span>
           <span className="hidden sm:inline">权限：{PERMISSION_LABEL[permissionMode]}</span>
           <span className="hidden md:inline">
-            沙箱：{sandbox.available ? '可用' : '不可用'}
+            {mode?.local
+              ? '本地模式 · 无容器隔离'
+              : `沙箱：${sandbox.available ? '可用' : '不可用'}`}
           </span>
           <span className="hidden md:inline">
             今日 {usage ? usage.today_tokens.toLocaleString() : '—'} tokens
@@ -525,6 +554,19 @@ export default function App() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={actions} />
+      {mode?.local && (
+        <LocalSetupDialog
+          open={setupOpen}
+          status={setup}
+          onClose={() => setSetupOpen(false)}
+          onDone={(status) => {
+            markConfigured(status)
+            setSetupOpen(false)
+            void loadLlm()
+            void refreshRepos()
+          }}
+        />
+      )}
       {pendingRecoveryCode && (
         <RecoveryCodeModal code={pendingRecoveryCode} onClose={clearRecoveryCode} />
       )}

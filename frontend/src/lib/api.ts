@@ -2,8 +2,9 @@ import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
   ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
+  LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmProvider, LlmSettings, LlmSettingsInput, LlmTestResult,
-  Memory, Message, Metrics, RegisterResult, Repo,
+  Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
   Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
 } from './types'
 
@@ -171,6 +172,8 @@ export const api = {
       return request<Repo>('/repos/upload', { method: 'POST', body: form })
     },
     importGit: (gitUrl: string, name?: string) => request<Repo>('/repos/git', json({ git_url: gitUrl, name })),
+    localFolder: (path: string, name?: string) =>
+      request<Repo>('/repos/local', json({ path, name })),
     createBuilder: (name: string, requirements: string, rules?: string, stack: 'python' | 'fullstack' = 'python') =>
       request<Repo>('/repos/builder', json({ name, requirements, rules, stack })),
     designChat: (messages: { role: 'user' | 'assistant'; content: string }[], stack: 'python' | 'fullstack') =>
@@ -198,6 +201,7 @@ export const api = {
     health: () => request<Health>('/status/health'),
     usage: () => request<Usage>('/status/usage'),
     metrics: (days = 7) => request<Metrics>(`/status/metrics?days=${days}`),
+    mode: () => request<ModeInfo>('/status/mode'),
   },
 
   files: {
@@ -246,6 +250,9 @@ export const api = {
 
   local: {
     status: () => request<LocalExecStatus>('/local/exec/status'),
+    setupStatus: () => request<LocalSetupStatus>('/local/setup'),
+    setup: (input: LocalSetupInput) =>
+      request<LocalSetupResult>('/local/setup', json(input)),
   },
 
   memory: {

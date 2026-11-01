@@ -12,6 +12,7 @@ import { api, ApiError } from '../lib/api'
 import type { Health, Memory, Metrics, SelfQuota, Usage } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { useLlm } from '../stores/llm'
+import { useMode } from '../stores/mode'
 
 function formatUptime(seconds: unknown): string {
   const s = Number(seconds) || 0
@@ -172,6 +173,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Cpu }[] = [
 
 export function SettingsView() {
   const user = useAuth((s) => s.user)
+  const localMode = useMode((s) => s.mode?.local ?? false)
   const {
     settings: llmSettings, loading: llmLoading, load: loadLlm,
   } = useLlm()
@@ -238,7 +240,12 @@ export function SettingsView() {
     : []
 
   const pct = (value: number) => `${Math.round(value * 100)}%`
-  const sections = SECTIONS.filter((item) => item.key !== 'admin' || user?.role === 'admin')
+  const sections = SECTIONS.filter((item) => {
+    if (localMode && (item.key === 'usage' || item.key === 'account' || item.key === 'admin')) {
+      return false
+    }
+    return item.key !== 'admin' || user?.role === 'admin'
+  })
   const sectionTitle = sections.find((item) => item.key === section)?.label ?? '设置'
 
   const refresh = () => {

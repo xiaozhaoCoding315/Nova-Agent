@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Activity, ArrowLeft, CheckCircle2, ChevronDown, FilePlus2, FlaskConical, GitBranch, GitCompare,
+  Activity, ArrowLeft, CheckCircle2, ChevronDown, FilePlus2, FlaskConical, FolderOpen, GitBranch, GitCompare,
   Radar, RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -14,10 +14,12 @@ import { FileTree } from '../components/FileTree'
 import { GitPanel } from '../components/GitPanel'
 import { ImpactPanel } from '../components/ImpactPanel'
 import { ImportDialog } from '../components/ImportDialog'
+import { LocalFolderDialog } from '../components/LocalFolderDialog'
 import { NewProjectDialog } from '../components/NewProjectDialog'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { FileNode, Job, Repo, RepoStatus, VerifyResult } from '../lib/types'
+import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
 
 const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'warn' | 'err' | 'accent' }> = {
@@ -63,6 +65,7 @@ function RepoCard({
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{repo.name}</span>
         {['indexing', 'pending', 'planning', 'generating'].includes(repo.status) && <Spinner />}
         {repo.kind === 'builder' && <Badge tone="accent">Builder</Badge>}
+        {repo.origin === 'local' && <Badge tone="accent">本地</Badge>}
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </div>
       <p className="mt-1 truncate font-mono text-[11px] text-dim" title={repo.source}>
@@ -101,7 +104,7 @@ function RepoCard({
           <button
             className="flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-[11px] text-dim hover:text-err"
             onClick={() => setConfirming(true)}
-            title="删除仓库"
+            title={repo.origin === 'local' ? '取消登记（不会删除磁盘文件）' : '删除仓库'}
           >
             <Trash2 size={10} /> 删除
           </button>
@@ -121,6 +124,8 @@ export function WorkspaceView({
   onClose?: () => void
 } = {}) {
   const { repos, refresh, remove, reindex } = useRepos()
+  const localMode = useMode((s) => s.mode?.local ?? false)
+  const [localOpen, setLocalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(initialRepoId)
@@ -276,6 +281,11 @@ export function WorkspaceView({
             <span className="text-[12px] font-medium uppercase tracking-wide text-dim">工作区</span>
           </div>
           <div className="flex items-center gap-1">
+            {localMode && (
+              <Button size="sm" variant="ghost" onClick={() => setLocalOpen(true)}>
+                <FolderOpen size={12} /> 本地文件夹
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setNewProjectOpen(true)}>
               <Sparkles size={12} /> 新建项目
             </Button>
@@ -619,6 +629,18 @@ export function WorkspaceView({
         onImported={(repoId) => {
           void refresh()
           if (repoId) setSelectedId(repoId)
+        }}
+      />
+
+      <LocalFolderDialog
+        open={localOpen}
+        onClose={() => setLocalOpen(false)}
+        onOpened={(repo) => {
+          void refresh()
+          setSelectedId(repo.id)
+          setSelectedPath(null)
+          setTab('code')
+          setLocalOpen(false)
         }}
       />
 

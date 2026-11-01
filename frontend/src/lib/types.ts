@@ -2,7 +2,7 @@ export type User = {
   id: number
   username: string
   display_name?: string | null
-  role: 'admin' | 'demo'
+  role: 'admin' | 'demo' | 'local'
   status?: 'active' | 'disabled'
   is_guest?: boolean
   expires_at?: string | null
@@ -36,6 +36,50 @@ export type InviteCode = {
 export type LocalExecStatus = {
   connected: boolean
   last_seen_age?: number | null
+}
+
+export type NovaMode = 'server' | 'local'
+
+export type ModeFeatures = {
+  host_executor: boolean
+  isolation: 'none' | 'container'
+  sandbox: 'host' | 'docker'
+  semantic_search: boolean
+  jobs_concurrency: number
+  registration: boolean
+}
+
+export type ModeInfo = {
+  mode: NovaMode
+  local: boolean
+  auth: 'login' | 'none'
+  features: ModeFeatures
+  data_dir: string
+}
+
+export type LocalSetupStatus = {
+  configured: boolean
+  data_dir: string
+  project_count: number
+  has_llm_key: boolean
+  default_provider?: string | null
+  default_model?: string | null
+}
+
+export type LocalSetupInput = {
+  project_path: string
+  project_name?: string | null
+  provider?: string
+  model?: string
+  api_key?: string | null
+}
+
+export type LocalSetupResult = {
+  ok: boolean
+  repo: Repo
+  provider: string
+  model: string
+  has_key: boolean
 }
 
 /** 上下文计量（估算）：本轮提示用了多少 token、分布在哪里。 */
