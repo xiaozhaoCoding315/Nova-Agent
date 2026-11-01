@@ -369,6 +369,29 @@ def decide_tool(
                 caps,
             )
 
+    if name == "install_deps" and settings.is_local:
+        # Local installs have no container/network boundary: the project's
+        # own .venv / node_modules are modified on the host.  Readonly keeps
+        # Task 8's flat deny, ask requires a per-call approval, and the
+        # explicit opt-in replaces the server's admin/network gates.
+        if mode == "readonly":
+            return PolicyDecision(
+                False,
+                "本地模式下只读/计划权限不执行主机命令，请切换到确认模式后再执行",
+                caps,
+            )
+        if not settings.local_allow_install_deps:
+            return PolicyDecision(
+                False,
+                "本地模式默认禁用依赖安装；如需开启，请在 nova-config.json 设置 allowInstallDeps=true 后重启",
+                caps,
+            )
+        if not getattr(ctx, "approval_granted", False):
+            return PolicyDecision(
+                False, "本地安装依赖需要你批准后才会执行", caps, requires_approval=True
+            )
+        return PolicyDecision(True, "allowed", caps)
+
     if name == "install_deps":
         if user.get("role") != "admin" and mode != "full":
             return PolicyDecision(

@@ -136,7 +136,6 @@ async def test_local_mode_rejects_builder_api_flows(monkeypatch):
         builder_api.create_builder_project(body, user={"id": 1}),
         builder_api.regenerate_plan("r1", user={"id": 1}),
         builder_api.generate_files("r1", None, user={"id": 1}),
-        builder_api.verify_repo("r1", user={"id": 1}),
     ]
     for call in calls:
         with pytest.raises(HTTPException) as exc:

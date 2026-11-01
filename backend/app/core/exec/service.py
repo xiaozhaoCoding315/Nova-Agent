@@ -149,3 +149,54 @@ async def run_code_host(
         return result
     finally:
         shutil.rmtree(base, ignore_errors=True)
+
+
+async def run_staged_host(
+    files: dict,
+    command: str,
+    *,
+    root: str | Path,
+    timeout: int = 180,
+    job_id: str | None = None,
+    user_id=None,
+) -> dict:
+    """Run ``command`` against a throwaway copy of ``files``.
+
+    Verification and red-green phases must not write model-authored files
+    into the user's project.  Files are staged under the Nova data directory,
+    the command runs there with the project ``.venv`` on PATH, and the
+    workspace is always removed afterwards.  The project root itself is only
+    used to locate that virtual environment (``venv_root``).
+    """
+    payload = _safe_files(files)
+    try:
+        base = settings.local_tmp_root / f"stage-{uuid.uuid4().hex}"
+    except (RuntimeError, OSError) as exc:
+        raise ToolBusinessError(f"本地执行失败：无法定位临时目录（{exc}）") from exc
+    try:
+        try:
+            base.mkdir(parents=True, exist_ok=False)
+            for rel, content in payload.items():
+                target = base / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            raise ToolBusinessError(
+                f"本地执行失败：无法准备临时工作目录（{exc}）"
+            ) from exc
+        try:
+            result = await execute_host(
+                command,
+                root=base,
+                timeout=timeout,
+                job_id=job_id,
+                user_id=user_id,
+                venv_root=root,
+            )
+        except (ValueError, OSError) as exc:
+            raise ToolBusinessError(f"本地执行失败：{exc}") from exc
+        _with_warnings(result)
+        result["workspace"] = "temporary"
+        return result
+    finally:
+        shutil.rmtree(base, ignore_errors=True)

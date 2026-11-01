@@ -221,20 +221,28 @@ async def reject_proposal(repo_id: str, user: dict = Depends(get_current_user)):
 @router.post("/repos/{repo_id}/verify", response_model=VerifyActionOut)
 async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
     """Queue a stack-aware verification job (Python / Node / fullstack)."""
-    _reject_local_builder()
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")
     if repo["status"] != "ready":
         raise HTTPException(status_code=400, detail="仓库尚未完成索引，无法验证")
 
-    status = await sandbox_status()
-    if not status.get("available") and not status.get("node_available"):
-        raise HTTPException(status_code=400, detail=f"沙箱不可用：{status['reason']}")
+    # Local mode runs the profile on the host; Docker image availability is
+    # not a meaningful signal there (Task 8's sandbox_status reports True).
+    if not settings.use_host_executor:
+        status = await sandbox_status()
+        if not status.get("available") and not status.get("node_available"):
+            raise HTTPException(status_code=400, detail=f"沙箱不可用：{status['reason']}")
     check_job_quota(user, "verify")
     await check_sandbox_quota(user)
 
-    job_id = await enqueue_verify(repo_id, user["id"])
+    if settings.use_host_executor:
+        # The explicit user action is the approval for host execution.
+        job_id = await enqueue_verify(
+            repo_id, user["id"], permission_mode="ask", approval_granted=True
+        )
+    else:
+        job_id = await enqueue_verify(repo_id, user["id"])
     return {"ok": True, "job_id": job_id}
 
 

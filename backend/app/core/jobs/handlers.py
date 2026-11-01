@@ -108,7 +108,13 @@ async def _verify(ctx: JobContext) -> dict:
         raise JobFailed("验证归属账号不存在")
     user = {"id": rows[0][0], "username": rows[0][1], "role": rows[0][2]}
     try:
-        result = await run_verification(repo, user)
+        result = await run_verification(
+            repo,
+            user,
+            permission_mode=str(ctx.payload.get("permission_mode") or "auto"),
+            approval_granted=bool(ctx.payload.get("approval_granted")),
+            job_id=str(ctx.job_id),
+        )
     except JobCanceled:
         raise
     await execute(

@@ -16,6 +16,7 @@ import structlog
 
 from app.config import settings
 from app.core.conflicts import ConflictError
+from app.core.exec.service import run_staged_host
 from app.core.indexing.pipeline import get_repo
 from app.core.llm.json_call import llm_json
 from app.core.rag.retriever import retrieve
@@ -240,10 +241,34 @@ def _validate_files(files: dict) -> dict[str, str]:
 
 
 async def _sandbox_run(
-    task_id: str, user: dict, repo_id: str,
+    task_id: str, user: dict, repo_id: str, root: Path,
     repo_files: dict[str, str], extra: dict[str, str], command: str,
     ctx=None,
 ) -> dict:
+    if settings.use_host_executor:
+        if ctx:
+            await ctx.check_cancel()
+            await ctx.update(step="主机验证")
+        result = await run_staged_host(
+            {**repo_files, **extra},
+            command,
+            root=root,
+            timeout=max(settings.sandbox_timeout, 120),
+            job_id=ctx.job_id if ctx else None,
+            user_id=user.get("id"),
+        )
+        if ctx:
+            await ctx.check_cancel()
+        await log_audit(
+            AuditAction.SANDBOX_RUN,
+            user_id=str(user.get("id", "")),
+            details={
+                "task_id": task_id, "command": command,
+                "exit_code": result.get("exit_code"), "executor": "host",
+            },
+        )
+        return result
+
     if ctx:
         await ctx.check_cancel()
         await ctx.update(step="沙箱验证")
@@ -297,9 +322,10 @@ async def run_task(task_id: str, ctx=None) -> None:
     try:
         if repo_status != "ready":
             raise RuntimeError("仓库尚未完成索引，无法执行任务")
-        status = await sandbox_status()
-        if not status["available"]:
-            raise RuntimeError(f"沙箱不可用：{status['reason']}")
+        if not settings.use_host_executor:
+            status = await sandbox_status()
+            if not status["available"]:
+                raise RuntimeError(f"沙箱不可用：{status['reason']}")
 
         user_rows = await query("SELECT id, username, role FROM users WHERE id = %s", (user_id,))
         if not user_rows:
@@ -354,7 +380,7 @@ async def run_task(task_id: str, ctx=None) -> None:
         # red: tests must fail without the fix
         red_command = _pytest_command(list(test_files.keys()), root_prefix)
         await _append_step(task_id, {"step": "red", "status": "running", "command": red_command})
-        red = await _sandbox_run(task_id, user, str(repo_id), repo_files, test_files, red_command, ctx=ctx)
+        red = await _sandbox_run(task_id, user, str(repo_id), root, repo_files, test_files, red_command, ctx=ctx)
         red_ok, red_detail = _classify_red(red)
         await _append_step(task_id, {
             "step": "red", "status": "done" if red_ok else "warn",
@@ -366,7 +392,7 @@ async def run_task(task_id: str, ctx=None) -> None:
         # green: the full suite must pass, not just the new reproduction test
         green_command = _full_suite_command(root_prefix)
         await _append_step(task_id, {"step": "green", "status": "running"})
-        green = await _sandbox_run(task_id, user, str(repo_id), repo_files, {**test_files, **fix_files}, green_command, ctx=ctx)
+        green = await _sandbox_run(task_id, user, str(repo_id), root, repo_files, {**test_files, **fix_files}, green_command, ctx=ctx)
 
         attempt = 0
         while green.get("exit_code") != 0 and attempt < MAX_REPAIR_ATTEMPTS:
@@ -383,7 +409,7 @@ async def run_task(task_id: str, ctx=None) -> None:
             await ensure_token_budget(user)
             data2 = await llm_json(repair_prompt, user_id=user["id"], source="task", purpose="plan")
             fix_files = _validate_files(data2.get("fix_files") or fix_files) or fix_files
-            green = await _sandbox_run(task_id, user, str(repo_id), repo_files, {**test_files, **fix_files}, green_command, ctx=ctx)
+            green = await _sandbox_run(task_id, user, str(repo_id), root, repo_files, {**test_files, **fix_files}, green_command, ctx=ctx)
 
         green_ok = green.get("exit_code") == 0
         await _append_step(task_id, {
@@ -418,9 +444,10 @@ async def run_task(task_id: str, ctx=None) -> None:
             "repair_attempts": attempt,
             "red": {"exit_code": red.get("exit_code"), "stdout": (red.get("stdout") or "")[-3000:],
                     "stderr": (red.get("stderr") or "")[-1500:], "command": red_command,
-                    "detail": red_detail},
+                    "detail": red_detail, "warning": red.get("warning")},
             "green": {"exit_code": green.get("exit_code"), "stdout": (green.get("stdout") or "")[-3000:],
-                      "stderr": (green.get("stderr") or "")[-1500:], "command": green_command},
+                      "stderr": (green.get("stderr") or "")[-1500:], "command": green_command,
+                      "warning": green.get("warning")},
             "diff": _build_diff(root, fix_files, test_files),
             "applied": False,
             "elapsed_ms": int((time.perf_counter() - started) * 1000),

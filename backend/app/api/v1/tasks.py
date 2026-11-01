@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.config import settings
 from app.core.conflicts import ConflictError
 from app.core.indexing.pipeline import get_repo
 from app.core.jobs.service import enqueue_index, enqueue_task
@@ -48,9 +49,12 @@ async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
     if repo["status"] != "ready":
         raise HTTPException(status_code=400, detail="仓库尚未完成索引，暂不能创建修复任务")
 
-    status = await sandbox_status()
-    if not status["available"]:
-        raise HTTPException(status_code=400, detail=f"沙箱不可用：{status['reason']}")
+    # Local mode executes red-green phases on the host; Docker availability
+    # is not a meaningful signal there.
+    if not settings.use_host_executor:
+        status = await sandbox_status()
+        if not status["available"]:
+            raise HTTPException(status_code=400, detail=f"沙箱不可用：{status['reason']}")
 
     check_job_quota(user, "task")
     await ensure_token_budget(user)
