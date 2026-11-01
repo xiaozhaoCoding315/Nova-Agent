@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
-import { compactOverrides } from '../lib/overrides'
+import { compactOverrides, sanitizeOverrides } from '../lib/overrides'
 import { streamChat } from '../lib/sse'
 import type {
-  ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, Message,
-  PermissionMode, PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage, ToolApproval,
-  ToolCall, ToolResult,
+  ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, LlmProvider,
+  Message, PermissionMode, PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage,
+  ToolApproval, ToolCall, ToolResult,
 } from '../lib/types'
+import { useLlm } from './llm'
 
 type ChatState = {
   sessions: Session[]
@@ -57,8 +58,24 @@ type ChatState = {
 }
 
 let abortController: AbortController | null = null
-/** 丢弃乱序返回的会话参数 PATCH，避免旧响应覆盖新状态。 */
+/** 丢弃乱序返回的会话参数响应，避免旧响应覆盖新状态。 */
 let overridesSeq = 0
+/** 串行化 PATCH：后一笔在本笔完成后才发出，保证服务器最后写入的是最新快照。 */
+let overridesWriteChain: Promise<void> = Promise.resolve()
+
+/**
+ * 发送/加载时读取一次 LLM 配置（非订阅），解析当前生效厂商的 spec。
+ * 未显式指定厂商时与后端一致：默认 credential 优先，其次 settings.provider。
+ */
+function activeProviderSpec(provider: string | null | undefined): LlmProvider | null {
+  const settings = useLlm.getState().settings
+  if (!settings) return null
+  const resolved = provider
+    ?? settings.credentials.find((item) => item.is_default)?.provider
+    ?? settings.provider
+    ?? null
+  return settings.providers.find((item) => item.id === resolved) ?? null
+}
 
 export const useChat = create<ChatState>((set, get) => ({
   sessions: [],
@@ -117,19 +134,26 @@ export const useChat = create<ChatState>((set, get) => ({
     if (!sessionId) return
     const seq = ++overridesSeq
     set({ overridesSaving: true })
-    try {
-      const updated = await api.sessions.update(sessionId, { llm_overrides: next })
-      if (seq !== overridesSeq) return
-      set((state) => ({
-        sessions: state.sessions.map((item) => (item.id === sessionId ? { ...item, ...updated } : item)),
-      }))
-    } catch (err) {
-      if (seq === overridesSeq) {
-        set({ error: err instanceof ApiError ? err.message : '保存会话模型参数失败' })
+    const write = overridesWriteChain.then(async () => {
+      try {
+        const updated = await api.sessions.update(sessionId, { llm_overrides: next })
+        if (seq === overridesSeq) {
+          set((state) => ({
+            sessions: state.sessions.map((item) => (
+              item.id === sessionId ? { ...item, ...updated } : item
+            )),
+          }))
+        }
+      } catch (err) {
+        if (seq === overridesSeq) {
+          set({ error: err instanceof ApiError ? err.message : '保存会话模型参数失败' })
+        }
+      } finally {
+        if (seq === overridesSeq) set({ overridesSaving: false })
       }
-    } finally {
-      if (seq === overridesSeq) set({ overridesSaving: false })
-    }
+    })
+    overridesWriteChain = write
+    await write
   },
 
   setSelectedRepoIds: (ids) => set({ selectedRepoIds: Array.from(new Set(ids)).slice(0, 5) }),
@@ -179,7 +203,9 @@ export const useChat = create<ChatState>((set, get) => ({
     try {
       const messages = await api.sessions.messages(id)
       const session = get().sessions.find((s) => s.id === id)
-      const overrides = session?.llm_overrides ?? {}
+      // 载入时同样按厂商能力清洗，避免过期持久化参数在 UI 上显示为已选中。
+      const spec = activeProviderSpec(session?.llm_overrides?.provider ?? null)
+      const overrides = sanitizeOverrides(session?.llm_overrides ?? {}, spec)
       set({
         sessionId: id,
         messages,
@@ -220,8 +246,9 @@ export const useChat = create<ChatState>((set, get) => ({
         sessions: s.sessions.filter((x) => x.id !== id),
         ...(s.sessionId === id
           ? {
-              sessionId: null, messages: [], refs: [], selectedRepoIds: [], attachments: [],
-              provider: null, reasoningEffort: '' as const, contextWindow: null, temperature: null,
+              sessionId: null, messages: [], refs: [], model: null, selectedRepoIds: [],
+              attachments: [], provider: null, reasoningEffort: '' as const,
+              contextWindow: null, temperature: null,
             }
           : {}),
       }))
@@ -302,6 +329,15 @@ export const useChat = create<ChatState>((set, get) => ({
     const controller = new AbortController()
     abortController = controller
 
+    // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
+    const overrides = compactOverrides(sanitizeOverrides({
+      provider: get().provider,
+      model: get().model,
+      reasoning_effort: get().reasoningEffort || undefined,
+      context_window: get().contextWindow,
+      temperature: get().temperature,
+    }, activeProviderSpec(get().provider)))
+
     try {
       await streamChat(
         {
@@ -310,13 +346,7 @@ export const useChat = create<ChatState>((set, get) => ({
           repo_ids: repoIds,
           permission_mode: get().permissionMode,
           model: get().model ?? undefined,
-          llm_overrides: compactOverrides({
-            provider: get().provider,
-            model: get().model,
-            reasoning_effort: get().reasoningEffort || undefined,
-            context_window: get().contextWindow,
-            temperature: get().temperature,
-          }),
+          llm_overrides: overrides,
           file_ids: pendingAttachments.map((item) => item.id),
         },
         (event, data) => {

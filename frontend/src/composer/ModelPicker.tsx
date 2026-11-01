@@ -3,7 +3,9 @@ import { Check, Loader2, Search, Star, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ProviderIcon } from '../components/ProviderIcon'
 import { ApiError } from '../lib/api'
-import { providerSupportsReasoning, providerSupportsTemperature } from '../lib/overrides'
+import {
+  providerSupportsReasoning, providerSupportsTemperature, sanitizeOverrides,
+} from '../lib/overrides'
 import type { LlmOverrides, LlmProvider, LlmSettings } from '../lib/types'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
@@ -16,6 +18,9 @@ const REASONING_OPTIONS: { value: '' | 'low' | 'medium' | 'high'; label: string 
 ]
 
 const CONTEXT_PRESETS = [32_000, 64_000, 128_000, 200_000]
+
+/** 低于该值的上下文窗口没有实际意义，直接拒绝。 */
+const MIN_CONTEXT_WINDOW = 2048
 
 const optionClass = (selected: boolean, disabled = false) => clsx(
   'rounded-sm border px-1.5 py-1 text-xs transition-colors',
@@ -55,6 +60,7 @@ export function ModelPicker({
   const [query, setQuery] = useState('')
   const [customModel, setCustomModel] = useState('')
   const [customContext, setCustomContext] = useState('')
+  const [contextError, setContextError] = useState<string | null>(null)
   const [tempDraft, setTempDraft] = useState(1)
   const [savingDefault, setSavingDefault] = useState(false)
   const [defaultFeedback, setDefaultFeedback] = useState<{ ok: boolean; text: string } | null>(null)
@@ -85,6 +91,15 @@ export function ModelPicker({
   const maxWindow = activeProvider?.context_window && activeProvider.context_window > 0
     ? activeProvider.context_window
     : null
+  /** 「自动」实际继承的默认值，仅作次要说明展示，不参与 aria-pressed。 */
+  const defaultEffort = activeCredential?.reasoning_effort ?? ''
+  const defaultEffortLabel = REASONING_OPTIONS.find(
+    (option) => option.value !== '' && option.value === defaultEffort,
+  )?.label ?? null
+  const defaultContextWindow = activeCredential?.context_window != null
+    && activeCredential.context_window > 0
+    ? activeCredential.context_window
+    : null
 
   const modelChoices = useMemo(() => {
     const models = activeProvider?.models ?? []
@@ -101,6 +116,7 @@ export function ModelPicker({
     setCustomContext(
       currentContext != null && !CONTEXT_PRESETS.includes(currentContext) ? String(currentContext) : '',
     )
+    setContextError(null)
     setTempDraft(value.temperature ?? 1)
     setDefaultFeedback(null)
     if (feedbackTimer.current != null) {
@@ -135,7 +151,25 @@ export function ModelPicker({
   const selectProvider = (provider: LlmProvider) => {
     const credential = credentialMap.get(provider.id)
     if (!credential) return
-    onChange({ provider: provider.id, model: credential.model || provider.models[0] || null })
+    const nextModel = credential.model || provider.models[0] || null
+    // 新厂商不支持的参数立即清空、上下文收敛到新上限，UI 与发送保持一致。
+    const sanitized = sanitizeOverrides(
+      {
+        provider: provider.id,
+        model: nextModel,
+        reasoning_effort: value.reasoning_effort,
+        context_window: value.context_window,
+        temperature: value.temperature,
+      },
+      provider,
+    )
+    onChange({
+      provider: provider.id,
+      model: nextModel,
+      reasoning_effort: sanitized.reasoning_effort ?? null,
+      context_window: sanitized.context_window ?? null,
+      temperature: sanitized.temperature ?? null,
+    })
   }
 
   const commitCustomModel = () => {
@@ -149,6 +183,11 @@ export function ModelPicker({
     const parsed = Number(customContext.replace(/[^0-9]/g, ''))
     if (!parsed) return
     const capped = maxWindow != null ? Math.min(parsed, maxWindow) : parsed
+    if (capped < MIN_CONTEXT_WINDOW) {
+      setContextError(`上下文至少需 ${MIN_CONTEXT_WINDOW} tokens`)
+      return
+    }
+    setContextError(null)
     onChange({ context_window: capped })
     setCustomContext(String(capped))
   }
@@ -370,6 +409,9 @@ export function ModelPicker({
                   </button>
                 ))}
               </div>
+              {currentEffort === '' && defaultEffortLabel && (
+                <p className="mt-1 text-2xs text-faint">自动（默认 {defaultEffortLabel}）</p>
+              )}
             </section>
           )}
 
@@ -406,10 +448,18 @@ export function ModelPicker({
                   </button>
                 ))}
               </div>
+              {currentContext == null && defaultContextWindow != null && (
+                <p className="mt-1 text-2xs text-faint">
+                  自动（默认 {formatWindow(defaultContextWindow)}）
+                </p>
+              )}
               <div className="mt-1.5 flex items-center gap-1.5">
                 <input
                   value={customContext}
-                  onChange={(event) => setCustomContext(event.target.value.replace(/[^0-9]/g, ''))}
+                  onChange={(event) => {
+                    setContextError(null)
+                    setCustomContext(event.target.value.replace(/[^0-9]/g, ''))
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return
                     event.preventDefault()
@@ -430,6 +480,9 @@ export function ModelPicker({
                   使用
                 </button>
               </div>
+              {contextError && (
+                <p className="mt-1 text-2xs text-err">{contextError}</p>
+              )}
             </section>
           )}
 
@@ -512,14 +565,15 @@ export function useModelPicker(): {
   const defaultCredential = credentials.find((credential) => credential.is_default) ?? credentials[0] ?? null
   const activeProviderId = provider ?? defaultCredential?.provider ?? settings?.provider ?? null
   const activeCredential = credentials.find((credential) => credential.provider === activeProviderId) ?? null
+  const activeSpec = settings?.providers.find((item) => item.id === activeProviderId) ?? null
 
   const value: LlmOverrides = {
     provider: activeProviderId,
+    // 模型没有「自动」档，保留 credential 回退以便 chip 显示生效模型。
     model: model ?? activeCredential?.model ?? settings?.model ?? null,
-    reasoning_effort: reasoningEffort
-      || (activeCredential?.reasoning_effort as LlmOverrides['reasoning_effort'])
-      || '',
-    context_window: contextWindow ?? activeCredential?.context_window ?? null,
+    // 推理与上下文必须用 store 原值：'' / null 才是「自动」，不能被默认值冒充成会话覆盖。
+    reasoning_effort: reasoningEffort,
+    context_window: contextWindow ?? null,
     temperature,
   }
 
@@ -529,11 +583,24 @@ export function useModelPicker(): {
 
   const onSetDefault = async () => {
     if (!activeProviderId) throw new Error('请先选择厂商')
+    if (!activeCredential) throw new Error('请先配置该厂商的 Key')
     if (!value.model) throw new Error('请先选择模型')
+    // 「自动」时按默认 credential 的生效值保存，避免写空值或 0。
+    const effective = sanitizeOverrides(
+      {
+        reasoning_effort: reasoningEffort
+          || (activeCredential.reasoning_effort as LlmOverrides['reasoning_effort'])
+          || '',
+        context_window: contextWindow ?? activeCredential.context_window ?? null,
+      },
+      activeSpec,
+    )
     await saveCredential(activeProviderId, {
       model: value.model,
-      context_window: value.context_window ?? 0,
-      reasoning_effort: value.reasoning_effort ?? '',
+      // 后端会拿 preset 覆盖缺失的 base_url：unlocked 厂商必须带回已保存的地址。
+      base_url: activeSpec?.base_url_locked ? null : activeCredential.base_url ?? null,
+      context_window: effective.context_window ?? 0,
+      reasoning_effort: effective.reasoning_effort ?? '',
       is_default: true,
     })
   }

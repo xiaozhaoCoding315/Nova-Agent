@@ -1,4 +1,4 @@
-import type { LlmOverrides } from './types'
+import type { LlmOverrides, LlmProvider } from './types'
 
 export function compactOverrides(value: LlmOverrides): LlmOverrides {
   const out: LlmOverrides = {}
@@ -17,4 +17,26 @@ export function providerSupportsReasoning(provider?: { supports_reasoning?: bool
 
 export function providerSupportsTemperature(provider?: { supports_temperature?: boolean } | null): boolean {
   return provider?.supports_temperature !== false
+}
+
+/**
+ * 按厂商能力清洗会话参数：不支持的项直接丢弃，超出上限的上下文收敛到厂商上限。
+ * 用于切换厂商和发送前兜底，避免把过期/不支持的参数发给后端。
+ */
+export function sanitizeOverrides(
+  value: LlmOverrides,
+  provider?: LlmProvider | null,
+): LlmOverrides {
+  const out: LlmOverrides = { ...value }
+  if (!provider) return out
+  if (!providerSupportsReasoning(provider)) delete out.reasoning_effort
+  if (!providerSupportsTemperature(provider)) delete out.temperature
+  if (
+    out.context_window != null
+    && provider.context_window > 0
+    && out.context_window > provider.context_window
+  ) {
+    out.context_window = provider.context_window
+  }
+  return out
 }
