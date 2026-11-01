@@ -236,6 +236,7 @@ export function ChatHeader({
           value={picker.value}
           onChange={picker.onChange}
           onSetDefault={picker.onSetDefault}
+          reasoningCleared={picker.reasoningCleared}
           onConfigure={() => {
             setModelOpen(false)
             onOpenSettings()

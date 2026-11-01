@@ -390,6 +390,7 @@ export function Composer({
             value={picker.value}
             onChange={picker.onChange}
             onSetDefault={picker.onSetDefault}
+            reasoningCleared={picker.reasoningCleared}
             onConfigure={() => {
               setModelOpen(false)
               onConfigureModel()

@@ -25,6 +25,8 @@ type ChatState = {
   model: string | null
   provider: string | null
   reasoningEffort: '' | 'low' | 'medium' | 'high'
+  /** 会话里持久化过 `reasoning_effort: ""` sentinel（后端视为“未设置”，不继承默认）。 */
+  reasoningCleared: boolean
   contextWindow: number | null
   temperature: number | null
   overridesSaving: boolean
@@ -93,6 +95,7 @@ export const useChat = create<ChatState>((set, get) => ({
   model: null,
   provider: null,
   reasoningEffort: '',
+  reasoningCleared: false,
   contextWindow: null,
   temperature: null,
   overridesSaving: false,
@@ -131,10 +134,19 @@ export const useChat = create<ChatState>((set, get) => ({
     if (spec && !providerSupportsReasoning(spec)) {
       next.reasoning_effort = ''
     }
+    // 空串 sentinel 只在已有会话（PATCH 会落盘）时才算「已关闭」；
+    // 新会话切到非推理厂商不写库，不能提前声称默认已关闭。
+    // 显式选择非空档位则清除 sentinel 状态；其余 patch 保持原值。
+    const reasoningCleared = next.reasoning_effort === ''
+      ? Boolean(current.sessionId)
+      : patch.reasoning_effort
+        ? false
+        : current.reasoningCleared
     set({
       provider: next.provider ?? null,
       model: next.model ?? null,
       reasoningEffort: next.reasoning_effort ?? '',
+      reasoningCleared,
       contextWindow: next.context_window ?? null,
       temperature: next.temperature ?? null,
     })
@@ -212,9 +224,17 @@ export const useChat = create<ChatState>((set, get) => ({
     try {
       const messages = await api.sessions.messages(id)
       const session = get().sessions.find((s) => s.id === id)
+      const rawOverrides = session?.llm_overrides
       // 载入时同样按厂商能力清洗，避免过期持久化参数在 UI 上显示为已选中。
-      const spec = activeProviderSpec(session?.llm_overrides?.provider ?? null)
-      const overrides = sanitizeOverrides(session?.llm_overrides ?? {}, spec)
+      const spec = activeProviderSpec(rawOverrides?.provider ?? null)
+      const overrides = sanitizeOverrides(rawOverrides ?? {}, spec)
+      // 必须在 sanitize 之前检查原始 payload：sanitize 会为不支持推理的厂商删掉该键。
+      // 只有显式持久化的空串 sentinel 才算「已关闭」，缺键是自动继承默认。
+      const reasoningCleared = Boolean(
+        rawOverrides
+        && Object.prototype.hasOwnProperty.call(rawOverrides, 'reasoning_effort')
+        && rawOverrides.reasoning_effort === '',
+      )
       set({
         sessionId: id,
         messages,
@@ -223,6 +243,7 @@ export const useChat = create<ChatState>((set, get) => ({
         model: overrides.model ?? session?.model ?? null,
         provider: overrides.provider ?? null,
         reasoningEffort: overrides.reasoning_effort ?? '',
+        reasoningCleared,
         contextWindow: overrides.context_window ?? null,
         temperature: overrides.temperature ?? null,
         selectedRepoIds: session?.repo_ids ?? [],
@@ -242,7 +263,7 @@ export const useChat = create<ChatState>((set, get) => ({
     const inherited = get().historyRepoId
     set({
       sessionId: null, messages: [], refs: [], model: null, provider: null,
-      reasoningEffort: '', contextWindow: null, temperature: null, error: null, plan: null,
+      reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null, error: null, plan: null,
       approvals: [], selectedRepoIds: inherited ? [inherited] : [], attachments: [],
       contextMeter: null,
     })
@@ -256,7 +277,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...(s.sessionId === id
           ? {
               sessionId: null, messages: [], refs: [], model: null, selectedRepoIds: [],
-              attachments: [], provider: null, reasoningEffort: '' as const,
+              attachments: [], provider: null, reasoningEffort: '' as const, reasoningCleared: false,
               contextWindow: null, temperature: null,
             }
           : {}),
@@ -303,7 +324,8 @@ export const useChat = create<ChatState>((set, get) => ({
     set({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
       toolCards: [], streamEdits: [], plan: null, approvals: [], permissionMode: 'ask',
-      model: null, provider: null, reasoningEffort: '', contextWindow: null, temperature: null,
+      model: null, provider: null, reasoningEffort: '', reasoningCleared: false,
+      contextWindow: null, temperature: null,
       overridesSaving: false,
       selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false,
       refs: [],
@@ -349,7 +371,8 @@ export const useChat = create<ChatState>((set, get) => ({
     }, providerSpec))
     // 后端会先把请求覆盖并入会话持久化覆盖再读取；JSONB || 不能删键，必须显式
     // 用空串覆盖旧的 reasoning_effort。同 PATCH：仅对不支持推理的厂商这样做。
-    if (providerSpec && !providerSupportsReasoning(providerSpec)) {
+    const sentinelPersisted = Boolean(providerSpec && !providerSupportsReasoning(providerSpec))
+    if (sentinelPersisted) {
       overrides.reasoning_effort = ''
     }
 
@@ -372,6 +395,8 @@ export const useChat = create<ChatState>((set, get) => ({
                 ...(data.model ? { model: data.model as string } : {}),
                 provider: data.provider ?? s.provider,
                 reasoningEffort: data.reasoning_effort ?? s.reasoningEffort,
+                // meta 到达时后端已把请求覆盖并入会话；此时 sentinel 才算落库。
+                ...(sentinelPersisted ? { reasoningCleared: true } : {}),
                 contextWindow: data.context_window ?? s.contextWindow,
                 ...(Array.isArray(data.repo_ids) ? { selectedRepoIds: data.repo_ids as string[] } : {}),
                 sessions: data.title

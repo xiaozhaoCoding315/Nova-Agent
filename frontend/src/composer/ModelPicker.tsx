@@ -45,6 +45,7 @@ export function ModelPicker({
   onChange,
   onSetDefault,
   onConfigure,
+  reasoningCleared = false,
   placement = 'above',
 }: {
   open: boolean
@@ -54,6 +55,8 @@ export function ModelPicker({
   onChange: (patch: LlmOverrides) => void
   onSetDefault: () => Promise<void>
   onConfigure: () => void
+  /** 会话持久化过 reasoning_effort: "" sentinel，自动不会再继承默认。 */
+  reasoningCleared?: boolean
   /** 输入框内的 popover 向上展开；项目头里的向下展开。 */
   placement?: 'above' | 'below'
 }) {
@@ -410,8 +413,12 @@ export function ModelPicker({
                   </button>
                 ))}
               </div>
-              {currentEffort === '' && defaultEffortLabel && (
-                <p className="mt-1 text-2xs text-faint">自动（默认 {defaultEffortLabel}）</p>
+              {currentEffort === '' && (
+                reasoningCleared ? (
+                  <p className="mt-1 text-2xs text-dim">已关闭（不继承默认）</p>
+                ) : defaultEffortLabel ? (
+                  <p className="mt-1 text-2xs text-faint">自动（默认 {defaultEffortLabel}）</p>
+                ) : null
               )}
             </section>
           )}
@@ -558,12 +565,14 @@ export function useModelPicker(): {
   value: LlmOverrides
   onChange: (patch: LlmOverrides) => void
   onSetDefault: () => Promise<void>
+  reasoningCleared: boolean
 } {
   const settings = useLlm((state) => state.settings)
   const saveCredential = useLlm((state) => state.saveCredential)
   const provider = useChat((state) => state.provider)
   const model = useChat((state) => state.model)
   const reasoningEffort = useChat((state) => state.reasoningEffort)
+  const reasoningCleared = useChat((state) => state.reasoningCleared)
   const contextWindow = useChat((state) => state.contextWindow)
   const temperature = useChat((state) => state.temperature)
   const applyOverrides = useChat((state) => state.applyOverrides)
@@ -615,5 +624,5 @@ export function useModelPicker(): {
     })
   }
 
-  return { settings, value, onChange, onSetDefault }
+  return { settings, value, onChange, onSetDefault, reasoningCleared }
 }
