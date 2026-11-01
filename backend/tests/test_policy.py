@@ -185,12 +185,50 @@ def test_local_nova_data_root_requires_approval(monkeypatch, tmp_path):
 
 def test_local_unrelated_paths_are_unaffected(monkeypatch):
     monkeypatch.setattr(settings, "nova_mode", "local")
-    for command in ("cat README.md", "ls nova", "grep -r nova ."):
+    for command in (
+        "cat README.md", "ls nova", "grep -r nova .", "type novafile.txt",
+    ):
         allowed = decide_tool(
             "run_command", "execute", ["proc.exec", "fs.write"],
             {"command": command}, ctx("auto"),
         )
         assert allowed.allowed, command
+
+
+def test_local_nova_default_data_root_quoted_forms(monkeypatch):
+    """Bare roots must be gated after quote stripping, trailing dots and
+    ``..`` segments too."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        r'dir "%APPDATA%\Nova"',
+        r'dir /s /b "%APPDATA%\Nova"',
+        r'powershell -Command "dir $env:APPDATA\Nova"',
+        r"dir %APPDATA%\Nova.",
+        r"dir %APPDATA%\..\Roaming\Nova",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("auto"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
+
+
+def test_local_nova_pgpassword_stem_requires_approval(monkeypatch):
+    """``pgpassword`` is matched as a stem, so wildcard forms are caught."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        "cat pgpassword",
+        "type pgpass*",
+        "type pgpasswor?",
+        r"type %APPDATA%\Nova\pgpassword.bak",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("auto"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
 
 
 def test_server_mode_nova_config_reads_unchanged(monkeypatch):
@@ -340,3 +378,60 @@ def test_local_ask_requires_approval_for_run_code(monkeypatch):
     assert decide_tool(
         "run_code", "execute", None, {"files": {"main.py": "print(1)"}}, ctx("ask")
     ).allowed
+
+
+def test_shell_secret_paths_cover_windows_separators(monkeypatch):
+    """Windows-style ``.env`` references must be detected in both modes."""
+    for mode in ("server", "local"):
+        monkeypatch.setattr(settings, "nova_mode", mode)
+        for command in (
+            r"cat sub\.env",
+            r"type C:\repo\.env",
+            r'type "C:\repo\.env"',
+            r"type C:\repo\.env.local",
+        ):
+            decision = decide_tool(
+                "run_command", "execute", ["proc.exec", "fs.write"],
+                {"command": command}, ctx("auto"),
+            )
+            assert not decision.allowed, (mode, command)
+            assert "密钥" in decision.reason, (mode, command)
+
+        allowed = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": r"type C:\repo\.env.example"}, ctx("auto"),
+        )
+        assert allowed.allowed, mode
+
+
+def test_local_readonly_denies_host_shell_and_code(monkeypatch):
+    """I3: local readonly has no sanitized copy or secret masking."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for name, args in (
+        ("run_command", {"command": "grep -r API_KEY ."}),
+        ("run_command", {"command": "git status"}),
+        ("run_code", {"files": {"main.py": "print(1)"}}),
+    ):
+        decision = decide_tool(name, "execute", ["proc.exec"], args, ctx("readonly"))
+        assert not decision.allowed, (name, args)
+        assert not decision.requires_approval, (name, args)
+        assert "只读/计划" in decision.reason, (name, args)
+        assert "切换到确认模式" in decision.reason, (name, args)
+
+    # Server-mode readonly still runs read-only shell commands in the
+    # sanitized copy; only local mode changed.
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    assert decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "git status"}, ctx("readonly"),
+    ).allowed
+
+
+def test_local_shell_hint_is_honest(monkeypatch):
+    from app.core.security.policy import _shell_hint
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    assert "主机临时目录" in _shell_hint()
+    assert "沙箱副本" not in _shell_hint()
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    assert "沙箱副本" in _shell_hint()

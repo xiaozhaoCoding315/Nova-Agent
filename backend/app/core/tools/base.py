@@ -298,7 +298,7 @@ class ToolRegistry:
                     "decision": decision,
                     "capabilities": capabilities or [],
                     "args": _preview(args),
-                    "detail": detail[:300],
+                    "detail": redact_text(detail)[:300],
                 },
                 risk_level="warn" if not ok else "safe",
             )

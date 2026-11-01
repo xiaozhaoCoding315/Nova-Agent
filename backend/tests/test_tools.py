@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.core.tools import build_registry, get_registry
 from app.core.tools.base import ToolContext, ToolDefinition, ToolRegistry, validate_args
 from app.core.tools.diagnose import parse_trace
@@ -451,6 +452,23 @@ async def test_run_command_blocked_in_readonly_mode():
     r = await build_registry().execute("run_command", {"command": "touch marker.txt"}, ctx)
     assert r["ok"] is False and r["business"] is True
     assert "不允许执行会改动仓库的命令" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_policy_denial_audit_detail_is_redacted(monkeypatch):
+    """The denial reason embeds the command; audit storage must redact it."""
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    audit = AsyncMock()
+    monkeypatch.setattr("app.core.tools.base.log_audit", audit)
+    secret = "sk-" + "0123456789abcdefgh"  # synthetic test token
+    ctx = ToolContext(user=USER, permission_mode="ask")
+    result = await build_registry().execute(
+        "run_command", {"command": f"rm -rf build {secret}"}, ctx
+    )
+    assert result["ok"] is False and result["business"] is True
+    details = audit.await_args.kwargs["details"]
+    assert secret not in details["detail"]
+    assert "[REDACTED]" in details["detail"]
 
 
 @pytest.mark.asyncio

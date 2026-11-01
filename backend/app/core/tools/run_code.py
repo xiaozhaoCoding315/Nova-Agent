@@ -210,7 +210,15 @@ async def _run_host_code(
     else:
         command = command or "python main.py"
 
-    root = settings.data_root
+    try:
+        root = settings.data_root
+    except (RuntimeError, OSError) as exc:
+        # ``data_root`` raises when NOVA_DATA_DIR is unset; a model call must
+        # see a business error, not an infrastructure stack trace.
+        raise ToolBusinessError(
+            "本地执行失败：未配置数据目录（请设置 NOVA_DATA_DIR），"
+            "或指定 repo_id 后重试"
+        ) from exc
     if repo_id:
         repo = await get_repo(str(repo_id), ctx.user["id"])
         if not repo:
@@ -252,6 +260,7 @@ async def _run_host_code(
         "stderr": result["stderr"],
         "command": result["command"],
         "env": "host",
+        "workspace": result.get("workspace", "temporary"),
         "sandboxed": False,
         "isolation": "none",
         "executor": "host",
@@ -291,19 +300,29 @@ def tool_description() -> str:
     return _LOCAL_DESCRIPTION if settings.is_local else _SERVER_DESCRIPTION
 
 
-TOOL = ToolDefinition(
-    name="run_code",
-    description=tool_description(),
-    parameters={
+def tool_parameters() -> dict:
+    """Model-facing parameter text, local-aware like ``tool_description``."""
+    local = settings.is_local
+    return {
         "type": "object",
         "properties": {
             "files": {
                 "type": "object",
-                "description": "额外写入沙箱的文件：{相对路径: 完整文件内容}；与 repo_id 同时使用时会覆盖同名仓库文件",
+                "description": (
+                    "额外写入主机临时目录的文件：{相对路径: 完整文件内容}；"
+                    "与 repo_id 同时使用时会覆盖同名仓库文件"
+                    if local else
+                    "额外写入沙箱的文件：{相对路径: 完整文件内容}；"
+                    "与 repo_id 同时使用时会覆盖同名仓库文件"
+                ),
             },
             "repo_id": {
                 "type": "string",
-                "description": "可选：把该仓库文件整体复制进沙箱（便于直接运行仓库自带的测试）",
+                "description": (
+                    "可选：把该仓库文件整体复制进主机临时目录（便于直接运行仓库自带的测试）"
+                    if local else
+                    "可选：把该仓库文件整体复制进沙箱（便于直接运行仓库自带的测试）"
+                ),
             },
             "command": {
                 "type": "string",
@@ -311,12 +330,24 @@ TOOL = ToolDefinition(
             },
             "env": {
                 "type": "string",
-                "description": "运行环境：builder（Python 仓库测试，默认）、slim（Python 片段）、node（Node/前端项目）",
+                "description": (
+                    "本地模式不支持自定义镜像：env 只决定默认命令（node → node main.js，"
+                    "其余 → python main.py），命令使用主机当前用户 PATH 中的 python/node"
+                    if local else
+                    "运行环境：builder（Python 仓库测试，默认）、slim（Python 片段）、"
+                    "node（Node/前端项目）"
+                ),
             },
             "stdin": {"type": "string", "description": "标准输入内容（可选）"},
         },
         "required": [],
-    },
+    }
+
+
+TOOL = ToolDefinition(
+    name="run_code",
+    description=tool_description(),
+    parameters=tool_parameters(),
     func=run_code,
     category="execute",
     timeout=45,

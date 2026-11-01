@@ -66,6 +66,20 @@ async def test_sandbox_status_local_probes_host_path(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_sandbox_status_local_never_advertises_builder(monkeypatch):
+    """The builder image is blocked locally even when Python is installed."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(
+        sandbox_runtime.shutil,
+        "which",
+        lambda name: "C:/Python/python.exe" if name in ("python", "python3") else None,
+    )
+    status = await sandbox_runtime.sandbox_status()
+    assert status["default_available"] is True
+    assert status["builder_available"] is False
+
+
+@pytest.mark.asyncio
 async def test_sandbox_status_server_mode_unchanged(monkeypatch):
     monkeypatch.setattr(settings, "nova_mode", "server")
     monkeypatch.setattr(sandbox_runtime, "is_docker_available", lambda: False)
@@ -220,6 +234,119 @@ async def test_local_ask_run_code_requires_approval_before_execution(monkeypatch
     ctx.approval_granted = True
     approved = await get_registry().execute(
         "run_code", {"files": {"main.py": "print(1)"}}, ctx
+    )
+    assert approved["ok"] is True
+    assert approved["output"]["executor"] == "host"
+    assert called["host"] == 1
+
+
+@pytest.mark.asyncio
+async def test_local_readonly_run_command_denied_before_host(monkeypatch):
+    """I3: local readonly has no sanitized copy, so shell is flat-denied."""
+    called = {"host": 0}
+
+    async def fake_execute(command, **kwargs):
+        called["host"] += 1
+        return _host_result(command=command)
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(service, "execute_host", fake_execute)
+
+    result = await get_registry().execute(
+        "run_command",
+        {"command": "grep -r API_KEY .", "repo_id": REPO_ID},
+        _ctx(permission_mode="readonly"),
+    )
+    assert result["ok"] is False
+    assert result["business"] is True
+    assert "切换到确认模式" in result["error"]
+    assert "requires_approval" not in result
+    assert called["host"] == 0
+
+
+@pytest.mark.asyncio
+async def test_local_readonly_run_code_denied_before_host(monkeypatch):
+    called = {"host": 0}
+
+    async def fake_execute(command, **kwargs):
+        called["host"] += 1
+        return _host_result(command=command)
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(service, "execute_host", fake_execute)
+
+    result = await get_registry().execute(
+        "run_code", {"files": {"main.py": "print(1)"}},
+        _ctx(permission_mode="readonly"),
+    )
+    assert result["ok"] is False
+    assert result["business"] is True
+    assert "切换到确认模式" in result["error"]
+    assert "requires_approval" not in result
+    assert called["host"] == 0
+
+
+@pytest.mark.asyncio
+async def test_server_readonly_run_command_stays_in_sandbox(monkeypatch, tmp_path):
+    """Server readonly keeps executing read-only commands in the sanitized copy."""
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    seen: dict = {}
+
+    async def fake_get_repo(repo_id, user_id):
+        return {"id": repo_id, "root_path": str(tmp_path)}
+
+    async def fake_status():
+        return {"available": True, "builder_available": False}
+
+    async def fake_execute(files, command=None, **kwargs):
+        seen.update(files=files, command=command, **kwargs)
+        return {
+            "stdout": "ok", "stderr": "", "exit_code": 0, "timed_out": False,
+            "command": command,
+        }
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+    monkeypatch.setattr(run_command_tool, "sandbox_status", fake_status)
+    monkeypatch.setattr(run_command_tool, "sandbox_execute", fake_execute)
+    monkeypatch.setattr(run_command_tool, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(run_command_tool, "log_audit", AsyncMock())
+
+    result = await get_registry().execute(
+        "run_command", {"command": "git status", "repo_id": REPO_ID},
+        _ctx(permission_mode="readonly"),
+    )
+    assert result["ok"] is True
+    assert seen["sanitized_workspace"] is True
+    assert result["output"]["isolated"] is True
+    assert "executor" not in result["output"]
+
+
+@pytest.mark.asyncio
+async def test_local_ask_run_command_approval_then_executes(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    called = {"host": 0}
+
+    async def fake_get_repo(repo_id, user_id):
+        return {"id": repo_id, "root_path": str(tmp_path), "origin": "local"}
+
+    async def fake_execute(command, **kwargs):
+        called["host"] += 1
+        return _host_result(command=command)
+
+    monkeypatch.setattr("app.core.indexing.pipeline.get_repo", fake_get_repo)
+    monkeypatch.setattr(service, "execute_host", fake_execute)
+    ctx = _ctx(permission_mode="ask")
+
+    denied = await get_registry().execute(
+        "run_command", {"command": "git status", "repo_id": REPO_ID}, ctx
+    )
+    assert denied["ok"] is False
+    assert denied["requires_approval"]["name"] == "run_command"
+    assert called["host"] == 0
+
+    ctx.approval_granted = True
+    approved = await get_registry().execute(
+        "run_command", {"command": "git status", "repo_id": REPO_ID}, ctx
     )
     assert approved["ok"] is True
     assert approved["output"]["executor"] == "host"
@@ -438,8 +565,21 @@ async def test_run_code_host_tool_layer_never_passes_model_env(monkeypatch, tmp_
     assert result["executor"] == "host"
     assert result["isolation"] == "none"
     assert result["warning"]
+    assert result["workspace"] == "temporary"
     assert result["stdin_ignored"] is True
     assert "stdin" in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_run_code_local_missing_data_dir_is_business_error(monkeypatch):
+    """Unset NOVA_DATA_DIR must surface as a Chinese business error."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", "")
+    monkeypatch.setattr(settings, "local_tmp_dir", "")
+    with pytest.raises(ToolBusinessError) as exc:
+        await run_code_tool.run_code({"files": {"main.py": "print(1)"}}, _ctx())
+    assert "NOVA_DATA_DIR" in str(exc.value)
+    assert "repo_id" in str(exc.value)
 
 
 def test_local_tool_descriptions_warn_no_isolation(monkeypatch):
@@ -461,3 +601,25 @@ def test_local_tool_descriptions_warn_no_isolation(monkeypatch):
     monkeypatch.setattr(settings, "nova_mode", "server")
     assert "隔离容器内" in run_command_tool.tool_description()
     assert "隔离沙箱中" in run_code_tool.tool_description()
+
+
+def test_local_tool_parameters_are_local_aware(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+
+    command_props = run_command_tool.tool_parameters()["properties"]
+    assert "项目根目录" in command_props["command"]["description"]
+    assert "当前 Windows 用户" in command_props["command"]["description"]
+    assert "不支持自定义镜像" in command_props["env"]["description"]
+    assert "主机当前用户" in command_props["env"]["description"]
+
+    code_props = run_code_tool.tool_parameters()["properties"]
+    assert "沙箱" not in code_props["files"]["description"]
+    assert "主机临时目录" in code_props["files"]["description"]
+    assert "沙箱" not in code_props["repo_id"]["description"]
+    assert "不支持自定义镜像" in code_props["env"]["description"]
+    assert "主机当前用户" in code_props["env"]["description"]
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    server_code = run_code_tool.tool_parameters()["properties"]
+    assert "沙箱" in server_code["files"]["description"]
+    assert "运行环境镜像" in run_command_tool.tool_parameters()["properties"]["env"]["description"]

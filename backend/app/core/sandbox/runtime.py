@@ -226,7 +226,9 @@ async def sandbox_status() -> dict:
             "isolation": "none",
             "docker": False,
             "default_available": python_available,
-            "builder_available": python_available,
+            # The builder image is intentionally blocked locally (host runs
+            # use the host toolchain), so never advertise it as available.
+            "builder_available": False,
             "node_available": node_available,
             "warning": "本地执行无容器隔离",
         }

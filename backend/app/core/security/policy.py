@@ -51,10 +51,18 @@ DENY_COMMANDS = (
     re.compile(r"\bkubectl\s+(apply|delete)\b", re.IGNORECASE),
 )
 
-_SHELL_HINT = (
+_SERVER_SHELL_HINT = (
     "修改文件请改用 edit_file / write_files；跑测试或构建请在非只读模式下用 run_code"
     "（沙箱副本，不落盘）；或切换到「自动执行」后重试。"
 )
+_LOCAL_SHELL_HINT = (
+    "修改文件请改用 edit_file / write_files；跑测试或构建请在非只读模式下用 run_code"
+    "（本地模式直接在主机临时目录执行，不写回仓库）；或切换到「自动执行」后重试。"
+)
+
+
+def _shell_hint() -> str:
+    return _LOCAL_SHELL_HINT if settings.is_local else _SERVER_SHELL_HINT
 
 
 @dataclass(frozen=True)
@@ -88,6 +96,9 @@ def _path_values(args: dict) -> list[str]:
     return values
 
 
+_WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+
+
 def _secret_reference(command: str) -> str | None:
     """Return the secret-looking path referenced by a shell command.
 
@@ -95,24 +106,38 @@ def _secret_reference(command: str) -> str | None:
     are otherwise classified as read-only.  The executable boundary is the
     sanitized workspace (run_command mounts a copy without secret files);
     token scanning catches the obvious explicit references early.
+
+    Both POSIX and non-POSIX tokenization run: POSIX mode consumes Windows
+    backslashes as escapes (``sub\\.env`` becomes ``sub.env``), so the
+    non-POSIX pass is what preserves ``sub\\.env`` and ``C:\\repo\\.env``
+    for the normalizer.
     """
     if not command:
         return None
-    try:
-        tokens = shlex.split(command, posix=True)
-    except ValueError:
+    tokens: list[str] = []
+    for posix in (True, False):
+        try:
+            tokens.extend(shlex.split(command, posix=posix))
+        except ValueError:
+            continue
+    if not tokens:
         return None
 
     for token in tokens:
-        candidate = token.strip()
+        candidate = token.strip().strip("\"'")
         if not candidate or candidate in (".", "./", "..", "-"):
             continue
         if "=" in candidate and not candidate.startswith(("/", "./", "../")):
             name, value = candidate.split("=", 1)
             if name.startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-                candidate = value.strip()
-        if ":" in candidate and "://" not in candidate:
-            # git rev:path (e.g. ``git show HEAD:.env``)
+                candidate = value.strip().strip("\"'")
+        if (
+            ":" in candidate
+            and "://" not in candidate
+            and not _WINDOWS_DRIVE_PATH.match(candidate)
+        ):
+            # git rev:path (e.g. ``git show HEAD:.env``); drive letters are
+            # paths, not revisions.
             candidate = candidate.rsplit(":", 1)[1].strip() or candidate
         if not candidate or candidate in (".", "./", ".."):
             continue
@@ -130,8 +155,11 @@ def _secret_reference(command: str) -> str | None:
 
 
 # Stems, not exact filenames: ``nova-config.jso?`` / ``nova-config.*`` must
-# still be recognised as the JWT signer file.
-_NOVA_SECRET_MARKERS = ("nova-config", ".nova-instance", "pgpassword")
+# still be recognised as the JWT signer file.  ``pgpassword`` needs its own
+# pattern because wildcard forms (``pgpass*``, ``pgpasswor?``) are not
+# substrings of the full filename.
+_NOVA_SECRET_MARKERS = ("nova-config", ".nova-instance")
+_NOVA_PGPASSWORD_STEM = re.compile(r"pgpass[a-z0-9_]*(?:[.?*]|$|[\s\"'=/])")
 _NOVA_DATA_DIR_NAMES = {"novadata", "nova-data", "nova_data"}
 # The shipped desktop default data root is ``%APPDATA%\Nova`` (basename
 # ``nova``) and holds these children; ``_NOVA_DATA_DIR_NAMES`` alone never
@@ -141,7 +169,8 @@ _NOVA_DATA_CHILDREN = (
     "legacy-repos", "mcp.json",
 )
 _NOVA_DEFAULT_ROOT = re.compile(
-    r"(?:%appdata%|\$env:appdata|\$\{env:appdata\}|appdata(?:/roaming)?)/nova(?:/|$)"
+    r"(?:%appdata%|\$env:appdata|\$\{env:appdata\}|appdata(?:/roaming)?)"
+    r"/(?:\.\./)*(?:roaming/)?nova(?:[./]|[\s\"'=]|$)"
 )
 # Wildcards into a Nova-looking directory (``Nova\*``, ``Nova\mcp.jso?``)
 # cannot be enumerated by a substring match, so they need approval too.
@@ -175,6 +204,8 @@ def _nova_secret_reference(command: str) -> str | None:
     for marker in _NOVA_SECRET_MARKERS:
         if marker in raw:
             return marker
+    if _NOVA_PGPASSWORD_STEM.search(raw):
+        return "pgpassword"
     root_path, root_name = _local_data_root()
     if root_path and root_path in raw:
         return "Nova 数据目录"
@@ -225,6 +256,18 @@ def decide_tool(
             return PolicyDecision(False, f"路径不安全：{value}", caps)
         if is_secret_path(rel):
             return PolicyDecision(False, f"拒绝访问密钥/凭据文件：{rel}", caps)
+
+    # Local readonly/plan has neither the container's sanitized copy nor
+    # secret masking: even a "read-only" shell command would read the real
+    # repository (.env, keys) on the host with no approval.  Deny outright
+    # before the readonly allowlist can let anything through; ask mode is the
+    # reviewed path, and auto/full keep their documented trust model.
+    if settings.is_local and mode == "readonly" and name in ("run_command", "run_code"):
+        return PolicyDecision(
+            False,
+            "本地模式下只读/计划权限不执行主机命令，请切换到确认模式后再执行",
+            caps,
+        )
 
     if name == "run_command":
         command = str(args.get("command") or "")
@@ -291,7 +334,7 @@ def decide_tool(
             return PolicyDecision(
                 False,
                 f"当前模式（readonly）不允许执行会改动仓库的命令："
-                f"{command[:120]}（{reason}）。" + _SHELL_HINT,
+                f"{command[:120]}（{reason}）。" + _shell_hint(),
                 caps,
             )
 

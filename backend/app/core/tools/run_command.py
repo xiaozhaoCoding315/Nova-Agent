@@ -234,26 +234,43 @@ def tool_description() -> str:
     return _LOCAL_DESCRIPTION if settings.is_local else _SERVER_DESCRIPTION
 
 
-TOOL = ToolDefinition(
-    name="run_command",
-    description=tool_description(),
-    parameters={
+def tool_parameters() -> dict:
+    """Model-facing parameter text, local-aware like ``tool_description``."""
+    local = settings.is_local
+    return {
         "type": "object",
         "properties": {
             "command": {
                 "type": "string",
-                "description": "要执行的 shell 命令，工作目录为仓库根，如 'git init && git add -A && git commit -m init'",
+                "description": (
+                    "要执行的 shell 命令，工作目录为项目根目录（以当前 Windows 用户身份运行），"
+                    "如 'git init && git add -A && git commit -m init'"
+                    if local else
+                    "要执行的 shell 命令，工作目录为仓库根，"
+                    "如 'git init && git add -A && git commit -m init'"
+                ),
             },
             "repo_id": {"type": "string", "description": "仓库 UUID（可选，默认取会话关联仓库）"},
             "env": {
                 "type": "string",
                 "enum": ["builder", "node"],
-                "description": "运行环境镜像：builder（Python 工具链，默认）或 node（Node 20）",
+                "description": (
+                    "本地模式不支持自定义镜像：env 仅是兼容字段，命令使用主机当前用户 "
+                    "PATH 中的 python/node"
+                    if local else
+                    "运行环境镜像：builder（Python 工具链，默认）或 node（Node 20）"
+                ),
             },
             "timeout": {"type": "integer", "description": "超时秒数（默认 120，最大 300）"},
         },
         "required": ["command"],
-    },
+    }
+
+
+TOOL = ToolDefinition(
+    name="run_command",
+    description=tool_description(),
+    parameters=tool_parameters(),
     func=run_command,
     category="execute",
     capabilities=["proc.exec", "fs.write"],
