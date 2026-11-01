@@ -103,6 +103,7 @@ def test_shell_secret_scan_keeps_plain_commands():
 
 def test_local_nova_config_reads_require_approval(monkeypatch):
     monkeypatch.setattr(settings, "nova_mode", "local")
+    # auto mode: the local ask gate must not be what catches these.
     for command in (
         r"type %APPDATA%\Nova\nova-config.json",
         "cat Nova/nova-config.json",
@@ -111,19 +112,60 @@ def test_local_nova_config_reads_require_approval(monkeypatch):
     ):
         decision = decide_tool(
             "run_command", "execute", ["proc.exec", "fs.write"],
-            {"command": command}, ctx("ask"),
+            {"command": command}, ctx("auto"),
         )
         assert not decision.allowed, command
         assert decision.requires_approval, command
         assert "需要你批准" in decision.reason
 
-    approved = ctx("ask")
+    approved = ctx("auto")
     approved.approval_granted = True
     allowed = decide_tool(
         "run_command", "execute", ["proc.exec", "fs.write"],
         {"command": r"type %APPDATA%\Nova\nova-config.json"}, approved,
     )
     assert allowed.allowed
+
+
+def test_local_nova_default_data_root_requires_approval(monkeypatch):
+    """The shipped default data root is %APPDATA%\\Nova, not NovaData."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        r"dir %APPDATA%\Nova",
+        r"type %APPDATA%\Nova\mcp.json",
+        r"type %APPDATA%\Nova\logs\app.log",
+        r"type %APPDATA%\Nova\users\1\secret.txt",
+        r"type %APPDATA%\Nova\pgdata\postgresql.conf",
+        r"type C:\Users\alice\AppData\Roaming\Nova\mcp.json",
+        r"type $env:APPDATA\Nova\mcp.json",
+        r"type ${env:APPDATA}\Nova\mcp.json",
+        r"type appdata/roaming/nova/mcp.json",
+        r"type appdata/nova/mcp.json",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("auto"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
+
+
+def test_local_nova_wildcards_require_approval(monkeypatch):
+    """Trivial wildcards must not slip past the substring matcher."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        r"type %APPDATA%\Nova\nova-config.jso?",
+        r"type %APPDATA%\Nova\nova-config.*",
+        r"type Nova\*",
+        r"type %APPDATA%\Nova\mcp.jso?",
+        r"type %APPDATA%\Nova\*",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("auto"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
 
 
 def test_local_nova_data_root_requires_approval(monkeypatch, tmp_path):
@@ -133,7 +175,7 @@ def test_local_nova_data_root_requires_approval(monkeypatch, tmp_path):
     command = f'ls "{root.as_posix()}"'
     decision = decide_tool(
         "run_command", "execute", ["proc.exec", "fs.write"],
-        {"command": command}, ctx("ask"),
+        {"command": command}, ctx("auto"),
     )
     assert not decision.allowed
     assert decision.requires_approval
@@ -143,11 +185,12 @@ def test_local_nova_data_root_requires_approval(monkeypatch, tmp_path):
 
 def test_local_unrelated_paths_are_unaffected(monkeypatch):
     monkeypatch.setattr(settings, "nova_mode", "local")
-    allowed = decide_tool(
-        "run_command", "execute", ["proc.exec", "fs.write"],
-        {"command": "cat README.md"}, ctx("ask"),
-    )
-    assert allowed.allowed
+    for command in ("cat README.md", "ls nova", "grep -r nova ."):
+        allowed = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("auto"),
+        )
+        assert allowed.allowed, command
 
 
 def test_server_mode_nova_config_reads_unchanged(monkeypatch):
@@ -228,3 +271,72 @@ def test_shell_allowlist_can_be_disabled(monkeypatch):
         {"command": "rm -rf build"}, ctx("ask"),
     )
     assert allowed.allowed
+
+
+def test_local_ask_gates_every_run_command(monkeypatch):
+    """Local ask has no sanitized copy, so every shell command is approved."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    for command in (
+        "type *.env",
+        "cat .e*",
+        "grep -r API_KEY .",
+        "git status",
+        "rm -rf build",
+    ):
+        decision = decide_tool(
+            "run_command", "execute", ["proc.exec", "fs.write"],
+            {"command": command}, ctx("ask"),
+        )
+        assert not decision.allowed, command
+        assert decision.requires_approval, command
+        assert "需要你批准" in decision.reason
+
+    approved = ctx("ask")
+    approved.approval_granted = True
+    assert decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "grep -r API_KEY ."}, approved,
+    ).allowed
+    # An explicit secret file is still flat-denied after approval.
+    denied = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "cat .env"}, approved,
+    )
+    assert not denied.allowed
+    assert not denied.requires_approval
+
+
+def test_local_auto_keeps_normal_policy_rules(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    assert decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "git status"}, ctx("auto"),
+    ).allowed
+    denied = decide_tool(
+        "run_command", "execute", ["proc.exec", "fs.write"],
+        {"command": "cat .env"}, ctx("auto"),
+    )
+    assert not denied.allowed
+    assert not denied.requires_approval
+
+
+def test_local_ask_requires_approval_for_run_code(monkeypatch):
+    """C1: model-authored code must never run unapproved in local ask."""
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    decision = decide_tool(
+        "run_code", "execute", None, {"files": {"main.py": "print(1)"}}, ctx("ask")
+    )
+    assert not decision.allowed
+    assert decision.requires_approval
+    assert "run_code" in decision.reason
+
+    approved = ctx("ask")
+    approved.approval_granted = True
+    assert decide_tool(
+        "run_code", "execute", None, {"files": {"main.py": "print(1)"}}, approved
+    ).allowed
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    assert decide_tool(
+        "run_code", "execute", None, {"files": {"main.py": "print(1)"}}, ctx("ask")
+    ).allowed

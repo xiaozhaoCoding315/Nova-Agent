@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.config import settings
 from app.core.builder import engine
 from app.core.conflicts import ConflictError
 from app.core.indexing.pipeline import get_repo
@@ -30,6 +31,15 @@ from app.models.schemas import (
 )
 
 router = APIRouter()
+
+LOCAL_UNSUPPORTED = "本地模式暂不支持该构建流程"
+
+
+def _reject_local_builder() -> None:
+    """Builder depends on Docker sandbox images, which local mode lacks."""
+    if settings.is_local:
+        raise HTTPException(status_code=400, detail=LOCAL_UNSUPPORTED)
+
 
 DESIGN_SYSTEM_PROMPT = """你是 Nova 的项目设计搭档。用户想做一个软件项目，你通过轻松的多轮对话帮他把想法打磨成可以直接生成的方案。
 
@@ -94,6 +104,7 @@ async def _own_repo(repo_id: str, user_id: int) -> dict:
 
 @router.post("/repos/builder", response_model=RepoOut)
 async def create_builder_project(body: BuilderCreate, user: dict = Depends(get_current_user)):
+    _reject_local_builder()
     check_job_quota(user, "builder")
     await ensure_token_budget(user)
     repo_id = str(uuid.uuid4())
@@ -127,6 +138,7 @@ async def get_plan(repo_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/repos/{repo_id}/plan/generate", response_model=BuilderActionOut)
 async def regenerate_plan(repo_id: str, user: dict = Depends(get_current_user)):
+    _reject_local_builder()
     repo = await _own_repo(repo_id, user["id"])
     if repo["status"] in ("planning", "generating"):
         raise HTTPException(status_code=400, detail="方案正在生成中")
@@ -151,6 +163,7 @@ async def generate_files(
     body: BuilderFeedback | None = None,
     user: dict = Depends(get_current_user),
 ):
+    _reject_local_builder()
     repo = await _own_repo(repo_id, user["id"])
     if repo["status"] not in ("approved", "review"):
         raise HTTPException(status_code=400, detail="请先确认方案，再生成代码")
@@ -208,6 +221,7 @@ async def reject_proposal(repo_id: str, user: dict = Depends(get_current_user)):
 @router.post("/repos/{repo_id}/verify", response_model=VerifyActionOut)
 async def verify_repo(repo_id: str, user: dict = Depends(get_current_user)):
     """Queue a stack-aware verification job (Python / Node / fullstack)."""
+    _reject_local_builder()
     repo = await get_repo(repo_id, user["id"])
     if not repo:
         raise HTTPException(status_code=404, detail="仓库不存在")

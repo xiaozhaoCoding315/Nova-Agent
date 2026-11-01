@@ -26,6 +26,13 @@ logger = structlog.get_logger()
 MAX_FILES = 30
 MAX_FILE_CHARS = 120_000
 MAX_TOTAL_CHARS = 400_000
+LOCAL_UNSUPPORTED = "本地模式暂不支持该构建流程"
+
+
+def _reject_local_builder() -> None:
+    """Builder runs Docker images; local mode has no builder runtime yet."""
+    if settings.is_local:
+        raise ValueError(LOCAL_UNSUPPORTED)
 
 PLAN_PROMPT = """你是资深全栈架构师。请为下面的需求设计一个从 0 到 1 可落地的 Python 后端项目方案。
 
@@ -637,6 +644,7 @@ async def _builder_gate(repo: dict, files: dict[str, str]) -> dict:
 
 
 async def generate_plan(repo_id: str, ctx=None) -> None:
+    _reject_local_builder()
     repo = await load_builder(repo_id)
     if not repo:
         return
@@ -682,6 +690,7 @@ async def approve_plan(repo_id: str) -> None:
 
 
 async def generate_files(repo_id: str, feedback: str = "", ctx=None) -> None:
+    _reject_local_builder()
     repo = await load_builder(repo_id)
     if not repo:
         return

@@ -172,7 +172,7 @@ async def _run_host_command(
     result = await run_command_host(
         command,
         root=root,
-        timeout=min(int(args.get("timeout") or 120), 300),
+        timeout=max(1, min(int(args.get("timeout") or 120), 300)),
         on_output=on_output,
         job_id=ctx.tool_call_id or None,
         user_id=ctx.user.get("id"),
@@ -210,15 +210,33 @@ async def _run_host_command(
     }
 
 
+_SERVER_DESCRIPTION = (
+    "在仓库工作区里执行真实 shell 命令（隔离容器内，无网络），改动直接保留在仓库中。"
+    "适合：脚手架、安装依赖、跑构建脚本、批量文本处理。"
+    "只读模式下只放行只读命令（git status/diff/log、ls、grep 等）；"
+    "确认模式下写命令会先请求用户批准，批准后在遮蔽密钥的工作区执行。"
+    "与 run_code 的区别：run_code 在一次性副本里验证代码，本工具的修改会持久化。"
+)
+
+_LOCAL_DESCRIPTION = (
+    "在当前项目目录执行真实 shell 命令，改动直接保留在仓库中。"
+    "适合：脚手架、安装依赖、跑构建脚本、批量文本处理。"
+    "本地模式警告：无容器隔离，命令以当前 Windows 用户权限在你的电脑上运行，"
+    "可使用主机网络；后台或脱离终端的进程可能在命令结束后继续运行，"
+    "且命令结束后无法再通过 job_id 取消。"
+    "确认模式下每条 run_command 都需要你批准；本地执行不做净化副本或密钥遮蔽。"
+    "与 run_code 的区别：run_code 在一次性临时目录里验证代码，本工具的修改会持久化。"
+)
+
+
+def tool_description() -> str:
+    """Model-facing text; the local runtime is set at process startup."""
+    return _LOCAL_DESCRIPTION if settings.is_local else _SERVER_DESCRIPTION
+
+
 TOOL = ToolDefinition(
     name="run_command",
-    description=(
-        "在仓库工作区里执行真实 shell 命令（隔离容器内，无网络），改动直接保留在仓库中。"
-        "适合：脚手架、安装依赖、跑构建脚本、批量文本处理。"
-        "只读模式下只放行只读命令（git status/diff/log、ls、grep 等）；"
-        "确认模式下写命令会先请求用户批准，批准后在遮蔽密钥的工作区执行。"
-        "与 run_code 的区别：run_code 在一次性副本里验证代码，本工具的修改会持久化。"
-    ),
+    description=tool_description(),
     parameters={
         "type": "object",
         "properties": {

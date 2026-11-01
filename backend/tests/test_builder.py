@@ -3,7 +3,9 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
+from app.config import settings
 from app.core.builder import engine
 from app.core.builder.engine import _clean_plan, _parse_contract, _finalize_fullstack, validate_files
 
@@ -110,6 +112,37 @@ def test_smoke_test_falls_back_to_health():
 
     source = _smoke_test_source([])
     assert '"/health"' in source
+
+
+@pytest.mark.asyncio
+async def test_local_mode_rejects_builder_engine_flows(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    with pytest.raises(ValueError, match="本地模式暂不支持该构建流程"):
+        await engine.generate_plan("missing")
+    with pytest.raises(ValueError, match="本地模式暂不支持该构建流程"):
+        await engine.generate_files("missing")
+
+
+@pytest.mark.asyncio
+async def test_local_mode_rejects_builder_api_flows(monkeypatch):
+    from app.api.v1 import builder as builder_api
+    from app.models.schemas import BuilderCreate
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    body = BuilderCreate(
+        name="demo", requirements="构建一个用于演示的测试项目", stack="python"
+    )
+    calls = [
+        builder_api.create_builder_project(body, user={"id": 1}),
+        builder_api.regenerate_plan("r1", user={"id": 1}),
+        builder_api.generate_files("r1", None, user={"id": 1}),
+        builder_api.verify_repo("r1", user={"id": 1}),
+    ]
+    for call in calls:
+        with pytest.raises(HTTPException) as exc:
+            await call
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "本地模式暂不支持该构建流程"
 
 
 @pytest.mark.asyncio

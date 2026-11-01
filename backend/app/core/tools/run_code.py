@@ -229,7 +229,7 @@ async def _run_host_code(
         files,
         command,
         root=root,
-        timeout=min(settings.sandbox_timeout, 300),
+        timeout=max(1, min(settings.sandbox_timeout, 300)),
         env=None,
         on_output=on_output,
         job_id=ctx.tool_call_id or None,
@@ -258,6 +258,11 @@ async def _run_host_code(
         "warning": result["warning"],
         "hint": "退出码 0 表示成功" if result["exit_code"] == 0 else "执行失败：请阅读 stderr，修正后重试",
     }
+    if str(args.get("stdin") or ""):
+        # The host executor has no stdin plumbing in this path; make the
+        # omission visible instead of silently running without input.
+        payload["stdin_ignored"] = True
+        payload["hint"] += " 本地模式下 stdin 不会传给子进程。"
     if copy_stats is not None:
         payload["repo_copy"] = copy_stats
         if copy_stats.get("truncated"):
@@ -266,13 +271,29 @@ async def _run_host_code(
     return payload
 
 
+_SERVER_DESCRIPTION = (
+    "在隔离沙箱中运行代码并返回真实的 stdout / stderr / 退出码。"
+    "用途：验证代码是否正确、运行单元测试（command 设为 'python -m pytest -q'）、复现报错。"
+    "环境：python builder（fastapi/pytest）或 node（Node 20 + tsc/openapi-typescript），无网络。"
+)
+
+_LOCAL_DESCRIPTION = (
+    "在当前电脑上运行代码并返回真实的 stdout / stderr / 退出码。"
+    "用途：验证代码是否正确、运行单元测试（command 设为 'python -m pytest -q'）、复现报错。"
+    "本地模式警告：无容器隔离，代码以当前 Windows 用户权限在你的电脑上运行，可使用主机网络；"
+    "后台或脱离终端的进程可能在命令结束后继续运行，且命令结束后无法再通过 job_id 取消；"
+    "stdin 参数不会传给子进程。文件写入一次性临时目录，执行后删除。"
+)
+
+
+def tool_description() -> str:
+    """Model-facing text; the local runtime is set at process startup."""
+    return _LOCAL_DESCRIPTION if settings.is_local else _SERVER_DESCRIPTION
+
+
 TOOL = ToolDefinition(
     name="run_code",
-    description=(
-        "在隔离沙箱中运行代码并返回真实的 stdout / stderr / 退出码。"
-        "用途：验证代码是否正确、运行单元测试（command 设为 'python -m pytest -q'）、复现报错。"
-        "环境：python builder（fastapi/pytest）或 node（Node 20 + tsc/openapi-typescript），无网络。"
-    ),
+    description=tool_description(),
     parameters={
         "type": "object",
         "properties": {

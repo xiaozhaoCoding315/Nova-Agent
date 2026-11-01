@@ -129,8 +129,23 @@ def _secret_reference(command: str) -> str | None:
     return None
 
 
-_NOVA_SECRET_MARKERS = ("nova-config.json", ".nova-instance.lock", "pgpassword")
+# Stems, not exact filenames: ``nova-config.jso?`` / ``nova-config.*`` must
+# still be recognised as the JWT signer file.
+_NOVA_SECRET_MARKERS = ("nova-config", ".nova-instance", "pgpassword")
 _NOVA_DATA_DIR_NAMES = {"novadata", "nova-data", "nova_data"}
+# The shipped desktop default data root is ``%APPDATA%\Nova`` (basename
+# ``nova``) and holds these children; ``_NOVA_DATA_DIR_NAMES`` alone never
+# matched it.
+_NOVA_DATA_CHILDREN = (
+    "logs", "users", "pgdata", "tmp", "skills", "downloads",
+    "legacy-repos", "mcp.json",
+)
+_NOVA_DEFAULT_ROOT = re.compile(
+    r"(?:%appdata%|\$env:appdata|\$\{env:appdata\}|appdata(?:/roaming)?)/nova(?:/|$)"
+)
+# Wildcards into a Nova-looking directory (``Nova\*``, ``Nova\mcp.jso?``)
+# cannot be enumerated by a substring match, so they need approval too.
+_NOVA_WILDCARD_REF = re.compile(r"nova/[^\s\"']*[?*]|(?:^|[/\s\"'=])nova[?*]")
 
 
 def _local_data_root() -> tuple[str, str]:
@@ -165,6 +180,11 @@ def _nova_secret_reference(command: str) -> str | None:
         return "Nova 数据目录"
     if root_name in _NOVA_DATA_DIR_NAMES and root_name in raw:
         return "Nova 数据目录"
+    if _NOVA_DEFAULT_ROOT.search(raw) or _NOVA_WILDCARD_REF.search(raw):
+        return "Nova 数据目录"
+    for child in _NOVA_DATA_CHILDREN:
+        if f"nova/{child}" in raw:
+            return "Nova 数据目录"
     return None
 
 
@@ -221,6 +241,38 @@ def decide_tool(
             return PolicyDecision(
                 False, f"拒绝访问密钥/凭据文件：{secret}", caps
             )
+        # Local mode has no sanitized copy or secret masks: a read-only
+        # command such as ``type *.env`` reaches the real files.  Ask mode is
+        # documented as "every command needs approval", so gate every local
+        # shell command; auto/full keep their normal policy rules.
+        if (
+            settings.is_local
+            and mode == "ask"
+            and not getattr(ctx, "approval_granted", False)
+        ):
+            return PolicyDecision(
+                False,
+                "本地模式确认执行：命令会在你的电脑上真实运行且没有容器隔离，"
+                f"需要你批准：{command[:120]}",
+                caps,
+                requires_approval=True,
+            )
+
+    if (
+        name == "run_code"
+        and settings.is_local
+        and mode == "ask"
+        and not getattr(ctx, "approval_granted", False)
+    ):
+        # run_code executes arbitrary model-authored code as the signed-in
+        # user; without this gate ask mode would run it with no prompt.
+        return PolicyDecision(
+            False,
+            "本地模式确认执行：run_code 会以当前用户权限在你的电脑上运行模型编写的代码"
+            "（无容器隔离），需要你批准后执行",
+            caps,
+            requires_approval=True,
+        )
 
     readonly_shell = False
     if name == "run_command" and settings.shell_readonly_allowlist:

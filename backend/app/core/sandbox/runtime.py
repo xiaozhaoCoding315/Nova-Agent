@@ -214,16 +214,20 @@ async def sandbox_status() -> dict:
     """Report availability honestly — never silently degrade."""
     if settings.use_host_executor:
         # Local mode: the host executor is the runtime. Honest about what it
-        # is (no container) so callers and the UI can show the warning.
+        # is (no container) so callers and the UI can show the warning.  The
+        # image-availability flags become host-PATH probes; host tool branches
+        # do not consult them, they exist for status/UI callers.
+        python_available = bool(shutil.which("python") or shutil.which("python3"))
+        node_available = shutil.which("node") is not None
         return {
             "available": True,
             "reason": "",
             "executor": "host",
             "isolation": "none",
             "docker": False,
-            "default_available": True,
-            "builder_available": True,
-            "node_available": True,
+            "default_available": python_available,
+            "builder_available": python_available,
+            "node_available": node_available,
             "warning": "本地执行无容器隔离",
         }
     if not settings.sandbox_enabled:

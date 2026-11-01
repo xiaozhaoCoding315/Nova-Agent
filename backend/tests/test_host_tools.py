@@ -6,6 +6,7 @@ Server-mode behavior is untouched: every local branch is behind
 """
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -13,6 +14,7 @@ from app.config import settings
 from app.core.exec import service
 from app.core.sandbox import runtime as sandbox_runtime
 from app.core.tools import get_registry
+from app.core.tools import run_code as run_code_tool
 from app.core.tools import run_command as run_command_tool
 from app.core.tools.base import ToolBusinessError, ToolContext
 
@@ -46,6 +48,21 @@ async def test_sandbox_status_local_reports_host(monkeypatch):
     assert status["available"] is True
     assert status["executor"] == "host"
     assert status["isolation"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_sandbox_status_local_probes_host_path(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(
+        sandbox_runtime.shutil,
+        "which",
+        lambda name: "C:/Program Files/nodejs/node.exe" if name == "node" else None,
+    )
+    status = await sandbox_runtime.sandbox_status()
+    assert status["available"] is True
+    assert status["node_available"] is True
+    assert status["builder_available"] is False
+    assert status["default_available"] is False
 
 
 @pytest.mark.asyncio
@@ -89,7 +106,10 @@ async def test_run_command_host_marks_result(monkeypatch, tmp_path):
     assert seen["user_id"] == 7
     assert result["sandboxed"] is False
     assert result["isolation"] == "none"
-    assert "无容器隔离" in result["warning"]
+    assert result["warning"] == (
+        "本地执行无容器隔离：命令以当前 Windows 用户权限在你的项目目录运行"
+    )
+    assert result["warning"] == service.WARNING
 
 
 @pytest.mark.asyncio
@@ -176,6 +196,63 @@ async def test_local_run_command_never_bypasses_policy_gate(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_local_ask_run_code_requires_approval_before_execution(monkeypatch, tmp_path):
+    """C1: local ask-mode run_code must prompt and never execute first."""
+    called = {"host": 0}
+
+    async def fake_execute(command, **kwargs):
+        called["host"] += 1
+        return _host_result(command=command)
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+    monkeypatch.setattr(service, "execute_host", fake_execute)
+    ctx = _ctx(permission_mode="ask")
+
+    result = await get_registry().execute(
+        "run_code", {"files": {"main.py": "print(1)"}}, ctx
+    )
+    assert result["ok"] is False
+    assert result["requires_approval"]["name"] == "run_code"
+    assert "本地模式" in result["requires_approval"]["reason"]
+    assert called["host"] == 0
+
+    ctx.approval_granted = True
+    approved = await get_registry().execute(
+        "run_code", {"files": {"main.py": "print(1)"}}, ctx
+    )
+    assert approved["ok"] is True
+    assert approved["output"]["executor"] == "host"
+    assert called["host"] == 1
+
+
+@pytest.mark.asyncio
+async def test_server_ask_run_code_is_not_locally_gated(monkeypatch):
+    """C1: server-mode ask behavior is unchanged."""
+    monkeypatch.setattr(settings, "nova_mode", "server")
+
+    async def available():
+        return {"available": True, "builder_available": True}
+
+    async def fake_execute(files, command=None, stdin="", timeout=None, **kwargs):
+        return {
+            "stdout": "1", "stderr": "", "exit_code": 0, "timed_out": False,
+            "sandboxed": True, "command": command or "python main.py",
+        }
+
+    monkeypatch.setattr(run_code_tool, "sandbox_status", available)
+    monkeypatch.setattr(run_code_tool, "sandbox_execute", fake_execute)
+    monkeypatch.setattr(run_code_tool, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(run_code_tool, "log_audit", AsyncMock())
+
+    result = await get_registry().execute(
+        "run_code", {"files": {"main.py": "print(1)"}}, _ctx(permission_mode="ask")
+    )
+    assert result["ok"] is True
+    assert "requires_approval" not in result
+
+
+@pytest.mark.asyncio
 async def test_run_code_host_writes_temp_and_cleans_it(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "nova_mode", "local")
     monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
@@ -191,8 +268,82 @@ async def test_run_code_host_writes_temp_and_cleans_it(monkeypatch, tmp_path):
         {"main.py": "print('x')"}, None, root=tmp_path, timeout=5
     )
     assert seen["command"] == "python main.py"
+    assert seen["venv_root"] == tmp_path
     assert result["isolation"] == "none"
+    assert result["warning"] == service.WARNING
+    assert result["workspace"] == "temporary"
     assert list((tmp_path / "NovaData" / "tmp").iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_run_code_host_rejects_multiline(monkeypatch, tmp_path):
+    called = {"host": False}
+
+    async def fail_execute(command, **kwargs):  # pragma: no cover - must not run
+        called["host"] = True
+        raise AssertionError("must not execute")
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+    monkeypatch.setattr(service, "execute_host", fail_execute)
+    with pytest.raises(ToolBusinessError) as exc:
+        await service.run_code_host(
+            {"main.py": "print(1)"}, "python main.py\necho x", root=tmp_path
+        )
+    assert "多行" in str(exc.value)
+    assert called["host"] is False
+    # Rejected before staging: no temp tree is even created.
+    assert not (tmp_path / "NovaData" / "tmp").exists()
+
+
+@pytest.mark.asyncio
+async def test_run_code_host_cleans_temp_when_executor_raises(monkeypatch, tmp_path):
+    async def boom(command, **kwargs):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+    monkeypatch.setattr(service, "execute_host", boom)
+    with pytest.raises(ToolBusinessError):
+        await service.run_code_host({"main.py": "print(1)"}, None, root=tmp_path)
+    assert list((tmp_path / "NovaData" / "tmp").iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_run_code_host_staging_errors_are_business_errors(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+
+    # Missing data root (NOVA_DATA_DIR unset) must not leak RuntimeError.
+    monkeypatch.setattr(settings, "nova_data_dir", "")
+    monkeypatch.setattr(settings, "local_tmp_dir", "")
+    with pytest.raises(ToolBusinessError) as exc:
+        await service.run_code_host({"main.py": "print(1)"}, None, root=tmp_path)
+    assert "本地执行失败" in str(exc.value)
+
+    # A file/directory staging conflict must map to a business error and
+    # leave no half-written temp tree behind.
+    monkeypatch.setattr(settings, "nova_data_dir", str(tmp_path / "NovaData"))
+    with pytest.raises(ToolBusinessError) as exc:
+        await service.run_code_host(
+            {"sub": "file", "sub/main.py": "print(1)"}, None, root=tmp_path
+        )
+    assert "临时工作目录" in str(exc.value)
+    assert list((tmp_path / "NovaData" / "tmp").iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_run_command_host_clamps_timeouts(monkeypatch, tmp_path):
+    seen: dict = {}
+
+    async def fake_execute(command, **kwargs):
+        seen.update(kwargs)
+        return _host_result(command=command)
+
+    monkeypatch.setattr(service, "execute_host", fake_execute)
+    await service.run_command_host("echo ok", root=tmp_path, timeout=-5)
+    assert seen["timeout"] == 1
+    await service.run_command_host("echo ok", root=tmp_path, timeout=9999)
+    assert seen["timeout"] == 300
 
 
 @pytest.mark.asyncio
@@ -287,3 +438,26 @@ async def test_run_code_host_tool_layer_never_passes_model_env(monkeypatch, tmp_
     assert result["executor"] == "host"
     assert result["isolation"] == "none"
     assert result["warning"]
+    assert result["stdin_ignored"] is True
+    assert "stdin" in result["hint"]
+
+
+def test_local_tool_descriptions_warn_no_isolation(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+
+    command_desc = run_command_tool.tool_description()
+    assert "无容器隔离" in command_desc
+    assert "当前 Windows 用户权限" in command_desc
+    assert "主机网络" in command_desc
+    assert "后台" in command_desc and "job_id" in command_desc
+    assert "隔离容器内" not in command_desc
+
+    code_desc = run_code_tool.tool_description()
+    assert "无容器隔离" in code_desc
+    assert "当前 Windows 用户权限" in code_desc
+    assert "stdin" in code_desc
+    assert "隔离沙箱中" not in code_desc
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    assert "隔离容器内" in run_command_tool.tool_description()
+    assert "隔离沙箱中" in run_code_tool.tool_description()
