@@ -7,6 +7,7 @@ import asyncio
 
 import structlog
 
+from app.config import settings
 from app.core.harness.config import TIMEOUTS
 from app.core.harness.runtime import execute_with_harness
 from app.core.rag.dense import dense_search
@@ -28,10 +29,11 @@ async def retrieve(
     # and (when known) additionally filtered by owner at the storage layer.
     if not repo_ids:
         return []
-    legs = [
-        ("dense", dense_search),
-        ("keyword", keyword_search),
-    ]
+    # Without embeddings (local runtime) dense retrieval cannot serve results;
+    # only run it when the deployment actually has a vector store.
+    legs: list[tuple[str, object]] = [("keyword", keyword_search)]
+    if settings.use_embeddings:
+        legs.insert(0, ("dense", dense_search))
     results = await asyncio.gather(*[
         execute_with_harness(
             func,

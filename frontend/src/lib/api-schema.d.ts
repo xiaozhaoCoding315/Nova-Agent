@@ -1525,6 +1525,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/status/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mode */
+        get: operations["mode_api_v1_status_mode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status/usage": {
         parameters: {
             query?: never;
@@ -2916,6 +2933,36 @@ export interface components {
              * @default 7
              */
             window_days: number;
+        };
+        /** ModeFeaturesOut */
+        ModeFeaturesOut: {
+            /** Host Executor */
+            host_executor: boolean;
+            /** Isolation */
+            isolation: string;
+            /** Jobs Concurrency */
+            jobs_concurrency: number;
+            /** Registration */
+            registration: boolean;
+            /** Sandbox */
+            sandbox: string;
+            /** Semantic Search */
+            semantic_search: boolean;
+        };
+        /** ModeOut */
+        ModeOut: {
+            /** Auth */
+            auth: string;
+            /**
+             * Data Dir
+             * @default
+             */
+            data_dir: string;
+            features: components["schemas"]["ModeFeaturesOut"];
+            /** Local */
+            local: boolean;
+            /** Mode */
+            mode: string;
         };
         /** OkOut */
         OkOut: {
@@ -6500,6 +6547,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mode_api_v1_status_mode_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModeOut"];
                 };
             };
         };

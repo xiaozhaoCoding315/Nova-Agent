@@ -3176,6 +3176,76 @@
         "title": "MetricsOut",
         "type": "object"
       },
+      "ModeFeaturesOut": {
+        "properties": {
+          "host_executor": {
+            "title": "Host Executor",
+            "type": "boolean"
+          },
+          "isolation": {
+            "title": "Isolation",
+            "type": "string"
+          },
+          "jobs_concurrency": {
+            "title": "Jobs Concurrency",
+            "type": "integer"
+          },
+          "registration": {
+            "title": "Registration",
+            "type": "boolean"
+          },
+          "sandbox": {
+            "title": "Sandbox",
+            "type": "string"
+          },
+          "semantic_search": {
+            "title": "Semantic Search",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "host_executor",
+          "isolation",
+          "sandbox",
+          "semantic_search",
+          "jobs_concurrency",
+          "registration"
+        ],
+        "title": "ModeFeaturesOut",
+        "type": "object"
+      },
+      "ModeOut": {
+        "properties": {
+          "auth": {
+            "title": "Auth",
+            "type": "string"
+          },
+          "data_dir": {
+            "default": "",
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/ModeFeaturesOut"
+          },
+          "local": {
+            "title": "Local",
+            "type": "boolean"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "local",
+          "auth",
+          "features"
+        ],
+        "title": "ModeOut",
+        "type": "object"
+      },
       "OkOut": {
         "properties": {
           "ok": {
@@ -8705,6 +8775,27 @@
           }
         },
         "summary": "Metrics",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/v1/status/mode": {
+      "get": {
+        "operationId": "mode_api_v1_status_mode_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mode",
         "tags": [
           "status"
         ]

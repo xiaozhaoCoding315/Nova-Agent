@@ -16,6 +16,9 @@ async def dense_search(
     repo_ids: list[str] | None = None,
     user_id: int | None = None,
 ) -> list[RetrievedChunk]:
+    # Local mode has no Qdrant/embedding service: never construct either one.
+    if not settings.use_embeddings:
+        return []
     if not repo_ids:
         return []
     from app.db.qdrant import get_client, repo_filter

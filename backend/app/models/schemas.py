@@ -362,6 +362,23 @@ class TaskCreate(BaseModel):
 
 # ---------- Status ----------
 
+class ModeFeaturesOut(BaseModel):
+    host_executor: bool
+    isolation: str          # none | container
+    sandbox: str            # host | docker
+    semantic_search: bool
+    jobs_concurrency: int
+    registration: bool
+
+
+class ModeOut(BaseModel):
+    mode: str               # server | local
+    local: bool
+    auth: str               # login | none
+    features: ModeFeaturesOut
+    data_dir: str = ""
+
+
 class HealthOut(BaseModel):
     status: str                    # ok | degraded
     version: str

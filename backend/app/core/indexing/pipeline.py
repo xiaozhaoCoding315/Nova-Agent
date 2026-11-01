@@ -131,11 +131,12 @@ async def delete_repo(repo_id: str, user_id: int) -> bool:
         from app.core.storage.user_storage import repo_container
         shutil.rmtree(repo_container(user_id, repo_id), ignore_errors=True)
         shutil.rmtree(Path(settings.repos_dir) / repo_id, ignore_errors=True)
-    try:
-        from app.db.qdrant import delete_repo_points
-        await delete_repo_points(repo_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("qdrant_cleanup_failed", repo_id=repo_id, error=str(exc))
+    if settings.use_embeddings:
+        try:
+            from app.db.qdrant import delete_repo_points
+            await delete_repo_points(repo_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("qdrant_cleanup_failed", repo_id=repo_id, error=str(exc))
     return True
 
 
@@ -187,7 +188,7 @@ async def _delete_file_data(file_id: int) -> None:
     """Delete one file's chunks/symbols/deps and its vectors."""
     rows = await query("SELECT id FROM chunks WHERE file_id = %s", (file_id,))
     chunk_ids = [int(row[0]) for row in rows]
-    if chunk_ids:
+    if chunk_ids and settings.use_embeddings:
         try:
             from app.db.qdrant import delete_point_ids
             await delete_point_ids(chunk_ids)
@@ -229,7 +230,7 @@ async def _insert_chunks(repo_id: str, file_id: int, chunks: list[dict]) -> list
 async def _embed_and_upload(
     repo_id: str, user_id: int, pending: list[tuple[int, dict, str]]
 ) -> int:
-    if not pending:
+    if not pending or not settings.use_embeddings:
         return 0
     try:
         from app.core.embedding.embedder import get_embedder
@@ -304,11 +305,12 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
 
         if force:
             await execute("DELETE FROM repo_files WHERE repo_id = %s", (repo_id,))
-            try:
-                from app.db.qdrant import delete_repo_points
-                await delete_repo_points(repo_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("qdrant_cleanup_failed", repo_id=repo_id, error=str(exc))
+            if settings.use_embeddings:
+                try:
+                    from app.db.qdrant import delete_repo_points
+                    await delete_repo_points(repo_id)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("qdrant_cleanup_failed", repo_id=repo_id, error=str(exc))
 
         rows = await query(
             "SELECT id, path, language, size, line_count, is_doc, content_hash "

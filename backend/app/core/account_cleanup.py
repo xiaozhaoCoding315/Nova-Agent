@@ -1,6 +1,7 @@
 """Best-effort removal of a user's external resources before DB deletion."""
 import structlog
 
+from app.config import settings
 from app.core.storage.user_storage import cleanup_user_storage
 from app.db import execute, query
 
@@ -20,12 +21,13 @@ async def purge_user_resources(user_id: int) -> dict:
             volumes += result.get("volumes", 0)
         except Exception as exc:  # noqa: BLE001
             logger.warning("user_repo_cleanup_failed", repo_id=str(repo_id), error=str(exc))
-        try:
-            from app.db.qdrant import delete_repo_points
-            await delete_repo_points(str(repo_id))
-            vectors += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("user_vector_cleanup_failed", repo_id=str(repo_id), error=str(exc))
+        if settings.use_embeddings:
+            try:
+                from app.db.qdrant import delete_repo_points
+                await delete_repo_points(str(repo_id))
+                vectors += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("user_vector_cleanup_failed", repo_id=str(repo_id), error=str(exc))
 
     await cleanup_user_storage(user_id)
     await execute("DELETE FROM usage_log WHERE user_id = %s", (user_id,))

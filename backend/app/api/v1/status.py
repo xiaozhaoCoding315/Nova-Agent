@@ -16,7 +16,7 @@ from app.core.security.limits import (
     sandbox_runs_today,
     tokens_used_today,
 )
-from app.models.schemas import HealthOut, MetricsOut, UsageOut
+from app.models.schemas import HealthOut, MetricsOut, ModeFeaturesOut, ModeOut, UsageOut
 
 router = APIRouter()
 
@@ -73,8 +73,77 @@ async def _check_sandbox() -> dict:
         return {"available": False, "reason": f"check failed: {exc}"}
 
 
+async def _check_local_llm() -> str:
+    try:
+        from app.db import query
+
+        rows = await asyncio.wait_for(
+            query(
+                "SELECT 1 FROM user_llm_providers "
+                "WHERE user_id = (SELECT id FROM users WHERE username = %s) LIMIT 1",
+                (settings.local_user,),
+            ),
+            timeout=CHECK_TIMEOUT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"failed: {exc}"
+    return "ok: local user credential" if rows else "failed: no API key configured"
+
+
+def _local_data_dir() -> str:
+    """Display path of the local data root; empty only before it is configured."""
+    if not settings.is_local:
+        return ""
+    try:
+        return str(settings.data_root)
+    except RuntimeError:
+        return ""
+
+
+@router.get("/status/mode", response_model=ModeOut)
+async def mode():
+    return ModeOut(
+        mode=settings.nova_mode,
+        local=settings.is_local,
+        auth="none" if settings.is_local else "login",
+        features=ModeFeaturesOut(
+            host_executor=settings.use_host_executor,
+            isolation="none" if settings.is_local else "container",
+            sandbox="host" if settings.is_local else "docker",
+            semantic_search=settings.use_embeddings,
+            jobs_concurrency=settings.effective_job_max_concurrency,
+            registration=(
+                False if settings.is_local
+                else settings.registration_mode != "closed"
+            ),
+        ),
+        data_dir=_local_data_dir(),
+    )
+
+
 @router.get("/status/health", response_model=HealthOut)
 async def health():
+    if settings.is_local:
+        postgres, llm = await asyncio.gather(_check_postgres(), _check_local_llm())
+        sandbox = await _check_sandbox()
+        components = {
+            "postgres": postgres,
+            "qdrant": "disabled: local mode",
+            "llm": llm,
+            "model": server_default_model() or settings.zhipu_model,
+            "embedding": "disabled: local mode",
+            "sandbox": sandbox,
+            "git": "ok" if _git_available() else "missing",
+            "uptime_s": int(time.time() - _STARTED_AT),
+            "env": settings.app_env,
+        }
+        core_ok = postgres == "ok" and llm.startswith("ok")
+        return HealthOut(
+            status="ok" if core_ok else "degraded",
+            version=VERSION,
+            components=components,
+        )
+
     postgres, qdrant = await asyncio.gather(_check_postgres(), _check_qdrant())
     sandbox = await _check_sandbox()
     components = {

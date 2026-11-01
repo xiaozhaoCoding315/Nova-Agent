@@ -14,6 +14,7 @@ import psycopg
 import structlog
 
 from app.config import settings
+from app.core.storage.user_storage import migrate_legacy_repos
 from app.db import query, transaction
 
 logger = structlog.get_logger()
@@ -961,6 +962,10 @@ async def check_connectivity() -> dict:
     except Exception as exc:  # noqa: BLE001
         status["postgres"] = f"failed: {exc}"
 
+    if not settings.use_embeddings:
+        status["qdrant"] = "skipped: embeddings disabled"
+        return status
+
     try:
         from qdrant_client import QdrantClient
         client = QdrantClient(url=settings.qdrant_url, timeout=5)
@@ -984,7 +989,6 @@ async def init_all() -> dict:
         result["storage"] = "skipped: local mode"
     else:
         try:
-            from app.core.storage.user_storage import migrate_legacy_repos
             result["storage"] = await migrate_legacy_repos()
         except Exception as exc:  # noqa: BLE001
             result["storage"] = f"failed: {exc}"
