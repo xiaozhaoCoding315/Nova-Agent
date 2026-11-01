@@ -3,7 +3,74 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
 from app.core.deploy import ledger, service
+
+_REPO_ID = "00000000-0000-0000-0000-000000000001"
+_DEPLOY_ID = "00000000-0000-0000-0000-000000000002"
+
+
+def _router_client(user=None):
+    """Real API router mounted at /api/v1; auth override only when given."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.v1.router import api_router
+    from app.core.security.auth import get_current_user
+
+    app = FastAPI()
+    app.include_router(api_router, prefix="/api/v1")
+    if user is not None:
+        app.dependency_overrides[get_current_user] = lambda: user
+    return TestClient(app)
+
+
+def test_local_mode_deploy_routes_return_404_before_auth(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    client = _router_client()  # no auth override: the gate must win over 401
+
+    cases = (
+        ("get", f"/api/v1/repos/{_REPO_ID}/deployments", {}),
+        ("post", f"/api/v1/repos/{_REPO_ID}/deploy", {"json": {"force": False}}),
+        ("get", f"/api/v1/deploys/{_DEPLOY_ID}", {}),
+        ("post", f"/api/v1/deploys/{_DEPLOY_ID}/teardown", {}),
+    )
+    for method, path, kwargs in cases:
+        response = getattr(client, method)(path, **kwargs)
+        assert response.status_code == 404, (method, path, response.text)
+        assert "本地模式" in response.json()["detail"]
+
+
+def test_local_mode_deploy_rejects_before_body_parsing(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    client = _router_client()
+
+    response = client.post(
+        f"/api/v1/repos/{_REPO_ID}/deploy",
+        content="{not-json",
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 404
+    assert "本地模式" in response.json()["detail"]
+
+
+def test_server_mode_deploy_routes_still_require_auth(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    client = _router_client()
+
+    assert client.get(f"/api/v1/repos/{_REPO_ID}/deployments").status_code == 401
+    assert client.post(f"/api/v1/repos/{_REPO_ID}/deploy", json={}).status_code == 401
+    assert client.get(f"/api/v1/deploys/{_DEPLOY_ID}").status_code == 401
+    assert client.post(f"/api/v1/deploys/{_DEPLOY_ID}/teardown").status_code == 401
+
+
+def test_server_mode_deploy_routes_keep_admin_check(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    client = _router_client({"id": 1, "role": "demo"})
+
+    assert client.get(f"/api/v1/deploys/{_DEPLOY_ID}").status_code == 403
+    assert client.post(f"/api/v1/repos/{_REPO_ID}/deploy", json={}).status_code == 403
 
 
 @pytest.mark.asyncio

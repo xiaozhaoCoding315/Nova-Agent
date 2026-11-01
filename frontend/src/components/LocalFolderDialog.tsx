@@ -53,7 +53,7 @@ export function LocalFolderDialog({
           <input
             value={path}
             onChange={(event) => setPath(event.target.value)}
-            placeholder="D:\\code\\my-project"
+            placeholder={'D:\\code\\my-project'}
             className="w-full rounded-lg border border-edge bg-base/60 px-2.5 py-1.5 text-[12px] text-ink outline-none transition-colors focus:border-accent/60"
           />
         </label>

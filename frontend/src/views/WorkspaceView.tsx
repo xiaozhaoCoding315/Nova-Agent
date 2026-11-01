@@ -3,7 +3,7 @@ import {
   Activity, ArrowLeft, CheckCircle2, ChevronDown, FilePlus2, FlaskConical, FolderOpen, GitBranch, GitCompare,
   Radar, RefreshCw, Rocket, Sparkles, Trash2, Waypoints, XCircle,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { BrainPanel } from '../components/BrainPanel'
 import { BuilderPanel } from '../components/BuilderPanel'
 import { CodeViewer } from '../components/CodeViewer'
@@ -33,6 +33,8 @@ const STATUS_META: Record<RepoStatus, { label: string; tone: 'dim' | 'ok' | 'war
   generating: { label: '生成中', tone: 'warn' },
   review: { label: '待审阅代码', tone: 'accent' },
 }
+
+type Tab = 'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'
 
 /** 收进「更多」菜单的低频页签（分析类能力仍在对话里作为工具自动使用）。 */
 const MORE_LABEL = { brain: '项目地图', impact: '影响分析', debt: '技术债', contract: '契约对齐', deploy: '预览部署' }
@@ -133,7 +135,7 @@ export function WorkspaceView({
   const [treeLoading, setTreeLoading] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   const [treeError, setTreeError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'builder' | 'code' | 'brain' | 'impact' | 'contract' | 'deploy' | 'git' | 'debt'>('code')
+  const [tab, setTab] = useState<Tab>('code')
   const [moreOpen, setMoreOpen] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [verifyBusy, setVerifyBusy] = useState(false)
@@ -141,6 +143,11 @@ export function WorkspaceView({
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [verifyJobId, setVerifyJobId] = useState<string | null>(null)
   const [verifyJob, setVerifyJob] = useState<Job | null>(null)
+
+  // 本地模式不提供预览部署；模式异步加载完成后清掉可能残留的页签。
+  useEffect(() => {
+    if (localMode && tab === 'deploy') setTab('code')
+  }, [localMode, tab])
 
   useEffect(() => {
     void refresh()
@@ -261,6 +268,16 @@ export function WorkspaceView({
     } catch (err) {
       setVerifyError(err instanceof ApiError ? err.message : '取消失败')
     }
+  }
+
+  const moreItems: { key: Tab; label: string; icon: ReactNode }[] = [
+    { key: 'brain', label: '项目地图', icon: <Waypoints size={12} /> },
+    { key: 'impact', label: '影响分析', icon: <Radar size={12} /> },
+    { key: 'debt', label: '技术债', icon: <Activity size={12} /> },
+    { key: 'contract', label: '契约对齐', icon: <GitCompare size={12} /> },
+  ]
+  if (!localMode) {
+    moreItems.push({ key: 'deploy', label: '预览部署', icon: <Rocket size={12} /> })
   }
 
   return (
@@ -406,7 +423,7 @@ export function WorkspaceView({
                       onClick={() => setMoreOpen((value) => !value)}
                       className={clsx(
                         'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] transition-colors',
-                        ['brain', 'impact', 'debt', 'contract', 'deploy'].includes(tab)
+                        moreItems.some((item) => item.key === tab)
                           ? 'bg-accentSoft/50 text-ink'
                           : 'text-dim hover:bg-raised hover:text-ink',
                       )}
@@ -418,15 +435,7 @@ export function WorkspaceView({
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
                         <div className="absolute left-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-lg">
-                          {(
-                            [
-                              ['brain', '项目地图', <Waypoints key="i" size={12} />],
-                              ['impact', '影响分析', <Radar key="i" size={12} />],
-                              ['debt', '技术债', <Activity key="i" size={12} />],
-                              ['contract', '契约对齐', <GitCompare key="i" size={12} />],
-                              ['deploy', '预览部署', <Rocket key="i" size={12} />],
-                            ] as const
-                          ).map(([key, label, icon]) => (
+                          {moreItems.map(({ key, label, icon }) => (
                             <button
                               key={key}
                               onClick={() => {
@@ -569,7 +578,7 @@ export function WorkspaceView({
                   onRunVerify={() => void runVerify()}
                 />
               )}
-              {tab === 'deploy' && <DeployPanel repoId={selected.id} />}
+              {!localMode && tab === 'deploy' && <DeployPanel repoId={selected.id} />}
               {tab === 'git' && (
                 <GitPanel
                   repoId={selected.id}

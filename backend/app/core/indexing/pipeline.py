@@ -119,11 +119,12 @@ async def delete_repo(repo_id: str, user_id: int) -> bool:
     repo = await get_repo(repo_id, user_id)
     if not repo:
         return False
-    try:
-        from app.core.deploy.service import cleanup_repo_resources
-        await cleanup_repo_resources(repo_id, user_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("repo_resource_cleanup_failed", repo_id=repo_id, error=str(exc))
+    if not settings.is_local:
+        try:
+            from app.core.deploy.service import cleanup_repo_resources
+            await cleanup_repo_resources(repo_id, user_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("repo_resource_cleanup_failed", repo_id=repo_id, error=str(exc))
     await execute("DELETE FROM repos WHERE id = %s AND user_id = %s", (repo_id, user_id))
     if repo.get("origin") == "local":
         logger.info("local_project_unregistered", repo_id=repo_id)

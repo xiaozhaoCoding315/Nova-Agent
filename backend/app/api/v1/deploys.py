@@ -1,6 +1,8 @@
-"""Preview deployment endpoints (admin-only)."""
-from fastapi import APIRouter, Depends, HTTPException
+"""Preview deployment endpoints (admin-only, server mode only)."""
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.routing import APIRoute
 
+from app.config import settings
 from app.core.deploy.service import (
     DeployError,
     deploy_preview,
@@ -13,7 +15,30 @@ from app.core.security.auth import require_admin
 from app.core.security.limits import check_job_quota
 from app.models.schemas import DeployRequest, DeploymentOut
 
-router = APIRouter()
+
+def require_server_mode() -> None:
+    """Preview deployment needs Docker; local mode never exposes it."""
+    if settings.is_local:
+        raise HTTPException(status_code=404, detail="本地模式不提供预览部署")
+
+
+class _ServerModeRoute(APIRoute):
+    """Reject local mode before FastAPI reads the body or resolves auth."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            require_server_mode()
+            return await original(request)
+
+        return handler
+
+
+router = APIRouter(
+    route_class=_ServerModeRoute,
+    dependencies=[Depends(require_server_mode)],
+)
 
 
 @router.post("/repos/{repo_id}/deploy", response_model=DeploymentOut)

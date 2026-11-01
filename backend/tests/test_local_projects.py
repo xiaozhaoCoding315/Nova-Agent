@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -121,6 +122,48 @@ async def test_delete_local_repo_never_removes_project_files(monkeypatch, tmp_pa
 
 async def _async_none():
     return None
+
+
+@pytest.mark.asyncio
+async def test_delete_local_repo_skips_preview_cleanup(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    cleanup = AsyncMock(return_value={})
+
+    async def fake_get(repo_id, user_id):
+        return {"id": repo_id, "user_id": user_id, "origin": "local", "root_path": str(tmp_path)}
+
+    async def fake_execute(sql, params):
+        return []
+
+    monkeypatch.setattr(pipeline, "get_repo", fake_get)
+    monkeypatch.setattr(pipeline, "execute", fake_execute)
+    monkeypatch.setattr("app.core.deploy.service.cleanup_repo_resources", cleanup)
+
+    assert await pipeline.delete_repo("00000000-0000-0000-0000-000000000001", 1) is True
+    cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_server_repo_runs_preview_cleanup(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    cleanup = AsyncMock(return_value={})
+    removed: list[Path] = []
+
+    async def fake_get(repo_id, user_id):
+        return {"id": repo_id, "user_id": user_id, "origin": "upload", "root_path": str(tmp_path)}
+
+    async def fake_execute(sql, params):
+        return []
+
+    monkeypatch.setattr(pipeline, "get_repo", fake_get)
+    monkeypatch.setattr(pipeline, "execute", fake_execute)
+    monkeypatch.setattr(pipeline.shutil, "rmtree", lambda path, **kwargs: removed.append(Path(path)))
+    monkeypatch.setattr("app.core.deploy.service.cleanup_repo_resources", cleanup)
+    monkeypatch.setattr("app.db.qdrant.delete_repo_points", AsyncMock(return_value=None))
+
+    repo_id = "00000000-0000-0000-0000-000000000001"
+    assert await pipeline.delete_repo(repo_id, 1) is True
+    cleanup.assert_awaited_once_with(repo_id, 1)
 
 
 def _git_available() -> bool:
