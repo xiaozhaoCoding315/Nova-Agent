@@ -28,10 +28,13 @@ const EXAMPLES = [
 ]
 
 export function ChatView({
+  embedded = false,
   onOpenSettings,
   onOpenWorkspace,
   onOpenTasks,
 }: {
+  /** 终端工作台内嵌时隐藏自带的上下文顶栏（Task 4 由 ChatTimeline 取代）。 */
+  embedded?: boolean
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
   onOpenTasks: (repoId?: string) => void
@@ -89,7 +92,12 @@ export function ChatView({
   return (
     <div className="flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-2 border-b border-edge/80 bg-panel/25 px-4 py-2">
+        <div
+          className={clsx(
+            'flex shrink-0 items-center gap-2 border-b border-edge/80 bg-panel/25 px-4 py-2',
+            embedded && 'hidden',
+          )}
+        >
           <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-dim/70">上下文</span>
           <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
             {readyRepos.length === 0 ? (
