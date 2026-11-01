@@ -9,7 +9,8 @@ import { EditCard } from './EditCard'
 import { EvidenceBar } from './EvidenceBar'
 import { Markdown } from './Markdown'
 import { PlanCard } from './PlanCard'
-import { ToolCard, eventToCard, toolLabel } from './ToolCard'
+import { ToolCard } from './ToolCard'
+import { eventToCard, toolLabel } from '../timeline/cards'
 
 export function MessageBubble({
   message,

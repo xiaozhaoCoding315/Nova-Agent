@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
 import type { ToolApproval } from '../lib/types'
-import { toolLabel } from './ToolCard'
+import { toolLabel } from '../timeline/cards'
 
 export function ApprovalCard({
   approval,

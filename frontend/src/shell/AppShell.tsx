@@ -62,6 +62,7 @@ export function AppShell() {
   const [setupOpen, setSetupOpen] = useState(false)
   const setupPrompted = useRef(false)
   const [railOpen, setRailOpen] = useState(false)
+  const [localAgentOpen, setLocalAgentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<{ repoId?: string; path?: string }>({})
@@ -266,6 +267,8 @@ export function AppShell() {
           healthState={healthState}
           health={health}
           usage={usage}
+          localOpen={localAgentOpen}
+          onLocalOpenChange={setLocalAgentOpen}
         />
 
         {!mode?.local && user.is_guest && !guestBannerHidden && (
@@ -298,6 +301,7 @@ export function AppShell() {
               onOpenSettings={openSettings}
               onOpenWorkspace={openWorkspace}
               onOpenRun={openRun}
+              onOpenLocalAgent={() => setLocalAgentOpen(true)}
             />
           </Suspense>
         </div>

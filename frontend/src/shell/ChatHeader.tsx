@@ -1,12 +1,16 @@
 import clsx from 'clsx'
 import {
-  Check, ChevronDown, Command, Cpu, FolderTree, GitBranch, PanelLeft, Plus, ShieldCheck,
+  Activity, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown, PanelLeft,
+  Plus, ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { StatusDot } from '../components/common'
+import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
 import { api } from '../lib/api'
-import type { GitInfo, Health, PermissionMode, RepoStatus, Usage } from '../lib/types'
+import type {
+  GitInfo, Health, LocalExecStatus, PermissionMode, RepoStatus, Usage,
+} from '../lib/types'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
@@ -45,6 +49,8 @@ export function ChatHeader({
   healthState,
   health,
   usage,
+  localOpen,
+  onLocalOpenChange,
 }: {
   onOpenRail: () => void
   onNewChat: () => void
@@ -54,7 +60,11 @@ export function ChatHeader({
   healthState: 'ok' | 'warn' | 'err'
   health: Health | null
   usage: Usage | null
+  /** 本机执行器说明弹层由 AppShell 控制，空状态也可直接打开。 */
+  localOpen: boolean
+  onLocalOpenChange: (open: boolean) => void
 }) {
+  const sessionId = useChat((state) => state.sessionId)
   const historyRepoId = useChat((state) => state.historyRepoId)
   const selectedRepoIds = useChat((state) => state.selectedRepoIds)
   const permissionMode = useChat((state) => state.permissionMode)
@@ -67,6 +77,9 @@ export function ChatHeader({
   const [modelOpen, setModelOpen] = useState(false)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [gitChecked, setGitChecked] = useState(false)
+  const [trajectoryOpen, setTrajectoryOpen] = useState(false)
+  const [localStatus, setLocalStatus] = useState<LocalExecStatus | null>(null)
+  const [copiedCmd, setCopiedCmd] = useState(false)
 
   const currentRepoId = historyRepoId ?? selectedRepoIds[0] ?? null
   const currentRepo = repos.find((repo) => repo.id === currentRepoId) ?? null
@@ -80,6 +93,40 @@ export function ChatHeader({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [permissionOpen])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => {
+      api.local
+        .status()
+        .then((status) => {
+          if (!cancelled) setLocalStatus(status)
+        })
+        .catch(() => {})
+    }
+    poll()
+    const timer = setInterval(poll, 20_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!trajectoryOpen && !localOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (trajectoryOpen) {
+        event.preventDefault()
+        setTrajectoryOpen(false)
+      } else {
+        event.preventDefault()
+        onLocalOpenChange(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [trajectoryOpen, localOpen, onLocalOpenChange])
 
   useEffect(() => {
     let cancelled = false
@@ -119,6 +166,7 @@ export function ChatHeader({
     : null
 
   return (
+    <>
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-edge bg-panel/60 px-3 font-mono">
       <button
         onClick={onOpenRail}
@@ -129,7 +177,7 @@ export function ChatHeader({
         <PanelLeft size={15} />
       </button>
 
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="max-w-[180px] truncate text-sm text-ink" title={currentRepo?.name ?? '全部项目'}>
           {currentRepo?.name ?? '全部项目'}
         </span>
@@ -172,7 +220,7 @@ export function ChatHeader({
           aria-expanded={permissionOpen}
         >
           <ShieldCheck size={12} />
-          <span className="hidden sm:inline">{permission.label}</span>
+          <span className="hidden lg:inline">{permission.label}</span>
           <ChevronDown size={11} className="text-faint" />
         </button>
         {permissionOpen && (
@@ -227,7 +275,7 @@ export function ChatHeader({
           aria-expanded={modelOpen}
         >
           <Cpu size={12} className={llmSettings?.source === 'user' ? 'text-accent' : 'text-faint'} />
-          <span className="hidden max-w-[200px] truncate font-mono lg:inline">{modelLabel}</span>
+          <span className="hidden max-w-[200px] truncate font-mono xl:inline">{modelLabel}</span>
         </button>
         <ModelPicker
           open={modelOpen}
@@ -247,8 +295,76 @@ export function ChatHeader({
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <button
+          onClick={() => setTrajectoryOpen(true)}
+          disabled={!sessionId}
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink disabled:opacity-40"
+          title={sessionId ? '查看会话轨迹' : '发送第一条消息后可查看轨迹'}
+          aria-label="查看会话轨迹"
+        >
+          <Activity size={13} />
+        </button>
+        <div className="relative">
+          <button
+            onClick={() => onLocalOpenChange(!localOpen)}
+            className={clsx(
+              'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-1.5 text-xs transition-colors duration-150',
+              localStatus?.connected
+                ? 'border-ok/50 bg-ok/10 text-ok'
+                : 'border-edge text-dim hover:border-accent/40 hover:text-ink',
+            )}
+            title={localStatus?.connected ? '本机执行器已连接，Nova 可操作你的电脑' : '本机未连接：挂上 nova agent 后，Nova 可在你的电脑上执行命令、生成文件'}
+            aria-label={localStatus?.connected ? '本机执行器已连接' : '本机执行器未连接，查看接入方式'}
+            aria-haspopup="dialog"
+            aria-expanded={localOpen}
+          >
+            <MonitorDown size={13} />
+            <span className="hidden xl:inline">{localStatus?.connected ? '本机已连接' : '本机未连接'}</span>
+          </button>
+          {localOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-20"
+                onClick={() => onLocalOpenChange(false)}
+                aria-hidden="true"
+              />
+              <div
+                role="dialog"
+                aria-label="接入本机执行器"
+                className="fixed left-3 right-3 top-12 z-30 rounded-md border border-edge bg-panel p-3 shadow-pop sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1.5 sm:w-80"
+              >
+                <p className="text-sm font-semibold text-ink">把你的电脑接入 Nova</p>
+                <p className="mt-1 text-xs leading-relaxed text-dim">
+                  在本机运行下面的命令（需要 backend 目录里的 nova.py），Nova 就能直接在你的电脑上
+                  执行命令、生成文件——每一步都先经你确认。
+                </p>
+                <div className="mt-2 flex items-center gap-1.5 rounded-sm border border-edge bg-base/60 px-2.5 py-2">
+                  <code className="min-w-0 flex-1 truncate font-mono text-2xs text-ink">
+                    python nova.py agent --dir 你的项目目录
+                  </code>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText('python nova.py agent --dir 你的项目目录')
+                      setCopiedCmd(true)
+                      setTimeout(() => setCopiedCmd(false), 1500)
+                    }}
+                    className="shrink-0 text-dim transition-colors duration-150 hover:text-ink"
+                    title="复制命令"
+                    aria-label="复制命令"
+                  >
+                    {copiedCmd ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-2xs leading-relaxed text-faint">
+                  前置环境变量 NOVA_URL / NOVA_USERNAME / NOVA_PASSWORD 指向本站；
+                  启动后约 3 秒内这里会变成「已连接」。加 --yes 可跳过逐条确认。
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+        <button
           onClick={onNewChat}
-          className="hidden h-7 items-center gap-1 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink sm:flex"
+          className="hidden h-7 items-center gap-1 rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink lg:flex"
           title="新建对话 · Ctrl/⌘ N"
         >
           <Plus size={12} />
@@ -268,7 +384,7 @@ export function ChatHeader({
           title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.0.0'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
         >
           <StatusDot state={healthState} />
-          <span className="hidden lg:inline">{HEALTH_LABEL[healthState]}</span>
+          <span className="hidden xl:inline">{HEALTH_LABEL[healthState]}</span>
           <span className="hidden text-2xs text-faint xl:inline">
             {usage ? `${usage.today_tokens.toLocaleString()} tok` : '—'}
           </span>
@@ -283,5 +399,11 @@ export function ChatHeader({
         </button>
       </div>
     </header>
+    <TrajectoryDrawer
+      sessionId={sessionId}
+      open={trajectoryOpen}
+      onClose={() => setTrajectoryOpen(false)}
+    />
+    </>
   )
 }

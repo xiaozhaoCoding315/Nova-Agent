@@ -1,31 +1,8 @@
 import { ChevronDown, ChevronRight, CheckCircle2, Copy, Check, XCircle, Loader2, ExternalLink } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { highlightCode, languageFromPath } from '../lib/highlight'
-import type { StreamToolCard, ToolEvent } from '../lib/types'
-
-const TOOL_LABELS: Record<string, string> = {
-  run_code: '沙箱执行代码',
-  read_file: '读取文件',
-  list_files: '列出文件',
-  read_uploaded_file: '读取附件',
-  search_code: '检索代码',
-  impact_analysis: '影响分析',
-  diagnose_error: '解析报错',
-  write_files: '写入文件',
-  edit_file: '精确编辑文件',
-  grep: '正则搜索',
-  glob: '查找文件',
-  install_deps: '安装依赖',
-  json_tool: 'JSON/YAML 处理',
-  sql_tool: 'SQL 审阅',
-  fetch_url: '抓取网页',
-}
-
-export function toolLabel(name: string): string {
-  if (TOOL_LABELS[name]) return TOOL_LABELS[name]
-  if (name.startsWith('mcp__')) return `外部工具 ${name.split('__')[1] ?? name}`
-  return name
-}
+import type { StreamToolCard } from '../lib/types'
+import { toolLabel } from '../timeline/cards'
 
 export function ToolCard({
   card,
@@ -192,29 +169,4 @@ export function ToolCard({
       )}
     </div>
   )
-}
-
-/** Adapter that renders a persisted tool_event with the same collapsible card. */
-export function eventToCard(event: ToolEvent, index: number): StreamToolCard {
-  return {
-    call: {
-      id: `event-${index}`,
-      name: event.name,
-      args: event.args ?? {},
-      round: event.round ?? 0,
-    },
-    result: {
-      id: `event-${index}`,
-      name: event.name,
-      ok: event.ok,
-      ms: event.ms,
-      preview: event.error ? `错误：${event.error}` : (event.preview ?? ''),
-      stdout_tail: event.stdout_tail ?? null,
-      stderr_tail: event.stderr_tail ?? null,
-      content_preview: event.content_preview ?? null,
-    },
-    command: event.command ?? null,
-    exit_code: event.exit_code ?? null,
-    timedOut: Boolean(event.timed_out),
-  }
 }

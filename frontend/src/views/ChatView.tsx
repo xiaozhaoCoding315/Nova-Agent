@@ -6,12 +6,12 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { COMMANDS, type CommandName } from '../lib/commands'
-import { Composer } from '../components/Composer'
-import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
 import { ProjectDock } from '../components/ProjectDock'
 import { RefPanel } from '../components/RefPanel'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { Button, Modal, Spinner } from '../components/common'
+import { Composer } from '../composer/Composer'
+import { ChatTimeline } from '../timeline/ChatTimeline'
 import { RunPanel } from '../timeline/RunPanel'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
@@ -40,8 +40,9 @@ export function ChatView({
   onOpenWorkspace,
   onOpenRun,
   onOpenTasks,
+  onOpenLocalAgent,
 }: {
-  /** 终端工作台内嵌时隐藏自带的上下文顶栏（Task 4 由 ChatTimeline 取代）。 */
+  /** 终端工作台内嵌时不渲染旧上下文顶栏；轨迹与本机状态入口在 ChatHeader。 */
   embedded?: boolean
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
@@ -49,6 +50,8 @@ export function ChatView({
   onOpenRun?: (repoId?: string) => void
   /** 旧 Shell 回滚入口：仍打开独立任务页，Task 7 随 LegacyShell 删除。 */
   onOpenTasks?: (repoId?: string) => void
+  /** 新工作台：空状态的「连接你的电脑」直接打开 ChatHeader 的接入说明。 */
+  onOpenLocalAgent?: () => void
 }) {
   const {
     sessionId, messages, streaming, streamText, toolCards, streamEdits, plan, approvals, refs, error,
@@ -70,8 +73,6 @@ export function ChatView({
   const [dialogBusy, setDialogBusy] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const runOpen = useRun((state) => state.open)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const stickRef = useRef(true)
   const prevSessionId = useRef<string | null | undefined>(undefined)
   /** 本次会话 id 是新对话发送后由 meta 创建的，而不是用户从列表打开的历史会话。 */
   const sessionCreatedBySend = useRef(false)
@@ -80,17 +81,28 @@ export function ChatView({
 
   useEffect(() => {
     void refresh()
-    const pollLocal = () => void api.local.status().then(setLocalStatus).catch(() => {})
-    pollLocal()
-    const timer = setInterval(pollLocal, 20_000)
-    return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 旧 Shell 继续由本视图轮询本机状态；工作台内嵌时由 ChatHeader 负责。
   useEffect(() => {
-    const el = scrollRef.current
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight
-  }, [messages.length, streamText, toolCards.length])
+    if (embedded) return
+    let cancelled = false
+    const poll = () => {
+      api.local
+        .status()
+        .then((status) => {
+          if (!cancelled) setLocalStatus(status)
+        })
+        .catch(() => {})
+    }
+    poll()
+    const timer = setInterval(poll, 20_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [embedded])
 
   // 每个会话记住自己的 /fix 运行：切换会话时恢复或收起，新会话建立时迁移「new」记录。
   useEffect(() => {
@@ -145,12 +157,6 @@ export function ChatView({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [gitDialog, dialogBusy])
 
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (!el) return
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  }
-
   const readyRepos = repos.filter((repo) => repo.status === 'ready')
   const configured = llmSettings?.source === 'user'
   const provider = llmSettings?.providers.find((item) => item.id === llmSettings.provider)
@@ -173,6 +179,11 @@ export function ChatView({
     // 关闭面板会停轮询；重新打开时先取一次最新状态并恢复轮询。
     useRun.setState({ open: true })
     void useRun.getState().refresh()
+  }
+
+  const openLocalAgent = () => {
+    if (onOpenLocalAgent) onOpenLocalAgent()
+    else setLocalOpen(true)
   }
 
   /** 发送消息，并记录本次 sessionId 是否由这次「新对话发送」产生。 */
@@ -306,201 +317,188 @@ export function ChatView({
 
   const dialogRepoName = repos.find((repo) => repo.id === gitDialog?.repoId)?.name ?? '当前项目'
 
+  const emptyState = (
+    <div className="mx-auto max-w-2xl pt-10 text-center">
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-md border border-accentSoft/60 bg-accentSoft/20">
+        <Sparkles size={18} className="text-accent" />
+      </div>
+      <h2 className="mt-4 text-xl font-semibold">开始一段新的对话</h2>
+      <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-dim">
+        直接提问、贴报错，或让 Nova 在沙箱里真实跑代码验证；接入本机后还能直接操作你的电脑。
+      </p>
+
+      <div className="mt-7 grid gap-2.5 sm:grid-cols-3">
+        <div className="rounded-md border border-edge bg-panel/50 p-3.5 text-left">
+          <MessageSquare size={14} className="text-accent" />
+          <p className="mt-1.5 text-sm font-medium text-ink">直接提问</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-dim">无需任何配置，问代码、贴报错，回答带证据。</p>
+        </div>
+        <button
+          onClick={openLocalAgent}
+          className="rounded-md border border-edge bg-panel/50 p-3.5 text-left transition-colors duration-150 hover:border-accent/40"
+        >
+          <MonitorDown size={14} className="text-accent" />
+          <p className="mt-1.5 text-sm font-medium text-ink">连接你的电脑</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
+        </button>
+        <button
+          onClick={() => openRunPanel(selectedRepoIds[0])}
+          className="rounded-md border border-edge bg-panel/50 p-3.5 text-left transition-colors duration-150 hover:border-accent/40"
+        >
+          <Wrench size={14} className="text-accent" />
+          <p className="mt-1.5 text-sm font-medium text-ink">用 /fix 修 Bug</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-dim">输入 /fix + 问题描述：先复现失败，再修复到测试通过，最后等你批准。</p>
+        </button>
+      </div>
+
+      <p className="mt-8 font-mono text-2xs uppercase tracking-[0.12em] text-faint">试试这些问题</p>
+      <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
+        {EXAMPLES.map((example) => (
+          <button
+            key={example.title}
+            className="rounded-md border border-edge bg-panel/60 p-3 text-left transition-colors duration-150 hover:border-accent/40 hover:bg-panel"
+            onClick={() => sendPrompt(example.text, selectedRepoIds)}
+          >
+            <p className="text-sm font-medium text-ink">{example.title}</p>
+            <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-dim">{example.text}</p>
+          </button>
+        ))}
+      </div>
+      <p className="mt-5 text-2xs leading-relaxed text-faint">
+        要让 Nova 读懂某个代码项目？在{embedded ? '左' : '右'}侧「项目」面板导入；需要多步验证的修复输入 /fix 即可。
+      </p>
+    </div>
+  )
+
   return (
     <div className="flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col">
-        <div
-          className={clsx(
-            'flex shrink-0 items-center gap-2 border-b border-edge/80 bg-panel/25 px-4 py-2',
-            embedded && 'hidden',
-          )}
-        >
-          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-dim/70">上下文</span>
-          <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
-            {readyRepos.length === 0 ? (
-              <span className="truncate text-[11px] text-dim/80">还没有项目 — 把文件夹拖进对话，或在输入框输入 @</span>
-            ) : (
-              readyRepos.map((repo) => (
-                <button
-                  key={repo.id}
-                  onClick={() => toggleRepo(repo.id)}
-                  className={clsx(
-                    'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
-                    selectedRepoIds.includes(repo.id)
-                      ? 'border-accent/70 bg-accentSoft/45 text-ink'
-                      : 'border-edge/80 text-dim hover:border-accentSoft hover:text-ink',
-                  )}
-                  title={repo.source}
-                >
-                  {repo.name}
-                </button>
-              ))
-            )}
-          </div>
-          <div className="relative shrink-0">
+        {!embedded && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-edge/80 bg-panel/25 px-4 py-2">
+            <span className="shrink-0 text-2xs font-medium uppercase tracking-[0.12em] text-dim/70">上下文</span>
+            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-0.5">
+              {readyRepos.length === 0 ? (
+                <span className="truncate text-xs text-dim/80">还没有项目 — 把文件夹拖进对话，或在输入框输入 @</span>
+              ) : (
+                readyRepos.map((repo) => (
+                  <button
+                    key={repo.id}
+                    onClick={() => toggleRepo(repo.id)}
+                    className={clsx(
+                      'shrink-0 rounded-sm border px-2.5 py-0.5 text-xs transition-colors duration-150',
+                      selectedRepoIds.includes(repo.id)
+                        ? 'border-accent/70 bg-accentSoft/45 text-ink'
+                        : 'border-edge/80 text-dim hover:border-accentSoft hover:text-ink',
+                    )}
+                    title={repo.source}
+                  >
+                    {repo.name}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setLocalOpen((value) => !value)}
+                className={clsx(
+                  'flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors duration-150',
+                  localStatus?.connected
+                    ? 'border-ok/50 bg-ok/10 text-ok'
+                    : 'border-edge/80 text-dim hover:text-ink',
+                )}
+                title={localStatus?.connected ? '本机执行器已连接，Nova 可操作你的电脑' : '本机未连接：挂上 nova agent 后，Nova 可在你的电脑上执行命令、生成文件'}
+              >
+                <MonitorDown size={12} />
+                <span className="hidden sm:inline">{localStatus?.connected ? '本机已连接' : '本机未连接'}</span>
+              </button>
+              {localOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setLocalOpen(false)} />
+                  <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-md border border-edge bg-panel p-3 shadow-pop">
+                    <p className="text-sm font-semibold">把你的电脑接入 Nova</p>
+                    <p className="mt-1 text-xs leading-relaxed text-dim">
+                      在本机运行下面的命令（需要 backend 目录里的 nova.py），Nova 就能直接在你的电脑上
+                      执行命令、生成文件——每一步都先经你确认。
+                    </p>
+                    <div className="mt-2 flex items-center gap-1.5 rounded-sm border border-edge bg-base/60 px-2.5 py-2">
+                      <code className="min-w-0 flex-1 truncate font-mono text-2xs text-ink">
+                        python nova.py agent --dir 你的项目目录
+                      </code>
+                      <button
+                        onClick={() => {
+                          void navigator.clipboard.writeText('python nova.py agent --dir 你的项目目录')
+                          setCopiedCmd(true)
+                          setTimeout(() => setCopiedCmd(false), 1500)
+                        }}
+                        className="shrink-0 text-dim transition-colors duration-150 hover:text-ink"
+                        title="复制命令"
+                        aria-label="复制命令"
+                      >
+                        {copiedCmd ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <p className="mt-1.5 text-2xs leading-relaxed text-faint">
+                      前置环境变量 NOVA_URL / NOVA_USERNAME / NOVA_PASSWORD 指向本站；
+                      启动后约 3 秒内这里会变成「已连接」。加 --yes 可跳过逐条确认。
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
             <button
-              onClick={() => setLocalOpen((value) => !value)}
+              onClick={() => setTrajectoryOpen(true)}
+              disabled={!sessionId}
+              className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge/80 px-2 text-xs text-dim transition-colors duration-150 hover:text-ink disabled:opacity-40"
+              title="查看本会话完整轨迹"
+            >
+              <Activity size={12} /> 轨迹
+            </button>
+            <button
+              onClick={() => onOpenWorkspace(selectedRepoIds[0])}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge/80 text-dim transition-colors duration-150 hover:text-ink"
+              title="打开完整工作区"
+              aria-label="打开完整工作区"
+            >
+              <FolderTree size={13} />
+            </button>
+            <button
+              onClick={() => setDockOpen((value) => !value)}
               className={clsx(
-                'flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[11px] transition-colors',
-                localStatus?.connected
-                  ? 'border-ok/50 bg-ok/10 text-ok'
+                'hidden h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors duration-150 lg:flex',
+                dockOpen
+                  ? 'border-accent/50 bg-accentSoft/25 text-accent'
                   : 'border-edge/80 text-dim hover:text-ink',
               )}
-              title={localStatus?.connected ? '本机执行器已连接，Nova 可操作你的电脑' : '本机未连接：挂上 nova agent 后，Nova 可在你的电脑上执行命令、生成文件'}
+              title={dockOpen ? '收起右侧面板' : '展开项目与引用面板'}
+              aria-label="切换右侧面板"
             >
-              <MonitorDown size={12} />
-              <span className="hidden sm:inline">{localStatus?.connected ? '本机已连接' : '本机未连接'}</span>
+              <PanelRight size={13} />
             </button>
-            {localOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setLocalOpen(false)} />
-                <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-xl border border-edge bg-panel p-3 shadow-xl">
-                  <p className="text-[12.5px] font-semibold">把你的电脑接入 Nova</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-dim">
-                    在本机运行下面的命令（需要 backend 目录里的 nova.py），Nova 就能直接在你的电脑上
-                    执行命令、生成文件——每一步都先经你确认。
-                  </p>
-                  <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-edge bg-base/60 px-2.5 py-2">
-                    <code className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink">
-                      python nova.py agent --dir 你的项目目录
-                    </code>
-                    <button
-                      onClick={() => {
-                        void navigator.clipboard.writeText('python nova.py agent --dir 你的项目目录')
-                        setCopiedCmd(true)
-                        setTimeout(() => setCopiedCmd(false), 1500)
-                      }}
-                      className="shrink-0 text-dim hover:text-ink"
-                      title="复制命令"
-                      aria-label="复制命令"
-                    >
-                      {copiedCmd ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
-                    </button>
-                  </div>
-                  <p className="mt-1.5 text-[10px] leading-relaxed text-dim/70">
-                    前置环境变量 NOVA_URL / NOVA_USERNAME / NOVA_PASSWORD 指向本站；
-                    启动后约 3 秒内这里会变成「已连接」。加 --yes 可跳过逐条确认。
-                  </p>
-                </div>
-              </>
-            )}
           </div>
-          <button
-            onClick={() => setTrajectoryOpen(true)}
-            disabled={!sessionId}
-            className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-edge/80 px-2 text-[11px] text-dim transition-colors hover:text-ink disabled:opacity-40"
-            title="查看本会话完整轨迹"
-          >
-            <Activity size={12} /> 轨迹
-          </button>
-          <button
-            onClick={() => onOpenWorkspace(selectedRepoIds[0])}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-edge/80 text-dim transition-colors hover:text-ink"
-            title="打开完整工作区"
-            aria-label="打开完整工作区"
-          >
-            <FolderTree size={13} />
-          </button>
-          <button
-            onClick={() => setDockOpen((value) => !value)}
-            className={clsx(
-              'hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors lg:flex',
-              dockOpen
-                ? 'border-accent/50 bg-accentSoft/25 text-accent'
-                : 'border-edge/80 text-dim hover:text-ink',
-            )}
-            title={dockOpen ? '收起右侧面板' : '展开项目与引用面板'}
-            aria-label="切换右侧面板"
-          >
-            <PanelRight size={13} />
-          </button>
-        </div>
+        )}
 
-        <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-5">
-          <div className="mx-auto max-w-5xl space-y-6">
-            {messages.length === 0 && !streaming && (
-              <div className="mx-auto max-w-2xl pt-10 text-center">
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-accentSoft/60 bg-accentSoft/20">
-                  <Sparkles size={18} className="text-accent" />
-                </div>
-                <h2 className="mt-4 text-[18px] font-semibold">开始一段新的对话</h2>
-                <p className="mx-auto mt-1.5 max-w-md text-[12.5px] leading-relaxed text-dim">
-                  直接提问、贴报错，或让 Nova 在沙箱里真实跑代码验证；接入本机后还能直接操作你的电脑。
-                </p>
-
-                <div className="mt-7 grid gap-2.5 sm:grid-cols-3">
-                  <div className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left">
-                    <MessageSquare size={14} className="text-accent" />
-                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">直接提问</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">无需任何配置，问代码、贴报错，回答带证据。</p>
-                  </div>
-                  <button
-                    onClick={() => setLocalOpen(true)}
-                    className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left transition-colors hover:border-accentSoft"
-                  >
-                    <MonitorDown size={14} className="text-accent" />
-                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">连接你的电脑</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
-                  </button>
-                  <button
-                    onClick={() => openRunPanel(selectedRepoIds[0])}
-                    className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left transition-colors hover:border-accentSoft"
-                  >
-                    <Wrench size={14} className="text-accent" />
-                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">用 /fix 修 Bug</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">输入 /fix + 问题描述：先复现失败，再修复到测试通过，最后等你批准。</p>
-                  </button>
-                </div>
-
-                <p className="mt-8 text-[11px] uppercase tracking-[0.12em] text-dim/60">试试这些问题</p>
-                <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
-                  {EXAMPLES.map((example) => (
-                    <button
-                      key={example.title}
-                      className="rounded-xl border border-edge bg-panel/60 p-3 text-left transition-colors hover:border-accentSoft hover:bg-panel"
-                      onClick={() => sendPrompt(example.text, selectedRepoIds)}
-                    >
-                      <p className="text-[12.5px] font-medium text-ink">{example.title}</p>
-                      <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-dim">{example.text}</p>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-5 text-[10.5px] leading-relaxed text-dim/60">
-                  要让 Nova 读懂某个代码项目？在右侧「项目」面板导入；需要多步验证的修复输入 /fix 即可。
-                </p>
-              </div>
-            )}
-
-            {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                onOpenFile={(path) => onOpenWorkspace(selectedRepoIds[0], path)}
-              />
-            ))}
-            {streaming && (
-              <StreamingBubble
-                text={streamText}
-                toolCards={toolCards}
-                editProposals={streamEdits}
-                plan={plan}
-                approvals={approvals}
-                usage={streamUsage}
-                onCancelTool={(toolCallId) => {
-                  if (!sessionId) return
-                  void api.sessions.cancelTool(sessionId, toolCallId).catch(() => {})
-                }}
-                onResolveApproval={(toolCallId, approved) => {
-                  void useChat.getState().resolveApproval(toolCallId, approved)
-                }}
-                onOpenFile={(path) => onOpenWorkspace(selectedRepoIds[0], path)}
-              />
-            )}
-          </div>
-        </div>
+        <ChatTimeline
+          messages={messages}
+          streaming={streaming}
+          streamText={streamText}
+          toolCards={toolCards}
+          streamEdits={streamEdits}
+          plan={plan}
+          approvals={approvals}
+          usage={streamUsage}
+          onCancelTool={(toolCallId) => {
+            if (!sessionId) return
+            void api.sessions.cancelTool(sessionId, toolCallId).catch(() => {})
+          }}
+          onResolveApproval={(toolCallId, approved) => {
+            void useChat.getState().resolveApproval(toolCallId, approved)
+          }}
+          onOpenFile={(path) => onOpenWorkspace(selectedRepoIds[0], path)}
+          emptyState={emptyState}
+        />
 
         {turnNotice && (
-          <div className="mx-auto mb-1 flex w-full max-w-5xl items-center gap-2 px-4 text-[11.5px]">
+          <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-xs">
             <span className={clsx('flex-1', turnNotice.kind === 'incomplete' ? 'text-warn' : 'text-dim')}>
               {turnNotice.message}
             </span>
@@ -510,7 +508,7 @@ export function ChatView({
                   useChat.setState({ turnNotice: null })
                   sendPrompt('请从中断处继续完成刚才的任务，完成所有步骤后给出总结。', selectedRepoIds)
                 }}
-                className="shrink-0 rounded-lg border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accentSoft/40"
+                className="shrink-0 rounded-sm border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/40"
               >
                 继续任务
               </button>
@@ -519,7 +517,7 @@ export function ChatView({
         )}
 
         {error && (
-          <div className="mx-auto mb-1 flex w-full max-w-5xl items-center gap-2 px-4 text-[12px] text-err">
+          <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-xs text-err">
             <AlertCircle size={13} />
             <span className="flex-1">{error}</span>
             <button onClick={clearError} className="text-dim hover:text-ink" aria-label="关闭">
@@ -531,7 +529,7 @@ export function ChatView({
         {commandNotice && (
           <div
             className={clsx(
-              'mx-auto mb-1 flex w-full max-w-5xl items-start gap-2 px-4 text-[11.5px]',
+              'mx-auto mb-1 flex w-full max-w-4xl items-start gap-2 px-4 text-xs',
               commandNotice.tone === 'error' ? 'text-err' : 'text-dim',
             )}
             role="status"
@@ -586,13 +584,13 @@ export function ChatView({
         </>
       )}
 
-      {dockOpen && !runOpen && (
+      {!embedded && dockOpen && !runOpen && (
         <aside className="hidden w-[380px] shrink-0 flex-col border-l border-edge/80 bg-panel/25 lg:flex">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-edge/70 px-2">
             <button
               onClick={() => setDockTab('project')}
               className={clsx(
-                'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] transition-colors',
+                'flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors duration-150',
                 dockTab === 'project' ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:text-ink',
               )}
             >
@@ -601,18 +599,18 @@ export function ChatView({
             <button
               onClick={() => setDockTab('refs')}
               className={clsx(
-                'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] transition-colors',
+                'flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors duration-150',
                 dockTab === 'refs' ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:text-ink',
               )}
             >
               <Sparkles size={12} /> 引用
               {refs.length > 0 && (
-                <span className="rounded bg-raised px-1 text-[9.5px] text-dim">{refs.length}</span>
+                <span className="rounded-sm bg-raised px-1 text-2xs text-dim">{refs.length}</span>
               )}
             </button>
             <button
               onClick={() => setDockOpen(false)}
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-dim/60 transition-colors hover:bg-raised hover:text-ink"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-dim/60 transition-colors duration-150 hover:bg-raised hover:text-ink"
               title="收起右侧面板"
               aria-label="收起右侧面板"
             >
@@ -634,11 +632,13 @@ export function ChatView({
         </aside>
       )}
 
-      <TrajectoryDrawer
-        sessionId={sessionId}
-        open={trajectoryOpen}
-        onClose={() => setTrajectoryOpen(false)}
-      />
+      {!embedded && (
+        <TrajectoryDrawer
+          sessionId={sessionId}
+          open={trajectoryOpen}
+          onClose={() => setTrajectoryOpen(false)}
+        />
+      )}
 
       <Modal
         open={gitDialog !== null}
@@ -648,10 +648,10 @@ export function ChatView({
       >
         {gitDialog?.kind === 'init' ? (
           <div className="space-y-3">
-            <p className="text-[12.5px] leading-relaxed text-dim">
+            <p className="text-sm leading-relaxed text-dim">
               将为「{dialogRepoName}」初始化 Git 仓库并创建首个快照提交，之后每次写入都能回滚。
             </p>
-            {dialogError && <p className="text-[12px] text-err">{dialogError}</p>}
+            {dialogError && <p className="text-xs text-err">{dialogError}</p>}
             <div className="flex justify-end gap-2">
               <Button onClick={closeGitDialog} disabled={dialogBusy}>取消</Button>
               <Button variant="primary" onClick={() => void confirmGitDialog()} disabled={dialogBusy}>
@@ -661,7 +661,7 @@ export function ChatView({
           </div>
         ) : (
           <div className="space-y-3">
-            <label className="block text-[12px] text-dim" htmlFor="nova-commit-message">
+            <label className="block text-xs text-dim" htmlFor="nova-commit-message">
               提交消息 <span className="text-faint">（{dialogRepoName} 的全部改动）</span>
             </label>
             <input
@@ -674,10 +674,10 @@ export function ChatView({
                 void confirmGitDialog()
               }}
               spellCheck={false}
-              className="w-full rounded-md border border-edge bg-base px-2.5 py-1.5 font-mono text-[12px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50"
+              className="w-full rounded-md border border-edge bg-base px-2.5 py-1.5 font-mono text-sm text-ink outline-none transition-colors duration-150 placeholder:text-faint focus:border-accent/50"
               placeholder="chore: update"
             />
-            {dialogError && <p className="text-[12px] text-err">{dialogError}</p>}
+            {dialogError && <p className="text-xs text-err">{dialogError}</p>}
             <div className="flex justify-end gap-2">
               <Button onClick={closeGitDialog} disabled={dialogBusy}>取消</Button>
               <Button
@@ -691,7 +691,6 @@ export function ChatView({
           </div>
         )}
       </Modal>
-
     </div>
   )
 }
