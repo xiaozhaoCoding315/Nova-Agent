@@ -16,6 +16,29 @@
 
 ## 2. 安装与启动
 
+### 方式一：桌面安装包（推荐）
+
+下载 `Nova-Agent-Setup-<版本>.exe` 安装并启动，首次打开选择「在本机运行」。安装包自带：
+
+- 打包后的后端 `nova-backend.exe`（PyInstaller onedir，含前端静态文件与内嵌 PostgreSQL）
+- 桌面壳（Electron）：启动后端、等待 `{"event":"listening"}` 后打开工作台；退出时关闭 stdin 让后端停止 PostgreSQL
+
+不需要安装 Python、Node 或 Docker。后端的配置与数据仍写 `%APPDATA%\Nova`，与命令行方式共用；
+桌面壳只把「运行方式」和服务器地址写在自己的用户配置里。「运行」菜单可随时切回连接服务器。
+
+> 本机运行不提供容器隔离，Agent 执行的命令会直接影响这台电脑。首次启动初始化数据库可能需要几十秒。
+
+自建安装包：
+
+```powershell
+python scripts\build_desktop.py        # 前端 + PyInstaller 后端 + NSIS 安装包
+```
+
+分步构建可用 `--skip-frontend` / `--skip-backend` / `--skip-installer`；后端产物在
+`backend/dist/nova-backend/`，可直接运行 `nova-backend.exe local` 冒烟。
+
+### 方式二：源码运行
+
 ```powershell
 cd backend
 py -3.12 -m venv .venv      # 没有 py launcher 时改用：python -m venv .venv

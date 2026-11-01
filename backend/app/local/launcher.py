@@ -19,6 +19,7 @@ run stale-server cleanup against the first instance's postmaster.
 """
 import json
 import os
+import sys
 from pathlib import Path
 
 import structlog
@@ -132,13 +133,61 @@ class InstanceLock:
 
 
 def _bundled_pgserver_bin_dir() -> Path | None:
-    """PostgreSQL binaries shipped inside the installed pgserver wheel."""
+    """PostgreSQL binaries shipped inside the installed pgserver wheel.
+
+    PyInstaller keeps package data under ``_MEIPASS``; check that location
+    first when frozen so a relocated module path cannot break local startup.
+    """
     try:
         import pgserver
     except ImportError:
         return None
-    bin_dir = Path(pgserver.__file__).parent / "pginstall" / "bin"
-    return bin_dir if bin_dir.is_dir() else None
+    module_file = getattr(pgserver, "__file__", None)
+    candidates: list[Path] = []
+    if module_file:
+        candidates.append(Path(module_file).parent / "pginstall" / "bin")
+    if getattr(sys, "frozen", False):
+        candidates.insert(
+            0,
+            Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+            / "pgserver"
+            / "pginstall"
+            / "bin",
+        )
+    for bin_dir in candidates:
+        if bin_dir.is_dir():
+            return bin_dir
+    return None
+
+
+def _watch_parent(server, stream=None):
+    """Stop uvicorn when the desktop shell closes our stdin pipe.
+
+    Electron keeps the child's stdin pipe open for the lifetime of the app.
+    When it quits (or crashes), the read hits EOF and we ask uvicorn to exit
+    through its normal shutdown path, so the ``finally`` block still stops
+    PostgreSQL instead of leaving an orphaned postmaster behind.
+    """
+    if os.getenv("NOVA_PARENT_WATCH") != "1":
+        return None
+    import threading
+
+    source = stream if stream is not None else getattr(sys.stdin, "buffer", sys.stdin)
+    if source is None:
+        return None
+
+    def watch() -> None:
+        try:
+            while source.read(1):
+                pass
+        except Exception:  # noqa: BLE001 - a closed pipe is the normal path
+            pass
+        logger.info("local_parent_closed")
+        server.should_exit = True
+
+    thread = threading.Thread(target=watch, name="nova-parent-watch", daemon=True)
+    thread.start()
+    return thread
 
 
 def _pg_binaries_present(bin_dir: Path) -> bool:
@@ -305,6 +354,7 @@ def run(
             listen_port = port or free_port()
             app = (app_factory or _load_app)()
             server = (server_factory or _uvicorn_server)(app, host, listen_port)
+            _watch_parent(server)
             print(
                 json.dumps(
                     {"event": "listening", "url": f"http://{host}:{listen_port}"},

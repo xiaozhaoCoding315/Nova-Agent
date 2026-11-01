@@ -44,4 +44,5 @@ data/
 # Desktop build artifacts
 desktop/out/
 desktop/release/
+backend/build/
 deploy/*.log

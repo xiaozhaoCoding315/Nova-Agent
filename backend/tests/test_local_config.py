@@ -67,6 +67,20 @@ def test_runtime_env_contains_no_secret_in_key_names_only(tmp_path):
     assert "ZHIPU_API_KEY" not in env
 
 
+def test_runtime_env_points_frozen_build_at_bundled_frontend(tmp_path, monkeypatch):
+    cfg = load_or_create(tmp_path / "nova-config.json")
+    monkeypatch.setattr("app.local.config.sys.frozen", True, raising=False)
+    monkeypatch.setattr("app.local.config.sys._MEIPASS", str(tmp_path / "bundle"), raising=False)
+    env = runtime_env(cfg)
+    assert env["FRONTEND_DIST"].replace("\\", "/").endswith("bundle/frontend_dist")
+
+
+def test_runtime_env_leaves_frontend_dist_to_source_tree_when_not_frozen(tmp_path, monkeypatch):
+    cfg = load_or_create(tmp_path / "nova-config.json")
+    monkeypatch.delattr("app.local.config.sys.frozen", raising=False)
+    assert "FRONTEND_DIST" not in runtime_env(cfg)
+
+
 def test_redacted_config_removes_secret(tmp_path):
     cfg = load_or_create(tmp_path / "nova-config.json")
     safe = redacted_config(cfg)

@@ -17,7 +17,7 @@ from app.core.logging_setup import setup_logging
 
 logger = structlog.get_logger()
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 _CLEANUP_INTERVAL_S = 3600
 
 
@@ -173,7 +173,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 # ---------- 桌面客户端安装包下载 ----------
-# 运维把安装包（如 Nova-Agent-Setup-2.0.0.exe）放进 DOWNLOADS_DIR 后，用户即可在
+# 运维把安装包（如 Nova-Agent-Setup-2.1.0.exe）放进 DOWNLOADS_DIR 后，用户即可在
 # 登录页点「下载桌面客户端」或直接访问 /downloads 获取；无需认证。
 _DOWNLOADS_DIR = Path(settings.downloads_dir)
 _DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -304,12 +304,14 @@ async def downloads_page() -> HTMLResponse:
         "<a href=\"/\">返回工作台 →</a></div>"
         "<p class=\"eyebrow\">Desktop client</p>"
         "<h1>在桌面打开 Nova Agent</h1>"
-        "<p class=\"sub\">安装包是一个轻量桌面外壳：登录后连接本服务器，仓库、会话与执行结果仍保存在服务器上。</p>"
+        "<p class=\"sub\">安装包有两种用法：在本机运行（自带后端与数据库，数据留在你的电脑），"
+        "或连接本服务器（仓库、会话与执行结果保存在服务器上）。</p>"
         "<p class=\"note\">也可以不安装任何东西，直接在浏览器里使用相同的工作台。"
-        "安装包更新后重新下载覆盖安装即可，账号与会话不受影响。</p>"
+        "安装包更新后重新下载覆盖安装即可，数据与会话不受影响。"
+        "本机运行没有容器隔离，Agent 执行的命令会直接影响那台电脑。</p>"
         f"{body}"
         "<div class=\"foot\"><a href=\"/\">在浏览器中打开</a>"
-        "<span>安装后填写本服务器地址即可登录。</span></div>"
+        "<span>安装后选择「在本机运行」或填写本服务器地址。</span></div>"
         "</div></body></html>"
     )
 

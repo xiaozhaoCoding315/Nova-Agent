@@ -1,3 +1,4 @@
+import io
 import os
 import types
 from pathlib import Path
@@ -62,6 +63,25 @@ class _FakeServer:
 
     def run(self):
         pass
+
+
+def test_watch_parent_stops_server_when_stdin_closes(monkeypatch):
+    monkeypatch.setenv("NOVA_PARENT_WATCH", "1")
+    server = types.SimpleNamespace(should_exit=False)
+
+    thread = launcher._watch_parent(server, stream=io.BytesIO(b""))
+
+    assert thread is not None
+    thread.join(timeout=2)
+    assert server.should_exit is True
+
+
+def test_watch_parent_is_opt_in(monkeypatch):
+    monkeypatch.delenv("NOVA_PARENT_WATCH", raising=False)
+    server = types.SimpleNamespace(should_exit=False)
+
+    assert launcher._watch_parent(server, stream=io.BytesIO(b"")) is None
+    assert server.should_exit is False
 
 
 @pytest.fixture(autouse=True)

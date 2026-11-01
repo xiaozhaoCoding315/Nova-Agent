@@ -1,8 +1,8 @@
 {
   "name": "nova-desktop",
   "productName": "Nova Agent",
-  "version": "2.0.0",
-  "description": "Nova Agent 桌面客户端：连接你的自托管 Nova 服务器",
+  "version": "2.1.0",
+  "description": "Nova Agent 桌面客户端：在本机运行，或连接你的自托管 Nova 服务器",
   "main": "main.js",
   "author": "Nova Agent",
   "license": "MIT",
@@ -29,8 +29,18 @@
       "main.js",
       "preload.js",
       "first-run.html",
+      "launch.html",
       "icon.png",
       "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/nova-backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": [

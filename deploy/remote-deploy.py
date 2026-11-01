@@ -7,6 +7,7 @@
   python deploy/remote-deploy.py build                                   # 后台启动 docker compose build
   python deploy/remote-deploy.py status                                  # 查看构建/服务状态
   python deploy/remote-deploy.py logs                                    # 看构建日志尾部
+  python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.0.exe
 
 可选参数：--host（默认 60.205.0.224）、--user（默认 root）、--password、
 --remote-dir（默认 /opt/nova-agent）、--admin-password / --demo-password（缺省自动生成）、
@@ -18,14 +19,15 @@ import secrets
 import string
 import sys
 import tarfile
-import time
+from pathlib import Path
 
 import paramiko
 
 EXCLUDE_DIRS = {
     ".git", ".claude", ".superpowers", ".github", ".idea", ".vscode",
-    "node_modules", "dist", "__pycache__", ".pytest_cache", ".ruff_cache",
+    "node_modules", "dist", "build", "__pycache__", ".pytest_cache", ".ruff_cache",
     "logs", "data", "desktop", "out", "release", ".vite",
+    ".venv", "venv",
 }
 
 
@@ -126,11 +128,15 @@ def run(ssh: paramiko.SSHClient, cmd: str, timeout: int = 120) -> tuple[int, str
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=["backup", "upload", "build", "status", "logs", "health"])
+    parser.add_argument(
+        "phase",
+        choices=["backup", "upload", "build", "status", "logs", "health", "installer"],
+    )
     parser.add_argument("--host", default="60.205.0.224")
     parser.add_argument("--user", default="root")
     parser.add_argument("--password", default=None, help="SSH 密码；省略时使用密钥/agent 认证")
     parser.add_argument("--remote-dir", default="/opt/nova-agent")
+    parser.add_argument("--file", default="", help="installer 阶段：本地安装包路径")
     parser.add_argument("--dashscope-key", default="")
     parser.add_argument("--llm-provider", choices=["dashscope", "deepseek"], default="dashscope")
     parser.add_argument("--admin-password", default="")
@@ -234,6 +240,32 @@ def main() -> int:
     elif args.phase == "logs":
         code, out = run(ssh, f"tail -n 60 {args.remote_dir}/build.log 2>/dev/null || echo 暂无日志")
         print(out.strip())
+
+    elif args.phase == "installer":
+        source = Path(args.file).expanduser() if args.file else None
+        if source is None or not source.is_file():
+            print("!! installer 阶段需要 --file 指向本地安装包", file=sys.stderr)
+            ssh.close()
+            return 1
+        remote_dir = f"{args.remote_dir}/data/downloads"
+        remote_path = f"{remote_dir}/{source.name}"
+        run(ssh, f"mkdir -p {remote_dir}")
+        print(f"==> 上传 {source}（{source.stat().st_size / 1048576:.1f} MB）")
+        sftp = ssh.open_sftp()
+        try:
+            sftp.put(str(source), remote_path)
+        finally:
+            sftp.close()
+        code, out = run(ssh, f"ls -lh {remote_path}")
+        print(out.strip())
+        code, out = run(
+            ssh,
+            "curl -s -o /dev/null -w '%{http_code}' "
+            f"http://127.0.0.1:8000/downloads/files/{source.name}",
+        )
+        print(f"下载接口 HTTP {out.strip()}")
+        code, out = run(ssh, "curl -s http://127.0.0.1:8000/downloads | grep -c 'item'")
+        print(f"下载页条目数：{out.strip()}")
 
     elif args.phase == "health":
         code, out = run(ssh, "curl -s http://127.0.0.1:8000/api/v1/status/health | head -c 600")

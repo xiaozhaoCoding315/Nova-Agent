@@ -20,7 +20,7 @@ from app.models.schemas import HealthOut, MetricsOut, ModeFeaturesOut, ModeOut, 
 
 router = APIRouter()
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 _STARTED_AT = time.time()
 
 CHECK_TIMEOUT = 5

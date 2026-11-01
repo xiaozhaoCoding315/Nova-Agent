@@ -163,14 +163,39 @@ npm run dev                   # http://localhost:5173
 
 ## 桌面客户端
 
-Nova 提供「装到电脑上」的方式，数据都保存在服务器：
+桌面安装包内置完整后端与 PostgreSQL，首次启动二选一：
 
-1. **桌面安装包（Electron 壳）**：`desktop/` 目录用 `npm install && npm run dist:win` 打包出
-   `Nova-Agent-Setup-<版本>.exe`（macOS / Linux 同理）。把安装包放进服务器 `data/downloads/`
-   目录，用户即可从登录页「下载桌面客户端」或 `http://<服务器>:8000/downloads` 下载；
-   安装后首次启动填服务器地址即可使用。也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
-   打包版可设置 `NOVA_UPDATE_URL`（generic 更新目录，需托管 `latest.yml` 与安装包）启用自动更新；
-   代码签名/公证仍需自备证书。
+- **在本机运行（推荐）**：不依赖服务器，项目、会话与密钥都保存在本机。安装包自带
+  PyInstaller 打包的后端（`nova-backend`），由桌面壳启动在 `127.0.0.1` 的随机端口上。
+- **连接服务器**：连接一台已部署的 Nova，本机只做界面，执行与数据都在服务器上。
+
+> 本机运行**没有容器隔离**：Agent 执行的命令会直接影响这台电脑，只应在信任的项目里使用。
+> 本地运行时同样无遥测，只把检索到的代码/文件上下文发给你配置的 LLM 厂商。
+
+### 构建安装包
+
+```powershell
+python -m venv backend/.venv
+backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt `
+    -r backend\requirements-local.txt "pyinstaller>=6.11,<7"
+
+python scripts\build_desktop.py        # 前端构建 + PyInstaller 后端 + NSIS 安装包
+```
+
+产物是 `desktop/out/Nova-Agent-Setup-<版本>.exe`。构建脚本也接受
+`--skip-frontend` / `--skip-backend` / `--skip-installer`，便于分步重跑。后端产物在
+`backend/dist/nova-backend/`，可单独运行 `nova-backend.exe local` 做冒烟测试。
+
+把安装包放进服务器 `data/downloads/` 目录，用户即可从登录页「下载桌面客户端」或
+`http://<服务器>:8000/downloads` 下载：
+
+```bash
+python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.0.exe
+```
+
+也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
+打包版可设置 `NOVA_UPDATE_URL`（generic 更新目录，需托管 `latest.yml` 与安装包）启用自动更新；
+代码签名/公证仍需自备证书。
 
 ## 配置项（.env 关键项）
 
@@ -349,7 +374,13 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 
 ## 本地模式（Windows 11）
 
-同一套后端可用 `python nova.py local` 在本机运行（启动器会设置 `NOVA_MODE=local`）：内嵌 PostgreSQL（默认 `pgserver`，可回退系统 `pg_ctl`）、固定本地用户、直接打开本地文件夹、无容器 HostExecutor、无 Qdrant 的关键词/符号检索、单 worker 后台任务。
+**桌面安装包**是最省事的方式：下载 `Nova-Agent-Setup-<版本>.exe`，首次启动选「在本机运行」，
+后端、PostgreSQL 与前端都由安装包携带，不需要 Python 或 Docker。数据目录、日志与切换服务器
+都在桌面壳的「运行」菜单里。
+
+也可以从源码运行同一套本地模式（启动器会设置 `NOVA_MODE=local`）：内嵌 PostgreSQL（默认
+`pgserver`，可回退系统 `pg_ctl`）、固定本地用户、直接打开本地文件夹、无容器 HostExecutor、
+无 Qdrant 的关键词/符号检索、单 worker 后台任务。
 
 ```powershell
 cd frontend && npm ci && npm run build

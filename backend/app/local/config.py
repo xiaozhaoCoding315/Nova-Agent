@@ -89,7 +89,7 @@ def load_or_create(path: str | Path | None = None) -> dict:
 def runtime_env(config: dict, *, data_dir: Path | None = None) -> dict[str, str]:
     data = Path(data_dir or config.get("dataDir") or "").expanduser().resolve()
     backend = str(config.get("pgBackend") or "pgserver")
-    return {
+    env = {
         "NOVA_MODE": "local",
         "NOVA_DATA_DIR": str(data),
         "SECRET_KEY": str(config["secretKey"]),
@@ -115,6 +115,12 @@ def runtime_env(config: dict, *, data_dir: Path | None = None) -> dict[str, str]
         "JOB_RUNNER_ENABLED": "true",
         "APP_ENV": "local",
     }
+    if getattr(sys, "frozen", False):
+        # A PyInstaller build has no ``frontend/dist`` next to the source tree;
+        # the spec ships it under the bundle root instead.
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        env["FRONTEND_DIST"] = str(bundle_root / "frontend_dist")
+    return env
 
 
 def redacted_config(config: dict) -> dict:

@@ -325,7 +325,7 @@ export function LoginView() {
             </div>
 
             <p className="mt-4 font-mono text-2xs leading-5 text-faint">
-              Windows 安装包 · 连接你自己的 Nova 环境 · 无遥测
+              Windows 安装包 · 本机运行或连接服务器 · 无遥测
             </p>
             {guestError && (
               <p className="mt-3 text-sm text-err" role="alert">{guestError}</p>
@@ -364,8 +364,8 @@ export function LoginView() {
             <RunMode
               kind="desktop"
               title="桌面客户端"
-              text="安装到本机，连接你自己的 Nova 服务器。下载、导出与会话都在原生窗口里完成。"
-              points={['原生窗口，不经过第三方', '记住服务器地址并直连', '下载文件落到你选择的目录', 'Windows 安装包；macOS / Linux 构建中']}
+              text="安装到本机后可以直接在本机运行（自带后端与数据库），也可以连接你自己的 Nova 服务器。"
+              points={['本机运行，数据不离开这台电脑', '或连接已有服务器，共用账号与会话', '下载文件落到你选择的目录', 'Windows 安装包；macOS / Linux 构建中']}
               action={(
                 <a href="/downloads" className={primaryAction}>
                   <MonitorDown size={15} />
@@ -420,7 +420,7 @@ export function LoginView() {
             {healthLabel}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono">v{health?.version ?? '2.0.0'}</span>
+          <span className="font-mono">v{health?.version ?? '2.1.0'}</span>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
           <span className="ml-auto hidden font-mono uppercase tracking-[0.16em] md:inline">
