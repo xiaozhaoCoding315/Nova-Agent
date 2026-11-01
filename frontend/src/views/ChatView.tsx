@@ -1,15 +1,22 @@
 import clsx from 'clsx'
-import { Activity, AlertCircle, Copy, Check, FolderTree, ListTodo, MessageSquare, MonitorDown, PanelRight, Sparkles, X } from 'lucide-react'
+import {
+  Activity, AlertCircle, Check, Copy, FolderTree, MessageSquare, MonitorDown, PanelRight,
+  Sparkles, Wrench, X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api'
+import { api, ApiError } from '../lib/api'
+import { COMMANDS, type CommandName } from '../lib/commands'
 import { Composer } from '../components/Composer'
 import { MessageBubble, StreamingBubble } from '../components/MessageBubble'
 import { ProjectDock } from '../components/ProjectDock'
 import { RefPanel } from '../components/RefPanel'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
+import { Button, Modal, Spinner } from '../components/common'
+import { RunPanel } from '../timeline/RunPanel'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useRepos } from '../stores/repos'
+import { readStoredRun, useRun, writeStoredRun } from '../stores/run'
 import type { LocalExecStatus } from '../lib/types'
 
 const EXAMPLES = [
@@ -31,13 +38,17 @@ export function ChatView({
   embedded = false,
   onOpenSettings,
   onOpenWorkspace,
+  onOpenRun,
   onOpenTasks,
 }: {
   /** 终端工作台内嵌时隐藏自带的上下文顶栏（Task 4 由 ChatTimeline 取代）。 */
   embedded?: boolean
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
-  onOpenTasks: (repoId?: string) => void
+  /** 新工作台：打开右栏运行面板（Task 5 迁移到 ContextRail）。 */
+  onOpenRun?: (repoId?: string) => void
+  /** 旧 Shell 回滚入口：仍打开独立任务页，Task 7 随 LegacyShell 删除。 */
+  onOpenTasks?: (repoId?: string) => void
 }) {
   const {
     sessionId, messages, streaming, streamText, toolCards, streamEdits, plan, approvals, refs, error,
@@ -53,8 +64,15 @@ export function ChatView({
   const [localOpen, setLocalOpen] = useState(false)
   const [localStatus, setLocalStatus] = useState<LocalExecStatus | null>(null)
   const [copiedCmd, setCopiedCmd] = useState(false)
+  const [commandNotice, setCommandNotice] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
+  const [gitDialog, setGitDialog] = useState<{ kind: 'commit' | 'init'; repoId: string } | null>(null)
+  const [commitMessage, setCommitMessage] = useState('')
+  const [dialogBusy, setDialogBusy] = useState(false)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+  const runOpen = useRun((state) => state.open)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
+  const prevSessionId = useRef<string | null | undefined>(undefined)
 
   useEffect(() => {
     void refresh()
@@ -69,6 +87,52 @@ export function ChatView({
     const el = scrollRef.current
     if (el && stickRef.current) el.scrollTop = el.scrollHeight
   }, [messages.length, streamText, toolCards.length])
+
+  // 每个会话记住自己的 /fix 运行：切换会话时恢复或收起，新会话建立时迁移「new」记录。
+  useEffect(() => {
+    const previous = prevSessionId.current
+    prevSessionId.current = sessionId
+    const run = useRun.getState()
+    if (previous === undefined) {
+      const saved = readStoredRun(sessionId)
+      if (saved) void run.restore(saved)
+      else run.close()
+      return
+    }
+    if (sessionId === null && previous !== null) {
+      run.reset()
+      return
+    }
+    if (previous === null && sessionId) {
+      if (run.taskId) {
+        writeStoredRun(sessionId, run.taskId)
+        writeStoredRun(null, null)
+      } else {
+        // 从新对话切回已有会话时，恢复该会话上次的运行面板。
+        const saved = readStoredRun(sessionId)
+        if (saved) void run.restore(saved)
+      }
+      return
+    }
+    if (previous === sessionId) return
+    const saved = readStoredRun(sessionId)
+    if (saved) void run.restore(saved)
+    else run.reset()
+  }, [sessionId])
+
+  // Escape 关闭 /commit、/init 对话框；捕获阶段拦住外层 Shell 的 Esc 层级。
+  useEffect(() => {
+    if (!gitDialog) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || dialogBusy) return
+      event.preventDefault()
+      event.stopPropagation()
+      setGitDialog(null)
+      setDialogError(null)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [gitDialog, dialogBusy])
 
   const onScroll = () => {
     const el = scrollRef.current
@@ -88,6 +152,134 @@ export function ChatView({
     : llmSettings?.source === 'server'
       ? `服务端默认${llmSettings.server_model ? ` · ${llmSettings.server_model}` : ''}`
       : '未配置模型 · 点击设置'
+
+  const notice = (text: string, tone: 'info' | 'error' = 'info') => {
+    setCommandNotice({ tone, text })
+  }
+
+  const openRunPanel = (repoId?: string) => {
+    if (onOpenRun) onOpenRun(repoId)
+    else useRun.setState({ open: true })
+  }
+
+  /** 斜杠命令入口；返回 false 时 Composer 保留草稿，方便修改后重试。 */
+  const executeCommand = async (name: CommandName | 'unknown', args: string): Promise<boolean> => {
+    const chat = useChat.getState()
+    const repoId = chat.selectedRepoIds[0]
+    if (name === 'unknown') {
+      notice(`未知命令 ${args}。输入 /help 查看全部命令`, 'error')
+      return false
+    }
+    if (name === 'help') {
+      notice(COMMANDS.map((item) => item.hint).join('\n'))
+      return true
+    }
+    if (name === 'fix') {
+      if (!repoId) {
+        notice('先选择一个项目，再使用 /fix', 'error')
+        return false
+      }
+      if (!args) {
+        notice('请在 /fix 后描述问题，例如 /fix 结算时折扣超过 100% 会把总价算成负数', 'error')
+        return false
+      }
+      try {
+        const task = await api.tasks.create(repoId, args, `/fix: ${args}`.slice(0, 120))
+        useRun.getState().start(task)
+        void useRun.getState().loadRecent(repoId)
+        return true
+      } catch (err) {
+        notice(err instanceof ApiError ? err.message : '创建修复任务失败', 'error')
+        return false
+      }
+    }
+    if (name === 'plan') {
+      if (!args) {
+        notice('请在 /plan 后写明目标，例如 /plan 给登录接口加分页', 'error')
+        return false
+      }
+      void chat.send(
+        `请先给出实施计划，不要修改文件或执行会改变状态的命令。\n\n目标：${args}`,
+        chat.selectedRepoIds,
+      )
+      return true
+    }
+    if (name === 'review') {
+      if (!repoId) {
+        notice('先选择一个项目，再使用 /review', 'error')
+        return false
+      }
+      try {
+        const { diff } = await api.git.diff(repoId)
+        if (!diff.trim()) {
+          notice('当前仓库没有未提交的改动')
+          return true
+        }
+        void chat.send(
+          `请审查下面的 git diff，指出正确性风险、回归风险与缺失测试；不要修改文件。\n\n\`\`\`diff\n${diff.slice(0, 6000)}\n\`\`\``,
+          chat.selectedRepoIds,
+        )
+        return true
+      } catch (err) {
+        notice(err instanceof ApiError ? err.message : '读取 diff 失败', 'error')
+        return false
+      }
+    }
+    if (name === 'commit') {
+      if (!repoId) {
+        notice('先选择一个项目，再使用 /commit', 'error')
+        return false
+      }
+      setCommitMessage(args || 'chore: update')
+      setDialogError(null)
+      setGitDialog({ kind: 'commit', repoId })
+      return true
+    }
+    if (name === 'init') {
+      if (!repoId) {
+        notice('先选择一个项目，再使用 /init', 'error')
+        return false
+      }
+      setDialogError(null)
+      setGitDialog({ kind: 'init', repoId })
+      return true
+    }
+    return true
+  }
+
+  const closeGitDialog = () => {
+    if (dialogBusy) return
+    setGitDialog(null)
+    setDialogError(null)
+  }
+
+  const confirmGitDialog = async () => {
+    if (!gitDialog || dialogBusy) return
+    setDialogBusy(true)
+    setDialogError(null)
+    try {
+      if (gitDialog.kind === 'commit') {
+        const info = await api.git.commit(gitDialog.repoId, commitMessage.trim() || 'chore: update')
+        const hash = info.commits[0]?.hash
+        notice(hash ? `已提交 ${hash.slice(0, 8)}` : '已提交')
+      } else {
+        await api.git.init(gitDialog.repoId)
+        notice('已初始化 Git 仓库')
+      }
+      setGitDialog(null)
+      await refresh()
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? err.message
+        : gitDialog.kind === 'commit' ? '提交失败' : '初始化 Git 失败'
+      setDialogError(message)
+      notice(message, 'error')
+    } finally {
+      setDialogBusy(false)
+    }
+  }
+
+  const dialogRepoName = repos.find((repo) => repo.id === gitDialog?.repoId)?.name ?? '当前项目'
 
   return (
     <div className="flex h-full min-h-0">
@@ -226,12 +418,12 @@ export function ChatView({
                     <p className="mt-0.5 text-[11px] leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
                   </button>
                   <button
-                    onClick={() => onOpenTasks(selectedRepoIds[0])}
+                    onClick={() => openRunPanel(selectedRepoIds[0])}
                     className="rounded-xl border border-edge bg-panel/50 p-3.5 text-left transition-colors hover:border-accentSoft"
                   >
-                    <ListTodo size={14} className="text-accent" />
-                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">大任务走流水线</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">修 Bug / 多文件改动，逐步真实验证，最后统一等你批准。</p>
+                    <Wrench size={14} className="text-accent" />
+                    <p className="mt-1.5 text-[12.5px] font-medium text-ink">用 /fix 修 Bug</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim">输入 /fix + 问题描述：先复现失败，再修复到测试通过，最后等你批准。</p>
                   </button>
                 </div>
 
@@ -249,7 +441,7 @@ export function ChatView({
                   ))}
                 </div>
                 <p className="mt-5 text-[10.5px] leading-relaxed text-dim/60">
-                  要让 Nova 读懂某个代码项目？在右侧「项目」面板导入；需要多步验证的修复或功能交给「任务」。
+                  要让 Nova 读懂某个代码项目？在右侧「项目」面板导入；需要多步验证的修复输入 /fix 即可。
                 </p>
               </div>
             )}
@@ -311,6 +503,26 @@ export function ChatView({
           </div>
         )}
 
+        {commandNotice && (
+          <div
+            className={clsx(
+              'mx-auto mb-1 flex w-full max-w-5xl items-start gap-2 px-4 text-[11.5px]',
+              commandNotice.tone === 'error' ? 'text-err' : 'text-dim',
+            )}
+            role="status"
+          >
+            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1 whitespace-pre-line break-words">{commandNotice.text}</span>
+            <button
+              onClick={() => setCommandNotice(null)}
+              className="shrink-0 text-dim hover:text-ink"
+              aria-label="关闭命令提示"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         <Composer
           disabled={false}
           streaming={streaming}
@@ -330,12 +542,26 @@ export function ChatView({
           onSend={(content) => {
             void send(content, selectedRepoIds)
           }}
+          onCommand={executeCommand}
           onStop={stop}
           mentionRepoId={selectedRepoIds[0] ?? null}
         />
       </main>
 
-      {dockOpen && (
+      {runOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+            onClick={() => useRun.getState().close()}
+            aria-hidden="true"
+          />
+          <aside className="fixed inset-y-0 right-0 z-40 flex w-[min(380px,100vw)] flex-col border-l border-edge bg-panel shadow-2xl lg:static lg:z-auto lg:w-[380px] lg:shrink-0 lg:bg-panel/25 lg:shadow-none">
+            <RunPanel />
+          </aside>
+        </>
+      )}
+
+      {dockOpen && !runOpen && (
         <aside className="hidden w-[380px] shrink-0 flex-col border-l border-edge/80 bg-panel/25 lg:flex">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-edge/70 px-2">
             <button
@@ -374,7 +600,7 @@ export function ChatView({
                 selectedRepos={selectedRepoIds}
                 onToggleRepo={toggleRepo}
                 onOpenWorkspace={onOpenWorkspace}
-                onOpenTasks={onOpenTasks}
+                onOpenTasks={onOpenTasks ?? ((repoId) => openRunPanel(repoId))}
               />
             ) : (
               <RefPanel refs={refs} />
@@ -388,6 +614,58 @@ export function ChatView({
         open={trajectoryOpen}
         onClose={() => setTrajectoryOpen(false)}
       />
+
+      <Modal
+        open={gitDialog !== null}
+        onClose={closeGitDialog}
+        title={gitDialog?.kind === 'init' ? '初始化 Git' : '提交 Git'}
+        width="max-w-md"
+      >
+        {gitDialog?.kind === 'init' ? (
+          <div className="space-y-3">
+            <p className="text-[12.5px] leading-relaxed text-dim">
+              将为「{dialogRepoName}」初始化 Git 仓库并创建首个快照提交，之后每次写入都能回滚。
+            </p>
+            {dialogError && <p className="text-[12px] text-err">{dialogError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button onClick={closeGitDialog} disabled={dialogBusy}>取消</Button>
+              <Button variant="primary" onClick={() => void confirmGitDialog()} disabled={dialogBusy}>
+                {dialogBusy && <Spinner />} 初始化
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="block text-[12px] text-dim" htmlFor="nova-commit-message">
+              提交消息 <span className="text-faint">（{dialogRepoName} 的全部改动）</span>
+            </label>
+            <input
+              id="nova-commit-message"
+              value={commitMessage}
+              onChange={(event) => setCommitMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+                event.preventDefault()
+                void confirmGitDialog()
+              }}
+              spellCheck={false}
+              className="w-full rounded-md border border-edge bg-base px-2.5 py-1.5 font-mono text-[12px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/50"
+              placeholder="chore: update"
+            />
+            {dialogError && <p className="text-[12px] text-err">{dialogError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button onClick={closeGitDialog} disabled={dialogBusy}>取消</Button>
+              <Button
+                variant="primary"
+                onClick={() => void confirmGitDialog()}
+                disabled={dialogBusy || !commitMessage.trim()}
+              >
+                {dialogBusy && <Spinner />} 提交
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </div>
   )

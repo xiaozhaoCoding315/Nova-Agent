@@ -10,13 +10,13 @@ import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
+import { useRun } from '../stores/run'
 import { ChatHeader } from './ChatHeader'
 import { ProjectRail } from './ProjectRail'
 
 const ChatView = lazy(() => import('../views/ChatView').then((m) => ({ default: m.ChatView })))
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsView = lazy(() => import('../views/SettingsView').then((m) => ({ default: m.SettingsView })))
-const TasksView = lazy(() => import('../views/TasksView').then((m) => ({ default: m.TasksView })))
 const WorkspaceView = lazy(() => import('../views/WorkspaceView').then((m) => ({ default: m.WorkspaceView })))
 
 const PERMISSION_LABEL = {
@@ -26,7 +26,7 @@ const PERMISSION_LABEL = {
   full: '完全访问',
 } as const
 
-type Overlay = 'settings' | 'workspace' | 'tasks' | null
+type Overlay = 'settings' | 'workspace' | null
 
 const ViewFallback = () => (
   <div className="flex h-full min-h-[40vh] flex-1 items-center justify-center font-mono text-sm text-dim">
@@ -65,7 +65,6 @@ export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [workspaceTarget, setWorkspaceTarget] = useState<{ repoId?: string; path?: string }>({})
-  const [tasksTarget, setTasksTarget] = useState<{ repoId?: string }>({})
   const [health, setHealth] = useState<Health | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
   const [healthState, setHealthState] = useState<'ok' | 'warn' | 'err'>('warn')
@@ -141,9 +140,8 @@ export function AppShell() {
     setRailOpen(false)
   }
 
-  const openTasks = (repoId?: string) => {
-    setTasksTarget({ repoId })
-    setOverlay('tasks')
+  const openRun = () => {
+    useRun.setState({ open: true })
     setRailOpen(false)
   }
 
@@ -172,14 +170,10 @@ export function AppShell() {
         useChat.getState().newSession()
         setOverlay(null)
         setRailOpen(false)
-      } else if (mod && ['1', '2', '3'].includes(event.key)) {
+      } else if (mod && ['1', '3'].includes(event.key)) {
         event.preventDefault()
         if (event.key === '1') {
           setOverlay(null)
-        } else if (event.key === '2') {
-          setTasksTarget({})
-          setOverlay('tasks')
-          setRailOpen(false)
         } else {
           setOverlay('settings')
           setRailOpen(false)
@@ -207,7 +201,6 @@ export function AppShell() {
     const items: PaletteAction[] = [
       { id: 'new-chat', label: '新建对话', hint: 'Ctrl N', run: startNewChat },
       { id: 'open-workspace', label: '打开工作区', hint: '浏览代码', run: () => openWorkspace(currentRepoId) },
-      { id: 'open-tasks', label: '打开任务', hint: '红-绿修复', run: () => openTasks(currentRepoId) },
       {
         id: 'llm-settings',
         label: '模型与 API Key',
@@ -292,7 +285,7 @@ export function AppShell() {
               embedded
               onOpenSettings={openSettings}
               onOpenWorkspace={openWorkspace}
-              onOpenTasks={openTasks}
+              onOpenRun={openRun}
             />
           </Suspense>
         </div>
@@ -322,13 +315,6 @@ export function AppShell() {
                   initialRepoId={workspaceTarget.repoId}
                   initialPath={workspaceTarget.path}
                   onClose={() => setOverlay(null)}
-                />
-              )}
-              {overlay === 'tasks' && (
-                <TasksView
-                  key={tasksTarget.repoId ?? 'any'}
-                  initialRepoId={tasksTarget.repoId}
-                  onBackToChat={() => setOverlay(null)}
                 />
               )}
             </Suspense>

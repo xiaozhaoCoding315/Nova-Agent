@@ -5,8 +5,10 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent } from 'react'
 import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
+import { SlashMenu } from '../composer/SlashMenu'
 import { ContextMeterChip } from './ContextMeterChip'
 import { api } from '../lib/api'
+import { filterCommands, parseCommand, type CommandName } from '../lib/commands'
 import type { ContextMeter, FileAttachment, FileNode, PermissionMode } from '../lib/types'
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
@@ -40,6 +42,7 @@ export function Composer({
   onRemoveAttachment,
   onConfigureModel,
   onSend,
+  onCommand,
   onStop,
   mentionRepoId,
 }: {
@@ -59,6 +62,8 @@ export function Composer({
   onRemoveAttachment: (id: string) => void
   onConfigureModel: () => void
   onSend: (content: string) => void
+  /** 执行斜杠命令；返回 false 表示保留草稿（例如缺少项目或 API 失败）。 */
+  onCommand: (name: CommandName | 'unknown', args: string) => boolean | void | Promise<boolean | void>
   onStop: () => void
   mentionRepoId?: string | null
 }) {
@@ -67,6 +72,10 @@ export function Composer({
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionLoading, setMentionLoading] = useState(false)
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [commandBusy, setCommandBusy] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
   const [permissionOpen, setPermissionOpen] = useState(false)
   const mentionCache = useRef<Record<string, string[]>>({})
@@ -131,15 +140,88 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }
 
+  const slashMatches = slashOpen ? filterCommands(slashQuery) : []
+
+  /** 只在「/命令名」阶段展开菜单；空格表示开始写参数，交给命令解析处理。 */
+  const detectSlash = (text: string) => {
+    const typingName = text.startsWith('/') && !text.includes('\n') && !/\s/.test(text.slice(1))
+    if (!typingName) {
+      setSlashOpen(false)
+      return
+    }
+    setSlashQuery(text.slice(1))
+    setSlashIndex(0)
+    setSlashOpen(true)
+  }
+
+  const applySlash = (name: CommandName) => {
+    setValue(`/${name} `)
+    setSlashOpen(false)
+    setSlashIndex(0)
+    requestAnimationFrame(() => ref.current?.focus())
+  }
+
+  const runCommand = async (name: CommandName | 'unknown', args: string) => {
+    if (commandBusy || disabled || streaming || uploading) return
+    setSlashOpen(false)
+    setCommandBusy(true)
+    let accepted = true
+    try {
+      accepted = (await onCommand(name, args)) !== false
+    } finally {
+      setCommandBusy(false)
+    }
+    if (accepted) setValue('')
+    requestAnimationFrame(() => ref.current?.focus())
+  }
+
   const submit = () => {
     const content = value.trim()
-    if (!content || disabled || streaming || uploading) return
+    if (!content || disabled || streaming || uploading || commandBusy) return
+    const parsed = parseCommand(content)
+    if (parsed) {
+      void runCommand(
+        parsed.name === 'unknown' ? 'unknown' : parsed.name,
+        parsed.name === 'unknown' ? parsed.raw : parsed.args,
+      )
+      return
+    }
     setValue('')
     onSend(content)
     requestAnimationFrame(() => ref.current?.focus())
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && !mentionOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        if (slashMatches.length > 0) setSlashIndex((index) => (index + 1) % slashMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        if (slashMatches.length > 0) setSlashIndex((index) => (index - 1 + slashMatches.length) % slashMatches.length)
+        return
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const command = slashMatches[slashIndex] ?? slashMatches[0]
+        if (command) applySlash(command.name)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashOpen(false)
+        return
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        const command = slashMatches[slashIndex] ?? slashMatches[0]
+        if (command) void runCommand(command.name, '')
+        else submit()
+        return
+      }
+    }
     if (mentionOpen && mentionMatches.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -216,6 +298,13 @@ export function Composer({
               ))}
             </div>
           )}
+          <SlashMenu
+            open={slashOpen}
+            query={slashQuery}
+            activeIndex={slashIndex}
+            onPick={applySlash}
+            onClose={() => setSlashOpen(false)}
+          />
           {mentionOpen && mentionRepoId && (
             <div className="absolute bottom-full left-3 z-20 mb-1.5 w-[min(440px,92%)] overflow-hidden rounded-xl border border-edge bg-panel shadow-xl">
               <p className="border-b border-edge/60 px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-dim">
@@ -251,6 +340,7 @@ export function Composer({
             onChange={(e) => {
               setValue(e.target.value)
               detectMention(e.target.value)
+              detectSlash(e.target.value)
             }}
             onKeyDown={onKeyDown}
             disabled={disabled}
@@ -371,13 +461,13 @@ export function Composer({
                 </button>
               ) : (
                 <button
-                  onClick={submit}
-                  disabled={disabled || uploading || !value.trim()}
+                  onClick={() => void submit()}
+                  disabled={disabled || uploading || commandBusy || !value.trim()}
                   className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-white transition-all hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
                   title="发送"
                   aria-label="发送"
                 >
-                  <ArrowUp size={15} />
+                  {commandBusy ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
                 </button>
               )}
             </div>
