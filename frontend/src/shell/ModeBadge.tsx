@@ -30,7 +30,7 @@ export function ModeBadge() {
         state === 'unknown' && 'border-edge bg-raised text-faint',
       )}
       title={COPY[state].title}
-      aria-label={`运行模式：${COPY[state].title}`}
+      aria-label={`运行模式：${COPY[state].label} — ${COPY[state].title}`}
     >
       <span
         aria-hidden="true"

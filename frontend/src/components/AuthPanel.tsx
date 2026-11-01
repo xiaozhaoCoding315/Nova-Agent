@@ -150,7 +150,7 @@ export function AuthPanel({
           />
         )}
 
-        {mode === 'reset' && !resetByEmail && (
+        {mode === 'reset' && !(emailVerification && resetByEmail) && (
           <input
             value={recoveryCode}
             onChange={(e) => setRecoveryCode(e.target.value)}
@@ -181,6 +181,7 @@ export function AuthPanel({
               <button
                 type="button"
                 onClick={() => void sendCode()}
+                aria-label={sending ? '正在发送验证码' : undefined}
                 disabled={sending || codeCountdown > 0 || !email.trim()}
                 className="shrink-0 rounded-md border border-accent/40 bg-accentSoft/40 px-3 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/60 disabled:cursor-not-allowed disabled:opacity-40"
               >

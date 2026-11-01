@@ -10,25 +10,30 @@ export function UsageSection({ refreshToken }: { refreshToken: number }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = async (isAlive: () => boolean = () => true) => {
     setLoading(true)
     try {
       const [nextUsage, nextQuota] = await Promise.all([
         api.status.usage(),
         api.quota.get(),
       ])
+      if (!isAlive()) return
       setUsage(nextUsage)
       setSelfQuota(nextQuota)
       setError(null)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '加载失败')
+      if (isAlive()) setError(err instanceof ApiError ? err.message : '加载失败')
     } finally {
-      setLoading(false)
+      if (isAlive()) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void load()
+    let alive = true
+    void load(() => alive)
+    return () => {
+      alive = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken])
 
@@ -42,7 +47,7 @@ export function UsageSection({ refreshToken }: { refreshToken: number }) {
           <QuotaBar label="本小时消息数" used={usage.messages_last_hour} limit={usage.hourly_message_limit} />
           <QuotaBar label="沙箱执行次数" used={usage.sandbox_runs_today} limit={usage.sandbox_daily_limit} />
         </div>
-      ) : (
+      ) : !error && (
         <p className="flex items-center gap-2 text-sm text-dim">
           {loading ? <Spinner /> : null} {loading ? '加载中…' : '暂无用量数据'}
         </p>

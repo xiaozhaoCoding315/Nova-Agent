@@ -114,9 +114,9 @@ export function LoginView() {
                 <Bot size={18} className="text-accent" />
               </div>
               <div className="min-w-0">
-                <p className="font-mono text-lg font-medium uppercase tracking-[0.16em] text-ink">
+                <h1 className="font-mono text-lg font-medium uppercase tracking-[0.16em] text-ink">
                   NOVA AGENT
-                </p>
+                </h1>
                 <p className="text-xs text-faint">自托管的工程 Agent</p>
               </div>
             </div>
@@ -154,7 +154,7 @@ export function LoginView() {
       </main>
 
       <footer className="flex items-center gap-2 border-t border-edge/60 px-5 py-4 text-2xs text-faint md:px-8">
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5" role="status" aria-live="polite">
           <StatusDot state={healthState} />
           {healthLabel}
         </span>

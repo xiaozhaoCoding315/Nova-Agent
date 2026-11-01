@@ -5,7 +5,7 @@ import { LocalSetupDialog } from '../components/LocalSetupDialog'
 import { RecoveryCodeModal } from '../components/RecoveryCodeModal'
 import { api } from '../lib/api'
 import type { Health, Usage } from '../lib/types'
-import { SettingsDialog, type SettingsSection } from '../settings/SettingsDialog'
+import type { SettingsSection } from '../settings/SettingsDialog'
 import { useAuth } from '../stores/auth'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
@@ -20,6 +20,9 @@ import { WorkspaceDrawer } from './WorkspaceDrawer'
 
 const ChatView = lazy(() => import('../views/ChatView').then((m) => ({ default: m.ChatView })))
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
+const SettingsDialog = lazy(() =>
+  import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
+)
 
 const PERMISSION_LABEL = {
   readonly: '计划模式',
@@ -319,7 +322,7 @@ export function AppShell() {
           onToggleContextRail={toggleContextRail}
           onNewChat={startNewChat}
           onOpenPalette={() => setPaletteOpen(true)}
-          onOpenSettings={() => openSettings()}
+          onOpenSettings={() => openSettings('model')}
           onOpenWorkspace={openWorkspace}
           healthState={healthState}
           health={health}
@@ -355,7 +358,7 @@ export function AppShell() {
           <Suspense fallback={<ViewFallback />}>
             <ChatView
               embedded
-              onOpenSettings={() => openSettings()}
+              onOpenSettings={() => openSettings('model')}
               onOpenWorkspace={openWorkspace}
               onOpenRun={openRun}
               onOpenLocalAgent={() => setLocalAgentOpen(true)}
@@ -375,11 +378,15 @@ export function AppShell() {
         onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
       />
 
-      <SettingsDialog
-        open={settingsOpen}
-        section={settingsSection}
-        onClose={() => setSettingsOpen(false)}
-      />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog
+            open={settingsOpen}
+            section={settingsSection}
+            onClose={() => setSettingsOpen(false)}
+          />
+        </Suspense>
+      )}
 
       <WorkspaceDrawer
         open={drawer !== null}

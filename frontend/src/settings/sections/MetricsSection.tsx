@@ -112,7 +112,7 @@ export function MetricsSection({
             </div>
           )}
         </>
-      ) : (
+      ) : !error && (
         <p className="flex items-center gap-2 text-sm text-dim">
           {loading ? <Spinner /> : null} {loading ? '加载指标…' : '暂无指标数据'}
         </p>
