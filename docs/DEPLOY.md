@@ -2,6 +2,8 @@
 
 从零把 Nova Agent 部署到一台 Linux 服务器，并让使用者下载桌面客户端安装包。
 
+> 本文只覆盖云端模式（Docker Compose）。本地 Windows 桌面运行时见 [LOCAL_MODE.md](LOCAL_MODE.md)；`docker-compose.yml` 与云端部署流程不因本地模式改变。
+
 > 最低配置 2 核 2G（单用户 / 小团队演示）；推荐 4C8G 支撑多人。需要已安装 Docker 与 Docker Compose 插件。
 
 ## 零、阿里云 ECS（国内）注意事项

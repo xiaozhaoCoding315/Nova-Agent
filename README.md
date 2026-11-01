@@ -94,7 +94,7 @@
 - 工具执行纳入容错框架：分级超时（LLM 90s / 检索 10s / 工具 30s）、指数退避重试、熔断降级；业务性失败（参数错误、配额）与基础设施故障区分统计
 - 每轮结束生成确定性交付报告（命令/退出码/改动/引用/未验证项），随消息持久化，不靠模型自述"完成了"
 
-### Docker 安全沙箱（绝不降级）
+### Docker 安全沙箱（云端模式，绝不降级）
 - LLM 生成的代码只在锁定容器中执行：**禁网络 + 只读根文件系统 + 丢弃全部 capabilities + 非 root uid + pid/内存/CPU 限额**
 - 沙箱镜像预装 numpy / pytest，「写测试 → 运行 → 迭代」开箱即用
 - Docker 不可用时工具**如实标记不可用**，绝不退化为在宿主机执行
@@ -344,6 +344,24 @@ cp backend/mcp_servers.example.json backend/mcp_servers.json
 - 支持 stdio（newline-delimited JSON-RPC）或 streamable HTTP；server 进程必须来自可信配置
 - 启动时发现工具，调用计入审计；server 启动失败不会阻塞应用启动
 
+## 本地模式（Windows 11）
+
+同一套后端可用 `python nova.py local` 在本机运行（启动器会设置 `NOVA_MODE=local`）：内嵌 PostgreSQL（默认 `pgserver`，可回退系统 `pg_ctl`）、固定本地用户、直接打开本地文件夹、无容器 HostExecutor、无 Qdrant 的关键词/符号检索、单 worker 后台任务。
+
+```powershell
+cd frontend && npm ci && npm run build
+cd ..\backend
+py -3.12 -m venv .venv      # 没有 py launcher 时改用：python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r requirements-local.txt
+python nova.py local
+```
+
+首次启动向导填写项目绝对路径与智谱 API Key（默认 `zhipu` / `glm-4.7-flash`）；Key 只加密保存在本机。完整步骤、数据目录、安全边界与故障排查见 [docs/LOCAL_MODE.md](docs/LOCAL_MODE.md)。
+
+> Nova 不上传代码、不发送遥测、不访问 Nova 服务器；命令在项目目录直接执行，**没有容器隔离**，UI 页脚与工具结果会明确标注。本地验证目前只支持 Python 项目，Node/fullstack 验证会返回 `unsupported`。
+
 ## 本地执行器（nova agent）
 
 让 Nova 直接工作在你电脑的真实项目目录上。
@@ -454,7 +472,8 @@ cd frontend && npm run contract:check
 - 可选 pre-hook/post-hook：Hook 由运维配置，不来自模型；pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；Hook 缺失或超时按失败处理（fail closed）
 - 用户 API Key 使用 `SECRET_KEY` 派生的 Fernet 密钥加密存储，读写接口只返回 `••••后四位`；密钥不会进入对话、轨迹或工具参数
 - 工具输出、SSE 预览、轨迹、审计详情统一做密钥脱敏；脱敏是正则 best-effort，不替代真正的 DLP
-- 代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径
+- 云端模式：代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径。
+- 本地模式（`NOVA_MODE=local`）：命令在项目目录直接执行，**无容器隔离**；通过路径 jail、环境变量剥离、权限模式与审批降低风险，UI 与工具结果会明确标注。
 - 文件工具统一走路径解析器：拒绝绝对路径、`..` 穿越、同前缀兄弟目录与符号链接逃逸；`.env`、私钥、凭据文件禁止读取与写入
 - 测试保护：修改已有测试文件时禁止删除测试或新增 skip 标记；红绿任务必须新建测试文件
 - `fetch_url` 有 SSRF 防护：仅公网 http(s)、逐跳校验重定向、拒绝内网地址、限制响应大小与类型
