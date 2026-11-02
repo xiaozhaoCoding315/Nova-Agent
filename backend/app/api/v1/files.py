@@ -1,9 +1,17 @@
 """Per-user uploaded files: list, upload, download and delete."""
+import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from app.config import settings
+from app.core.agent.image_input import (
+    VISION_MEDIA_TYPES,
+    VISION_SUFFIXES,
+    ImageRejected,
+    validate_image_bytes,
+)
 from app.core.indexing.pipeline import get_repo
 from app.core.memory import session as session_mod
 from app.core.security.auth import get_current_user
@@ -18,6 +26,39 @@ from app.core.storage.user_storage import (
 from app.models.schemas import FileListOut, FileOut, OkOut
 
 router = APIRouter()
+
+CLAIM_MEDIA_TYPES = VISION_MEDIA_TYPES | {"image/jpg"}
+
+
+class _BufferedUpload:
+    """Async read adapter so an in-memory image can reuse save_upload."""
+
+    def __init__(self, data: bytes):
+        self._buffer = io.BytesIO(data)
+
+    async def read(self, size: int) -> bytes:
+        return self._buffer.read(size)
+
+
+async def _prepare_upload(file: UploadFile, purpose: str):
+    claimed = (
+        (file.content_type or "").lower() in CLAIM_MEDIA_TYPES
+        or Path(file.filename or "").suffix.lower() in VISION_SUFFIXES
+    )
+    if purpose != "attachment" or not claimed:
+        return file, file.content_type
+    limit = settings.image_input_max_kb * 1024
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"图片超过上限（{settings.image_input_max_kb / 1024:.1f} MB）",
+        )
+    try:
+        info = validate_image_bytes(data)
+    except ImageRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _BufferedUpload(data), info.media_type
 
 
 @router.get("/files", response_model=FileListOut)
@@ -55,12 +96,13 @@ async def upload_file(
     if announced and used + announced > limit:
         raise HTTPException(status_code=413, detail="个人存储空间不足")
 
+    stream, mime = await _prepare_upload(file, purpose)
     try:
         saved = await save_upload(
             user["id"],
-            file,
+            stream,
             filename=file.filename or "file",
-            mime=file.content_type,
+            mime=mime,
             repo_id=repo_id,
             session_id=session_id,
             purpose=purpose,

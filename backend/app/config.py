@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     user_storage_mb: int = 200
     guest_storage_mb: int = 50
     max_attachments_per_message: int = 5
+    image_input_max_kb: int = 3584
+    image_input_max_side: int = 8000
+    image_input_max_pixels: int = 40_000_000
+    image_input_max_total_kb: int = 10_240
 
     # ---------- Builder ----------
     # Boot generated projects in a throwaway container after approval

@@ -1,7 +1,11 @@
 """Per-user file storage and chat attachment tool."""
+import io
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers, UploadFile
 
 from app.config import settings
 from app.core.storage import user_storage
@@ -123,3 +127,63 @@ async def test_attachment_tool_only_reads_current_turn_files(monkeypatch):
         ToolContext(user=USER, file_ids=["f1"]),
     )
     assert r["ok"] is False and r["business"] is True
+
+
+def _upload(name: str, data: bytes, mime: str) -> UploadFile:
+    return UploadFile(
+        filename=name,
+        file=io.BytesIO(data),
+        headers=Headers({"content-type": mime}),
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_fake_png(monkeypatch):
+    from app.api.v1 import files as files_api
+
+    monkeypatch.setattr(files_api, "used_bytes", AsyncMock(return_value=0))
+    monkeypatch.setattr(files_api, "storage_limit_bytes", lambda _user: 200 * 1024 * 1024)
+
+    with pytest.raises(HTTPException) as caught:
+        await files_api.upload_file(
+            file=_upload("fake.png", b"not a png", "image/png"),
+            repo_id=None,
+            session_id=None,
+            purpose="attachment",
+            user=USER,
+        )
+    assert caught.value.status_code == 400
+    assert "PNG/JPEG" in caught.value.detail
+
+
+@pytest.mark.asyncio
+async def test_upload_accepts_png_and_corrects_mime(monkeypatch):
+    from app.api.v1 import files as files_api
+
+    captured = {}
+
+    async def fake_save(_user_id, stream, **kwargs):
+        data = await stream.read(1024 * 1024)
+        captured["data"] = data
+        captured["mime"] = kwargs["mime"]
+        return {
+            "id": "f1", "filename": kwargs["filename"],
+            "mime": kwargs["mime"], "size": len(data), "purpose": "attachment",
+        }
+
+    monkeypatch.setattr(files_api, "used_bytes", AsyncMock(return_value=0))
+    monkeypatch.setattr(files_api, "storage_limit_bytes", lambda _user: 200 * 1024 * 1024)
+    monkeypatch.setattr(files_api, "save_upload", fake_save)
+
+    ihdr = b"\x00\x00\x00\x0dIHDR" + b"\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00"
+    png = b"\x89PNG\r\n\x1a\n" + ihdr + b"\x00\x00\x00\x00"
+
+    saved = await files_api.upload_file(
+        file=_upload("shot.png", png, "image/png"),
+        repo_id=None,
+        session_id=None,
+        purpose="attachment",
+        user=USER,
+    )
+    assert saved["mime"] == "image/png"
+    assert captured["data"] == png
