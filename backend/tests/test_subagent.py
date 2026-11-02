@@ -120,6 +120,9 @@ async def test_subagent_runs_tool_round_then_summary(monkeypatch):
     assert registry.executed[0][0] == "read_file"
     ctx = registry.executed[0][2]
     assert ctx.permission_mode == "readonly"
+    assert ctx.agent_depth == 1
+    assert ctx.file_ids == []
+    assert ctx.output_queue is None
     assert ctx.repo_ids == ["r1"]
     tool_names = {spec["function"]["name"] for spec in llm.calls[0]["tools"]}
     assert tool_names
@@ -245,6 +248,8 @@ async def test_subagent_redacts_secrets_in_summary_findings_and_done_event(monke
     assert "[REDACTED]" in result["findings"][0]["detail"]
     assert "[REDACTED]" in done["summary"]
     assert "[REDACTED]" in done["findings"][0]["detail"]
+    assert secret_key not in json.dumps(events, ensure_ascii=False)
+    assert "supersecretvalue" not in json.dumps(events, ensure_ascii=False)
 
 
 @pytest.mark.asyncio

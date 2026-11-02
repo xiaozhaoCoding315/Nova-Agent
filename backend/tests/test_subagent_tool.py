@@ -126,6 +126,35 @@ async def test_spawn_agents_rejects_nested_agent():
 
 
 @pytest.mark.asyncio
+async def test_spawn_agents_caps_concurrent_subagents(monkeypatch):
+    active = 0
+    peak = 0
+
+    async def fake_run(**kwargs):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+            return _ok(kwargs)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(subagents, "run_subagent", fake_run)
+    monkeypatch.setattr(subagents.settings, "subagent_max_parallel", 2)
+    result = await subagents.spawn_agents({
+        "tasks": [
+            {"title": f"T{i}", "prompt": f"prompt number {i} long"}
+            for i in range(4)
+        ],
+    }, _ctx())
+
+    assert peak == 2
+    assert result["total"] == 4
+    assert result["ok_count"] == 4
+
+
+@pytest.mark.asyncio
 async def test_spawn_agents_isolates_task_failure(monkeypatch):
     async def fake_run(**kwargs):
         if kwargs["title"] == "bad":

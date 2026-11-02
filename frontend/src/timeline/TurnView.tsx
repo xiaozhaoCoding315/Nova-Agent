@@ -95,7 +95,7 @@ function AssistantMessage({
   const report = message.tool_json?.report ?? null
   const subagents = message.tool_json?.subagents ?? []
   const visibleEvents = events.filter(
-    (event) => event.name !== SUBAGENT_TOOL || subagents.length === 0,
+    (event) => event.name !== SUBAGENT_TOOL || !event.ok || subagents.length === 0,
   )
 
   return (
@@ -138,7 +138,10 @@ function StreamingContent({
   onOpenFile?: (path: string) => void
 }) {
   const visibleCards = stream.toolCards.filter(
-    (card) => card.call.name !== SUBAGENT_TOOL || stream.subagents.length === 0,
+    (card) =>
+      card.call.name !== SUBAGENT_TOOL
+      || card.result?.ok === false
+      || stream.subagents.length === 0,
   )
   const activeSubagent = stream.subagents.find((run) => run.status === 'running')
   const running = visibleCards.find((card) => !card.result)

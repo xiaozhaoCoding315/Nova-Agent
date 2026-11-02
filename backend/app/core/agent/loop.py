@@ -682,6 +682,9 @@ async def run_chat(
                 if name == "run_code" and result["ok"] and (result.get("output") or {}).get("exit_code") == 0:
                     sandbox_runs_ok += 1
                 output = result.get("output") if result["ok"] else None
+                # The loop is the last privacy boundary: never trust a tool
+                # result to have been redacted already.
+                preview = redact_text(build_preview(name, result))
                 tool_events.append({
                     "name": name,
                     "ok": bool(result["ok"]),
@@ -693,7 +696,7 @@ async def run_chat(
                     "args": redact_obj(_args_summary(args)),
                     "error": redact_text(result.get("error")) if not result["ok"] else None,
                     "error_class": result.get("error_class"),
-                    "preview": build_preview(name, result),
+                    "preview": preview,
                     "stdout_tail": _output_tail(output, "stdout"),
                     "stderr_tail": _output_tail(output, "stderr"),
                     "content_preview": _content_preview(name, output),
@@ -718,11 +721,11 @@ async def run_chat(
                 await trace_record(session["id"], turn_id, "tool_result", {
                     "name": name, "ok": result["ok"], "ms": result["ms"],
                     "error_class": result.get("error_class"),
-                    "preview": build_preview(name, result)[:800],
+                    "preview": preview[:800],
                 })
                 yield _sse(
                     "tool_result", id=tc.get("id", ""), name=name, ok=result["ok"],
-                    ms=result["ms"], preview=build_preview(name, result),
+                    ms=result["ms"], preview=preview,
                     stdout_tail=_output_tail(output, "stdout"),
                     stderr_tail=_output_tail(output, "stderr"),
                     content_preview=_content_preview(name, output),

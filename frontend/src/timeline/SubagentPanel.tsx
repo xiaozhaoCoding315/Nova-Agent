@@ -112,7 +112,9 @@ function SubagentRow({
               </div>
             </div>
           )}
-          {run.citations && (
+          {run.citations
+            && (run.citations.executed
+              || run.citations.verified + run.citations.missing + run.citations.out_of_range > 0) && (
             <p className="font-mono text-2xs text-faint">
               引用校验 {run.citations.verified} 通过
               {run.citations.missing > 0 ? ` · ${run.citations.missing} 缺失` : ''}

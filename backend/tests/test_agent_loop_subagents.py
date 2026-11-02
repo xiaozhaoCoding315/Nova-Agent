@@ -32,9 +32,12 @@ class FakeTool:
 
 
 class FakeRegistry:
-    def __init__(self, extra_streams=()):
+    def __init__(self, extra_streams=(), *, title="调研", summary="结论", error=None):
         self.ctx = None
         self.extra_streams = list(extra_streams)
+        self.title = title
+        self.summary = summary
+        self.error = error
 
     def specs(self, **_kwargs):
         return [{
@@ -48,14 +51,14 @@ class FakeRegistry:
     async def execute(self, name, args, ctx):
         self.ctx = ctx
         payload = {
-            "id": "sa-1", "title": "调研", "status": "ok", "summary": "结论",
+            "id": "sa-1", "title": self.title, "status": "ok", "summary": self.summary,
             "findings": [], "files": [], "rounds": 1, "tools": ["grep"],
             "tokens": {"prompt": 1, "completion": 1}, "ms": 5,
             "citations": {"verified": 0, "missing": 0, "out_of_range": 0, "skipped": 0, "executed": False},
-            "error": None,
+            "error": self.error,
         }
         await ctx.output_queue.put(("subagent", json.dumps({
-            "phase": "start", "id": "sa-1", "title": "调研",
+            "phase": "start", "id": "sa-1", "title": self.title,
         })))
         for stream, text in self.extra_streams:
             await ctx.output_queue.put((stream, text))
@@ -181,3 +184,57 @@ async def test_malformed_subagent_payload_degrades_without_raising(monkeypatch):
 
     # (c) The turn still completes normally.
     assert events[-1]["event"] == "done"
+
+
+SECRET = "sk-" + "a" * 24
+
+
+@pytest.mark.asyncio
+async def test_parent_loop_redacts_subagent_payloads(monkeypatch):
+    llm = FakeLLM([
+        [
+            {"type": "content", "content": "我并行查一下。"},
+            {"type": "tool_calls", "tool_calls": [{
+                "id": "call-1", "name": "spawn_agents",
+                "arguments": json.dumps({"tasks": [
+                    {"title": "调研", "prompt": "找出鉴权中间件并给出文件行号"},
+                ]}),
+            }]},
+            {"type": "usage", "usage": {"prompt_tokens": 10, "completion_tokens": 2, "model": "test"}},
+        ],
+        [
+            {"type": "content", "content": "完成"},
+            {"type": "usage", "usage": {"prompt_tokens": 20, "completion_tokens": 3, "model": "test"}},
+        ],
+    ])
+
+    async def _get_llm(*_args, overrides=None, **_kwargs):
+        return llm
+
+    registry = FakeRegistry(
+        title=f"调研 {SECRET}",
+        summary=f"结论 {SECRET}",
+        error=f"失败 {SECRET}",
+    )
+    monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
+    monkeypatch.setattr(loop_mod, "get_registry", lambda: registry)
+    monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
+    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
+    monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
+    monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+    monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
+    monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
+    monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+    monkeypatch.setattr(loop_mod, "ensure_token_budget", AsyncMock())
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "并行调研", ["r1"]))
+
+    # The parent loop is the last redaction boundary for subagent SSE payloads:
+    # the fake tool returns the raw secret, as a tool result is untrusted.
+    assert SECRET not in json.dumps(events, ensure_ascii=False)
+    tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
+    persisted = json.dumps(tool_json["subagents"], ensure_ascii=False)
+    assert SECRET not in persisted
+    assert "[REDACTED]" in persisted
