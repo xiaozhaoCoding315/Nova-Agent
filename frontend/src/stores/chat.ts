@@ -576,7 +576,7 @@ export const useChat = create<ChatState>((set, get) => ({
     const revision = nextSelectionRevision()
     try {
       const messages = await api.sessions.messages(id)
-      if (get().selectionRevision >= revision) return
+      if (selectionEpoch > revision) return
       const session = get().sessions.find((s) => s.id === id)
       const rawOverrides = session?.llm_overrides
       // 载入时同样按厂商能力清洗，避免过期持久化参数在 UI 上显示为已选中。
@@ -633,7 +633,7 @@ export const useChat = create<ChatState>((set, get) => ({
         set({ turnNotice: null })
       }
     } catch (err) {
-      if (get().selectionRevision !== revision) return
+      if (selectionEpoch > revision) return
       set((s) => ({
         ...IDLE_STREAM,
         turnId: null,
@@ -669,7 +669,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   deleteSession: async (id) => {
     const state = get()
-    const revision = state.selectionRevision
+    const revision = selectionEpoch
     const wasCurrent = state.sessionId === id
     const turnId = state.backgroundTurns[id]
       ?? (state.sessionId === id ? (attachedTurnId ?? state.turnId) : null)
@@ -691,7 +691,7 @@ export const useChat = create<ChatState>((set, get) => ({
           : {}),
       }))
     } catch (err) {
-      if (get().selectionRevision !== revision) return
+      if (selectionEpoch > revision) return
       const message = err instanceof ApiError ? err.message : '删除失败'
       if (wasCurrent) {
         set((s) => ({
