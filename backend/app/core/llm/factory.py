@@ -3,6 +3,7 @@ import structlog
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.core.agent.image_input import strip_image_blocks
 from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
 from app.core.llm.fallback import FallbackLLM
@@ -32,6 +33,7 @@ class OpenAICompatibleLLM(LLMProvider):
         temperature: float | None = None,
         max_tokens: int | None = None,
         context_window: int | None = None,
+        supports_vision: bool = False,
     ):
         self.client = AsyncOpenAI(
             api_key=api_key or "ollama",
@@ -43,6 +45,7 @@ class OpenAICompatibleLLM(LLMProvider):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.context_window = context_window
+        self.supports_vision = supports_vision
 
     def _extras(self) -> dict:
         extras: dict = {}
@@ -55,6 +58,8 @@ class OpenAICompatibleLLM(LLMProvider):
         return extras
 
     async def astream(self, messages: list[dict], **kwargs):
+        if not self.supports_vision:
+            messages = strip_image_blocks(messages)
         # kwargs win over stored extras so a caller-supplied max_tokens is not
         # passed twice (Python rejects duplicate keyword arguments).
         attempts: list[dict] = []
@@ -89,6 +94,9 @@ class OpenAICompatibleLLM(LLMProvider):
         is requested via stream_options; providers that reject optional
         parameters are retried with fewer extras, then bare.
         """
+        if not self.supports_vision:
+            messages = strip_image_blocks(messages)
+
         async def _create(**extra):
             return await self.client.chat.completions.create(
                 model=self.model,
@@ -321,6 +329,7 @@ async def get_llm(
                     config["api_key"], config["base_url"], chosen_model,
                     reasoning_effort=effort, temperature=temperature,
                     max_tokens=max_tokens, context_window=int(context),
+                    supports_vision=bool(spec and spec.supports_vision),
                 )
             llm.context_window = int(context)
             return llm

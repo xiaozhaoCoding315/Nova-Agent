@@ -126,3 +126,16 @@ def test_public_payload_and_resolver_share_normalized_url():
     public_url = next(row for row in provider_list() if row["id"] == "gemini")["base_url"]
     assert public_url == "https://generativelanguage.googleapis.com/v1beta/openai"
     assert resolve_base_url(gemini, None) == public_url
+
+
+def test_vision_capable_providers():
+    vision = {item.id for item in PROVIDERS if item.supports_vision}
+    assert vision == {
+        "anthropic", "openai", "gemini", "openrouter", "ollama", "custom",
+    }
+
+
+def test_provider_public_exposes_vision_capability():
+    payload = {item["id"]: item for item in provider_list()}
+    assert payload["openai"]["supports_vision"] is True
+    assert payload["deepseek"]["supports_vision"] is False

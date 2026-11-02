@@ -65,3 +65,57 @@ async def test_tool_fallback_refuses_to_degrade_to_chat():
     with pytest.raises(RuntimeError, match="支持工具调用"):
         async for _ in fb.astream_with_tools([], []):
             pass
+
+
+class VisionToolFake(ToolFake):
+    supports_vision = True
+
+
+@pytest.mark.asyncio
+async def test_fallback_strips_images_for_text_only_provider():
+    seen = {}
+
+    class Capture(ToolFake):
+        supports_vision = False
+
+        async def astream_with_tools(self, messages, tools):
+            seen["messages"] = messages
+            yield {"type": "content", "content": "ok"}
+
+    image_message = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "看图"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }
+    fb = FallbackLLM([Capture("text")])
+    async for _ in fb.astream_with_tools([image_message], []):
+        pass
+
+    blocks = seen["messages"][0]["content"]
+    assert blocks[0] == {"type": "text", "text": "看图"}
+    assert blocks[1]["type"] == "text"
+    assert "图片已省略" in blocks[1]["text"]
+    assert image_message["content"][1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_fallback_keeps_images_for_vision_provider():
+    seen = {}
+
+    class Capture(VisionToolFake):
+        async def astream_with_tools(self, messages, tools):
+            seen["messages"] = messages
+            yield {"type": "content", "content": "ok"}
+
+    image_message = {
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }
+    fb = FallbackLLM([Capture("vision")])
+    async for _ in fb.astream_with_tools([image_message], []):
+        pass
+    assert seen["messages"][0]["content"][0]["type"] == "image_url"

@@ -210,3 +210,38 @@ async def test_astream_with_empty_extras_makes_one_call():
             pass
 
     assert len(completions.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_catalog_vision_flag_reaches_openai_provider(monkeypatch):
+    monkeypatch.setattr(
+        factory, "get_user_config",
+        AsyncMock(return_value=_config("openai", "gpt-4o")),
+    )
+    llm = await factory.get_llm(7, overrides={"provider": "openai"})
+    assert isinstance(llm, factory.OpenAICompatibleLLM)
+    assert llm.supports_vision is True
+
+    monkeypatch.setattr(
+        factory, "get_user_config",
+        AsyncMock(return_value=_config("deepseek", "deepseek-chat")),
+    )
+    llm = await factory.get_llm(7, overrides={"provider": "deepseek"})
+    assert llm.supports_vision is False
+
+
+@pytest.mark.asyncio
+async def test_non_vision_openai_provider_strips_image_blocks():
+    llm, completions = _fake_llm()
+    llm.supports_vision = False
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "看图"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }]
+    [event async for event in llm.astream_with_tools(messages, [])]
+    sent = completions.calls[0]["messages"][0]["content"]
+    assert sent[1]["type"] == "text"
+    assert "图片已省略" in sent[1]["text"]

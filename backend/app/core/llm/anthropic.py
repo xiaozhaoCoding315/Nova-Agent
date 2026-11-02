@@ -4,7 +4,44 @@ import json
 import httpx
 
 from app.config import settings
+from app.core.agent.image_input import DATA_URL_RE
 from app.core.llm.base import LLMProvider
+
+
+def _image_block(item: dict) -> dict | None:
+    image_url = item.get("image_url")
+    if not isinstance(image_url, dict):
+        return None
+    match = DATA_URL_RE.match(str(image_url.get("url") or ""))
+    if not match:
+        return None
+    media_type, payload = match.group(1), match.group(2)
+    if media_type not in ("image/png", "image/jpeg"):
+        return None
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": "".join(payload.split()),
+        },
+    }
+
+
+def _user_blocks(content) -> list[dict]:
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    blocks: list[dict] = []
+    for item in content or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text":
+            blocks.append({"type": "text", "text": str(item.get("text") or "")})
+        elif item.get("type") == "image_url":
+            block = _image_block(item)
+            if block:
+                blocks.append(block)
+    return blocks or [{"type": "text", "text": " "}]
 
 
 def _to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
@@ -60,7 +97,7 @@ def _to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
 
         converted.append({
             "role": "user",
-            "content": [{"type": "text", "text": str(message.get("content") or "")}],
+            "content": _user_blocks(message.get("content")),
         })
 
     merged: list[dict] = []
@@ -93,6 +130,7 @@ EFFORT_MAX_TOKENS = {"low": 8_192, "medium": 16_384, "high": 32_768}
 
 class AnthropicLLM(LLMProvider):
     supports_tools = True
+    supports_vision = True
 
     def __init__(
         self,

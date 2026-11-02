@@ -1,4 +1,5 @@
 """Anthropic message/tool conversion (no network)."""
+import base64
 import json
 
 import httpx
@@ -260,3 +261,30 @@ async def test_stream_keeps_thinking_and_redacted_blocks_in_index_order(monkeypa
         {"type": "thinking", "thinking": "consider", "signature": "sig-1"},
         {"type": "redacted_thinking", "data": "blob-1"},
     ]
+
+
+def test_user_image_content_converts_to_base64_image_block():
+    raw = b"\x89PNG\r\n\x1a\n" + b"0" * 16
+    encoded = base64.b64encode(raw).decode("ascii")
+    url = f"data:image/png;base64,{encoded}"
+    _, messages = _to_anthropic([{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "看图"},
+            {"type": "image_url", "image_url": {"url": url}},
+            {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}},
+        ],
+    }])
+    blocks = messages[0]["content"]
+    assert blocks[0] == {"type": "text", "text": "看图"}
+    assert blocks[1] == {
+        "type": "image",
+        "source": {
+            "type": "base64", "media_type": "image/png", "data": encoded,
+        },
+    }
+    assert len(blocks) == 2
+
+
+def test_anthropic_declares_vision():
+    assert AnthropicLLM.supports_vision is True

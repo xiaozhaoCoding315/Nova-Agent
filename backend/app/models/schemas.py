@@ -480,6 +480,7 @@ class LlmProviderOut(BaseModel):
     docs_url: str = ""
     free_tier: bool = False
     supports_tools: bool = True
+    supports_vision: bool = False
     supports_reasoning: bool = False
     supports_temperature: bool = True
     context_window: int = 131_072

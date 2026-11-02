@@ -1,4 +1,6 @@
 import structlog
+
+from app.core.agent.image_input import strip_image_blocks
 from app.core.llm.base import LLMProvider
 
 logger = structlog.get_logger()
@@ -8,10 +10,22 @@ class FallbackLLM(LLMProvider):
     def __init__(self, providers: list[LLMProvider]):
         self.providers = providers
 
+    @property
+    def supports_vision(self) -> bool:
+        return any(
+            getattr(provider, "supports_vision", False)
+            for provider in self.providers
+        )
+
     async def astream(self, messages: list[dict], **kwargs):
         for provider in self.providers:
             try:
-                async for token in provider.astream(messages, **kwargs):
+                provider_messages = (
+                    messages
+                    if getattr(provider, "supports_vision", False)
+                    else strip_image_blocks(messages)
+                )
+                async for token in provider.astream(provider_messages, **kwargs):
                     yield token
                 return  # success — stop chain
             except Exception as e:
@@ -33,9 +47,16 @@ class FallbackLLM(LLMProvider):
         if not providers:
             raise RuntimeError("没有支持工具调用的 LLM provider，已拒绝退化")
         for provider in providers:
+            provider_messages = (
+                messages
+                if getattr(provider, "supports_vision", False)
+                else strip_image_blocks(messages)
+            )
             yielded = False
             try:
-                async for event in provider.astream_with_tools(messages, tools, **kwargs):
+                async for event in provider.astream_with_tools(
+                    provider_messages, tools, **kwargs
+                ):
                     yielded = True
                     yield event
                 return  # success — stop chain

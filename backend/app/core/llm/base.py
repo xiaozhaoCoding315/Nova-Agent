@@ -5,6 +5,8 @@ class LLMProvider(ABC):
     # Providers that ignore ``tools`` degrade to plain content; coding loops
     # must never treat that as a successful tool-calling answer.
     supports_tools: bool = False
+    # Providers that cannot accept image blocks must strip them explicitly.
+    supports_vision: bool = False
 
     @abstractmethod
     async def astream(self, messages: list[dict], **kwargs) -> any:

@@ -26,6 +26,7 @@ class ProviderSpec:
     docs_url: str = ""
     free_tier: bool = False
     supports_tools: bool = True
+    supports_vision: bool = False
     supports_reasoning: bool = False
     supports_temperature: bool = True
     context_window: int = 131_072
@@ -45,6 +46,7 @@ class ProviderSpec:
             "docs_url": self.docs_url,
             "free_tier": self.free_tier,
             "supports_tools": self.supports_tools,
+            "supports_vision": self.supports_vision,
             "supports_reasoning": self.supports_reasoning,
             "supports_temperature": self.supports_temperature,
             "context_window": self.context_window,
@@ -137,7 +139,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="gpt-4o",
         models=("gpt-4o", "gpt-4o-mini", "o3-mini"),
         docs_url="https://platform.openai.com/docs/",
-        supports_reasoning=True, context_window=128_000,
+        supports_reasoning=True, supports_vision=True, context_window=128_000,
         env_key="OPENAI_API_KEY", icon="openai",
     ),
     ProviderSpec(
@@ -146,7 +148,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="claude-sonnet-5-5",
         models=("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"),
         docs_url="https://docs.anthropic.com/",
-        supports_reasoning=True, supports_temperature=False, context_window=200_000,
+        supports_reasoning=True, supports_vision=True, supports_temperature=False,
+        context_window=200_000,
         env_key="ANTHROPIC_API_KEY", icon="anthropic",
         base_url_setting="anthropic_base_url",
     ),
@@ -156,7 +159,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="gemini-2.5-pro",
         models=("gemini-2.5-pro", "gemini-2.5-flash"),
         docs_url="https://ai.google.dev/gemini-api/docs",
-        supports_reasoning=True, context_window=1_048_576, icon="gemini",
+        supports_reasoning=True, supports_vision=True, context_window=1_048_576,
+        icon="gemini",
     ),
     ProviderSpec(
         id="xai", label="xAI Grok", group="international", kind="openai",
@@ -192,7 +196,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
             "google/gemini-2.5-pro",
         ),
         docs_url="https://openrouter.ai/docs",
-        supports_reasoning=True, context_window=200_000, icon="openrouter",
+        supports_reasoning=True, supports_vision=True, context_window=200_000,
+        icon="openrouter",
     ),
     ProviderSpec(
         id="ollama", label="Ollama（本地）", group="local", kind="openai",
@@ -200,14 +205,14 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_model="qwen3-coder:30b",
         models=("qwen3-coder:30b", "llama3.3"),
         docs_url="https://ollama.com/",
-        free_tier=True, supports_reasoning=False, context_window=32_768,
-        base_url_locked=False, icon="ollama",
+        free_tier=True, supports_reasoning=False, supports_vision=True,
+        context_window=32_768, base_url_locked=False, icon="ollama",
     ),
     ProviderSpec(
         id="custom", label="自定义 OpenAI 兼容端点", group="local", kind="openai",
         base_url="", default_model="", models=(),
-        docs_url="", supports_reasoning=True, context_window=131_072,
-        base_url_locked=False, icon="custom",
+        docs_url="", supports_reasoning=True, supports_vision=True,
+        context_window=131_072, base_url_locked=False, icon="custom",
     ),
 )
 
