@@ -226,7 +226,8 @@ async def test_parent_loop_redacts_subagent_payloads(monkeypatch):
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
     monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
-    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+    trace = AsyncMock()
+    monkeypatch.setattr(loop_mod, "trace_record", trace)
     monkeypatch.setattr(loop_mod, "ensure_token_budget", AsyncMock())
 
     events = await _collect(loop_mod.run_chat(USER, SESSION, "并行调研", ["r1"]))
@@ -238,3 +239,10 @@ async def test_parent_loop_redacts_subagent_payloads(monkeypatch):
     persisted = json.dumps(tool_json["subagents"], ensure_ascii=False)
     assert SECRET not in persisted
     assert "[REDACTED]" in persisted
+    # Preview redaction is shared by persistence, trace and SSE: assert the
+    # other two surfaces too, or a partial revert could pass unnoticed.
+    assert SECRET not in json.dumps(tool_json["tool_events"], ensure_ascii=False)
+    assert SECRET not in json.dumps(
+        [(call.args, call.kwargs) for call in trace.await_args_list],
+        ensure_ascii=False,
+    )
