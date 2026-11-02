@@ -13,6 +13,7 @@ EXPECTED_TABLES = {
     "users", "sessions", "messages", "facts",
     "repos", "repo_files", "symbols", "chunks",
     "usage_log", "audit_log",
+    "turns", "turn_events",
 }
 
 

@@ -1,4 +1,6 @@
 """Durable chat-turn state: one active turn per session, replayable events."""
+import psycopg
+
 from app.db import execute, query
 
 ACTIVE_STATUSES = ("queued", "running")
@@ -31,18 +33,21 @@ def _turn(row) -> dict:
 async def create_turn(
     turn_id: str, session_id: str, user_id: int, user_message_id: int,
 ) -> dict | None:
-    rows = await execute(
-        f"""
-        INSERT INTO turns (id, session_id, user_id, user_message_id)
-        SELECT %s, %s, %s, %s
-        WHERE NOT EXISTS (
-            SELECT 1 FROM turns
-            WHERE session_id = %s AND status IN ('queued', 'running')
+    try:
+        rows = await execute(
+            f"""
+            INSERT INTO turns (id, session_id, user_id, user_message_id)
+            SELECT %s, %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM turns
+                WHERE session_id = %s AND status IN ('queued', 'running')
+            )
+            RETURNING {_COLUMNS}
+            """,
+            (turn_id, session_id, user_id, user_message_id, session_id),
         )
-        RETURNING {_COLUMNS}
-        """,
-        (turn_id, session_id, user_id, user_message_id, session_id),
-    )
+    except psycopg.errors.UniqueViolation:
+        return None
     return _turn(rows[0]) if rows else None
 
 

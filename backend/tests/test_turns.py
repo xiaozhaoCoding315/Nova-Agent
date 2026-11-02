@@ -2,6 +2,7 @@
 import sys
 from unittest.mock import AsyncMock
 
+import psycopg
 import pytest
 
 from app.core.turns import store
@@ -29,6 +30,28 @@ async def test_create_turn_refuses_when_session_has_active_turn(monkeypatch):
     assert "WHERE NOT EXISTS" in sql
     assert "status IN ('queued', 'running')" in sql
     assert params == ("t-1", "s-1", 7, 11, "s-1")
+
+
+@pytest.mark.asyncio
+async def test_create_turn_returns_none_on_unique_race(monkeypatch):
+    execute = AsyncMock(side_effect=psycopg.errors.UniqueViolation())
+    monkeypatch.setattr(store_module, "execute", execute)
+
+    assert await store.create_turn("t-1", "s-1", 7, 11) is None
+
+
+@pytest.mark.asyncio
+async def test_active_turn_filters_by_owner(monkeypatch):
+    query = AsyncMock(return_value=[_row()])
+    monkeypatch.setattr(store_module, "query", query)
+
+    turn = await store.get_active_turn("s-1", 7)
+
+    assert turn["id"] == "t-1"
+    sql, params = query.await_args.args
+    assert "user_id = %s" in sql
+    assert "status IN ('queued', 'running')" in sql
+    assert params == ("s-1", 7)
 
 
 @pytest.mark.asyncio
