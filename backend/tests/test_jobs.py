@@ -166,3 +166,24 @@ async def test_recover_marks_chat_turn_failed(monkeypatch):
     assert "kind = 'chat_turn'" in first_sql
     assert "status = 'failed'" in first_sql
     assert execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_global_cap_ignores_uncapped_active_jobs(monkeypatch):
+    runner = JobRunner()
+
+    async def handler(ctx):
+        return {}
+
+    runner.register("index", handler, concurrency=2)
+    runner.register("chat_turn", handler, concurrency=8, uncapped=True)
+    runner._active_kinds = {"index": 1, "chat_turn": 1}  # noqa: SLF001
+    monkeypatch.setattr(runner_module.settings, "job_max_concurrency", 2)
+    monkeypatch.setattr(runner_module.settings, "nova_mode", "server")
+
+    execute = AsyncMock(return_value=[])
+    monkeypatch.setattr(runner_module, "execute", execute)
+
+    assert await runner._claim_one() is None  # noqa: SLF001
+    _, params = execute.await_args.args
+    assert params[0] == ["index", "chat_turn"]
