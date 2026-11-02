@@ -100,6 +100,7 @@ async def run_chat(
     tools_used: list[str] = []
     tool_events: list[dict] = []
     edits: list[dict] = []
+    subagent_runs: list[dict] = []
     content_parts: list[str] = []
     usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "model": ""}
     plan_state: dict | None = None
@@ -251,6 +252,9 @@ async def run_chat(
         session_id=session["id"],
         permission_mode=session.get("permission_mode", "ask"),
         file_ids=[item["id"] for item in (attachments or [])][:5],
+        turn_id=turn_id,
+        model=session.get("model"),
+        llm_overrides=session_overrides,
     )
     local_available = False if settings.is_local else await local_agent_online(user["id"])
     specs = registry.specs(
@@ -304,6 +308,8 @@ async def run_chat(
                 tool_json["edits"] = edits
             if plan_state:
                 tool_json["plan"] = plan_state
+            if subagent_runs:
+                tool_json["subagents"] = subagent_runs[-16:]
             if final_text:
                 tool_json["evidence"] = await _build_evidence()
             tool_json["report"] = await _build_report()
@@ -527,6 +533,11 @@ async def run_chat(
                 tool = getter(name) if callable(getter) else None
                 return bool(getattr(tool, "parallel_safe", False))
 
+            def _streams(name: str) -> bool:
+                getter = getattr(registry, "get", None)
+                tool = getter(name) if callable(getter) else None
+                return bool(getattr(tool, "streaming", False))
+
             async def _execute_one(item: tuple[dict, str, dict]) -> dict:
                 _, tool_name, tool_args = item
                 tool_result = await registry.execute(tool_name, tool_args, ctx)
@@ -537,6 +548,19 @@ async def run_chat(
 
             async def _execute_streaming(item: tuple[dict, str, dict], holder: dict):
                 tc, tool_name, tool_args = item
+
+                def _stream_event(stream: str, text: str) -> dict:
+                    if stream == "subagent":
+                        try:
+                            payload = json.loads(text)
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            payload = {"phase": "log", "message": text}
+                        return _sse("subagent", **payload)
+                    return _sse(
+                        "tool_output", id=ctx.tool_call_id, name=tool_name,
+                        stream=stream, text=redact_text(text),
+                    )
+
                 output_queue: asyncio.Queue = asyncio.Queue()
                 ctx.output_queue = output_queue
                 ctx.tool_call_id = str(tc.get("id") or "")
@@ -550,18 +574,12 @@ async def run_chat(
                         except asyncio.TimeoutError:
                             continue
                         if text:
-                            yield _sse(
-                                "tool_output", id=ctx.tool_call_id, name=tool_name,
-                                stream=stream, text=redact_text(text),
-                            )
+                            yield _stream_event(stream, text)
                     tool_result = await task
                     while not output_queue.empty():
                         stream, text = output_queue.get_nowait()
                         if text:
-                            yield _sse(
-                                "tool_output", id=ctx.tool_call_id, name=tool_name,
-                                stream=stream, text=redact_text(text),
-                            )
+                            yield _stream_event(stream, text)
                     await _reindex_after_edit(
                         tool_name, tool_args, tool_result, ctx, user["id"]
                     )
@@ -586,7 +604,7 @@ async def run_chat(
             else:
                 results = []
                 for item in parsed:
-                    if item[1] in ("run_command", "run_code"):
+                    if item[1] in ("run_command", "run_code") or _streams(item[1]):
                         stream_holder: dict = {}
                         async for event in _execute_streaming(item, stream_holder):
                             yield event
@@ -621,7 +639,7 @@ async def run_chat(
                     if approved:
                         ctx.approval_granted = True
                         try:
-                            if name in ("run_command", "run_code"):
+                            if name in ("run_command", "run_code") or _streams(name):
                                 approved_holder: dict = {}
                                 async for event in _execute_streaming(
                                     (tc, name, args), approved_holder
@@ -691,6 +709,12 @@ async def run_chat(
                     stderr_tail=_output_tail(output, "stderr"),
                     content_preview=_content_preview(name, output),
                 )
+                if name == "spawn_agents" and result["ok"] and isinstance(output, dict):
+                    tasks = output.get("tasks")
+                    if isinstance(tasks, list):
+                        subagent_runs.extend(
+                            item for item in tasks if isinstance(item, dict)
+                        )
                 if name == "update_plan" and result["ok"] and isinstance(output, dict):
                     plan_state = output
                     yield _sse(
