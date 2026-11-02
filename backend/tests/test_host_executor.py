@@ -495,3 +495,39 @@ async def test_reader_threads_stop_when_descendant_holds_pipes(tmp_path):
         if child_pid is not None:
             assert await asyncio.to_thread(host._kill_tree_sync, child_pid) is True
             assert await _wait_dead(child_pid)
+
+
+@pytest.mark.asyncio
+async def test_execute_argv_host_runs_without_a_shell(tmp_path):
+    # If a shell were involved, "&" would split the command and the extra
+    # args would never reach Python. shell=False passes them as literal args.
+    argv = [
+        sys.executable, "-c", "import sys; print(len(sys.argv))",
+        "a b", "&", "echo pwned",
+    ]
+    result = await host.execute_argv_host(argv, root=tmp_path, timeout=10)
+    assert result["stdout"].strip() == "4"
+    assert result["exit_code"] == 0
+    assert result["executor"] == "host"
+    assert result["sandboxed"] is False
+    assert "pwned" not in result["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_execute_argv_host_rejects_invalid_argv(tmp_path):
+    with pytest.raises(ValueError):
+        await host.execute_argv_host([], root=tmp_path, timeout=5)
+    with pytest.raises(ValueError):
+        await host.execute_argv_host([sys.executable, ""], root=tmp_path, timeout=5)
+    with pytest.raises(ValueError):
+        await host.execute_argv_host([sys.executable, "a\nb"], root=tmp_path, timeout=5)
+    with pytest.raises(ValueError):
+        await host.execute_argv_host([sys.executable, 1], root=tmp_path, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_execute_argv_host_reports_missing_binary(tmp_path):
+    with pytest.raises(OSError):
+        await host.execute_argv_host(
+            ["nova-missing-binary-for-tests"], root=tmp_path, timeout=5
+        )

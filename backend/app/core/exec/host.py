@@ -741,8 +741,10 @@ def _collect_output(
     }
 
 
-async def execute_host(
-    command: str,
+async def _execute_process(
+    popen_args,
+    popen_extra: dict,
+    display_command: str,
     *,
     root: str | Path,
     cwd: str = ".",
@@ -754,8 +756,8 @@ async def execute_host(
     user_id=None,
     venv_root: str | Path | None = None,
 ) -> dict:
+    """Shared spawn/collect path for shell and direct-argv execution."""
     workdir = resolve_cwd(root, cwd)
-    popen_args, popen_extra = _popen_command(command)
     child_env = _apply_project_venv(
         scrub_env(env), Path(venv_root or root).resolve()
     )
@@ -777,7 +779,7 @@ async def execute_host(
 
     try:
         result = await asyncio.to_thread(
-            _collect_output, proc, command, timeout, stdin, on_output, job_id
+            _collect_output, proc, display_command, timeout, stdin, on_output, job_id
         )
     except BaseException:
         # Cancelled task or unexpected failure: never leave a process behind.
@@ -804,3 +806,90 @@ async def execute_host(
 
     result["duration_ms"] = int((time.perf_counter() - started) * 1000)
     return result
+
+
+async def execute_host(
+    command: str,
+    *,
+    root: str | Path,
+    cwd: str = ".",
+    timeout: int = 120,
+    stdin: str = "",
+    env: dict[str, str] | None = None,
+    on_output=None,
+    job_id: str | None = None,
+    user_id=None,
+    venv_root: str | Path | None = None,
+) -> dict:
+    popen_args, popen_extra = _popen_command(command)
+    return await _execute_process(
+        popen_args,
+        popen_extra,
+        command,
+        root=root,
+        cwd=cwd,
+        timeout=timeout,
+        stdin=stdin,
+        env=env,
+        on_output=on_output,
+        job_id=job_id,
+        user_id=user_id,
+        venv_root=venv_root,
+    )
+
+
+def _validate_argv(argv) -> list[str]:
+    """Fixed-argv callers must pass non-empty, newline-free strings."""
+    if not isinstance(argv, (list, tuple)) or not argv:
+        raise ValueError("argv 不能为空")
+    out: list[str] = []
+    for item in argv:
+        if not isinstance(item, str):
+            raise ValueError("argv 的每一项都必须是字符串")
+        if not item or "\x00" in item or "\n" in item or "\r" in item:
+            raise ValueError("argv 含空项或非法字符")
+        out.append(item)
+    return out
+
+
+def argv_display(argv: list[str]) -> str:
+    """Display-only command string; never fed back to a shell here."""
+    if os.name == "nt":
+        return subprocess.list2cmdline(argv)
+    return shlex.join(argv)
+
+
+async def execute_argv_host(
+    argv: list[str],
+    *,
+    root: str | Path,
+    cwd: str = ".",
+    timeout: int = 120,
+    stdin: str = "",
+    env: dict[str, str] | None = None,
+    on_output=None,
+    job_id: str | None = None,
+    user_id=None,
+    venv_root: str | Path | None = None,
+) -> dict:
+    """Run ``argv`` directly (``shell=False``) on the host.
+
+    Fixed-argv callers (diagnostics runners) must not pass repo data through a
+    shell.  Path containment, env scrubbing, timeouts and tree cancellation
+    are shared with :func:`execute_host`.
+    """
+    args = _validate_argv(argv)
+    return await _execute_process(
+        args,
+        {},
+        argv_display(args),
+        root=root,
+        cwd=cwd,
+        timeout=timeout,
+        stdin=stdin,
+        env=env,
+        on_output=on_output,
+        job_id=job_id,
+        user_id=user_id,
+        venv_root=venv_root,
+    )

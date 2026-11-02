@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
-from app.core.exec.host import execute_host
+from app.core.exec.host import execute_argv_host, execute_host
 from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.tools.base import ToolBusinessError
 
@@ -80,6 +80,33 @@ async def run_command_host(
         raise ToolBusinessError(f"本地执行失败：{exc}") from exc
     _with_warnings(result)
     result["persisted"] = True
+    result["isolated"] = False
+    return result
+
+
+async def run_argv_host(
+    argv: list[str],
+    *,
+    root: str | Path,
+    timeout: int,
+    on_output=None,
+    job_id: str | None = None,
+    user_id=None,
+) -> dict:
+    """Run a fixed argv on the host without a shell (diagnostics runners)."""
+    timeout = _clamp_timeout(timeout)
+    try:
+        result = await execute_argv_host(
+            argv,
+            root=root,
+            timeout=timeout,
+            on_output=on_output,
+            job_id=job_id,
+            user_id=user_id,
+        )
+    except (ValueError, OSError) as exc:
+        raise ToolBusinessError(f"本地执行失败：{exc}") from exc
+    _with_warnings(result)
     result["isolated"] = False
     return result
 

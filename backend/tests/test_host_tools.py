@@ -623,3 +623,33 @@ def test_local_tool_parameters_are_local_aware(monkeypatch):
     server_code = run_code_tool.tool_parameters()["properties"]
     assert "沙箱" in server_code["files"]["description"]
     assert "运行环境镜像" in run_command_tool.tool_parameters()["properties"]["env"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_run_argv_host_marks_no_isolation(monkeypatch, tmp_path):
+    seen: dict = {}
+
+    async def fake_execute(argv, **kwargs):
+        seen.update(argv=argv, **kwargs)
+        return _host_result(command=" ".join(argv))
+
+    monkeypatch.setattr(service, "execute_argv_host", fake_execute)
+    result = await service.run_argv_host(
+        ["ruff", "check", "."], root=tmp_path, timeout=999,
+        job_id="tool-3", user_id=7,
+    )
+    assert seen["argv"] == ["ruff", "check", "."]
+    assert seen["timeout"] == 300
+    assert seen["job_id"] == "tool-3"
+    assert seen["user_id"] == 7
+    assert result["warning"] == service.WARNING
+
+
+@pytest.mark.asyncio
+async def test_run_argv_host_maps_executor_errors(monkeypatch, tmp_path):
+    async def fail_execute(argv, **kwargs):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(service, "execute_argv_host", fail_execute)
+    with pytest.raises(ToolBusinessError):
+        await service.run_argv_host(["ruff", "--version"], root=tmp_path, timeout=5)
