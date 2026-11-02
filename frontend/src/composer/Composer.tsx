@@ -306,7 +306,6 @@ export function Composer({
             ref={fileRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,.txt,.md,.py,.js,.ts,.tsx,.jsx,.json,.yaml,.yml,.toml,.ini,.cfg,.html,.css,.sql,.sh,.java,.go,.rs,.c,.cpp,.h,.xml,.csv,.log"
             className="hidden"
             onChange={(event) => {
               const files = Array.from(event.target.files ?? [])
