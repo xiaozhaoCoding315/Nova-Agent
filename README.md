@@ -113,6 +113,16 @@
 - 结果归一化为 `文件:行:列 / 级别 / 规则码 / 消息`，前端诊断卡按文件分组、可点击打开；无法解析的输出行保留尾部原文。
 - 镜像内的版本为 `ruff 0.8.6` / `mypy 1.13.0` / `tsc 5.6.3`；本地使用已安装版本，工具结果会返回实际版本。
 
+### 图片输入（PNG / JPEG）
+
+在 Composer 里选择、拖拽或直接粘贴截图，图片会作为一等附件随当前回合发送给支持视觉的模型；不需要模型调用工具去读文件。
+
+- 仅 PNG / JPEG 进入视觉通道：单张 ≤ 3.5 MB、每条消息 ≤ 5 张且合计 ≤ 10 MB、单边 ≤ 8000 px、总像素 ≤ 40 MP。WebP / GIF / SVG 仍可作为普通附件上传与下载，但不会发送给模型。
+- 服务端按文件头校验真实格式与尺寸，不信任扩展名与 `Content-Type`；伪造、损坏或超限图片会被拒绝并返回原因。
+- 图片只在**当前回合**发送；历史回合保留附件元数据，不重复发送图片。
+- 模型是否可看图由厂商能力决定（OpenAI / Anthropic / Gemini / OpenRouter / Ollama / 自定义端点默认尝试）；不可看时图片保留为附件并在界面标注。模型明确拒绝图片时，本轮自动按纯文本重试一次并提示。
+- 图片字节只存在于服务端内存与模型请求体；日志、轨迹、SSE 与消息记录只保留 id、文件名、类型与大小。本地模式下图片和文本一样会发往用户选择的模型服务。
+
 ### Docker 安全沙箱（云端模式，绝不降级）
 - LLM 生成的代码只在锁定容器中执行：**禁网络 + 只读根文件系统 + 丢弃全部 capabilities + 非 root uid + pid/内存/CPU 限额**
 - 沙箱镜像预装 numpy / pytest，「写测试 → 运行 → 迭代」开箱即用
@@ -257,6 +267,7 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1
 | `USER_DATA_DIR` | 每用户仓库/附件根目录（默认 `data/users`） |
 | `DOWNLOADS_DIR` | 桌面客户端安装包目录（默认 `data/downloads`），自动挂载到 `/downloads` 下载页 |
 | `ATTACHMENT_MAX_MB` / `MAX_ATTACHMENTS_PER_MESSAGE` | 单个附件大小 / 每条消息附件数 |
+| `IMAGE_INPUT_MAX_KB` / `IMAGE_INPUT_MAX_SIDE` / `IMAGE_INPUT_MAX_PIXELS` / `IMAGE_INPUT_MAX_TOTAL_KB` | 视觉图片上限：单张 KB / 单边像素 / 总像素 / 单条消息图片总 KB（默认 3584 / 8000 / 40000000 / 10240） |
 | `USER_STORAGE_MB` / `GUEST_STORAGE_MB` | 正式用户 / 游客个人存储配额 |
 
 ## API 概览
@@ -536,6 +547,7 @@ cd frontend && npm run contract:check
 - `fetch_url` 有 SSRF 防护：仅公网 http(s)、逐跳校验重定向、拒绝内网地址、限制响应大小与类型
 - ZIP 导入有路径穿越防护、文件数与大小上限；Git 仅支持公开仓库浅克隆
 - 用户附件按 `user_id` 存目录并做 owner 校验；附件工具只能读取本轮上传的文件
+- 图片输入只接受 PNG/JPEG，按 magic bytes 与尺寸校验；图片以 base64 只发往用户选择的模型 provider，不写入日志、轨迹、SSE 或消息记录
 - RAG 未关联仓库时 fail-closed；显式 repo_id 必须校验归属；Qdrant payload 带 `user_id`
 - 改密/禁用/管理员改角色会递增 `token_version`，旧 JWT 立即失效；删除用户后 token 也会被拒绝
 - 注册与游客入口有 IP 级小时限流和账号总数上限；生产环境弱 `SECRET_KEY`/默认密码会阻止启动
