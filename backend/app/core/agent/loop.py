@@ -525,6 +525,7 @@ async def run_chat(
                         and is_image_rejection(exc)
                     ):
                         image_retry_available = False
+                        vision_notice_sent = True
                         messages[current_user_index]["content"] = no_vision_content(
                             user_message
                         )

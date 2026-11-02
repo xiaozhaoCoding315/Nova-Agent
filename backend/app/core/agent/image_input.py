@@ -190,7 +190,7 @@ async def load_vision_images(
     return images, warnings
 
 
-def is_image_rejection(exc: Exception) -> bool:
+def _is_image_rejection_one(exc: BaseException) -> bool:
     """True only for a 4xx that names image/vision/media content."""
     status = getattr(exc, "status_code", None)
     if status is None:
@@ -200,3 +200,15 @@ def is_image_rejection(exc: Exception) -> bool:
         return False
     text = str(exc).lower()
     return any(marker in text for marker in IMAGE_ERROR_MARKERS)
+
+
+def is_image_rejection(exc: Exception) -> bool:
+    """True when the exception or any wrapper in its chain is an image 4xx."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if _is_image_rejection_one(current):
+            return True
+        current = current.__cause__ or current.__context__
+    return False

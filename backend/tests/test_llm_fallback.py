@@ -1,6 +1,8 @@
 import pytest
-from app.core.llm.fallback import FallbackLLM
+
+from app.core.agent.image_input import is_image_rejection
 from app.core.llm.base import LLMProvider
+from app.core.llm.fallback import FallbackLLM
 
 
 class FakeLLM(LLMProvider):
@@ -181,3 +183,42 @@ def test_fallback_supports_vision_aggregates_chain():
     text_only = FallbackLLM([FakeLLM("a"), FakeLLM("b")])
     assert mixed.supports_vision is True
     assert text_only.supports_vision is False
+
+
+class ImageRejectingToolFake:
+    supports_tools = True
+    supports_vision = True
+
+    def __init__(self):
+        self.exc = RuntimeError("OpenAI API 400: invalid image content")
+
+    async def astream_with_tools(self, messages, tools):
+        raise self.exc
+        yield  # pragma: no cover — keeps this an async generator
+
+
+class PlainFailureToolFake:
+    supports_tools = True
+    supports_vision = False
+
+    def __init__(self):
+        self.exc = RuntimeError("secondary provider down")
+
+    async def astream_with_tools(self, messages, tools):
+        raise self.exc
+        yield  # pragma: no cover — keeps this an async generator
+
+
+@pytest.mark.asyncio
+async def test_fallback_chains_image_rejection_cause():
+    image_provider = ImageRejectingToolFake()
+    failing_provider = PlainFailureToolFake()
+    fb = FallbackLLM([image_provider, failing_provider])
+
+    with pytest.raises(RuntimeError) as exc_info:
+        async for _ in fb.astream_with_tools([], []):
+            pass
+
+    assert str(exc_info.value) == "All LLM providers failed"
+    assert is_image_rejection(exc_info.value) is True
+    assert exc_info.value.__cause__ is image_provider.exc

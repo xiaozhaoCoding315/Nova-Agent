@@ -130,6 +130,16 @@ def test_is_image_rejection_only_for_image_related_4xx():
     assert is_image_rejection(RuntimeError("Anthropic API 500: image backend down")) is False
 
 
+def test_is_image_rejection_walks_exception_cause_chain():
+    wrapper = RuntimeError("All LLM providers failed")
+    wrapper.__cause__ = RuntimeError("Anthropic API 400: invalid image")
+    assert is_image_rejection(wrapper) is True
+
+    unrelated = RuntimeError("All LLM providers failed")
+    unrelated.__cause__ = RuntimeError("connection reset by peer")
+    assert is_image_rejection(unrelated) is False
+
+
 def test_image_settings_defaults():
     assert settings.image_input_max_kb == 3584
     assert settings.image_input_max_side == 8000

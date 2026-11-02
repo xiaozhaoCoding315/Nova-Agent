@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.agent import loop as loop_mod
+from app.core.llm.fallback import FallbackLLM
 
 USER = {"id": 1, "username": "admin", "role": "admin"}
 SESSION = {"id": "11111111-1111-1111-1111-111111111111", "title": "t"}
@@ -730,6 +731,7 @@ class TextLLM:
 
 class RejectingImageLLM:
     supports_vision = True
+    supports_tools = True
 
     def __init__(self):
         self.calls: list = []
@@ -813,7 +815,30 @@ async def test_image_rejection_retries_text_only_once(monkeypatch):
     assert isinstance(llm.calls[0], list)
     assert isinstance(llm.calls[1], str)
     assert "不支持图片输入" in llm.calls[1]
-    notice = next(event for event in events if event["event"] == "notice")
-    assert notice["data"]["kind"] == "vision_rejected"
+    assert [event["data"]["kind"] for event in events
+            if event["event"] == "notice"] == ["vision_rejected"]
     assert any(event["event"] == "token" and event["data"]["text"] == "按文本继续"
                for event in events)
+
+
+@pytest.mark.asyncio
+async def test_image_rejection_survives_fallback_chain(monkeypatch):
+    provider = RejectingImageLLM()
+    llm = FallbackLLM([provider])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+
+    events = await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    assert len(provider.calls) == 2
+    assert isinstance(provider.calls[0], list)
+    assert isinstance(provider.calls[1], str)
+    assert any(event["event"] == "token" and event["data"]["text"] == "按文本继续"
+               for event in events)
+    assert [event["data"]["kind"] for event in events
+            if event["event"] == "notice"] == ["vision_rejected"]
