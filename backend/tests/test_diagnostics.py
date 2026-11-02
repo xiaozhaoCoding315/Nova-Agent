@@ -1,4 +1,5 @@
 """Fixed-runner diagnostics: parsing, argv construction, execution and policy."""
+import asyncio
 import json
 from pathlib import Path
 
@@ -246,6 +247,8 @@ def test_tail_text_redacts_before_truncating():
 from unittest.mock import AsyncMock
 
 from app.config import settings
+from app.core.agent.tool_output import build_preview
+from app.core.security.audit import AuditAction
 from app.core.security.policy import decide_tool
 from app.core.tools import build_registry
 from app.core.tools import diagnostics as diag
@@ -317,17 +320,21 @@ async def test_run_diagnostics_sandbox_uses_sanitized_copy(monkeypatch, tmp_path
         }),
     )
     monkeypatch.setattr(diag, "check_sandbox_quota", AsyncMock())
-    execute = AsyncMock(return_value={
-        "stdout": json.dumps([{
-            "code": "F401", "message": "unused",
-            "filename": "backend/app.py",
-            "location": {"row": 2, "column": 1},
-        }]),
-        "stderr": "",
-        "exit_code": 1,
-        "timed_out": False,
-        "duration_ms": 42,
-    })
+
+    async def fake_execute(**kwargs):
+        await asyncio.sleep(0.01)
+        return {
+            "stdout": json.dumps([{
+                "code": "F401", "message": "unused",
+                "filename": "backend/app.py",
+                "location": {"row": 2, "column": 1},
+            }]),
+            "stderr": "",
+            "exit_code": 1,
+            "timed_out": False,
+        }
+
+    execute = AsyncMock(side_effect=fake_execute)
     monkeypatch.setattr(diag, "sandbox_execute", execute)
 
     output = await diag.run_diagnostics({"tool": "ruff"}, _ctx())
@@ -345,6 +352,7 @@ async def test_run_diagnostics_sandbox_uses_sanitized_copy(monkeypatch, tmp_path
         "files": 1, "errors": 1, "warnings": 0, "total": 1,
     }
     assert output["diagnostics"][0]["path"] == "backend/app.py"
+    assert output["duration_ms"] >= 1
 
 
 @pytest.mark.asyncio
@@ -390,7 +398,6 @@ async def test_run_diagnostics_rejects_missing_tsconfig(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_run_diagnostics_reports_runner_failure(monkeypatch, tmp_path):
-    monkeypatch.setattr(settings, "nova_mode", "host")
     monkeypatch.setattr(settings, "nova_mode", "local")
     monkeypatch.setattr(
         "app.core.indexing.pipeline.get_repo",
@@ -412,6 +419,178 @@ async def test_run_diagnostics_reports_runner_failure(monkeypatch, tmp_path):
 
     with pytest.raises(ToolBusinessError, match="无法运行 ruff"):
         await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_rejects_flag_injection(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    for bad in ("--fix", "--config=/etc/passwd", "@args.txt"):
+        with pytest.raises(ToolBusinessError, match="不能以 - 或 @"):
+            await diag.run_diagnostics(
+                {"tool": "ruff", "paths": [bad]}, _ctx()
+            )
+    for bad in ("a\nb.py", "a\x00b.py"):
+        with pytest.raises(ToolBusinessError, match="换行或 NUL"):
+            await diag.run_diagnostics(
+                {"tool": "ruff", "paths": [bad]}, _ctx()
+            )
+    with pytest.raises(ToolBusinessError, match="project 不能以 - 或 @"):
+        await diag.run_diagnostics({"tool": "tsc", "project": "-p"}, _ctx())
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_sandbox_unavailable_raises(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "sandbox_status",
+        AsyncMock(return_value={"available": False, "reason": "docker down"}),
+    )
+
+    with pytest.raises(ToolBusinessError, match="沙箱不可用"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_timeout_and_kill_failure_raise(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "sandbox_status",
+        AsyncMock(return_value={
+            "available": True, "builder_available": True, "node_available": True,
+        }),
+    )
+    monkeypatch.setattr(diag, "check_sandbox_quota", AsyncMock())
+    execute = AsyncMock()
+    monkeypatch.setattr(diag, "sandbox_execute", execute)
+
+    execute.return_value = {
+        "stdout": "", "stderr": "", "exit_code": -1,
+        "timed_out": True, "kill_failed": False,
+    }
+    with pytest.raises(ToolBusinessError, match="超时"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+    execute.return_value = {
+        "stdout": "", "stderr": "", "exit_code": -1,
+        "timed_out": True, "kill_failed": True,
+    }
+    with pytest.raises(ToolBusinessError, match="未能结束进程"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_host_counts_unparsable_output(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "resolve_host_argv", lambda tool, root, argv: ["ruff", *argv[1:]]
+    )
+    monkeypatch.setattr(diag, "_version_for", AsyncMock(return_value="ruff 0.17.3"))
+    from app.core.exec import service as exec_service
+    monkeypatch.setattr(
+        exec_service, "run_argv_host",
+        AsyncMock(return_value={
+            "stdout": "totally not json\n", "stderr": "",
+            "exit_code": 1, "timed_out": False, "duration_ms": 5,
+        }),
+    )
+
+    output = await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+    assert output["diagnostics"] == []
+    assert output["parse_errors"] == 1
+    assert output["raw_tail"]
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_sandbox_logs_quota_audit(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "sandbox_status",
+        AsyncMock(return_value={
+            "available": True, "builder_available": True, "node_available": True,
+        }),
+    )
+    monkeypatch.setattr(diag, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(
+        diag, "sandbox_execute",
+        AsyncMock(return_value={
+            "stdout": "", "stderr": "", "exit_code": 0,
+            "timed_out": False,
+        }),
+    )
+    audit = AsyncMock()
+    monkeypatch.setattr(diag, "log_audit", audit)
+
+    await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+    audit.assert_awaited_once()
+    assert audit.await_args.args[0] == AuditAction.SANDBOX_RUN
+    details = audit.await_args.kwargs["details"]
+    assert details["executor"] == "sandbox"
+    assert set(details) == {
+        "tool", "runner", "executor", "exit_code", "timed_out",
+        "diagnostic_count", "truncated",
+    }
+
+
+def test_diagnostics_preview_is_valid_json_within_limit():
+    diagnostics = [
+        {
+            "path": f"src/file_{index}.py",
+            "line": index + 1,
+            "column": 1,
+            "severity": "error",
+            "code": "F401",
+            "message": "unused import",
+            "source": "ruff",
+        }
+        for index in range(100)
+    ]
+    preview = build_preview("diagnostics", {
+        "ok": True,
+        "output": {
+            "tool": "ruff",
+            "summary": {
+                "files": 100, "errors": 100, "warnings": 0, "total": 100,
+            },
+            "truncated": False,
+            "parse_errors": 0,
+            "warning": None,
+            "duration_ms": 12,
+            "diagnostics": diagnostics,
+        },
+    })
+
+    parsed = json.loads(preview)
+    assert len(preview) <= 12000
+    assert parsed["truncated"] is True
+    assert 0 < len(parsed["diagnostics"]) < 100
 
 
 def test_diagnostics_policy_local_readonly_denies_and_ask_requires_approval(monkeypatch):

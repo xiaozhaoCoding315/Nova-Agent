@@ -8,7 +8,6 @@ and marks the result as having no container isolation.
 import re
 import shlex
 import shutil
-import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -45,12 +44,9 @@ TOOL_TIMEOUT = MAX_TIMEOUT + 20
 VERSION_TTL_SECONDS = 3600
 
 _TOOL_SPECS = {
-    "ruff": {
-        "version": "0.8.6",
-        "summary": "Python lint（ruff check，JSON 输出）",
-    },
-    "mypy": {"version": "1.13.0", "summary": "Python 类型检查（mypy）"},
-    "tsc": {"version": "5.6.3", "summary": "TypeScript 类型检查（tsc --noEmit）"},
+    "ruff": {"version": "0.8.6"},
+    "mypy": {"version": "1.13.0"},
+    "tsc": {"version": "5.6.3"},
 }
 _PARSERS = {
     "ruff": parse_ruff_json,
@@ -125,12 +121,6 @@ def resolve_host_argv(
     )
 
 
-def _display_argv(argv: list[str], *, posix: bool) -> str:
-    if posix:
-        return shlex.join(argv)
-    return subprocess.list2cmdline(argv)
-
-
 def _validate_paths(args: dict, root: Path) -> list[str]:
     raw = args.get("paths") or []
     if not isinstance(raw, list) or len(raw) > MAX_PATHS:
@@ -140,6 +130,10 @@ def _validate_paths(args: dict, root: Path) -> list[str]:
         text = str(item or "").strip().replace("\\", "/")
         if not text:
             raise ToolBusinessError("paths 不能包含空路径")
+        if text.startswith(("-", "@")):
+            raise ToolBusinessError(f"paths 不能以 - 或 @ 开头：{item}")
+        if "\n" in text or "\r" in text or "\x00" in text:
+            raise ToolBusinessError(f"paths 不能包含换行或 NUL：{item}")
         if text.startswith("/") or re.match(r"^[A-Za-z]:", text):
             raise ToolBusinessError(f"paths 必须是仓库内相对路径：{item}")
         candidate = (root / text).resolve(strict=False)
@@ -153,6 +147,10 @@ def _tsc_project(args: dict, root: Path) -> str:
     raw = str(args.get("project") or "tsconfig.json").strip().replace(
         "\\", "/"
     )
+    if raw.startswith(("-", "@")):
+        raise ToolBusinessError("project 不能以 - 或 @ 开头")
+    if "\n" in raw or "\r" in raw or "\x00" in raw:
+        raise ToolBusinessError("project 不能包含换行或 NUL")
     if raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
         raise ToolBusinessError("project 必须是仓库内相对路径")
     candidate = (root / raw).resolve(strict=False)
@@ -241,7 +239,8 @@ async def _run_sandbox(
         )
         deps = deps_volume_name(str(repo_id))
         deps_mount = None
-    command = _display_argv(argv, posix=True)
+    command = shlex.join(argv)
+    started = time.perf_counter()
     result = await sandbox_execute(
         files={},
         command=command,
@@ -256,6 +255,7 @@ async def _run_sandbox(
         job_id=ctx.tool_call_id or None,
         user_label=str(ctx.user.get("id", "")) or None,
     )
+    result["duration_ms"] = int((time.perf_counter() - started) * 1000)
     result["executor"] = "sandbox"
     result["version"] = _TOOL_SPECS[tool]["version"]
     result["command"] = command
@@ -335,13 +335,13 @@ async def run_diagnostics(args: dict, ctx: ToolContext) -> dict:
     stdout = str(result.get("stdout") or "")
     stderr = str(result.get("stderr") or "")
     combined = f"{stdout}\n{stderr}".strip()
-    if result.get("timed_out"):
-        raise ToolBusinessError(
-            f"{tool} 诊断超时（{timeout} 秒）：请缩小 paths 范围后重试"
-        )
     if result.get("kill_failed"):
         raise ToolBusinessError(
             f"{tool} 诊断超时后未能结束进程，请手动检查残留进程"
+        )
+    if result.get("timed_out"):
+        raise ToolBusinessError(
+            f"{tool} 诊断超时（{timeout} 秒）：请缩小 paths 范围后重试"
         )
 
     exit_code = int(result.get("exit_code") or 0)
@@ -358,8 +358,15 @@ async def run_diagnostics(args: dict, ctx: ToolContext) -> dict:
 
     ordered = sort_diagnostics(diagnostics)
     truncated = len(ordered) > max_results
+    # Sandbox quota counts sandbox_run rows, so a sandboxed runner must emit
+    # that action; host mode keeps the ordinary tool_call entry.
+    action = (
+        AuditAction.SANDBOX_RUN
+        if result.get("executor") == "sandbox"
+        else AuditAction.TOOL_CALL
+    )
     await log_audit(
-        AuditAction.TOOL_CALL,
+        action,
         user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
         details={
             "tool": TOOL_NAME,
@@ -401,7 +408,8 @@ TOOL = ToolDefinition(
         "paths 为仓库内相对路径（最多 20 个，默认整个仓库）；"
         "tsc 用 project 指定仓库内 tsconfig（默认根 tsconfig.json），"
         "paths 对 tsc 不生效。只读，不修改仓库；"
-        "本地模式没有容器隔离，会先请求审批。"
+        "本地 readonly 模式不提供此工具，ask 模式需审批，"
+        "auto/full 直接运行但无容器隔离。"
     ),
     parameters={
         "type": "object",

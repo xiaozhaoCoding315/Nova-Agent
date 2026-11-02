@@ -113,19 +113,27 @@ def build_preview(name: str, result: dict, limit: int | None = None) -> str:
 
     if name == "diagnostics" and isinstance(result.get("output"), dict):
         output = result["output"]
-        diagnostics = output.get("diagnostics")
-        compact = {
-            "tool": output.get("tool"),
-            "summary": output.get("summary"),
-            "truncated": bool(output.get("truncated")),
-            "parse_errors": int(output.get("parse_errors") or 0),
-            "warning": output.get("warning"),
-            "duration_ms": int(output.get("duration_ms") or 0),
-            "diagnostics": diagnostics if isinstance(diagnostics, list) else [],
-        }
-        if compact["parse_errors"]:
-            compact["raw_tail"] = str(output.get("raw_tail") or "")[:1000]
-        return json.dumps(compact, ensure_ascii=False, default=str)[:limit]
+        items = output.get("diagnostics")
+        items = items if isinstance(items, list) else []
+        count = len(items)
+        # Slice the list until the serialized preview fits; never cut the
+        # JSON text itself, which would leave the card with invalid JSON.
+        while True:
+            compact = {
+                "tool": output.get("tool"),
+                "summary": output.get("summary"),
+                "truncated": bool(output.get("truncated")) or count < len(items),
+                "parse_errors": int(output.get("parse_errors") or 0),
+                "warning": output.get("warning"),
+                "duration_ms": int(output.get("duration_ms") or 0),
+                "diagnostics": items[:count],
+            }
+            if compact["parse_errors"]:
+                compact["raw_tail"] = str(output.get("raw_tail") or "")[:1000]
+            text = json.dumps(compact, ensure_ascii=False, default=str)
+            if len(text) <= limit or count == 0:
+                return text
+            count = 0 if count == 1 else max(0, count // 2)
 
     output = result.get("output")
     if isinstance(output, dict):
