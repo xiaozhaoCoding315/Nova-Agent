@@ -190,7 +190,7 @@ python scripts\build_desktop.py        # 前端构建 + PyInstaller 后端 + NSI
 `http://<服务器>:8000/downloads` 下载：
 
 ```bash
-python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.0.exe
+python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.1.exe
 ```
 
 也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。

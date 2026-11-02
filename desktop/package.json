@@ -1,7 +1,7 @@
 {
   "name": "nova-desktop",
   "productName": "Nova Agent",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Nova Agent 桌面客户端：在本机运行，或连接你的自托管 Nova 服务器",
   "main": "main.js",
   "author": "Nova Agent",

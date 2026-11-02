@@ -72,6 +72,24 @@ async function checkServer(url) {
   }
 }
 
+// 后端的 listening 事件在 uvicorn 真正 bind 之前就会打印，加载窗口前要等
+// health 返回，否则首屏会落进 chrome-error（连接被拒）。
+async function waitForHealth(url, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const res = await net.fetch(`${url}/api/v1/status/health`, {
+        signal: AbortSignal.timeout(2000),
+      })
+      if (res.ok) return true
+    } catch {
+      // 端口还没起来，继续等
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  }
+  return false
+}
+
 /* ---------- 本地后端进程 ---------- */
 
 function backendLaunchSpec() {
@@ -181,10 +199,18 @@ function startLocalBackend() {
             fail('本地服务返回了非预期的监听地址，已停止启动。')
             return
           }
-          finish()
           backendUrl = url
-          sendLaunchStatus({ message: '本地服务已就绪', detail: '' })
-          resolve(url)
+          sendLaunchStatus({ message: '正在等待本地服务就绪…', detail: '' })
+          void waitForHealth(url).then((ready) => {
+            if (settled) return
+            if (!ready) {
+              fail('本地服务启动后没有响应健康检查。')
+              return
+            }
+            finish()
+            sendLaunchStatus({ message: '本地服务已就绪', detail: '' })
+            resolve(url)
+          })
           return
         }
         remember(line)
@@ -306,6 +332,33 @@ function createMainWindow(url) {
     if (target.startsWith(`${url}/`) || target === url) return
     event.preventDefault()
     shell.openExternal(target)
+  })
+
+  let loadRetries = 0
+  mainWindow.webContents.on('did-finish-load', () => {
+    loadRetries = 0
+  })
+  // 首屏偶尔仍会连接被拒（本地服务刚 bind），重试几次再报错。
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, failedUrl, isMainFrame) => {
+    if (!isMainFrame || code === -3) return
+    if (!String(failedUrl || '').startsWith(url)) return
+    if (loadRetries >= 5) {
+      void showMessage({
+        type: 'error',
+        title: '页面加载失败',
+        message: `无法打开 ${url}（${description}）`,
+        buttons: ['重试', '关闭'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0 && mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url)
+      })
+      return
+    }
+    loadRetries += 1
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url)
+    }, 400 * loadRetries)
   })
 
   mainWindow.loadURL(url)

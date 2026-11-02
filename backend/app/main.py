@@ -17,7 +17,7 @@ from app.core.logging_setup import setup_logging
 
 logger = structlog.get_logger()
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 _CLEANUP_INTERVAL_S = 3600
 
 
@@ -173,7 +173,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 # ---------- 桌面客户端安装包下载 ----------
-# 运维把安装包（如 Nova-Agent-Setup-2.1.0.exe）放进 DOWNLOADS_DIR 后，用户即可在
+# 运维把安装包（如 Nova-Agent-Setup-2.1.1.exe）放进 DOWNLOADS_DIR 后，用户即可在
 # 登录页点「下载桌面客户端」或直接访问 /downloads 获取；无需认证。
 _DOWNLOADS_DIR = Path(settings.downloads_dir)
 _DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
