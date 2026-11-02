@@ -53,7 +53,7 @@ type ChatState = {
   setSelectedRepoIds: (ids: string[]) => void
   toggleRepo: (id: string) => void
   setHistoryRepoId: (id: string | null) => Promise<void>
-  uploadAttachment: (file: File) => Promise<void>
+  uploadAttachments: (files: File[]) => Promise<void>
   removeAttachment: (id: string) => Promise<void>
   loadSessions: () => Promise<void>
   selectSession: (id: string) => Promise<void>
@@ -533,13 +533,20 @@ export const useChat = create<ChatState>((set, get) => ({
     await get().loadSessions()
   },
 
-  uploadAttachment: async (file) => {
+  uploadAttachments: async (files) => {
+    const room = 5 - get().attachments.length
+    const batch = files.slice(0, Math.max(0, room))
+    if (batch.length === 0) return
     set({ uploading: true, error: null })
     try {
-      const attachment = await api.files.upload(file, {
-        repoId: get().selectedRepoIds[0],
-      })
-      set((state) => ({ attachments: [...state.attachments, attachment].slice(0, 5) }))
+      for (const file of batch) {
+        const attachment = await api.files.upload(file, {
+          repoId: get().selectedRepoIds[0],
+        })
+        set((state) => ({
+          attachments: [...state.attachments, attachment].slice(0, 5),
+        }))
+      }
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '上传附件失败' })
     } finally {

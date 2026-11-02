@@ -2851,6 +2851,11 @@ export interface components {
              * @default true
              */
             supports_tools: boolean;
+            /**
+             * Supports Vision
+             * @default false
+             */
+            supports_vision: boolean;
         };
         /** LlmSettingsOut */
         LlmSettingsOut: {

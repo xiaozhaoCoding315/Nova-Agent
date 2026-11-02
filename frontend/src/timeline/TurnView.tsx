@@ -4,6 +4,7 @@ import { Markdown } from '../components/Markdown'
 import { PlanCard } from '../components/PlanCard'
 import { Spinner } from '../components/common'
 import { api } from '../lib/api'
+import { isVisionImage } from '../lib/attachments'
 import type {
   DeliveryReport, EditRef, Evidence, Message, PlanState, StreamToolCard, StreamUsage, SubagentRun,
   ToolApproval,
@@ -48,6 +49,8 @@ function lastEvidence(assistant: Message[]): Evidence | null {
 
 function UserLine({ message }: { message: Message }) {
   const attachments = message.attachments ?? []
+  const imageAttachments = attachments.filter(isVisionImage)
+  const fileAttachments = attachments.filter((file) => !isVisionImage(file))
   const time = formatTime(message.created_at)
   return (
     <div className="flex items-start gap-2">
@@ -59,9 +62,30 @@ function UserLine({ message }: { message: Message }) {
           </p>
           {time && <span className="shrink-0 pt-0.5 font-mono text-2xs text-faint">{time}</span>}
         </div>
-        {attachments.length > 0 && (
+        {imageAttachments.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {attachments.map((file) => (
+            {imageAttachments.map((file) => (
+              <a
+                key={file.id}
+                href={api.files.downloadUrl(file.id)}
+                target="_blank"
+                rel="noreferrer"
+                className="block overflow-hidden rounded-sm border border-edge transition-colors duration-150 hover:border-faint"
+                title={`查看 ${file.filename}`}
+              >
+                <img
+                  src={api.files.downloadUrl(file.id)}
+                  alt={file.filename}
+                  className="h-24 w-24 object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        )}
+        {fileAttachments.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {fileAttachments.map((file) => (
               <a
                 key={file.id}
                 href={api.files.downloadUrl(file.id)}

@@ -45,7 +45,7 @@ export function Workbench({
     sessionId, messages, streaming, streamText, toolCards, streamEdits, plan, approvals, error,
     subagentRuns,
     permissionMode, setPermissionMode, model, selectedRepoIds,
-    attachments, uploading, uploadAttachment, removeAttachment,
+    attachments, uploading, uploadAttachments, removeAttachment,
     send, stop, clearError, streamUsage, contextMeter, turnNotice,
     sessions, backgroundTurns, attachTurn, selectSession,
   } = useChat()
@@ -468,7 +468,7 @@ export function Workbench({
           contextMeter={contextMeter}
           attachments={attachments}
           uploading={uploading}
-          onAttach={(file) => void uploadAttachment(file)}
+          onAttachFiles={(files) => void uploadAttachments(files)}
           onRemoveAttachment={(id) => void removeAttachment(id)}
           onConfigureModel={onOpenSettings}
           onSend={(content) => {

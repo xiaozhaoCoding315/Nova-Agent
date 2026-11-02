@@ -634,6 +634,7 @@ export type LlmProvider = {
   docs_url: string
   free_tier: boolean
   supports_tools: boolean
+  supports_vision: boolean
   supports_reasoning: boolean
   supports_temperature: boolean
   context_window: number

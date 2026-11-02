@@ -2686,6 +2686,11 @@
             "default": true,
             "title": "Supports Tools",
             "type": "boolean"
+          },
+          "supports_vision": {
+            "default": false,
+            "title": "Supports Vision",
+            "type": "boolean"
           }
         },
         "required": [

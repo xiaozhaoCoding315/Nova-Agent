@@ -3,11 +3,12 @@ import {
   ArrowUp, Check, ChevronDown, Cpu, FileText, Loader2, Paperclip, ShieldCheck, Slash, Square, X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { DragEvent, KeyboardEvent } from 'react'
+import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react'
 import { ModelPicker, useModelPicker } from './ModelPicker'
 import { SlashMenu } from './SlashMenu'
 import { ContextMeterChip } from '../components/ContextMeterChip'
 import { api } from '../lib/api'
+import { isVisionImage } from '../lib/attachments'
 import { filterCommands, parseCommand, type CommandName } from '../lib/commands'
 import type { ContextMeter, FileAttachment, FileNode, PermissionMode } from '../lib/types'
 
@@ -39,7 +40,7 @@ export function Composer({
   contextMeter,
   attachments,
   uploading,
-  onAttach,
+  onAttachFiles,
   onRemoveAttachment,
   onConfigureModel,
   onSend,
@@ -57,7 +58,7 @@ export function Composer({
   contextMeter: ContextMeter | null
   attachments: FileAttachment[]
   uploading: boolean
-  onAttach: (file: File) => void
+  onAttachFiles: (files: File[]) => void
   onRemoveAttachment: (id: string) => void
   onConfigureModel: () => void
   onSend: (content: string) => void
@@ -81,6 +82,14 @@ export function Composer({
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const picker = useModelPicker()
+  const activeProviderId = picker.value.provider
+    ?? picker.settings?.credentials.find((item) => item.is_default)?.provider
+    ?? picker.settings?.provider
+    ?? null
+  const activeProvider = picker.settings?.providers.find(
+    (item) => item.id === activeProviderId,
+  ) ?? null
+  const visionCapable = activeProvider?.supports_vision ?? false
 
   useEffect(() => {
     if (!modelOpen && !permissionOpen) return
@@ -279,8 +288,8 @@ export function Composer({
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
-    const file = event.dataTransfer.files?.[0]
-    if (file) onAttach(file)
+    const files = Array.from(event.dataTransfer.files ?? [])
+    if (files.length > 0) onAttachFiles(files)
   }
 
   const chipLabel = picker.value.provider && model ? `${picker.value.provider}/${model}` : modelLabel
@@ -296,35 +305,64 @@ export function Composer({
           <input
             ref={fileRef}
             type="file"
+            multiple
+            accept="image/png,image/jpeg,.txt,.md,.py,.js,.ts,.tsx,.jsx,.json,.yaml,.yml,.toml,.ini,.cfg,.html,.css,.sql,.sh,.java,.go,.rs,.c,.cpp,.h,.xml,.csv,.log"
             className="hidden"
             onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onAttach(file)
+              const files = Array.from(event.target.files ?? [])
+              if (files.length > 0) onAttachFiles(files)
               event.target.value = ''
             }}
           />
 
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
-              {attachments.map((file) => (
-                <span
-                  key={file.id}
-                  className="flex max-w-[220px] items-center gap-1 rounded-sm border border-edge bg-diffAdd/70 px-2 py-0.5 font-mono text-2xs text-ink"
-                  title={file.filename}
-                >
-                  <FileText size={11} className="shrink-0 text-accent" />
-                  <span className="truncate">{file.filename}</span>
-                  <span className="shrink-0 text-faint">{(file.size / 1024).toFixed(0)}K</span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveAttachment(file.id)}
-                    className="shrink-0 text-faint transition-colors duration-150 hover:text-err"
-                    aria-label={`移除附件 ${file.filename}`}
+              {attachments.map((file) => {
+                const image = isVisionImage(file)
+                return (
+                  <span
+                    key={file.id}
+                    className="flex max-w-[240px] items-center gap-1.5 rounded-sm border border-edge bg-diffAdd/70 p-1 font-mono text-2xs text-ink"
+                    title={file.filename}
                   >
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
+                    {image ? (
+                      <a
+                        href={api.files.downloadUrl(file.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="relative block shrink-0"
+                        title={`查看 ${file.filename}`}
+                      >
+                        <img
+                          src={api.files.downloadUrl(file.id)}
+                          alt={file.filename}
+                          className="h-10 w-10 rounded-sm object-cover"
+                          loading="lazy"
+                        />
+                        {!visionCapable && (
+                          <span className="absolute inset-x-0 bottom-0 rounded-b-sm bg-err/85 text-center text-[9px] leading-3 text-graphite">
+                            不可看图
+                          </span>
+                        )}
+                      </a>
+                    ) : (
+                      <FileText size={11} className="shrink-0 text-accent" />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate">{file.filename}</span>
+                      <span className="block text-faint">{(file.size / 1024).toFixed(0)}K</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAttachment(file.id)}
+                      className="shrink-0 text-faint transition-colors duration-150 hover:text-err"
+                      aria-label={`移除附件 ${file.filename}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                )
+              })}
             </div>
           )}
 
@@ -377,6 +415,12 @@ export function Composer({
                 detectSlash(e.target.value)
               }}
               onKeyDown={onKeyDown}
+              onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                const files = Array.from(event.clipboardData.files ?? [])
+                if (files.length === 0) return
+                event.preventDefault()
+                onAttachFiles(files)
+              }}
               disabled={disabled}
               placeholder="问代码、贴报错，或让 Nova 修改并真实运行验证…"
               className="max-h-48 min-h-[2.25rem] w-full resize-none bg-transparent pb-1 text-base leading-relaxed text-ink outline-none placeholder:text-faint disabled:opacity-60"
