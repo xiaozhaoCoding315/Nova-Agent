@@ -65,7 +65,7 @@ async def execute_turn(turn_id: str) -> str:
         )
         user = await get_user_by_id(turn["user_id"])
         seq = await events.max_seq(turn_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         detail = redact_text(f"{type(exc).__name__}: {exc}")[:2000]
         logger.exception("turn_context_load_failed", turn_id=turn_id)
         with contextlib.suppress(Exception):
@@ -118,7 +118,7 @@ async def execute_turn(turn_id: str) -> str:
                     asyncio.shield(pending), timeout=_TICK_SECONDS,
                 )
                 pending = None
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if pending is not None and pending.done():
                     try:
                         event = pending.result()
@@ -161,7 +161,7 @@ async def execute_turn(turn_id: str) -> str:
             error=None if canceled else "服务重启或关闭，任务已中断",
         )
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         detail = redact_text(f"{type(exc).__name__}: {exc}")[:2000]
         logger.exception("turn_execution_failed", turn_id=turn_id)
         # The stream may still be live when the failure came from event
