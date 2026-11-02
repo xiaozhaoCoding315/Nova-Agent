@@ -1,5 +1,6 @@
 """Fixed-runner diagnostics: parsing, argv construction, execution and policy."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -118,3 +119,125 @@ def test_tail_text_redacts_secrets():
     cleaned = dp.tail_text(text, limit=4000)
     assert "sk-" + "a" * 24 not in cleaned
     assert "[REDACTED]" in cleaned
+
+
+def test_normalize_path_keeps_host_root_under_workspace():
+    # A host root that itself lives under /workspace must not lose its
+    # basename when the absolute runner path is mapped back.
+    root = Path("/workspace/repo")
+    assert dp.normalize_path("/workspace/repo/backend/app.py", root) == (
+        "backend/app.py"
+    )
+
+
+def test_parse_tsc_continuation_is_redacted(tmp_path):
+    secret = "sk-" + "b" * 24
+    text = (
+        "src/a.ts(3,7): error TS2322: Type 'string' is not assignable.\n"
+        f"  Type '\"{secret}\"' is not assignable to type 'number'.\n"
+    )
+    diagnostics, errors = dp.parse_tsc_text(text, tmp_path)
+
+    assert errors == 0
+    assert len(diagnostics) == 1
+    message = diagnostics[0]["message"]
+    assert "[REDACTED]" in message
+    assert secret not in message
+    assert "is not assignable to type 'number'" in message
+
+
+def test_parse_tsc_skips_count_summary(tmp_path):
+    text = (
+        "src/a.ts(3,7): error TS2322: Type 'string' is not assignable.\n"
+        "src/b.ts(10,1): error TS2345: Argument of type 'string' is not "
+        "assignable to parameter of type 'number'.\n"
+        "Found 2 errors in 2 files.\n"
+    )
+    diagnostics, errors = dp.parse_tsc_text(text, tmp_path)
+
+    assert errors == 0
+    assert [(item["path"], item["line"], item["message"])
+            for item in diagnostics] == [
+        ("src/a.ts", 3, "Type 'string' is not assignable."),
+        (
+            "src/b.ts",
+            10,
+            "Argument of type 'string' is not assignable to parameter of "
+            "type 'number'.",
+        ),
+    ]
+
+
+def test_parse_tsc_skips_same_file_summary(tmp_path):
+    text = (
+        "src/a.ts(3,7): error TS2322: Type 'string' is not assignable.\n"
+        "src/a.ts(9,2): error TS2345: Argument of type 'string' is not "
+        "assignable to parameter of type 'number'.\n"
+        "Found 2 errors in the same file, starting at: src/a.ts:3\n"
+    )
+    diagnostics, errors = dp.parse_tsc_text(text, tmp_path)
+
+    assert errors == 0
+    assert [item["message"] for item in diagnostics] == [
+        "Type 'string' is not assignable.",
+        "Argument of type 'string' is not assignable to parameter of type "
+        "'number'.",
+    ]
+
+
+def test_parse_tsc_skips_errors_files_table(tmp_path):
+    text = (
+        "src/a.ts(3,7): error TS2322: Type 'string' is not assignable.\n"
+        "src/b.ts(10,1): error TS2345: Argument of type 'string' is not "
+        "assignable to parameter of type 'number'.\n"
+        "Errors  Files\n"
+        "     1  src/a.ts:3\n"
+        "     2  src/b.ts:10\n"
+    )
+    diagnostics, errors = dp.parse_tsc_text(text, tmp_path)
+
+    assert errors == 0
+    assert [item["message"] for item in diagnostics] == [
+        "Type 'string' is not assignable.",
+        "Argument of type 'string' is not assignable to parameter of type "
+        "'number'.",
+    ]
+
+
+def test_continuation_after_rejected_line_is_not_attached(tmp_path):
+    mypy_text = (
+        "backend/app/x.py:1:1: error: first  [misc]\n"
+        "../outside.py:2:2: error: escaped  [misc]\n"
+        "    stray continuation\n"
+    )
+    diagnostics, errors = dp.parse_mypy_text(mypy_text, tmp_path)
+
+    assert errors == 2
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["message"] == "first"
+
+    tsc_text = (
+        "src/a.ts(1,1): error TS2322: first\n"
+        "../outside.ts(2,2): error TS2322: escaped\n"
+        "  stray continuation\n"
+    )
+    diagnostics, errors = dp.parse_tsc_text(tsc_text, tmp_path)
+
+    assert errors == 2
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["message"] == "first"
+
+    assert dp.parse_mypy_text("    orphan continuation\n", tmp_path) == ([], 1)
+    assert dp.parse_tsc_text("    orphan continuation\n", tmp_path) == ([], 1)
+
+
+def test_tail_text_redacts_before_truncating():
+    secret = "sk-" + "c" * 24
+    text = "x" * 10 + " token " + secret
+    cleaned = dp.tail_text(text, limit=15)
+
+    assert len(cleaned) == 15
+    assert cleaned.endswith("[REDACTED]")
+    assert secret not in cleaned
+    assert dp.tail_text(text, limit=0) == ""
+    assert dp.tail_text(text, limit=-1) == ""
