@@ -2,6 +2,7 @@ import structlog
 
 from app.core.agent.image_input import is_image_rejection, strip_image_blocks
 from app.core.llm.base import LLMProvider
+from app.core.security.redaction import redact_text
 
 logger = structlog.get_logger()
 
@@ -39,7 +40,7 @@ class FallbackLLM(LLMProvider):
                     image_exc = image_exc or e
                 last_exc = e
                 logger.warning("LLM provider failed, trying next",
-                             provider=type(provider).__name__, error=str(e))
+                             provider=type(provider).__name__, error=redact_text(str(e))[:300])
                 continue
         cause = image_exc or last_exc
         if cause is not None:
@@ -73,13 +74,13 @@ class FallbackLLM(LLMProvider):
             except Exception as e:
                 if yielded:
                     logger.error("LLM provider failed mid-stream, aborting tool call chain",
-                                 provider=type(provider).__name__, error=str(e))
+                                 provider=type(provider).__name__, error=redact_text(str(e))[:300])
                     raise
                 if is_image_rejection(e):
                     image_exc = image_exc or e
                 last_exc = e
                 logger.warning("LLM provider failed, trying next",
-                             provider=type(provider).__name__, error=str(e))
+                             provider=type(provider).__name__, error=redact_text(str(e))[:300])
                 continue
         cause = image_exc or last_exc
         if cause is not None:

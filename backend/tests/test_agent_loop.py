@@ -705,6 +705,79 @@ def test_args_summary_persists_diagnostics_context():
     assert loop_mod._args_summary({"query": "hi"}) == {"query": "hi"}
 
 
+@pytest.mark.asyncio
+async def test_image_bytes_never_reach_sse_trace_or_messages(monkeypatch):
+    llm = VisionLLM()
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+
+    events = await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    sentinel = "iVBORw0KGgo"
+    provider_payload = json.dumps(llm.messages, ensure_ascii=False)
+    assert sentinel in provider_payload
+    assert "data:image/png;base64," in provider_payload
+
+    assert sentinel not in json.dumps(events, ensure_ascii=False)
+    assert "data:image" not in json.dumps(events, ensure_ascii=False)
+    trace_payload = json.dumps(
+        [[str(arg) for arg in call.args] for call in loop_mod.trace_record.await_args_list],
+        ensure_ascii=False,
+    )
+    assert sentinel not in trace_payload
+    assert "data:image" not in trace_payload
+    message_payload = json.dumps(
+        [
+            [str(arg) for arg in call.args]
+            for call in loop_mod.session_mod.add_message.await_args_list
+        ],
+        ensure_ascii=False,
+    )
+    assert sentinel not in message_payload
+    assert "data:image" not in message_payload
+
+
+@pytest.mark.asyncio
+async def test_llm_error_with_image_data_is_scrubbed(monkeypatch):
+    class LeakyImageLLM:
+        supports_vision = True
+
+        async def astream_with_tools(self, messages, tools):
+            raise RuntimeError(
+                "OpenAI API 500: upstream rejected body "
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+            )
+            yield  # pragma: no cover — makes this an async generator
+
+    _patch_common(monkeypatch, LeakyImageLLM())
+    monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
+    monkeypatch.setattr(loop_mod.settings, "llm_round_retries", 0)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+
+    events = await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    assert "data:image" not in json.dumps(events, ensure_ascii=False)
+    assert "iVBORw0KGgo" not in json.dumps(events, ensure_ascii=False)
+    trace_payload = json.dumps(
+        [[str(arg) for arg in call.args] for call in loop_mod.trace_record.await_args_list],
+        ensure_ascii=False,
+    )
+    assert "data:image" not in trace_payload
+    assert "iVBORw0KGgo" not in trace_payload
+    assert any(event["event"] == "error" for event in events)
+
+
 class VisionLLM:
     supports_vision = True
 

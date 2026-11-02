@@ -539,7 +539,7 @@ async def run_chat(
                         )
                         continue
                     llm_failed = "error"
-                    llm_error_detail = redact_text(str(exc))
+                    llm_error_detail = redact_text(str(exc))[:500]
                 if round_text or tool_calls or retries_used >= max_retries:
                     break
                 yield _sse(

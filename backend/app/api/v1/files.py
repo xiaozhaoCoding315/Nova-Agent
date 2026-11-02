@@ -49,11 +49,6 @@ async def _prepare_upload(file: UploadFile, purpose: str):
         return file, file.content_type
     limit = settings.image_input_max_kb * 1024
     data = await file.read(limit + 1)
-    if len(data) > limit:
-        raise HTTPException(
-            status_code=400,
-            detail=f"图片超过上限（{settings.image_input_max_kb / 1024:.1f} MB）",
-        )
     try:
         info = validate_image_bytes(data)
     except ImageRejected as exc:

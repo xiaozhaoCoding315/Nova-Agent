@@ -339,7 +339,7 @@ export function Composer({
                           loading="lazy"
                         />
                         {!visionCapable && (
-                          <span className="absolute inset-x-0 bottom-0 rounded-b-sm bg-err/85 text-center text-[9px] leading-3 text-graphite">
+                          <span className="absolute inset-x-0 bottom-0 rounded-b-sm bg-err/85 text-center text-2xs leading-3 text-graphite">
                             不可看图
                           </span>
                         )}

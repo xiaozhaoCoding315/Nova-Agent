@@ -4,6 +4,12 @@ import re
 REDACTED = "[REDACTED]"
 
 _PATTERNS = (
+    # Image data URLs go first: a secret-like substring inside base64 must not
+    # split the match and leave most of the payload behind.
+    (
+        re.compile(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+", re.IGNORECASE),
+        "[image data omitted]",
+    ),
     (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), REDACTED),
     (re.compile(r"\bark-[A-Za-z0-9-]{12,}\b"), REDACTED),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), REDACTED),

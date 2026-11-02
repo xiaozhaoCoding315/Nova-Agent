@@ -28,6 +28,16 @@ def test_redacts_common_secret_shapes():
     assert REDACTED in cleaned
 
 
+def test_redacts_image_data_urls():
+    cleaned = redact_text(
+        "boom data:image/png;base64,iVBORw0KGgoAAAANSUhEUg== tail"
+    )
+    assert "[image data omitted]" in cleaned
+    assert "data:image" not in cleaned
+    assert "iVBORw0KGgo" not in cleaned
+    assert cleaned.endswith("tail")
+
+
 def test_redact_obj_is_recursive():
     payload = {"nested": [{"token": "sk-abcdefghijklmnop1234"}], "ok": 1}
     cleaned = redact_obj(payload)

@@ -4,7 +4,9 @@ import struct
 
 import pytest
 
-from app.config import settings
+from app.config import Settings
+from app.core.agent.context_governor import compact_messages
+from app.core.agent.context_meter import IMAGE_TOKEN_ESTIMATE, estimate_messages
 from app.core.agent.image_input import (
     ImageRejected,
     build_user_content,
@@ -141,14 +143,10 @@ def test_is_image_rejection_walks_exception_cause_chain():
 
 
 def test_image_settings_defaults():
-    assert settings.image_input_max_kb == 3584
-    assert settings.image_input_max_side == 8000
-    assert settings.image_input_max_pixels == 40_000_000
-    assert settings.image_input_max_total_kb == 10_240
-
-
-from app.core.agent.context_governor import compact_messages
-from app.core.agent.context_meter import IMAGE_TOKEN_ESTIMATE, estimate_messages
+    assert Settings.model_fields["image_input_max_kb"].default == 3584
+    assert Settings.model_fields["image_input_max_side"].default == 8000
+    assert Settings.model_fields["image_input_max_pixels"].default == 40_000_000
+    assert Settings.model_fields["image_input_max_total_kb"].default == 10_240
 
 
 def test_estimate_messages_counts_image_blocks():
