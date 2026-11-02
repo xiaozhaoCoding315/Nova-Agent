@@ -26,7 +26,7 @@ from app.core.llm.factory import (
 )
 from app.core.llm.usage import record_usage
 from app.core.security.limits import ensure_token_budget
-from app.core.security.redaction import redact_text
+from app.core.security.redaction import redact_obj, redact_text
 from app.core.trace import record as trace_record
 
 if TYPE_CHECKING:
@@ -94,13 +94,14 @@ def _extract_findings(summary: str, limit: int = 12) -> list[dict]:
 
 async def _stream_round(
     llm, messages: list[dict], specs: list[dict],
-) -> tuple[str, list[dict], dict | None]:
+) -> tuple[str, list[dict], dict | None, list[dict]]:
     """One tool-enabled LLM round with the same transient retry as the parent."""
     last_error: Exception | None = None
     attempts = max(int(settings.llm_round_retries), 0) + 1
     for _ in range(attempts):
         content: list[str] = []
         tool_calls: list[dict] = []
+        thinking_blocks: list[dict] = []
         usage: dict | None = None
         try:
             async with asyncio.timeout(settings.llm_timeout):
@@ -110,15 +111,17 @@ async def _stream_round(
                         content.append(event.get("content") or "")
                     elif etype == "tool_calls":
                         tool_calls = event.get("tool_calls") or []
+                    elif etype == "thinking_blocks":
+                        thinking_blocks = event.get("thinking_blocks") or []
                     elif etype == "usage":
                         usage = event.get("usage")
-            return "".join(content), tool_calls, usage
+            return "".join(content), tool_calls, usage, thinking_blocks
         except TimeoutError as exc:
             last_error = exc
         except Exception as exc:  # noqa: BLE001
             last_error = exc
         if content or tool_calls:
-            return "".join(content), tool_calls, usage
+            return "".join(content), tool_calls, usage, thinking_blocks
     raise last_error or RuntimeError("模型调用失败")
 
 
@@ -131,7 +134,7 @@ async def _final_summary(llm, messages: list[dict]) -> str:
                 if token:
                     parts.append(str(token))
     except Exception as exc:  # noqa: BLE001
-        logger.warning("subagent_final_summary_failed", error=str(exc))
+        logger.warning("subagent_final_summary_failed", error=redact_text(str(exc)))
     return "".join(parts)
 
 
@@ -178,7 +181,7 @@ async def run_subagent(
         from app.core.tools import get_registry
         registry = get_registry()
 
-    # 延迟导入：tools 包会导入本模块，模块级导入会形成循环。
+    # 延迟导入：注册 spawn_agents 后 tools 包会经 subagents 导入本模块，模块级导入会形成循环。
     from app.core.tools.base import ToolContext
 
     specs = [
@@ -190,21 +193,26 @@ async def run_subagent(
 
     system_parts = [SUBAGENT_IDENTITY]
     if repos:
-        lines = ["\n## 可访问仓库（工具参数 repo_id 可使用下面的 id）"]
-        for repo in repos:
-            lines.append(
-                f"- {repo.get('name') or repo.get('id')}（repo_id: {repo.get('id')}）"
-            )
-        system_parts.append("\n".join(lines))
-        rule_blocks = [
-            f"### {repo.get('name') or repo.get('id')}\n{redact_text(str(repo.get('rules')))}"
-            for repo in repos
-            if str(repo.get("rules") or "").strip()
+        allowed_repo_ids = set(repo_ids)
+        visible_repos = [
+            repo for repo in repos if repo.get("id") in allowed_repo_ids
         ]
-        if rule_blocks:
-            system_parts.append(
-                "\n## 仓库项目约定（必须遵守）\n" + "\n".join(rule_blocks)
-            )
+        if visible_repos:
+            lines = ["\n## 可访问仓库（工具参数 repo_id 可使用下面的 id）"]
+            for repo in visible_repos:
+                lines.append(
+                    f"- {repo.get('name') or repo.get('id')}（repo_id: {repo.get('id')}）"
+                )
+            system_parts.append("\n".join(lines))
+            rule_blocks = [
+                f"### {repo.get('name') or repo.get('id')}\n{redact_text(str(repo.get('rules')))}"
+                for repo in visible_repos
+                if str(repo.get("rules") or "").strip()
+            ]
+            if rule_blocks:
+                system_parts.append(
+                    "\n## 仓库项目约定（必须遵守）\n" + "\n".join(rule_blocks)
+                )
 
     messages: list[dict] = [
         {"role": "system", "content": "\n".join(system_parts)},
@@ -228,7 +236,7 @@ async def run_subagent(
             try:
                 llm = await get_llm(user["id"], model=model, overrides=overrides)
             except LLMNotConfiguredError as exc:
-                status, error = "failed", str(exc)
+                status, error = "failed", redact_text(str(exc))[:300]
                 raise _StopSubagent() from exc
             except Exception as exc:  # noqa: BLE001
                 status, error = "failed", redact_text(str(exc))[:300]
@@ -253,7 +261,9 @@ async def run_subagent(
                 window = resolve_context_window(user["id"], llm, overrides)
                 compact_messages(messages, window, keep_recent=6)
 
-                text, tool_calls, usage = await _stream_round(llm, messages, specs)
+                text, tool_calls, usage, thinking_blocks = await _stream_round(
+                    llm, messages, specs,
+                )
                 if text:
                     last_text = text
                 if usage:
@@ -270,7 +280,7 @@ async def run_subagent(
                     completed = True
                     break
 
-                messages.append({
+                assistant_message = {
                     "role": "assistant",
                     "content": text,
                     "tool_calls": [
@@ -284,7 +294,10 @@ async def run_subagent(
                         }
                         for call in tool_calls
                     ],
-                })
+                }
+                if thinking_blocks:
+                    assistant_message["thinking_blocks"] = thinking_blocks
+                messages.append(assistant_message)
                 for call in tool_calls:
                     name = str(call.get("name") or "")
                     args = _parse_arguments(call.get("arguments"))
@@ -328,13 +341,13 @@ async def run_subagent(
     except Exception as exc:  # noqa: BLE001
         status = "failed"
         error = redact_text(str(exc))[:300]
-        logger.warning("subagent_failed", task_id=task_id, error=str(exc))
+        logger.warning("subagent_failed", task_id=task_id, error=redact_text(str(exc)))
 
     summary_full = (
         "\n\n".join(part for part in summary_parts if part.strip()).strip()
         or last_text.strip()
     )
-    summary = summary_full[:max(int(settings.subagent_summary_chars), 200)]
+    summary = redact_text(summary_full)[:max(int(settings.subagent_summary_chars), 200)]
     if status == "ok" and not summary:
         status = "failed"
         error = error or "子代理没有返回总结"
@@ -349,30 +362,41 @@ async def run_subagent(
         try:
             citations = await verify_citations(summary_full, list(repo_ids), False)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("subagent_citations_failed", task_id=task_id, error=str(exc))
+            logger.warning(
+                "subagent_citations_failed",
+                task_id=task_id,
+                error=redact_text(str(exc)),
+            )
 
-    try:
-        await record_usage(
-            user["id"], session_id,
-            {
-                "prompt_tokens": usage_total["prompt_tokens"],
-                "completion_tokens": usage_total["completion_tokens"],
-                "model": usage_total["model"],
-            },
-            tool_calls=len(tools_used), source="subagent",
-        )
-    except Exception:  # noqa: BLE001 — accounting is best-effort
-        pass
+    if (
+        usage_total["prompt_tokens"]
+        or usage_total["completion_tokens"]
+        or usage_total["model"]
+    ):
+        try:
+            await record_usage(
+                user["id"], session_id,
+                {
+                    "prompt_tokens": usage_total["prompt_tokens"],
+                    "completion_tokens": usage_total["completion_tokens"],
+                    "model": usage_total["model"],
+                },
+                tool_calls=len(tools_used), source="subagent",
+            )
+        except Exception:  # noqa: BLE001 — accounting is best-effort
+            pass
 
+    findings = redact_obj(_extract_findings(summary_full or summary))
+    files = redact_obj(list(dict.fromkeys(
+        item["path"] for item in extract_citations(summary_full or summary)
+    ))[:20])
     result = {
         "id": task_id,
         "title": title,
         "status": status,
         "summary": summary,
-        "findings": _extract_findings(summary_full or summary),
-        "files": list(dict.fromkeys(
-            item["path"] for item in extract_citations(summary_full or summary)
-        ))[:20],
+        "findings": findings,
+        "files": files,
         "rounds": rounds,
         "tools": list(dict.fromkeys(tools_used)),
         "tokens": {

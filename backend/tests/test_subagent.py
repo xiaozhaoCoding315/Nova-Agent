@@ -19,8 +19,13 @@ class FakeLLM:
     def __init__(self, rounds, final="## 结论\n最终总结"):
         self.rounds = list(rounds)
         self.final = final
+        self.calls = []
 
     async def astream_with_tools(self, messages, tools):
+        self.calls.append({
+            "messages": [dict(message) for message in messages],
+            "tools": list(tools),
+        })
         events = self.rounds.pop(0) if self.rounds else []
         for event in events:
             yield event
@@ -35,9 +40,10 @@ class FakeRegistry:
         self.executed = []
 
     def specs(self, **_kwargs):
+        names = set(subagent_mod.SUBAGENT_TOOL_ALLOWLIST) | {"write_files", "run_command"}
         return [
             {"type": "function", "function": {"name": name, "description": "", "parameters": {}}}
-            for name in sorted(subagent_mod.SUBAGENT_TOOL_ALLOWLIST)
+            for name in sorted(names)
         ]
 
     async def execute(self, name, args, ctx):
@@ -112,9 +118,42 @@ async def test_subagent_runs_tool_round_then_summary(monkeypatch):
     assert result["findings"][0]["line"] == 42
     assert result["tokens"] == {"prompt": 30, "completion": 7}
     assert registry.executed[0][0] == "read_file"
+    ctx = registry.executed[0][2]
+    assert ctx.permission_mode == "readonly"
+    assert ctx.repo_ids == ["r1"]
+    tool_names = {spec["function"]["name"] for spec in llm.calls[0]["tools"]}
+    assert tool_names
+    assert tool_names <= subagent_mod.SUBAGENT_TOOL_ALLOWLIST
+    assert "write_files" not in tool_names
+    assert "run_command" not in tool_names
     assert [event["phase"] for event in events] == ["start", "round", "tool", "round", "done"]
     subagent_mod.record_usage.assert_awaited_once()
     assert subagent_mod.record_usage.await_args.kwargs["source"] == "subagent"
+
+
+@pytest.mark.asyncio
+async def test_subagent_preserves_thinking_blocks_across_tool_rounds(monkeypatch):
+    thinking = [{"type": "thinking", "thinking": "先读文件", "signature": "sig"}]
+    llm = FakeLLM([
+        [
+            {"type": "thinking_blocks", "thinking_blocks": thinking},
+            {"type": "content", "content": "先查一下"},
+            {"type": "tool_calls", "tool_calls": [
+                {"id": "t1", "name": "read_file", "arguments": json.dumps({"path": "src/auth.py"})}
+            ]},
+        ],
+        [
+            {"type": "content", "content": "## 结论\n鉴权在 src/auth.py:42。"},
+        ],
+    ])
+    result, _ = await _run(monkeypatch, llm, FakeRegistry())
+
+    assert result["status"] == "ok"
+    second_request = llm.calls[1]["messages"]
+    assistant = next(
+        message for message in second_request if message.get("role") == "assistant"
+    )
+    assert assistant["thinking_blocks"] == thinking
 
 
 @pytest.mark.asyncio
@@ -139,13 +178,14 @@ async def test_subagent_partial_after_round_limit(monkeypatch):
 async def test_subagent_timeout(monkeypatch):
     class SlowLLM(FakeLLM):
         async def astream_with_tools(self, messages, tools):
-            await asyncio.sleep(1)
+            await asyncio.sleep(3)
             yield {"type": "content", "content": "late"}
 
-    result, events = await _run(monkeypatch, SlowLLM([]), FakeRegistry(), timeout=0.05)
+    result, events = await _run(monkeypatch, SlowLLM([]), FakeRegistry(), timeout=1.0)
 
     assert result["status"] == "timeout"
-    assert result["ms"] >= 50
+    assert "超过 1 秒" in result["error"]
+    assert result["ms"] >= 1000
     assert events[-1]["phase"] == "done"
 
 
