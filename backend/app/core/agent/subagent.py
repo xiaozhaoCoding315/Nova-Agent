@@ -224,6 +224,8 @@ async def run_subagent(
         repo_roots=dict(repo_roots or {}),
         session_id=session_id,
         permission_mode="readonly",
+        turn_id=turn_id,
+        agent_depth=1,
     )
 
     await _emit({"phase": "start", "id": task_id, "title": title})

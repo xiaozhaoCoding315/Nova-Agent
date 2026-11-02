@@ -41,6 +41,11 @@ class ToolContext:
     tool_call_id: str = ""
     output_queue: object | None = None   # asyncio.Queue filled by streaming tools
     approval_granted: bool = False       # set only for one user-approved call
+    turn_id: str = ""
+    model: str | None = None
+    llm_overrides: dict = field(default_factory=dict)
+    agent_depth: int = 0
+    subagent_tasks_used: int = 0
 
 
 @dataclass
@@ -54,6 +59,8 @@ class ToolDefinition:
     capabilities: list[str] = field(default_factory=list)
     # Side-effect free tools may run concurrently within one assistant turn.
     parallel_safe: bool = False
+    # 需要把运行中事件推给父循环的工具（spawn_agents）。
+    streaming: bool = False
 
 
 # Tools the model should not even see in a given mode / availability state.

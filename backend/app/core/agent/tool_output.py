@@ -12,6 +12,8 @@ def budget_for(name: str) -> int:
     base = max(int(settings.tool_result_max_chars), 1000)
     if name in _EXEC_TOOLS:
         return min(base + 4000, 20_000)
+    if name == "spawn_agents":
+        return min(base + 12_000, 28_000)
     return base
 
 
@@ -87,7 +89,7 @@ def serialize_tool_result(name: str, result: dict) -> str:
 
 # Search results are shown as links in the timeline, so their preview keeps
 # enough JSON for the client to parse instead of cutting it at 400 chars.
-_PREVIEW_LIMITS = {"web_search": 6000}
+_PREVIEW_LIMITS = {"web_search": 6000, "spawn_agents": 2000}
 
 
 def build_preview(name: str, result: dict, limit: int | None = None) -> str:
@@ -95,6 +97,15 @@ def build_preview(name: str, result: dict, limit: int | None = None) -> str:
         limit = _PREVIEW_LIMITS.get(name, 400)
     if not result.get("ok"):
         return f"错误：{result.get('error', 'unknown error')}"[:limit]
+
+    if name == "spawn_agents" and isinstance(result.get("output"), dict):
+        tasks = result["output"].get("tasks") or []
+        rows = [
+            f"{item.get('title', '子任务')}：{item.get('status', '')}"
+            f"（{item.get('rounds', 0)} 轮 / {item.get('ms', 0)}ms）"
+            for item in tasks if isinstance(item, dict)
+        ]
+        return "\n".join(rows)[:limit] or "子代理已返回"
 
     output = result.get("output")
     if isinstance(output, dict):
