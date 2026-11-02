@@ -30,6 +30,7 @@ Handler = Callable[[JobContext], Awaitable[dict | None]]
 class _HandlerSpec:
     fn: Handler
     concurrency: int = 1
+    uncapped: bool = False
 
 
 class JobRunner:
@@ -45,13 +46,21 @@ class JobRunner:
     # ------------------------------------------------------------------
     # registration / lifecycle
     # ------------------------------------------------------------------
-    def register(self, kind: str, fn: Handler, concurrency: int = 1) -> None:
+    def register(
+        self, kind: str, fn: Handler, concurrency: int = 1, *, uncapped: bool = False,
+    ) -> None:
         if kind in self._handlers:
             raise ValueError(f"job handler already registered: {kind}")
-        self._handlers[kind] = _HandlerSpec(fn=fn, concurrency=max(1, concurrency))
+        self._handlers[kind] = _HandlerSpec(
+            fn=fn, concurrency=max(1, concurrency), uncapped=uncapped,
+        )
 
     def has(self, kind: str) -> bool:
         return kind in self._handlers
+
+    def _is_uncapped(self, kind: str) -> bool:
+        spec = self._handlers.get(kind)
+        return bool(spec and spec.uncapped)
 
     @property
     def running(self) -> bool:
@@ -98,13 +107,23 @@ class JobRunner:
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 
-        # A graceful shutdown should not leave jobs running forever.
+        # A graceful shutdown should not leave jobs running forever.  Chat
+        # turns are interactive and cannot be replayed safely, so they fail
+        # instead of requeueing; other jobs keep their old requeue behavior.
         if active_ids:
             try:
                 await execute(
+                    "UPDATE jobs SET status = 'failed', "
+                    "error = 'server shutdown; chat turn interrupted', finished_at = now() "
+                    "WHERE id = ANY(%s::uuid[]) AND kind = 'chat_turn' "
+                    "AND status = 'running'",
+                    (active_ids,),
+                )
+                await execute(
                     "UPDATE jobs SET status = 'queued', started_at = NULL, "
                     "heartbeat_at = NULL, error = 'server shutdown; job requeued' "
-                    "WHERE id = ANY(%s::uuid[]) AND status = 'running'",
+                    "WHERE id = ANY(%s::uuid[]) AND kind <> 'chat_turn' "
+                    "AND status = 'running'",
                     (active_ids,),
                 )
             except Exception as exc:  # noqa: BLE001
@@ -254,10 +273,17 @@ class JobRunner:
     # internals
     # ------------------------------------------------------------------
     async def _recover_stale(self) -> None:
+        failed_turns = await execute(
+            "UPDATE jobs SET status = 'failed', "
+            "error = 'server restarted before the turn finished', finished_at = now() "
+            "WHERE kind = 'chat_turn' AND status IN ('queued', 'running') RETURNING id"
+        )
+        if failed_turns:
+            logger.info("chat_turn_jobs_failed_on_restart", count=len(failed_turns))
         rows = await execute(
             "UPDATE jobs SET status = 'queued', started_at = NULL, heartbeat_at = NULL, "
             "error = 'worker restarted; job requeued' "
-            "WHERE status = 'running' AND (heartbeat_at IS NULL OR "
+            "WHERE status = 'running' AND kind <> 'chat_turn' AND (heartbeat_at IS NULL OR "
             "heartbeat_at < now() - make_interval(secs => %s)) RETURNING id",
             (settings.job_stale_seconds,),
         )
@@ -281,9 +307,6 @@ class JobRunner:
             self._wake.clear()
 
     async def _claim_one(self) -> Job | None:
-        limit = settings.effective_job_max_concurrency
-        if limit > 0 and len(self._active) >= limit:
-            return None
         available = [
             kind
             for kind, spec in self._handlers.items()
@@ -291,6 +314,22 @@ class JobRunner:
         ]
         if not available:
             return None
+        limit = settings.effective_job_max_concurrency
+        if limit > 0:
+            if self._active_kinds:
+                capped_active = sum(
+                    count
+                    for kind, count in self._active_kinds.items()
+                    if not self._is_uncapped(kind)
+                )
+            else:
+                # Before per-kind accounting exists (and in tests that seed
+                # ``_active`` directly), fall back to the raw active count.
+                capped_active = len(self._active)
+            if capped_active >= limit:
+                available = [kind for kind in available if self._is_uncapped(kind)]
+                if not available:
+                    return None
         rows = await execute(
             """
             UPDATE jobs SET status = 'running', started_at = now(),
@@ -357,7 +396,8 @@ class JobRunner:
             )
             logger.info("job_canceled", job_id=job.id, kind=job.kind)
         except asyncio.CancelledError:
-            # Graceful shutdown: stop() requeues the row after we return.
+            # Graceful shutdown: stop() finalizes the row after we return
+            # (requeue for ordinary jobs, fail for chat turns).
             raise
         except Exception as exc:  # noqa: BLE001
             logger.exception("job_failed", job_id=job.id, kind=job.kind)

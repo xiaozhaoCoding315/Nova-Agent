@@ -153,6 +153,20 @@ async def _builder_smoke(ctx: JobContext) -> dict:
     return result
 
 
+async def _chat_turn(ctx: JobContext) -> dict:
+    from app.core.turns.service import execute_turn
+
+    turn_id = str(ctx.payload["turn_id"])
+    status = await execute_turn(turn_id)
+    if status in ("canceled", "interrupted"):
+        from app.core.jobs.models import JobCanceled
+
+        raise JobCanceled()
+    if status in ("failed", "missing"):
+        raise JobFailed("回合执行失败")
+    return {"turn_id": turn_id, "status": status}
+
+
 def register_all(runner) -> None:
     """Idempotently register the built-in handlers."""
     if not runner.has("index"):
@@ -169,3 +183,6 @@ def register_all(runner) -> None:
         runner.register("builder_smoke", _builder_smoke, concurrency=1)
     if not runner.has("verify"):
         runner.register("verify", _verify, concurrency=1)
+    if not runner.has("chat_turn"):
+        # Interactive turns must not queue behind indexing/verify jobs.
+        runner.register("chat_turn", _chat_turn, concurrency=8, uncapped=True)

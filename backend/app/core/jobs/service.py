@@ -90,3 +90,16 @@ async def enqueue_session_summary(session_id: str, user_id: int) -> str | None:
         {"session_id": session_id, "user_id": user_id},
         user_id=user_id,
     )
+
+
+async def enqueue_chat_turn(
+    turn_id: str, session_id: str, user_id: int,
+) -> str | None:
+    """Queue a chat turn; ``None`` means the runner is disabled (inline mode)."""
+    if not runner.running:
+        return None
+    return await runner.enqueue(
+        "chat_turn",
+        {"turn_id": turn_id, "session_id": session_id},
+        user_id=user_id,
+    )
