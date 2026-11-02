@@ -554,8 +554,22 @@ async def run_chat(
                         try:
                             payload = json.loads(text)
                         except (json.JSONDecodeError, TypeError, ValueError):
-                            payload = {"phase": "log", "message": text}
-                        return _sse("subagent", **payload)
+                            payload = None
+                        if not isinstance(payload, dict):
+                            # Same fallback for undecodable and non-object JSON
+                            # (e.g. "[1]"), which would raise on **payload.
+                            payload = {
+                                "phase": "log",
+                                "message": redact_text(text),
+                            }
+                        # "event" is _sse's first positional parameter, so a
+                        # payload key with that name would raise TypeError.
+                        payload.pop("event", None)
+                        cleaned = redact_obj(payload)
+                        return _sse(
+                            "subagent",
+                            **(cleaned if isinstance(cleaned, dict) else payload),
+                        )
                     return _sse(
                         "tool_output", id=ctx.tool_call_id, name=tool_name,
                         stream=stream, text=redact_text(text),
@@ -593,7 +607,11 @@ async def run_chat(
                         except BaseException:  # noqa: BLE001
                             pass
 
-            if len(parsed) > 1 and all(_parallel_safe(name) for _, name, _ in parsed):
+            if (
+                len(parsed) > 1
+                and all(_parallel_safe(name) for _, name, _ in parsed)
+                and not any(_streams(name) for _, name, _ in parsed)
+            ):
                 limit = asyncio.Semaphore(4)
 
                 async def _guarded(item: tuple[dict, str, dict]) -> dict:
@@ -712,9 +730,15 @@ async def run_chat(
                 if name == "spawn_agents" and result["ok"] and isinstance(output, dict):
                     tasks = output.get("tasks")
                     if isinstance(tasks, list):
-                        subagent_runs.extend(
-                            item for item in tasks if isinstance(item, dict)
-                        )
+                        # title/summary are parent-model-authored: redact at
+                        # the persistence/SSE boundary like other tool output.
+                        for item in tasks:
+                            if not isinstance(item, dict):
+                                continue
+                            cleaned = redact_obj(item)
+                            subagent_runs.append(
+                                cleaned if isinstance(cleaned, dict) else item
+                            )
                 if name == "update_plan" and result["ok"] and isinstance(output, dict):
                     plan_state = output
                     yield _sse(
