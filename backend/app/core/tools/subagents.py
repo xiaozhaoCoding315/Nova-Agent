@@ -55,6 +55,20 @@ async def _repo_meta(repo_ids: list[str], user_id: int) -> dict[str, dict]:
     return meta
 
 
+def _failed_task(task_id: str, title: str, error: str) -> dict:
+    """Failed-task result with the same shape as ``run_subagent``."""
+    return {
+        "id": task_id, "title": title, "status": "failed",
+        "summary": "", "findings": [], "files": [], "rounds": 0,
+        "tools": [], "tokens": {"prompt": 0, "completion": 0}, "ms": 0,
+        "citations": {
+            "citations": [], "executed": False, "verified": 0,
+            "missing": 0, "out_of_range": 0, "skipped": 0,
+        },
+        "error": redact_text(str(error))[:300],
+    }
+
+
 async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
     if ctx.agent_depth > 0:
         raise ToolBusinessError("子代理不能继续派生子代理")
@@ -105,19 +119,12 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
                     overrides=ctx.llm_overrides,
                 )
             except Exception as exc:  # noqa: BLE001 — one task must not sink the rest
-                return {
-                    "id": task_id, "title": task["title"], "status": "failed",
-                    "summary": "", "findings": [], "files": [], "rounds": 0,
-                    "tools": [], "tokens": {"prompt": 0, "completion": 0}, "ms": 0,
-                    "citations": {
-                        "citations": [], "executed": False, "verified": 0,
-                        "missing": 0, "out_of_range": 0, "skipped": 0,
-                    },
-                    "error": redact_text(str(exc))[:300],
-                }
+                return _failed_task(task_id, task["title"], str(exc))
 
-    results = await asyncio.gather(*(run_one(task) for task in tasks))
+    # Count before fan-out: if the harness cancels/times out this call, the
+    # tasks still consumed their per-turn quota and must not be reusable.
     ctx.subagent_tasks_used = total
+    results = await asyncio.gather(*(run_one(task) for task in tasks))
     return {
         "tasks": results,
         "total": len(results),
@@ -131,10 +138,20 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
     }
 
 
+_WAVES = max(
+    1,
+    (max(int(settings.subagent_max_tasks), 1)
+     + max(int(settings.subagent_max_parallel), 1) - 1)
+    // max(int(settings.subagent_max_parallel), 1),
+)
+TOOL_TIMEOUT = _WAVES * int(settings.subagent_timeout) + 60
+
+
 TOOL = ToolDefinition(
     name="spawn_agents",
     description=(
-        "把一个任务拆成 1–4 个互不依赖的只读调研/审查子任务，并行交给子代理执行。"
+        f"把一个任务拆成 1–{settings.subagent_max_tasks} 个互不依赖的只读调研/审查子任务，"
+        "并行交给子代理执行。"
         "子代理有独立上下文，不能修改文件、执行命令、联网或再派生子代理；"
         "返回每个子任务的结论、关键发现（文件:行号）、引用校验与用量。"
         "仅在任务可并行拆分时使用；简单查询或强顺序依赖的任务不要用。"
@@ -158,7 +175,7 @@ TOOL = ToolDefinition(
         "required": ["tasks"],
     },
     func=spawn_agents,
-    timeout=max(int(settings.subagent_timeout) + 60, 120),
+    timeout=max(TOOL_TIMEOUT, 120),
     category="read",
     capabilities=[],
     parallel_safe=False,

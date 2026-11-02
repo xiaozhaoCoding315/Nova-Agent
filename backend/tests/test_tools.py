@@ -23,6 +23,7 @@ def test_registry_has_all_tools_with_openai_specs():
         "search_code", "impact_analysis", "diagnose_error", "write_files", "install_deps",
         "json_tool", "sql_tool", "fetch_url", "web_search", "local_run_command",
         "local_write_file", "edit_file", "grep", "glob", "update_plan",
+        "spawn_agents",
     }
     for spec in specs:
         assert spec["type"] == "function"
@@ -40,6 +41,7 @@ def test_specs_trim_by_mode_and_availability():
     assert "web_search" not in readonly
     assert "local_run_command" not in readonly
     assert "read_file" in readonly and "run_command" in readonly
+    assert "spawn_agents" in readonly
 
     ask = {s["function"]["name"] for s in registry.specs(permission_mode="ask")}
     assert "write_files" in ask

@@ -83,6 +83,41 @@ async def test_spawn_agents_enforces_turn_limit():
 
 
 @pytest.mark.asyncio
+async def test_spawn_agents_counts_quota_before_cancellation(monkeypatch):
+    async def fake_run(**kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(subagents, "run_subagent", fake_run)
+    ctx = _ctx()
+    with pytest.raises(asyncio.CancelledError):
+        await subagents.spawn_agents({
+            "tasks": [{"title": "A", "prompt": "prompt A 12345"}],
+        }, ctx)
+
+    assert ctx.subagent_tasks_used == 1
+
+
+@pytest.mark.asyncio
+async def test_spawn_agents_requires_repo_scope():
+    ctx = _ctx()
+    ctx.repo_ids = []
+    with pytest.raises(ToolBusinessError):
+        await subagents.spawn_agents({
+            "tasks": [{"title": "A", "prompt": "prompt A 12345"}],
+        }, ctx)
+
+
+@pytest.mark.asyncio
+async def test_spawn_agents_rejects_too_many_tasks():
+    tasks = [
+        {"title": f"T{i}", "prompt": f"prompt number {i} long"}
+        for i in range(5)
+    ]
+    with pytest.raises(ToolBusinessError):
+        await subagents.spawn_agents({"tasks": tasks}, _ctx())
+
+
+@pytest.mark.asyncio
 async def test_spawn_agents_rejects_nested_agent():
     with pytest.raises(ToolBusinessError):
         await subagents.spawn_agents({
@@ -137,3 +172,8 @@ def test_spawn_agents_tool_definition_and_registration():
     assert subagents.TOOL.parallel_safe is False
     assert get_registry().get("spawn_agents") is subagents.TOOL
     assert base_mod.ToolDefinition(name="x", description="", parameters={}, func=None).streaming is False
+
+
+def test_spawn_agents_tool_timeout_covers_waves_of_subagents():
+    # Defaults: 4 tasks at parallelism 3 need two waves of 300 s + 60 s slack.
+    assert subagents.TOOL.timeout >= 600
