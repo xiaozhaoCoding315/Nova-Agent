@@ -286,5 +286,20 @@ def test_user_image_content_converts_to_base64_image_block():
     assert len(blocks) == 2
 
 
+def test_user_jpeg_image_converts_to_base64_image_block():
+    raw = b"\xff\xd8\xff" + b"1" * 16
+    encoded = base64.b64encode(raw).decode("ascii")
+    url = f"data:image/jpeg;base64,{encoded}"
+    _, messages = _to_anthropic([{
+        "role": "user",
+        "content": [{"type": "image_url", "image_url": {"url": url}}],
+    }])
+    block = messages[0]["content"][0]
+    assert block["type"] == "image"
+    assert block["source"]["type"] == "base64"
+    assert block["source"]["media_type"] == "image/jpeg"
+    assert base64.b64decode(block["source"]["data"]) == raw
+
+
 def test_anthropic_declares_vision():
     assert AnthropicLLM.supports_vision is True

@@ -6,6 +6,14 @@ from app.core.llm.base import LLMProvider
 logger = structlog.get_logger()
 
 
+def _messages_for(provider, messages: list[dict]) -> list[dict]:
+    return (
+        messages
+        if getattr(provider, "supports_vision", False)
+        else strip_image_blocks(messages)
+    )
+
+
 class FallbackLLM(LLMProvider):
     def __init__(self, providers: list[LLMProvider]):
         self.providers = providers
@@ -20,11 +28,7 @@ class FallbackLLM(LLMProvider):
     async def astream(self, messages: list[dict], **kwargs):
         for provider in self.providers:
             try:
-                provider_messages = (
-                    messages
-                    if getattr(provider, "supports_vision", False)
-                    else strip_image_blocks(messages)
-                )
+                provider_messages = _messages_for(provider, messages)
                 async for token in provider.astream(provider_messages, **kwargs):
                     yield token
                 return  # success — stop chain
@@ -47,11 +51,7 @@ class FallbackLLM(LLMProvider):
         if not providers:
             raise RuntimeError("没有支持工具调用的 LLM provider，已拒绝退化")
         for provider in providers:
-            provider_messages = (
-                messages
-                if getattr(provider, "supports_vision", False)
-                else strip_image_blocks(messages)
-            )
+            provider_messages = _messages_for(provider, messages)
             yielded = False
             try:
                 async for event in provider.astream_with_tools(

@@ -71,6 +71,10 @@ class VisionToolFake(ToolFake):
     supports_vision = True
 
 
+class VisionChatFake(FakeLLM):
+    supports_vision = True
+
+
 @pytest.mark.asyncio
 async def test_fallback_strips_images_for_text_only_provider():
     seen = {}
@@ -119,3 +123,61 @@ async def test_fallback_keeps_images_for_vision_provider():
     async for _ in fb.astream_with_tools([image_message], []):
         pass
     assert seen["messages"][0]["content"][0]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_fallback_astream_strips_images_for_text_only_provider():
+    seen = {}
+
+    class Capture(FakeLLM):
+        supports_vision = False
+
+        async def astream(self, messages):
+            seen["messages"] = messages
+            yield "ok"
+
+    image_message = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "看图"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }
+    fb = FallbackLLM([Capture("text")])
+    tokens = [token async for token in fb.astream([image_message])]
+    assert tokens == ["ok"]
+
+    blocks = seen["messages"][0]["content"]
+    assert blocks[0] == {"type": "text", "text": "看图"}
+    assert blocks[1]["type"] == "text"
+    assert "图片已省略" in blocks[1]["text"]
+    # The caller's original messages are not mutated.
+    assert image_message["content"][1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_fallback_astream_keeps_images_for_vision_provider():
+    seen = {}
+
+    class Capture(VisionChatFake):
+        async def astream(self, messages):
+            seen["messages"] = messages
+            yield "ok"
+
+    image_message = {
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }
+    fb = FallbackLLM([Capture("vision")])
+    async for _ in fb.astream([image_message]):
+        pass
+    assert seen["messages"][0]["content"][0]["type"] == "image_url"
+
+
+def test_fallback_supports_vision_aggregates_chain():
+    mixed = FallbackLLM([FakeLLM("text"), VisionChatFake("vision")])
+    text_only = FallbackLLM([FakeLLM("a"), FakeLLM("b")])
+    assert mixed.supports_vision is True
+    assert text_only.supports_vision is False

@@ -57,9 +57,11 @@ class OpenAICompatibleLLM(LLMProvider):
             extras["max_tokens"] = self.max_tokens
         return extras
 
+    def _prepare_messages(self, messages: list[dict]) -> list[dict]:
+        return messages if self.supports_vision else strip_image_blocks(messages)
+
     async def astream(self, messages: list[dict], **kwargs):
-        if not self.supports_vision:
-            messages = strip_image_blocks(messages)
+        messages = self._prepare_messages(messages)
         # kwargs win over stored extras so a caller-supplied max_tokens is not
         # passed twice (Python rejects duplicate keyword arguments).
         attempts: list[dict] = []
@@ -94,8 +96,7 @@ class OpenAICompatibleLLM(LLMProvider):
         is requested via stream_options; providers that reject optional
         parameters are retried with fewer extras, then bare.
         """
-        if not self.supports_vision:
-            messages = strip_image_blocks(messages)
+        messages = self._prepare_messages(messages)
 
         async def _create(**extra):
             return await self.client.chat.completions.create(
