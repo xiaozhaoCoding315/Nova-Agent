@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     max_rounds: int = 16           # 每段工具调用轮次（触顶后自动续段，见 max_continuations）
     max_continuations: int = 6     # 段触顶后自动注入"继续"指令的次数（长任务不断档）
     turn_timeout: int = 3600       # 单轮任务总时长上限（秒），到点暂停并可手动继续
+    subagent_max_tasks: int = 4          # spawn_agents 单次任务数上限
+    subagent_max_parallel: int = 3       # 同时运行的子代理数
+    subagent_max_rounds: int = 8         # 每个子代理最多工具轮次
+    subagent_timeout: int = 300          # 每个子代理总时长（秒）
+    subagent_turn_limit: int = 8         # 单轮对话内子代理任务总数
+    subagent_summary_chars: int = 4000   # 单个子代理返回给父代理的摘要上限
     llm_round_retries: int = 1     # 单轮模型调用失败且无产出时的自动重试次数
     # Deployment switch: false forces every user to bring their own key.
     llm_allow_server_fallback: bool = True

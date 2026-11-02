@@ -8,18 +8,22 @@ _CITATION = re.compile(
 )
 
 
-async def verify_citations(text: str, repo_ids: list[str], executed: bool) -> dict:
-    """Return a citation report: which paths/lines exist, which don't.
-
-    Statuses: verified | out_of_range | missing | unchecked (no repo scope).
-    """
+def extract_citations(text: str) -> list[dict]:
+    """Return unique file:line citations found in text, in first-seen order."""
     seen: dict[tuple[str, int], dict] = {}
     for match in _CITATION.finditer(text or ""):
         path = match.group(1).replace("\\", "/").lstrip("./")
         line = int(match.group(2))
         seen[(path, line)] = {"path": path, "line": line}
+    return list(seen.values())
 
-    citations = list(seen.values())
+
+async def verify_citations(text: str, repo_ids: list[str], executed: bool) -> dict:
+    """Return a citation report: which paths/lines exist, which don't.
+
+    Statuses: verified | out_of_range | missing | unchecked (no repo scope).
+    """
+    citations = extract_citations(text)
     base = {"citations": citations, "executed": executed,
             "verified": 0, "missing": 0, "out_of_range": 0, "skipped": 0}
     if not citations:
