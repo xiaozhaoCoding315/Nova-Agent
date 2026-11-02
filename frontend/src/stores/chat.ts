@@ -7,7 +7,7 @@ import { streamChat } from '../lib/sse'
 import type {
   ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, LlmProvider,
   Message, PermissionMode, PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage,
-  ToolApproval, ToolCall, ToolResult,
+  SubagentFinding, SubagentRun, ToolApproval, ToolCall, ToolResult,
 } from '../lib/types'
 import { useLlm } from './llm'
 
@@ -22,6 +22,7 @@ type ChatState = {
   toolCards: StreamToolCard[]
   streamEdits: EditRef[]
   plan: PlanState | null
+  subagentRuns: SubagentRun[]
   approvals: ToolApproval[]
   permissionMode: PermissionMode
   model: string | null
@@ -83,6 +84,76 @@ function activeProviderSpec(provider: string | null | undefined): LlmProvider | 
   return settings.providers.find((item) => item.id === resolved) ?? null
 }
 
+function normalizeSubagentStatus(value: unknown): SubagentRun['status'] {
+  return value === 'ok' || value === 'partial' || value === 'failed' || value === 'timeout'
+    ? value
+    : 'running'
+}
+
+function subagentFields(data: Record<string, any>): Partial<SubagentRun> {
+  return {
+    ...(typeof data.title === 'string' ? { title: data.title } : {}),
+    ...(typeof data.summary === 'string' ? { summary: data.summary } : {}),
+    ...(Array.isArray(data.findings) ? { findings: data.findings as SubagentFinding[] } : {}),
+    ...(Array.isArray(data.files) ? { files: data.files.map(String) } : {}),
+    ...(typeof data.rounds === 'number' ? { rounds: data.rounds } : {}),
+    ...(Array.isArray(data.tools) ? { tools: data.tools.map(String) } : {}),
+    ...(data.tokens && typeof data.tokens === 'object'
+      ? { tokens: data.tokens as SubagentRun['tokens'] }
+      : {}),
+    ...(typeof data.ms === 'number' ? { ms: data.ms } : {}),
+    ...(data.citations && typeof data.citations === 'object'
+      ? { citations: data.citations as SubagentRun['citations'] }
+      : {}),
+    ...(typeof data.error === 'string' ? { error: data.error } : {}),
+    ...(data.error === null ? { error: null } : {}),
+  }
+}
+
+function updateSubagentRuns(
+  runs: SubagentRun[],
+  data: Record<string, any>,
+): SubagentRun[] {
+  const id = String(data.id ?? '')
+  if (!id) return runs
+  const phase = String(data.phase ?? '')
+  const index = runs.findIndex((run) => run.id === id)
+
+  if (index === -1) {
+    return [...runs, {
+      id,
+      title: String(data.title ?? '子代理'),
+      status: phase === 'done' ? normalizeSubagentStatus(data.status) : 'running',
+      rounds: 0,
+      tools: [],
+      ...(phase === 'done' ? subagentFields(data) : {}),
+    }]
+  }
+
+  return runs.map((run, position) => {
+    if (position !== index) return run
+    if (phase === 'round') {
+      return { ...run, rounds: Number(data.round ?? run.rounds ?? 0) }
+    }
+    if (phase === 'tool') {
+      const name = String(data.name ?? '')
+      const tools = run.tools ?? []
+      return {
+        ...run,
+        tools: name && !tools.includes(name) ? [...tools, name] : tools,
+      }
+    }
+    if (phase === 'done') {
+      return {
+        ...run,
+        ...subagentFields(data),
+        status: normalizeSubagentStatus(data.status),
+      }
+    }
+    return run
+  })
+}
+
 export const useChat = create<ChatState>((set, get) => ({
   sessions: [],
   sessionId: null,
@@ -93,6 +164,7 @@ export const useChat = create<ChatState>((set, get) => ({
   toolCards: [],
   streamEdits: [],
   plan: null,
+  subagentRuns: [],
   approvals: [],
   permissionMode: 'ask',
   model: null,
@@ -329,7 +401,7 @@ export const useChat = create<ChatState>((set, get) => ({
     abortController = null
     set({
       sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
-      toolCards: [], streamEdits: [], plan: null, approvals: [], permissionMode: 'ask',
+      toolCards: [], streamEdits: [], plan: null, subagentRuns: [], approvals: [], permissionMode: 'ask',
       model: null, provider: null, reasoningEffort: '', reasoningCleared: false,
       contextWindow: null, temperature: null,
       overridesSaving: false,
@@ -349,6 +421,7 @@ export const useChat = create<ChatState>((set, get) => ({
       toolCards: [],
       streamEdits: [],
       plan: null,
+      subagentRuns: [],
       approvals: [],
       refs: [],
       report: null,
@@ -503,6 +576,9 @@ export const useChat = create<ChatState>((set, get) => ({
             case 'done':
               set({ report: (data.report ?? null) as DeliveryReport | null })
               break
+            case 'subagent':
+              set((s) => ({ subagentRuns: updateSubagentRuns(s.subagentRuns, data) }))
+              break
             case 'plan':
               set({
                 plan: {
@@ -534,9 +610,15 @@ export const useChat = create<ChatState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '请求失败，请重试' })
     } finally {
-      const { streamText, toolCards, messages, evidence, streamEdits, report, contextMeter, plan } = get()
+      const {
+        streamText, toolCards, messages, evidence, streamEdits, report,
+        contextMeter, plan, subagentRuns,
+      } = get()
       const finishedEvents = toolCards.filter((card) => card.result)
-      if (streamText || toolCards.length > 0 || streamEdits.length > 0) {
+      if (
+        streamText || toolCards.length > 0 || streamEdits.length > 0
+        || subagentRuns.length > 0
+      ) {
         set({
           messages: [
             ...messages,
@@ -572,6 +654,7 @@ export const useChat = create<ChatState>((set, get) => ({
                 ...(report ? { report } : {}),
                 ...(contextMeter ? { context: contextMeter } : {}),
                 ...(plan ? { plan } : {}),
+                ...(subagentRuns.length ? { subagents: subagentRuns } : {}),
               },
             },
           ],
@@ -579,6 +662,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       set((s) => ({
         streaming: false, streamText: '', toolCards: [], streamEdits: [], plan: null,
+        subagentRuns: [],
         approvals: [], evidence: null, report: null, streamUsage: null,
         // 只有「未完成」通知要留给用户继续按钮；retry/continued 是过程性提示
         turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,

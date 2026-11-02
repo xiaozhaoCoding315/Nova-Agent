@@ -230,6 +230,34 @@ export type FileList = {
   limit_bytes: number
 }
 
+export type SubagentFinding = {
+  title: string
+  detail: string
+  file?: string | null
+  line?: number | null
+}
+
+export type SubagentRun = {
+  id: string
+  title: string
+  status: 'running' | 'ok' | 'partial' | 'failed' | 'timeout'
+  summary?: string
+  findings?: SubagentFinding[]
+  files?: string[]
+  rounds?: number
+  tools?: string[]
+  tokens?: { prompt?: number; completion?: number }
+  ms?: number
+  citations?: {
+    verified: number
+    missing: number
+    out_of_range: number
+    skipped: number
+    executed: boolean
+  }
+  error?: string | null
+}
+
 export type Message = {
   id: number
   role: string
@@ -241,6 +269,7 @@ export type Message = {
     edits?: EditRef[]
     report?: DeliveryReport
     plan?: PlanState
+    subagents?: SubagentRun[]
   } | null
   attachments?: FileAttachment[]
   created_at?: string
