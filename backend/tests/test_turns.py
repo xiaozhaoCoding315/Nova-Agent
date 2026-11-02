@@ -376,3 +376,35 @@ def test_turn_routes_are_exposed():
     assert "/chat/turns/{turn_id}/stream" in paths
     assert "/chat/turns/{turn_id}/cancel" in paths
     assert "/chat/sessions/{session_id}/turns/active" in paths
+
+
+@pytest.mark.asyncio
+async def test_tail_turn_drains_all_pages_on_terminal(monkeypatch):
+    from app.api.v1 import chat as chat_api
+
+    pages = [
+        [{"seq": i, "type": "token", "payload": {"text": str(i)}} for i in range(1, 201)],
+        [{"seq": i, "type": "token", "payload": {"text": str(i)}} for i in range(201, 401)],
+        [{"seq": i, "type": "token", "payload": {"text": str(i)}} for i in range(401, 451)],
+        [],
+    ]
+    calls = {"n": 0}
+
+    async def fake_load(_turn_id, after_seq, **_kwargs):
+        page = pages[min(calls["n"], len(pages) - 1)]
+        calls["n"] += 1
+        return [row for row in page if row["seq"] > after_seq]
+
+    monkeypatch.setattr(chat_api.turn_events, "load_events", fake_load)
+    monkeypatch.setattr(chat_api.turn_store, "get_turn", AsyncMock(return_value={
+        "id": "t-1", "session_id": "s-1", "status": "succeeded",
+    }))
+
+    class FakeRequest:
+        async def is_disconnected(self):
+            return False
+
+    frames = [frame async for frame in chat_api._tail_turn("t-1", FakeRequest())]
+
+    assert len(frames) == 1 + 450  # synthetic turn frame + every persisted event
+    assert '"text": "450"' in frames[-1]

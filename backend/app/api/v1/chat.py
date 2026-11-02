@@ -68,11 +68,15 @@ async def _tail_turn(turn_id: str, request: Request, after_seq: int = 0):
         if not turn:
             break
         if turn["status"] not in turn_store.ACTIVE_STATUSES:
-            # Terminal state is written after the final event; read the tail once
-            # more so a fast writer cannot slip past us.
-            for row in await turn_events.load_events(turn_id, last_seq):
-                last_seq = row["seq"]
-                yield turn_events.sse_frame(row["type"], row["payload"] or {})
+            # Terminal status is written after the final event; keep reading
+            # until the log is exhausted so long replays are never truncated.
+            while True:
+                rows = await turn_events.load_events(turn_id, last_seq)
+                if not rows:
+                    break
+                for row in rows:
+                    last_seq = row["seq"]
+                    yield turn_events.sse_frame(row["type"], row["payload"] or {})
             break
         if await request.is_disconnected():
             break
