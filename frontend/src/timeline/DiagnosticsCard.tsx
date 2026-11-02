@@ -2,7 +2,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Info, ListChecks, XCircle } f
 import { useState } from 'react'
 import { Spinner } from '../components/common'
 import type { StreamToolCard } from '../lib/types'
-import { TOOL_CARD_CLASS, parsePreviewJson, toolLabel } from './cards'
+import { TOOL_CARD_CLASS, parsePreviewJson } from './cards'
 
 type Severity = 'error' | 'warning' | 'info'
 
@@ -49,7 +49,12 @@ export function DiagnosticsCard({
     ? payload.diagnostics
     : []
   const summary = payload?.summary
-  const tool = payload?.tool ?? String(card.call.args?.tool ?? toolLabel(card.call.name))
+  const runner = payload?.tool
+    ?? (typeof card.call.args.tool === 'string' && card.call.args.tool !== ''
+      ? card.call.args.tool
+      : '')
+  const parseErrors = payload?.parse_errors ?? 0
+  const unstructured = parseErrors > 0 || payload?.truncated === true
   const groups = new Map<string, Diagnostic[]>()
   for (const item of diagnostics) {
     const list = groups.get(item.path) ?? []
@@ -63,14 +68,16 @@ export function DiagnosticsCard({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-label={`${open ? '收起' : '展开'}运行诊断 ${tool}`}
+        aria-label={`${open ? '收起' : '展开'}运行诊断${runner ? ` ${runner}` : ''}`}
         className="flex h-8 w-full items-center gap-2 px-2.5 text-left"
       >
         {open
           ? <ChevronDown size={12} className="shrink-0 text-faint" />
           : <ChevronRight size={12} className="shrink-0 text-faint" />}
         <ListChecks size={12} className="shrink-0 text-faint" />
-        <span className="min-w-0 flex-1 truncate text-sm text-ink">运行诊断 · {tool}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+          运行诊断{runner ? ` · ${runner}` : ''}
+        </span>
         {running && <Spinner className="h-3 w-3 shrink-0" />}
         {!running && summary && (
           <span className="shrink-0 font-mono text-2xs text-dim">
@@ -100,8 +107,11 @@ export function DiagnosticsCard({
             </p>
           )}
           {running && <p className="font-mono text-xs text-faint">诊断运行中…</p>}
-          {!running && diagnostics.length === 0 && card.result?.ok && (
+          {!running && diagnostics.length === 0 && card.result?.ok && payload && !unstructured && (
             <p className="font-mono text-xs text-faint">没有发现问题。</p>
+          )}
+          {!running && diagnostics.length === 0 && card.result?.ok && payload && unstructured && (
+            <p className="font-mono text-xs text-faint">未解析出结构化诊断，见下方原文。</p>
           )}
           {Array.from(groups.entries()).map(([path, items]) => (
             <div key={path} className="space-y-0.5">
@@ -146,6 +156,7 @@ export function DiagnosticsCard({
               <button
                 type="button"
                 onClick={() => setShowRaw((value) => !value)}
+                aria-expanded={showRaw}
                 className="font-mono text-2xs text-faint transition-colors duration-150 hover:text-ink"
               >
                 另有 {payload?.parse_errors} 行无法解析{showRaw ? '（收起）' : '（展开）'}
