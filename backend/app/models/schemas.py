@@ -270,6 +270,27 @@ class ChatRequest(BaseModel):
     file_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
+class TurnOut(BaseModel):
+    id: str
+    session_id: str
+    status: str
+    cancel_requested: bool = False
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class ActiveTurnOut(BaseModel):
+    turn: Optional[TurnOut] = None
+    latest: Optional[TurnOut] = None
+
+
+class TurnCancelOut(BaseModel):
+    ok: bool = True
+    canceled: bool = False
+
+
 # ---------- Workspace ----------
 
 class RepoLocalCreate(BaseModel):

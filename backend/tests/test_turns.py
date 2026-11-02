@@ -365,3 +365,14 @@ async def test_execute_turn_marks_failed_when_context_load_errors(monkeypatch):
     assert status == "failed"
     assert finish.await_args.args == ("t-1", "failed")
     assert "RuntimeError" in finish.await_args.kwargs["error"]
+
+
+def test_turn_routes_are_exposed():
+    from app.api.v1 import chat as chat_api
+
+    paths = {route.path for route in chat_api.router.routes}
+    assert "/chat/message" in paths
+    assert "/chat/turns/{turn_id}" in paths
+    assert "/chat/turns/{turn_id}/stream" in paths
+    assert "/chat/turns/{turn_id}/cancel" in paths
+    assert "/chat/sessions/{session_id}/turns/active" in paths

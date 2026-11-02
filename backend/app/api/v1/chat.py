@@ -1,14 +1,17 @@
 """Chat endpoints: session CRUD + SSE message stream + edit approvals."""
-import json
+import asyncio
+import contextlib
+import time
 import uuid
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.core.agent.loop import run_chat
 from app.core.conflicts import ConflictError
 from app.core.editing.service import apply_edit, get_edit, reject_edit, revert_edit
 from app.core.indexing.pipeline import get_repo
+from app.core.jobs import service as jobs_service
 from app.core.jobs.service import enqueue_index
 from app.core.memory import session as session_mod
 from app.core.review.service import review_edit as review_edit_service
@@ -16,8 +19,12 @@ from app.core.security.auth import get_current_user
 from app.core.security.limits import check_chat_quota, check_job_quota
 from app.core.storage.user_storage import get_file
 from app.core.trace import list_events, record as trace_record
+from app.core.turns import events as turn_events
+from app.core.turns import service as turn_service
+from app.core.turns import store as turn_store
 from app.db import execute
 from app.models.schemas import (
+    ActiveTurnOut,
     ChatRequest,
     EditApproveOut,
     EditOut,
@@ -29,9 +36,52 @@ from app.models.schemas import (
     SessionOut,
     SessionUpdateRequest,
     TraceEventOut,
+    TurnCancelOut,
+    TurnOut,
 )
 
 router = APIRouter()
+logger = structlog.get_logger()
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
+
+
+async def _tail_turn(turn_id: str, request: Request, after_seq: int = 0):
+    last_seq = max(int(after_seq), 0)
+    turn = await turn_store.get_turn(turn_id)
+    yield turn_events.sse_frame("turn", {
+        "turn_id": turn_id,
+        "session_id": turn["session_id"] if turn else None,
+        "status": turn["status"] if turn else "missing",
+    })
+    last_keepalive = time.monotonic()
+    while True:
+        rows = await turn_events.load_events(turn_id, last_seq)
+        for row in rows:
+            last_seq = row["seq"]
+            yield turn_events.sse_frame(row["type"], row["payload"] or {})
+        turn = await turn_store.get_turn(turn_id)
+        if not turn:
+            break
+        if turn["status"] not in turn_store.ACTIVE_STATUSES:
+            # Terminal state is written after the final event; read the tail once
+            # more so a fast writer cannot slip past us.
+            for row in await turn_events.load_events(turn_id, last_seq):
+                last_seq = row["seq"]
+                yield turn_events.sse_frame(row["type"], row["payload"] or {})
+            break
+        if await request.is_disconnected():
+            break
+        now = time.monotonic()
+        if now - last_keepalive >= 15:
+            last_keepalive = now
+            yield ": keepalive\n\n"
+        if not rows:
+            await asyncio.sleep(0.25)
 
 
 def _session_payload(session: dict, message_count: int = 0) -> dict:
@@ -116,6 +166,16 @@ async def update_session(
 
 @router.delete("/chat/sessions/{session_id}", response_model=OkOut)
 async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    active = await turn_store.get_active_turn(session_id, user["id"])
+    if active:
+        await turn_store.request_cancel(active["id"])
+        if active.get("job_id"):
+            from app.core.jobs.runner import runner
+            with contextlib.suppress(Exception):
+                await runner.cancel(str(active["job_id"]), user["id"])
     if not await session_mod.delete_session(session_id, user["id"]):
         raise HTTPException(status_code=404, detail="会话不存在")
     return {"ok": True}
@@ -186,7 +246,13 @@ async def chat_message(
             "mime": file["mime"], "size": file["size"],
         })
 
-    await session_mod.add_message(
+    active = await turn_store.get_active_turn(session["id"], user["id"])
+    if active:
+        raise HTTPException(
+            status_code=409, detail="上一条消息仍在执行，请等待完成或停止后再发送",
+        )
+
+    user_message_id = await session_mod.add_message(
         session["id"], "user", body.content, attachments=attachments
     )
     session["title"] = await session_mod.maybe_set_title(session["id"], body.content)
@@ -200,36 +266,91 @@ async def chat_message(
         "file_ids": [item["id"] for item in attachments],
     })
 
-    generator = run_chat(
-        user, session, body.content, effective_repo_ids,
-        turn_id=turn_id, attachments=attachments,
+    turn = await turn_store.create_turn(
+        turn_id, session["id"], user["id"], user_message_id,
     )
+    if not turn:
+        await execute(
+            "DELETE FROM messages WHERE id = %s AND role = 'user'",
+            (user_message_id,),
+        )
+        raise HTTPException(
+            status_code=409, detail="上一条消息仍在执行，请等待完成或停止后再发送",
+        )
 
-    async def event_stream():
-        try:
-            async for event in generator:
-                if await request.is_disconnected():
-                    break
-                data = json.dumps(event["data"], ensure_ascii=False, default=str)
-                yield f"event: {event['event']}\ndata: {data}\n\n"
-        except Exception as exc:  # noqa: BLE001
-            payload = json.dumps(
-                {"code": "internal", "message": f"服务内部错误：{exc}"}, ensure_ascii=False
-            )
-            yield f"event: error\ndata: {payload}\n\n"
-        finally:
-            # Deterministic close so a client "stop" still persists partial output.
-            await generator.aclose()
+    job_id = None
+    try:
+        job_id = await jobs_service.enqueue_chat_turn(
+            turn_id, session["id"], user["id"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat_turn_enqueue_failed", error=str(exc))
+    if job_id:
+        await turn_store.set_job_id(turn_id, job_id)
+    else:
+        turn_service.start_turn_task(turn_id)
 
     return StreamingResponse(
-        event_stream(),
+        _tail_turn(turn_id, request),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
+            **_SSE_HEADERS,
+            "X-Turn-Id": turn_id,
+            "X-Session-Id": session["id"],
         },
     )
+
+
+@router.get("/chat/turns/{turn_id}", response_model=TurnOut)
+async def get_turn_status(turn_id: str, user: dict = Depends(get_current_user)):
+    turn = await turn_store.get_turn(turn_id, user["id"])
+    if not turn:
+        raise HTTPException(status_code=404, detail="回合不存在")
+    return turn
+
+
+@router.get("/chat/turns/{turn_id}/stream")
+async def stream_turn(
+    turn_id: str,
+    request: Request,
+    after_seq: int = Query(default=0, ge=0),
+    user: dict = Depends(get_current_user),
+):
+    turn = await turn_store.get_turn(turn_id, user["id"])
+    if not turn:
+        raise HTTPException(status_code=404, detail="回合不存在")
+    return StreamingResponse(
+        _tail_turn(turn_id, request, after_seq),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
+
+
+@router.post("/chat/turns/{turn_id}/cancel", response_model=TurnCancelOut)
+async def cancel_turn(turn_id: str, user: dict = Depends(get_current_user)):
+    turn = await turn_store.get_turn(turn_id, user["id"])
+    if not turn:
+        raise HTTPException(status_code=404, detail="回合不存在")
+    if turn["status"] not in turn_store.ACTIVE_STATUSES:
+        return {"ok": True, "canceled": False}
+    updated = await turn_store.request_cancel(turn_id)
+    if turn.get("job_id"):
+        from app.core.jobs.runner import runner
+        with contextlib.suppress(Exception):
+            await runner.cancel(str(turn["job_id"]), user["id"])
+    return {"ok": True, "canceled": bool(updated)}
+
+
+@router.get(
+    "/chat/sessions/{session_id}/turns/active", response_model=ActiveTurnOut,
+)
+async def active_turn(session_id: str, user: dict = Depends(get_current_user)):
+    if not await session_mod.get_session(session_id, user["id"]):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {
+        "turn": await turn_store.get_active_turn(session_id, user["id"]),
+        "latest": await turn_store.get_latest_turn(session_id, user["id"]),
+    }
 
 
 @router.post("/chat/sessions/{session_id}/tools/{tool_call_id}/cancel")

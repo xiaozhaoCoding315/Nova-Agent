@@ -26,6 +26,12 @@ async def _maintenance_once() -> dict:
     from app.core.memory.cleanup import run_cleanup
 
     summary = await run_cleanup()
+    try:
+        from app.core.turns.store import cleanup_old_turns
+
+        summary["turns_pruned"] = await cleanup_old_turns()
+    except Exception:
+        logger.exception("turn_cleanup_failed")
     if settings.is_local:
         from app.core.indexing.retry import retry_pending_indexes
 
@@ -110,6 +116,14 @@ async def lifespan(_: FastAPI):
             job_runner = runner
         except Exception:
             logger.exception("job_runner_start_failed_continuing_startup")
+    try:
+        from app.core.turns.store import recover_interrupted_turns
+
+        interrupted = await recover_interrupted_turns()
+        if interrupted:
+            logger.info("turns_marked_interrupted", count=interrupted)
+    except Exception:
+        logger.warning("turn_recovery_failed", exc_info=True)
     mcp_service = None
     if settings.mcp_enabled:
         from app.core.mcp.manager import manager as mcp_service
