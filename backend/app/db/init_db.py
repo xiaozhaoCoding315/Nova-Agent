@@ -879,6 +879,39 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "ALTER TABLE repos ADD COLUMN IF NOT EXISTS origin VARCHAR(12) NOT NULL DEFAULT 'upload'",
         "UPDATE repos SET origin = 'git' WHERE source LIKE 'git:%' AND origin = 'upload'",
     ]),
+    (19, [
+        """
+        CREATE TABLE IF NOT EXISTS turns (
+            id UUID PRIMARY KEY,
+            session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            user_message_id BIGINT,
+            assistant_message_id BIGINT,
+            job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'queued',
+            cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+            error TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            finished_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_turns_session "
+        "ON turns (session_id, created_at DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_one_active ON turns (session_id) "
+        "WHERE status IN ('queued', 'running')",
+        """
+        CREATE TABLE IF NOT EXISTS turn_events (
+            id BIGSERIAL PRIMARY KEY,
+            turn_id UUID NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+            seq BIGINT NOT NULL,
+            type VARCHAR(40) NOT NULL,
+            payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (turn_id, seq)
+        )
+        """,
+    ]),
 ]
 
 
