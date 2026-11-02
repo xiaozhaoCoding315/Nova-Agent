@@ -171,3 +171,19 @@ async def test_load_events_returns_ordered_payloads(monkeypatch):
     sql, params = query.await_args.args
     assert "seq > %s" in sql
     assert params == ("t-1", 0, 200)
+
+
+def test_coalescer_keeps_tokens_after_output_in_order():
+    coalescer = events.EventCoalescer()
+
+    assert coalescer.feed({"event": "token", "data": {"text": "A"}}) == []
+    coalescer.feed({"event": "tool_output", "data": {
+        "id": "c1", "stream": "stdout", "name": "run", "text": "O",
+    }})
+
+    batch = coalescer.feed({"event": "token", "data": {"text": "B"}})
+
+    assert [item[0] for item in batch] == ["token", "tool_output"]
+    assert batch[0][1] == {"text": "A"}
+    assert batch[1][1]["text"] == "O"
+    assert coalescer.flush() == [("token", {"text": "B"})]

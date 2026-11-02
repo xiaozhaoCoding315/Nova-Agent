@@ -18,8 +18,8 @@ def sse_frame(event: str, payload: dict) -> str:
 class EventCoalescer:
     """Merge high-frequency token/tool_output events without reordering.
 
-    Any non-coalesced event flushes the buffers first, so replay sees exactly
-    the order a live client saw.
+    Ordering is preserved at non-coalesced boundaries and for token runs that
+    follow buffered tool output.
     """
 
     def __init__(self) -> None:
@@ -34,13 +34,14 @@ class EventCoalescer:
         payload = data if isinstance(data, dict) else {}
 
         if kind == "token":
+            pending = self.flush() if self._outputs else []
             text = str(payload.get("text") or "")
             if text:
                 self._tokens.append(text)
                 self._token_chars += len(text)
             if self._token_chars >= TOKEN_FLUSH_CHARS:
-                return self.flush()
-            return []
+                return pending + self.flush()
+            return pending
 
         if kind == "tool_output":
             call_id = str(payload.get("id") or "")
