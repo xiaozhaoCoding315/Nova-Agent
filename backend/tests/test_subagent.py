@@ -72,8 +72,8 @@ def _patch(monkeypatch, llm, citations=None):
     )
 
 
-async def _run(monkeypatch, llm, registry, **kwargs):
-    _patch(monkeypatch, llm)
+async def _run(monkeypatch, llm, registry, citations=None, **kwargs):
+    _patch(monkeypatch, llm, citations)
     events = []
 
     async def emit(payload):
@@ -220,3 +220,50 @@ async def test_subagent_config_error_is_reported(monkeypatch):
 
     assert result["status"] == "failed"
     assert "请先配置模型 Key" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_redacts_secrets_in_summary_findings_and_done_event(monkeypatch):
+    secret_key = "sk-abcdefghijklmnopqrstuvwx"
+    secret_env = "API_KEY=supersecretvalue"
+    llm = FakeLLM([[
+        {"type": "content", "content": (
+            "## 结论\n鉴权在 src/auth.py:42。\n"
+            f"{secret_env}\n"
+            "## 关键发现\n"
+            f"- [src/auth.py:42] 配置里出现 {secret_key}"
+        )},
+    ]])
+    result, events = await _run(monkeypatch, llm, FakeRegistry())
+
+    done = next(event for event in events if event["phase"] == "done")
+    assert result["status"] == "ok"
+    assert "[REDACTED]" in result["summary"]
+    assert secret_key not in result["summary"]
+    assert "supersecretvalue" not in result["summary"]
+    assert result["findings"]
+    assert "[REDACTED]" in result["findings"][0]["detail"]
+    assert "[REDACTED]" in done["summary"]
+    assert "[REDACTED]" in done["findings"][0]["detail"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_redacts_secret_shaped_citation_paths(monkeypatch):
+    secret_path = "sk-abcdefghijklmnopqrstuvwx.py"
+    llm = FakeLLM([[
+        {"type": "content", "content": "## 结论\n鉴权在 src/auth.py:42。"},
+    ]])
+    citations = {
+        "citations": [{"path": secret_path, "line": 1}],
+        "executed": True, "verified": 1, "missing": 0,
+        "out_of_range": 0, "skipped": 0,
+    }
+    result, events = await _run(
+        monkeypatch, llm, FakeRegistry(), citations=citations,
+    )
+
+    done = next(event for event in events if event["phase"] == "done")
+    assert "[REDACTED]" in result["citations"]["citations"][0]["path"]
+    assert "[REDACTED]" in done["citations"]["citations"][0]["path"]
+    assert secret_path not in json.dumps(result["citations"])
+    assert secret_path not in json.dumps(done["citations"])

@@ -360,7 +360,11 @@ async def run_subagent(
     }
     if summary_full:
         try:
-            citations = await verify_citations(summary_full, list(repo_ids), False)
+            citations = redact_obj(
+                await verify_citations(summary_full, list(repo_ids), False)
+            )
+            if isinstance(citations.get("citations"), list):
+                citations["citations"] = citations["citations"][:40]
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "subagent_citations_failed",
