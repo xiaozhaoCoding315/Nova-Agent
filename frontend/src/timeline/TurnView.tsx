@@ -5,15 +5,17 @@ import { PlanCard } from '../components/PlanCard'
 import { Spinner } from '../components/common'
 import { api } from '../lib/api'
 import type {
-  DeliveryReport, EditRef, Evidence, Message, PlanState, StreamToolCard, StreamUsage, ToolApproval,
+  DeliveryReport, EditRef, Evidence, Message, PlanState, StreamToolCard, StreamUsage, SubagentRun,
+  ToolApproval,
 } from '../lib/types'
 import { formatBytes } from '../lib/ui'
 import { ApprovalCard } from './ApprovalCard'
 import { EvidenceStrip } from './EvidenceStrip'
 import { RunSummary } from './RunSummary'
 import { SignalGutter } from './SignalGutter'
+import { SubagentPanel } from './SubagentPanel'
 import { ToolCardView } from './ToolCard'
-import { eventToCard, toolLabel } from './cards'
+import { eventToCard, SUBAGENT_TOOL, toolLabel } from './cards'
 
 export type TurnStream = {
   text: string
@@ -21,6 +23,7 @@ export type TurnStream = {
   editProposals: EditRef[]
   plan: PlanState | null
   approvals: ToolApproval[]
+  subagents: SubagentRun[]
   usage?: StreamUsage | null
 }
 
@@ -90,13 +93,18 @@ function AssistantMessage({
   const edits = message.tool_json?.edits ?? []
   const plan = message.tool_json?.plan ?? null
   const report = message.tool_json?.report ?? null
+  const subagents = message.tool_json?.subagents ?? []
+  const visibleEvents = events.filter(
+    (event) => event.name !== SUBAGENT_TOOL || subagents.length === 0,
+  )
 
   return (
     <div className="space-y-2">
       {plan && <PlanCard plan={plan} />}
-      {events.length > 0 && (
+      <SubagentPanel runs={subagents} onOpenFile={onOpenFile} />
+      {visibleEvents.length > 0 && (
         <div className="space-y-1.5">
-          {events.map((event, index) => (
+          {visibleEvents.map((event, index) => (
             <ToolCardView
               key={`${message.id}-event-${index}`}
               card={eventToCard(event, index)}
@@ -129,12 +137,18 @@ function StreamingContent({
   onResolveApproval?: (toolCallId: string, approved: boolean) => void
   onOpenFile?: (path: string) => void
 }) {
-  const running = stream.toolCards.find((card) => !card.result)
-  const statusText = running
-    ? `正在执行 ${toolLabel(running.call.name)}…`
-    : stream.toolCards.length > 0
-      ? '工具执行完毕，等待模型总结…'
-      : '思考中…'
+  const visibleCards = stream.toolCards.filter(
+    (card) => card.call.name !== SUBAGENT_TOOL || stream.subagents.length === 0,
+  )
+  const activeSubagent = stream.subagents.find((run) => run.status === 'running')
+  const running = visibleCards.find((card) => !card.result)
+  const statusText = activeSubagent
+    ? `子代理「${activeSubagent.title}」调研中…`
+    : running
+      ? `正在执行 ${toolLabel(running.call.name)}…`
+      : visibleCards.length > 0
+        ? '工具执行完毕，等待模型总结…'
+        : '思考中…'
   const totalTokens = stream.usage
     ? stream.usage.prompt_tokens + stream.usage.completion_tokens
     : 0
@@ -142,6 +156,7 @@ function StreamingContent({
   return (
     <div className="space-y-2">
       {stream.plan && <PlanCard plan={stream.plan} />}
+      <SubagentPanel runs={stream.subagents} onOpenFile={onOpenFile} />
       {stream.approvals.map((approval) => (
         <ApprovalCard
           key={approval.id}
@@ -149,9 +164,9 @@ function StreamingContent({
           onResolve={(approved) => onResolveApproval?.(approval.id, approved)}
         />
       ))}
-      {stream.toolCards.length > 0 && (
+      {visibleCards.length > 0 && (
         <div className="space-y-1.5">
-          {stream.toolCards.map((card) => (
+          {visibleCards.map((card) => (
             <ToolCardView
               key={card.call.id}
               card={card}

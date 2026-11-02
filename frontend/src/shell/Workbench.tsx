@@ -43,6 +43,7 @@ export function Workbench({
 }) {
   const {
     sessionId, messages, streaming, streamText, toolCards, streamEdits, plan, approvals, error,
+    subagentRuns,
     permissionMode, setPermissionMode, model, selectedRepoIds,
     attachments, uploading, uploadAttachment, removeAttachment,
     send, stop, clearError, streamUsage, contextMeter, turnNotice,
@@ -347,6 +348,7 @@ export function Workbench({
           streamEdits={streamEdits}
           plan={plan}
           approvals={approvals}
+          subagents={subagentRuns}
           usage={streamUsage}
           onCancelTool={(toolCallId) => {
             if (!sessionId) return

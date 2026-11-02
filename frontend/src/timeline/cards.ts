@@ -1,5 +1,7 @@
 import type { StreamToolCard, ToolEvent } from '../lib/types'
 
+export const SUBAGENT_TOOL = 'spawn_agents'
+
 const TOOL_LABELS: Record<string, string> = {
   run_code: '沙箱执行代码',
   read_file: '读取文件',
@@ -17,6 +19,7 @@ const TOOL_LABELS: Record<string, string> = {
   sql_tool: 'SQL 审阅',
   fetch_url: '抓取网页',
   web_search: '网络搜索',
+  spawn_agents: '子代理',
 }
 
 export function toolLabel(name: string): string {

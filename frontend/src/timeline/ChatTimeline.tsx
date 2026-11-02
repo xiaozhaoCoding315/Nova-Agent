@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type {
-  EditRef, Message, PlanState, StreamToolCard, StreamUsage, ToolApproval,
+  EditRef, Message, PlanState, StreamToolCard, StreamUsage, SubagentRun, ToolApproval,
 } from '../lib/types'
 import { TurnView, type TurnStream } from './TurnView'
 
@@ -32,6 +32,7 @@ export function ChatTimeline({
   streamEdits,
   plan,
   approvals,
+  subagents,
   usage,
   onCancelTool,
   onResolveApproval,
@@ -45,6 +46,7 @@ export function ChatTimeline({
   streamEdits: EditRef[]
   plan: PlanState | null
   approvals: ToolApproval[]
+  subagents: SubagentRun[]
   usage?: StreamUsage | null
   onCancelTool?: (toolCallId: string) => void
   onResolveApproval?: (toolCallId: string, approved: boolean) => void
@@ -62,6 +64,7 @@ export function ChatTimeline({
         editProposals: streamEdits,
         plan,
         approvals,
+        subagents,
         usage,
       }
     : undefined
@@ -78,7 +81,7 @@ export function ChatTimeline({
     // stickRef 只在用户停在底部时为真；新审批/计划/编辑到达时同样只跟随底部，
     // 不会打断正在向上翻看的读者。
     if (stickRef.current) el.scrollTop = el.scrollHeight
-  }, [turns.length, messages.length, streamText, toolCards.length, streaming, approvals, plan, streamEdits])
+  }, [turns.length, messages.length, streamText, toolCards.length, streaming, approvals, plan, streamEdits, subagents])
 
   const onScroll = () => {
     const el = scrollRef.current
