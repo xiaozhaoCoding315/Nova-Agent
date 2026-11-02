@@ -88,10 +88,15 @@ def capabilities_for(
 
 def _path_values(args: dict) -> list[str]:
     values: list[str] = []
-    for key in ("path", "prefix", "requirements"):
+    # ``project`` and ``paths`` are the diagnostics runner's repository
+    # targets; checking them here denies secret files before the tool runs.
+    for key in ("path", "prefix", "requirements", "project"):
         value = args.get(key)
         if isinstance(value, str) and value.strip():
             values.append(value)
+    paths = args.get("paths")
+    if isinstance(paths, list):
+        values.extend(str(item) for item in paths if str(item or "").strip())
     files = args.get("files")
     if isinstance(files, dict):
         values.extend(str(path) for path in files)

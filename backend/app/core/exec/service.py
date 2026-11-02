@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
-from app.core.exec.host import execute_argv_host, execute_host
+from app.core.exec.host import OUTPUT_LIMIT, execute_argv_host, execute_host
 from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.tools.base import ToolBusinessError
 
@@ -92,6 +92,7 @@ async def run_argv_host(
     on_output=None,
     job_id: str | None = None,
     user_id=None,
+    output_limit: int = OUTPUT_LIMIT,
 ) -> dict:
     """Run a fixed argv on the host without a shell (diagnostics runners)."""
     timeout = _clamp_timeout(timeout)
@@ -103,6 +104,7 @@ async def run_argv_host(
             on_output=on_output,
             job_id=job_id,
             user_id=user_id,
+            output_limit=output_limit,
         )
     except (ValueError, OSError) as exc:
         raise ToolBusinessError(f"本地执行失败：{exc}") from exc

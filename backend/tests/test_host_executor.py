@@ -90,6 +90,8 @@ def test_scrub_env_denies_extended_secrets_and_protects_core_keys():
         "SystemRoot": "evil",
         "comspec": "evil",
         "PYTHONIOENCODING": "latin-1",
+        "PYTHONUTF8": "0",
+        "PYTHONDONTWRITEBYTECODE": "0",
         "PYTHONPATH": "C:/work",
         "NO_PROXY": "localhost",
     }
@@ -117,6 +119,9 @@ def test_scrub_env_denies_extended_secrets_and_protects_core_keys():
     assert cleaned["PATH"] == "C:/bin"
     assert cleaned["SYSTEMROOT"] == "C:/Windows"
     assert cleaned["PYTHONIOENCODING"] == "utf-8"
+    assert cleaned["PYTHONUTF8"] == "1"
+    # Host runs must not leave __pycache__ in the real repository.
+    assert cleaned["PYTHONDONTWRITEBYTECODE"] == "1"
     assert cleaned["PYTHONPATH"] == "C:/work"
     assert cleaned["NO_PROXY"] == "localhost"
 
@@ -511,6 +516,17 @@ async def test_execute_argv_host_runs_without_a_shell(tmp_path):
     assert result["executor"] == "host"
     assert result["sandboxed"] is False
     assert "pwned" not in result["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_execute_argv_host_honours_output_limit(tmp_path):
+    argv = [sys.executable, "-c", "print('z' * 5000)"]
+    result = await host.execute_argv_host(
+        argv, root=tmp_path, timeout=10, output_limit=100
+    )
+    assert result["exit_code"] == 0
+    assert result["output_truncated"] is True
+    assert len(result["stdout"]) <= 100
 
 
 @pytest.mark.asyncio

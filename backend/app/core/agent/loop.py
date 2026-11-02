@@ -818,11 +818,18 @@ async def run_chat(
 
 def _args_summary(args: dict) -> dict:
     summary: dict = {}
-    for key in ("command", "path", "query", "repo_id", "note", "url"):
+    for key in (
+        "command", "path", "query", "repo_id", "note", "url", "tool",
+        "project",
+    ):
         if args.get(key):
             summary[key] = str(args[key])[:300]
     if isinstance(args.get("files"), dict):
         summary["files"] = list(args["files"])[:8]
+    if isinstance(args.get("paths"), list):
+        # Diagnostics cards need the runner and its targets after reload;
+        # failed calls keep their context instead of losing it.
+        summary["paths"] = [str(item)[:300] for item in args["paths"][:20]]
     return summary
 
 

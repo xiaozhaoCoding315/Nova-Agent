@@ -653,3 +653,22 @@ async def test_run_argv_host_maps_executor_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "execute_argv_host", fail_execute)
     with pytest.raises(ToolBusinessError):
         await service.run_argv_host(["ruff", "--version"], root=tmp_path, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_run_argv_host_passes_output_limit(monkeypatch, tmp_path):
+    seen: dict = {}
+
+    async def fake_execute(argv, **kwargs):
+        seen.update(kwargs)
+        return _host_result(command=" ".join(argv))
+
+    monkeypatch.setattr(service, "execute_argv_host", fake_execute)
+    await service.run_argv_host(
+        ["ruff", "check", "."], root=tmp_path, timeout=5,
+        output_limit=2_000_000,
+    )
+    assert seen["output_limit"] == 2_000_000
+
+    await service.run_argv_host(["ruff", "check", "."], root=tmp_path, timeout=5)
+    assert seen["output_limit"] == service.OUTPUT_LIMIT

@@ -1,11 +1,20 @@
 """Fixed-runner diagnostics: parsing, argv construction, execution and policy."""
 import asyncio
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
 
 from app.core.tools import diagnostics_parse as dp
+
+_NODE = shutil.which("node")
+_TSC_SCRIPT = (
+    Path(__file__).resolve().parents[2]
+    / "frontend" / "node_modules" / "typescript" / "bin" / "tsc"
+)
+_TSC_AVAILABLE = bool(_NODE and _TSC_SCRIPT.is_file())
 
 
 def test_normalize_path_accepts_relative_absolute_and_sandbox_paths(tmp_path):
@@ -271,10 +280,15 @@ def test_build_argv_uses_fixed_flags(tmp_path):
         "--show-column-numbers", "--show-error-codes", "--no-color-output",
         "--cache-dir", "/tmp/c", ".",
     ]
-    assert diag.build_argv("tsc", ["ignored"], "tsconfig.json", "/tmp/c") == [
-        "tsc", "--noEmit", "--incremental", "false", "--pretty", "false",
+    tsc_argv = diag.build_argv("tsc", ["ignored"], "tsconfig.json", "/tmp/c")
+    assert tsc_argv == [
+        "tsc", "--noEmit", "--pretty", "false",
+        "--tsBuildInfoFile", "/tmp/c/tsconfig.tsbuildinfo",
         "-p", "tsconfig.json",
     ]
+    assert "--incremental" not in tsc_argv
+    # The only bare "false" left is --pretty's value.
+    assert tsc_argv.count("false") == 1
 
 
 @pytest.mark.asyncio
@@ -291,7 +305,7 @@ async def test_run_diagnostics_rejects_bad_tool_and_paths(monkeypatch):
         await diag.run_diagnostics(
             {"tool": "ruff", "paths": ["/etc/passwd"]}, _ctx()
         )
-    with pytest.raises(ToolBusinessError, match="越出仓库"):
+    with pytest.raises(ToolBusinessError, match=r"\.\."):
         await diag.run_diagnostics(
             {"tool": "ruff", "paths": ["../outside"]}, _ctx()
         )
@@ -443,6 +457,52 @@ async def test_run_diagnostics_rejects_flag_injection(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_diagnostics_rejects_secret_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    (tmp_path / ".env").write_text(
+        "TOKEN=supersecretvalue123", encoding="utf-8"
+    )
+    (tmp_path / ".env.local").write_text("TOKEN=1", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+
+    for bad in (".env", ".env.local"):
+        with pytest.raises(ToolBusinessError, match="密钥/凭据文件"):
+            await diag.run_diagnostics(
+                {"tool": "ruff", "paths": [bad]}, _ctx()
+            )
+    with pytest.raises(ToolBusinessError, match="密钥/凭据文件"):
+        await diag.run_diagnostics(
+            {"tool": "tsc", "project": ".env"}, _ctx()
+        )
+    # A normal repository path is still accepted.
+    assert diag._validate_paths({"paths": ["app.py"]}, tmp_path) == ["app.py"]
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_rejects_contained_dotdot(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "file.py").write_text("", encoding="utf-8")
+    (tmp_path / "tsconfig.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+
+    with pytest.raises(ToolBusinessError, match=r"\.\."):
+        await diag.run_diagnostics(
+            {"tool": "ruff", "paths": ["sub/../sub/file.py"]}, _ctx()
+        )
+    with pytest.raises(ToolBusinessError, match=r"\.\."):
+        await diag.run_diagnostics(
+            {"tool": "tsc", "project": "sub/../tsconfig.json"}, _ctx()
+        )
+
+
+@pytest.mark.asyncio
 async def test_run_diagnostics_sandbox_unavailable_raises(
     monkeypatch, tmp_path
 ):
@@ -557,6 +617,218 @@ async def test_run_diagnostics_sandbox_logs_quota_audit(monkeypatch, tmp_path):
         "tool", "runner", "executor", "exit_code", "timed_out",
         "diagnostic_count", "truncated",
     }
+    assert details["diagnostic_count"] == 0
+    assert details["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_sandbox_failures_are_audited(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "sandbox_status",
+        AsyncMock(return_value={
+            "available": True, "builder_available": True, "node_available": True,
+        }),
+    )
+    monkeypatch.setattr(diag, "check_sandbox_quota", AsyncMock())
+    execute = AsyncMock()
+    monkeypatch.setattr(diag, "sandbox_execute", execute)
+    audit = AsyncMock()
+    monkeypatch.setattr(diag, "log_audit", audit)
+
+    execute.return_value = {
+        "stdout": "", "stderr": "", "exit_code": -1,
+        "timed_out": True, "kill_failed": False,
+    }
+    with pytest.raises(ToolBusinessError, match="超时"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+    audit.assert_awaited_once()
+    assert audit.await_args.args[0] == AuditAction.SANDBOX_RUN
+    details = audit.await_args.kwargs["details"]
+    assert details["timed_out"] is True
+    assert details["exit_code"] == -1
+    assert details["diagnostic_count"] == 0
+
+    audit.reset_mock()
+    execute.return_value = {
+        "stdout": "", "stderr": "configuration error", "exit_code": 2,
+        "timed_out": False, "kill_failed": False,
+    }
+    with pytest.raises(ToolBusinessError, match="无法运行 ruff"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+    audit.assert_awaited_once()
+    details = audit.await_args.kwargs["details"]
+    assert details["timed_out"] is False
+    assert details["exit_code"] == 2
+    assert details["diagnostic_count"] == 0
+
+    audit.reset_mock()
+    execute.side_effect = RuntimeError("docker down")
+    with pytest.raises(RuntimeError, match="docker down"):
+        await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+    audit.assert_awaited_once()
+    details = audit.await_args.kwargs["details"]
+    assert details["executor"] == "sandbox"
+    assert details["exit_code"] is None
+    assert details["timed_out"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_host_output_truncation_warns(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "resolve_host_argv", lambda tool, root, argv: ["ruff", *argv[1:]]
+    )
+    monkeypatch.setattr(diag, "_version_for", AsyncMock(return_value="ruff 0.17.3"))
+    from app.core.exec import service as exec_service
+    monkeypatch.setattr(
+        exec_service, "run_argv_host",
+        AsyncMock(return_value={
+            "stdout": "", "stderr": "", "exit_code": 0, "timed_out": False,
+            "duration_ms": 5, "output_truncated": True,
+            "warning": exec_service.WARNING,
+        }),
+    )
+
+    output = await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+    assert output["truncated"] is True
+    assert exec_service.WARNING in output["warning"]
+    assert diag.OUTPUT_TRUNCATED_WARNING in output["warning"]
+
+
+@pytest.mark.asyncio
+async def test_run_diagnostics_sandbox_output_cap_warns(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "sandbox_status",
+        AsyncMock(return_value={
+            "available": True, "builder_available": True, "node_available": True,
+        }),
+    )
+    monkeypatch.setattr(diag, "check_sandbox_quota", AsyncMock())
+    monkeypatch.setattr(diag, "log_audit", AsyncMock())
+    monkeypatch.setattr(
+        diag, "sandbox_execute",
+        AsyncMock(return_value={
+            "stdout": "x" * diag.SANDBOX_STDOUT_LIMIT, "stderr": "",
+            "exit_code": 0, "timed_out": False,
+        }),
+    )
+
+    output = await diag.run_diagnostics({"tool": "ruff"}, _ctx())
+
+    assert output["truncated"] is True
+    assert diag.OUTPUT_TRUNCATED_WARNING in output["warning"]
+
+
+def _write_composite_repo(root: Path) -> None:
+    (root / "tsconfig.json").write_text(
+        json.dumps({
+            "compilerOptions": {"composite": True, "noEmit": True},
+            "files": ["a.ts"],
+        }),
+        encoding="utf-8",
+    )
+    (root / "a.ts").write_text(
+        "export const value: number = 1\n", encoding="utf-8"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tsc_composite_uses_temp_build_info_and_cleans_up(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    _write_composite_repo(tmp_path)
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "resolve_host_argv", lambda tool, root, argv: ["tsc", *argv[1:]]
+    )
+
+    created: dict = {}
+    real_mkdtemp = tempfile.mkdtemp
+
+    def spy_mkdtemp(prefix=None, **kwargs):
+        path = real_mkdtemp(prefix=prefix, **kwargs)
+        created["dir"] = path
+        return path
+
+    monkeypatch.setattr(diag.tempfile, "mkdtemp", spy_mkdtemp)
+
+    async def fake_run_host(tool, argv, *, root, timeout, ctx):
+        created["argv"] = list(argv)
+        return {
+            "stdout": "", "stderr": "", "exit_code": 0, "timed_out": False,
+            "executor": "host", "duration_ms": 1, "version": "fake",
+            "command": " ".join(argv),
+        }
+
+    monkeypatch.setattr(diag, "_run_host", fake_run_host)
+
+    output = await diag.run_diagnostics({"tool": "tsc"}, _ctx())
+
+    argv = created["argv"]
+    assert "--tsBuildInfoFile" in argv
+    assert "--incremental" not in argv
+    build_info = Path(argv[argv.index("--tsBuildInfoFile") + 1])
+    assert build_info.name == "tsconfig.tsbuildinfo"
+    assert build_info.parent == Path(created["dir"])
+    assert Path(created["dir"]).name.startswith("nova-tsc-")
+    assert not Path(created["dir"]).exists()
+    assert list(tmp_path.rglob("*.tsbuildinfo")) == []
+    assert output["runner"]["executor"] == "host"
+
+
+@pytest.mark.skipif(not _TSC_AVAILABLE, reason="node/typescript not installed")
+@pytest.mark.asyncio
+async def test_tsc_composite_real_run_keeps_repo_clean(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    _write_composite_repo(tmp_path)
+    monkeypatch.setattr(
+        "app.core.indexing.pipeline.get_repo",
+        AsyncMock(return_value={"root_path": str(tmp_path)}),
+    )
+    monkeypatch.setattr(
+        diag, "resolve_host_argv",
+        lambda tool, root, argv: [_NODE, str(_TSC_SCRIPT), *argv[1:]],
+    )
+    captured: dict = {}
+    original = diag._run_host
+
+    async def spy_run_host(tool, argv, **kwargs):
+        result = await original(tool, argv, **kwargs)
+        captured["argv"] = list(argv)
+        captured["stdout"] = result.get("stdout", "")
+        return result
+
+    monkeypatch.setattr(diag, "_run_host", spy_run_host)
+
+    output = await diag.run_diagnostics({"tool": "tsc"}, _ctx())
+
+    assert output["runner"]["executor"] == "host"
+    assert "TS6379" not in captured["stdout"]
+    assert output["parse_errors"] == 0
+    assert list(tmp_path.rglob("*.tsbuildinfo")) == []
 
 
 def test_diagnostics_preview_is_valid_json_within_limit():
@@ -603,6 +875,20 @@ def test_diagnostics_policy_local_readonly_denies_and_ask_requires_approval(monk
     assert ask.allowed is False and ask.requires_approval is True
     auto = decide_tool("diagnostics", tool.category, tool.capabilities, {"tool": "ruff"}, _ctx("auto"))
     assert auto.allowed is True
+
+
+def test_diagnostics_policy_denies_secret_paths(monkeypatch):
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    tool = build_registry().get("diagnostics")
+    for args in (
+        {"tool": "ruff", "paths": [".env"]},
+        {"tool": "tsc", "project": ".env"},
+    ):
+        decision = decide_tool(
+            "diagnostics", tool.category, tool.capabilities, args, _ctx("auto")
+        )
+        assert decision.allowed is False
+        assert "密钥/凭据文件" in decision.reason
 
 
 def test_diagnostics_hidden_in_local_readonly(monkeypatch):

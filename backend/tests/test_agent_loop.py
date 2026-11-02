@@ -684,3 +684,21 @@ async def test_ask_command_approval_rejection_is_reported(monkeypatch):
     result = next(e for e in events if e["event"] == "tool_result")
     assert result["data"]["ok"] is False
     approvals.drop(SESSION["id"], "ap2")
+
+
+def test_args_summary_persists_diagnostics_context():
+    summary = loop_mod._args_summary({
+        "tool": "ruff",
+        "project": "tsconfig.json",
+        "paths": [f"src/file_{index}.py" for index in range(25)],
+        "note": "n" * 400,
+    })
+
+    assert summary["tool"] == "ruff"
+    assert summary["project"] == "tsconfig.json"
+    assert len(summary["paths"]) == 20
+    assert summary["paths"][0] == "src/file_0.py"
+    assert all(len(path) <= 300 for path in summary["paths"])
+    assert len(summary["note"]) == 300
+    # Other tools keep their existing summary shape.
+    assert loop_mod._args_summary({"query": "hi"}) == {"query": "hi"}

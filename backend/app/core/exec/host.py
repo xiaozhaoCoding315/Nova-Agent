@@ -74,7 +74,13 @@ _SECRET_SUFFIXES = ("_KEY", "_TOKEN")
 _SECRET_PARTS = ("SECRET", "PASSWORD", "CREDENTIAL")
 _SECRET_PREFIXES = ("AWS_", "GOOGLE_", "AZURE_")
 _SECRET_EXACT = {"GIT_SSH_COMMAND", "NODE_OPTIONS", "DATABASE_URL"}
-_FORCED_ENV = {"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+_FORCED_ENV = {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1",
+    # Imported modules and mypy plugins must not leave __pycache__ in the
+    # real repository: host runs have no sanitized copy to absorb writes.
+    "PYTHONDONTWRITEBYTECODE": "1",
+}
 
 _LOG = logging.getLogger(__name__)
 _REGISTRY_LOCK = threading.Lock()
@@ -415,10 +421,14 @@ def _write_stdin(stream, data: bytes) -> None:
 
 
 def _append_bounded(
-    parts: list[str], sizes: dict[str, int], name: str, text: str
+    parts: list[str],
+    sizes: dict[str, int],
+    name: str,
+    text: str,
+    limit: int = OUTPUT_LIMIT,
 ) -> bool:
     """Append up to the per-stream cap; return True when text was dropped."""
-    remaining = OUTPUT_LIMIT - sizes[name]
+    remaining = limit - sizes[name]
     if remaining <= 0:
         return bool(text)
     piece = text[:remaining]
@@ -602,6 +612,7 @@ def _collect_output(
     stdin_text: str,
     on_output,
     job_id: str | None = None,
+    output_limit: int = OUTPUT_LIMIT,
 ) -> dict:
     """Drain pipes, enforce the deadline and kill the tree when it expires."""
     if stdin_text and proc.stdin is not None:
@@ -690,7 +701,7 @@ def _collect_output(
             continue
         name, text, truncated = item
         target = out_parts if name == "stdout" else err_parts
-        if _append_bounded(target, sizes, name, text):
+        if _append_bounded(target, sizes, name, text, output_limit):
             output_truncated = True
         if truncated:
             output_truncated = True
@@ -715,7 +726,7 @@ def _collect_output(
             continue
         name, text, truncated = item
         target = out_parts if name == "stdout" else err_parts
-        if _append_bounded(target, sizes, name, text):
+        if _append_bounded(target, sizes, name, text, output_limit):
             output_truncated = True
         if truncated:
             output_truncated = True
@@ -755,6 +766,7 @@ async def _execute_process(
     job_id: str | None = None,
     user_id=None,
     venv_root: str | Path | None = None,
+    output_limit: int = OUTPUT_LIMIT,
 ) -> dict:
     """Shared spawn/collect path for shell and direct-argv execution."""
     workdir = resolve_cwd(root, cwd)
@@ -779,7 +791,14 @@ async def _execute_process(
 
     try:
         result = await asyncio.to_thread(
-            _collect_output, proc, display_command, timeout, stdin, on_output, job_id
+            _collect_output,
+            proc,
+            display_command,
+            timeout,
+            stdin,
+            on_output,
+            job_id,
+            output_limit,
         )
     except BaseException:
         # Cancelled task or unexpected failure: never leave a process behind.
@@ -871,6 +890,7 @@ async def execute_argv_host(
     job_id: str | None = None,
     user_id=None,
     venv_root: str | Path | None = None,
+    output_limit: int = OUTPUT_LIMIT,
 ) -> dict:
     """Run ``argv`` directly (``shell=False``) on the host.
 
@@ -892,4 +912,5 @@ async def execute_argv_host(
         job_id=job_id,
         user_id=user_id,
         venv_root=venv_root,
+        output_limit=output_limit,
     )

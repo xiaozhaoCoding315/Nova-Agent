@@ -24,6 +24,7 @@ from app.core.sandbox.runtime import (
 )
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import check_sandbox_quota
+from app.core.security.paths import is_secret_path
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 from app.core.tools.diagnostics_parse import (
     parse_mypy_text,
@@ -42,6 +43,12 @@ DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 300
 TOOL_TIMEOUT = MAX_TIMEOUT + 20
 VERSION_TTL_SECONDS = 3600
+# Diagnostics JSON can be much larger than ordinary command output; host runs
+# get a higher cap so a big ruff report stays parseable.
+HOST_OUTPUT_LIMIT = 2_000_000
+# sandbox.runtime truncates stdout to 100_000 characters with no flag.
+SANDBOX_STDOUT_LIMIT = 100_000
+OUTPUT_TRUNCATED_WARNING = "输出过长已截断，诊断可能不完整"
 
 _TOOL_SPECS = {
     "ruff": {"version": "0.8.6"},
@@ -73,9 +80,13 @@ def build_argv(
             *(paths or ["."]),
         ]
     if tool == "tsc":
+        # Never pass --incremental false: composite projects reject it with
+        # TS6379.  --tsBuildInfoFile is inert for non-composite projects and
+        # redirects the composite build info into the throwaway cache dir.
         return [
-            "tsc", "--noEmit", "--incremental", "false",
-            "--pretty", "false", "-p", project,
+            "tsc", "--noEmit", "--pretty", "false",
+            "--tsBuildInfoFile", f"{cache_dir}/tsconfig.tsbuildinfo",
+            "-p", project,
         ]
     raise ToolBusinessError("tool 必须是 ruff、mypy 或 tsc")
 
@@ -136,9 +147,18 @@ def _validate_paths(args: dict, root: Path) -> list[str]:
             raise ToolBusinessError(f"paths 不能包含换行或 NUL：{item}")
         if text.startswith("/") or re.match(r"^[A-Za-z]:", text):
             raise ToolBusinessError(f"paths 必须是仓库内相对路径：{item}")
+        if any(part == ".." for part in text.split("/")):
+            # Even ``sub/../file.py`` (which resolves inside the repo) is
+            # rejected: the spec allows no traversal segments at all.
+            raise ToolBusinessError(f"paths 不能包含 .. 路径段：{item}")
         candidate = (root / text).resolve(strict=False)
         if candidate != root and root not in candidate.parents:
             raise ToolBusinessError(f"paths 越出仓库目录：{item}")
+        rel = candidate.relative_to(root).as_posix()
+        if rel not in (".", "") and is_secret_path(rel):
+            # Local mode reads the real repository; .env and key files must
+            # never reach a runner whose output the model can read.
+            raise ToolBusinessError(f"不能对密钥/凭据文件运行诊断：{rel}")
         paths.append(text)
     return paths
 
@@ -153,9 +173,14 @@ def _tsc_project(args: dict, root: Path) -> str:
         raise ToolBusinessError("project 不能包含换行或 NUL")
     if raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
         raise ToolBusinessError("project 必须是仓库内相对路径")
+    if any(part == ".." for part in raw.split("/")):
+        raise ToolBusinessError("project 不能包含 .. 路径段")
     candidate = (root / raw).resolve(strict=False)
     if candidate != root and root not in candidate.parents:
         raise ToolBusinessError("project 越出仓库目录")
+    rel = candidate.relative_to(root).as_posix()
+    if rel not in (".", "") and is_secret_path(rel):
+        raise ToolBusinessError(f"不能对密钥/凭据文件运行诊断：{rel}")
     if not candidate.is_file():
         raise ToolBusinessError(
             f"tsconfig 不存在：{raw}；请传 project 指向仓库内 tsconfig"
@@ -212,6 +237,7 @@ async def _run_sandbox(
     repo_id: str,
     timeout: int,
     ctx: ToolContext,
+    attempted: dict | None = None,
 ) -> dict:
     status = await sandbox_status()
     if not status["available"]:
@@ -241,6 +267,9 @@ async def _run_sandbox(
         deps_mount = None
     command = shlex.join(argv)
     started = time.perf_counter()
+    if attempted is not None:
+        # Mark before the call so a failed/cancelled run is audited too.
+        attempted["started"] = True
     result = await sandbox_execute(
         files={},
         command=command,
@@ -279,6 +308,7 @@ async def _run_host(
         timeout=timeout,
         job_id=ctx.tool_call_id or None,
         user_id=ctx.user.get("id"),
+        output_limit=HOST_OUTPUT_LIMIT,
     )
     result["executor"] = "host"
     result["version"] = version
@@ -307,12 +337,24 @@ async def run_diagnostics(args: dict, ctx: ToolContext) -> dict:
     project = _tsc_project(args, root) if tool == "tsc" else ""
 
     host_tmp: str | None = None
+    result: dict = {}
+    ordered: list[dict] = []
+    truncated = False
+    exit_code: int | None = None
+    sandbox_state: dict = {}
     try:
-        if tool == "mypy" and settings.use_host_executor:
-            host_tmp = tempfile.mkdtemp(prefix="nova-mypy-")
+        if settings.use_host_executor and tool in ("mypy", "tsc"):
+            host_tmp = tempfile.mkdtemp(prefix=f"nova-{tool}-")
             cache_dir = host_tmp
-        else:
+        elif tool == "mypy":
             cache_dir = "/tmp/nova-mypy-cache"
+        elif tool == "tsc":
+            # tsc writes the build-info file itself and does not create the
+            # parent directory, so point it at the existing /tmp (the sandbox
+            # workspace is a throwaway copy anyway; /tmp is never the repo).
+            cache_dir = "/tmp"
+        else:
+            cache_dir = ""
         base_argv = build_argv(tool, paths, project, cache_dir)
         if settings.use_host_executor:
             argv = resolve_host_argv(tool, root, base_argv)
@@ -327,76 +369,109 @@ async def run_diagnostics(args: dict, ctx: ToolContext) -> dict:
                 repo_id=str(repo_id),
                 timeout=timeout,
                 ctx=ctx,
+                attempted=sandbox_state,
             )
+
+        stdout = str(result.get("stdout") or "")
+        stderr = str(result.get("stderr") or "")
+        combined = f"{stdout}\n{stderr}".strip()
+        raw_exit = result.get("exit_code")
+        if isinstance(raw_exit, int) and not isinstance(raw_exit, bool):
+            exit_code = raw_exit
+        if result.get("kill_failed"):
+            raise ToolBusinessError(
+                f"{tool} 诊断超时后未能结束进程，请手动检查残留进程"
+            )
+        if result.get("timed_out"):
+            raise ToolBusinessError(
+                f"{tool} 诊断超时（{timeout} 秒）：请缩小 paths 范围后重试"
+            )
+
+        code = exit_code if exit_code is not None else 0
+        diagnostics, parse_errors = _PARSERS[tool](stdout, root)
+        if not diagnostics and stderr.strip():
+            alt, alt_errors = _PARSERS[tool](stderr, root)
+            diagnostics = alt
+            parse_errors += alt_errors
+        if code not in _OK_EXIT_CODES[tool] and not diagnostics:
+            detail = tail_text(combined or "(无输出)", 800)
+            raise ToolBusinessError(
+                f"无法运行 {tool} 诊断（exit={code}）：{detail}"
+            )
+
+        ordered = sort_diagnostics(diagnostics)
+        # The sandbox runtime caps stdout at 100_000 characters without a
+        # truncation flag; treat a full buffer as truncated.
+        output_truncated = bool(
+            result.get("output_truncated") or result.get("stdout_truncated")
+        )
+        if (
+            result.get("executor") == "sandbox"
+            and len(stdout) >= SANDBOX_STDOUT_LIMIT
+        ):
+            output_truncated = True
+        truncated = len(ordered) > max_results or output_truncated
+
+        warnings: list[str] = []
+        if settings.use_host_executor and result.get("warning"):
+            warnings.append(str(result["warning"]))
+        if output_truncated:
+            warnings.append(OUTPUT_TRUNCATED_WARNING)
+
+        if result.get("executor") != "sandbox":
+            # Host mode keeps the ordinary tool_call entry; sandbox runs are
+            # audited once in the finally block below so failures count too.
+            await log_audit(
+                AuditAction.TOOL_CALL,
+                user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
+                details={
+                    "tool": TOOL_NAME,
+                    "runner": tool,
+                    "executor": result.get("executor"),
+                    "exit_code": code,
+                    "timed_out": bool(result.get("timed_out")),
+                    "diagnostic_count": len(ordered),
+                    "truncated": truncated,
+                },
+            )
+        return {
+            "tool": tool,
+            "runner": {
+                "name": tool,
+                "version": result.get("version"),
+                "executor": result.get("executor"),
+            },
+            "command": result.get("command"),
+            "ok": True,
+            "exit_code": code,
+            "timed_out": False,
+            "duration_ms": int(result.get("duration_ms") or 0),
+            "diagnostics": ordered[:max_results],
+            "summary": summarize(ordered),
+            "truncated": truncated,
+            "parse_errors": parse_errors,
+            "raw_tail": tail_text(combined) if parse_errors else "",
+            "warning": "；".join(warnings) if warnings else None,
+        }
     finally:
         if host_tmp:
             shutil.rmtree(host_tmp, ignore_errors=True)
-
-    stdout = str(result.get("stdout") or "")
-    stderr = str(result.get("stderr") or "")
-    combined = f"{stdout}\n{stderr}".strip()
-    if result.get("kill_failed"):
-        raise ToolBusinessError(
-            f"{tool} 诊断超时后未能结束进程，请手动检查残留进程"
-        )
-    if result.get("timed_out"):
-        raise ToolBusinessError(
-            f"{tool} 诊断超时（{timeout} 秒）：请缩小 paths 范围后重试"
-        )
-
-    exit_code = int(result.get("exit_code") or 0)
-    diagnostics, parse_errors = _PARSERS[tool](stdout, root)
-    if not diagnostics and stderr.strip():
-        alt, alt_errors = _PARSERS[tool](stderr, root)
-        diagnostics = alt
-        parse_errors += alt_errors
-    if exit_code not in _OK_EXIT_CODES[tool] and not diagnostics:
-        detail = tail_text(combined or "(无输出)", 800)
-        raise ToolBusinessError(
-            f"无法运行 {tool} 诊断（exit={exit_code}）：{detail}"
-        )
-
-    ordered = sort_diagnostics(diagnostics)
-    truncated = len(ordered) > max_results
-    # Sandbox quota counts sandbox_run rows, so a sandboxed runner must emit
-    # that action; host mode keeps the ordinary tool_call entry.
-    action = (
-        AuditAction.SANDBOX_RUN
-        if result.get("executor") == "sandbox"
-        else AuditAction.TOOL_CALL
-    )
-    await log_audit(
-        action,
-        user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
-        details={
-            "tool": TOOL_NAME,
-            "runner": tool,
-            "executor": result.get("executor"),
-            "exit_code": exit_code,
-            "timed_out": bool(result.get("timed_out")),
-            "diagnostic_count": len(ordered),
-            "truncated": truncated,
-        },
-    )
-    return {
-        "tool": tool,
-        "runner": {
-            "name": tool,
-            "version": result.get("version"),
-            "executor": result.get("executor"),
-        },
-        "command": result.get("command"),
-        "ok": True,
-        "exit_code": exit_code,
-        "timed_out": False,
-        "duration_ms": int(result.get("duration_ms") or 0),
-        "diagnostics": ordered[:max_results],
-        "summary": summarize(ordered),
-        "truncated": truncated,
-        "parse_errors": parse_errors,
-        "raw_tail": tail_text(combined) if parse_errors else "",
-        "warning": result.get("warning") if settings.use_host_executor else None,
-    }
+        if sandbox_state.get("started"):
+            # Sandbox quota counts sandbox_run rows: every attempted run must
+            # produce exactly one, including timeouts and runner failures.
+            await log_audit(
+                AuditAction.SANDBOX_RUN,
+                user_id=str(ctx.user.get("id", "")) if ctx.user else "anonymous",
+                details={
+                    "tool": TOOL_NAME,
+                    "runner": tool,
+                    "executor": result.get("executor") or "sandbox",
+                    "exit_code": exit_code,
+                    "timed_out": bool(result.get("timed_out")),
+                    "diagnostic_count": len(ordered),
+                    "truncated": truncated,
+                },
+            )
 
 
 TOOL = ToolDefinition(
