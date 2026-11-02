@@ -613,7 +613,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
       }))
       const snapshot = await api.turns.active(id).catch(() => null)
-      if (get().selectionRevision !== revision) return
+      if (selectionEpoch > revision) return
       if (snapshot?.turn) {
         await get().attachTurn(snapshot.turn.id)
         return
