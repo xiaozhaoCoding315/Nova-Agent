@@ -5,6 +5,7 @@ import type { StreamToolCard } from '../lib/types'
 import {
   TOOL_CARD_CLASS, argString, toolCardKind, toolCommand, toolFilePath, toolLabel,
 } from './cards'
+import { DiagnosticsCard } from './DiagnosticsCard'
 import { FileCard } from './FileCard'
 import { SearchCard } from './SearchCard'
 import { ToolTerminal } from './ToolTerminal'
@@ -144,6 +145,8 @@ export function ToolCardView({
       return <SearchCard card={card} onOpenFile={onOpenFile} />
     case 'web':
       return <WebSearchCard card={card} />
+    case 'diagnostics':
+      return <DiagnosticsCard card={card} onOpenFile={onOpenFile} />
     default:
       return <GenericToolCard card={card} onCancel={onCancel} onOpenFile={onOpenFile} />
   }

@@ -10,6 +10,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_code: '检索代码',
   impact_analysis: '影响分析',
   diagnose_error: '解析报错',
+  diagnostics: '运行诊断',
   write_files: '写入文件',
   edit_file: '精确编辑文件',
   grep: '正则搜索',
@@ -28,7 +29,7 @@ export function toolLabel(name: string): string {
   return name
 }
 
-export type ToolCardKind = 'terminal' | 'file' | 'search' | 'web' | 'generic'
+export type ToolCardKind = 'terminal' | 'file' | 'search' | 'web' | 'diagnostics' | 'generic'
 
 const TERMINAL_TOOLS = new Set(['run_code', 'run_command', 'install_deps'])
 const FILE_TOOLS = new Set(['read_file', 'write_files', 'edit_file', 'read_uploaded_file'])
@@ -40,6 +41,7 @@ export function toolCardKind(name: string): ToolCardKind {
   if (FILE_TOOLS.has(name)) return 'file'
   if (SEARCH_TOOLS.has(name)) return 'search'
   if (name === 'web_search') return 'web'
+  if (name === 'diagnostics') return 'diagnostics'
   return 'generic'
 }
 
