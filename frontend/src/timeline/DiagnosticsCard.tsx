@@ -50,7 +50,7 @@ export function DiagnosticsCard({
     : []
   const summary = payload?.summary
   const runner = payload?.tool
-    ?? (typeof card.call.args.tool === 'string' && card.call.args.tool !== ''
+    ?? (typeof card.call.args?.tool === 'string' && card.call.args.tool !== ''
       ? card.call.args.tool
       : '')
   const parseErrors = payload?.parse_errors ?? 0
