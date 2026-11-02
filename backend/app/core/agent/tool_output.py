@@ -89,7 +89,11 @@ def serialize_tool_result(name: str, result: dict) -> str:
 
 # Search results are shown as links in the timeline, so their preview keeps
 # enough JSON for the client to parse instead of cutting it at 400 chars.
-_PREVIEW_LIMITS = {"web_search": 6000, "spawn_agents": 2000}
+_PREVIEW_LIMITS = {
+    "web_search": 6000,
+    "spawn_agents": 2000,
+    "diagnostics": 12000,
+}
 
 
 def build_preview(name: str, result: dict, limit: int | None = None) -> str:
@@ -106,6 +110,22 @@ def build_preview(name: str, result: dict, limit: int | None = None) -> str:
             for item in tasks if isinstance(item, dict)
         ]
         return "\n".join(rows)[:limit] or "子代理已返回"
+
+    if name == "diagnostics" and isinstance(result.get("output"), dict):
+        output = result["output"]
+        diagnostics = output.get("diagnostics")
+        compact = {
+            "tool": output.get("tool"),
+            "summary": output.get("summary"),
+            "truncated": bool(output.get("truncated")),
+            "parse_errors": int(output.get("parse_errors") or 0),
+            "warning": output.get("warning"),
+            "duration_ms": int(output.get("duration_ms") or 0),
+            "diagnostics": diagnostics if isinstance(diagnostics, list) else [],
+        }
+        if compact["parse_errors"]:
+            compact["raw_tail"] = str(output.get("raw_tail") or "")[:1000]
+        return json.dumps(compact, ensure_ascii=False, default=str)[:limit]
 
     output = result.get("output")
     if isinstance(output, dict):

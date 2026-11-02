@@ -25,6 +25,7 @@ CAPABILITIES_BY_TOOL = {
     "search_code": ["fs.read"],
     "impact_analysis": ["fs.read"],
     "diagnose_error": ["fs.read"],
+    "diagnostics": ["fs.read"],
     "grep": ["fs.read"],
     "glob": ["fs.read"],
     "write_files": ["fs.write"],
@@ -320,6 +321,28 @@ def decide_tool(
             False,
             "本地模式确认执行：run_code 会以当前用户权限在你的电脑上运行模型编写的代码"
             "（无容器隔离），需要你批准后执行",
+            caps,
+            requires_approval=True,
+        )
+
+    if settings.is_local and mode == "readonly" and name == "diagnostics":
+        return PolicyDecision(
+            False,
+            "本地模式下只读/计划权限不运行诊断（宿主 linter 以当前用户权限运行），"
+            "请切换到确认模式后再执行",
+            caps,
+        )
+
+    if (
+        name == "diagnostics"
+        and settings.is_local
+        and mode == "ask"
+        and not getattr(ctx, "approval_granted", False)
+    ):
+        return PolicyDecision(
+            False,
+            "本地模式确认执行：诊断会在你的电脑上运行 "
+            f"{args.get('tool') or ''}（无容器隔离），需要你批准后执行",
             caps,
             requires_approval=True,
         )

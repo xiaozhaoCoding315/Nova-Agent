@@ -71,6 +71,8 @@ _READONLY_HIDDEN = {
 _ASK_HIDDEN = {"fetch_url", "web_search"}
 _SANDBOX_TOOLS = {"run_code", "run_command", "install_deps"}
 _LOCAL_TOOLS = {"local_run_command", "local_write_file"}
+# Local readonly/plan must not offer host linters that run with user rights.
+_LOCAL_READONLY_HIDDEN = {"diagnostics"}
 
 _TYPE_CHECKS = {
     "string": lambda v: isinstance(v, str),
@@ -136,6 +138,12 @@ class ToolRegistry:
         specs: list[dict] = []
         for tool in self._tools.values():
             if permission_mode == "readonly" and tool.name in _READONLY_HIDDEN:
+                continue
+            if (
+                permission_mode == "readonly"
+                and settings.is_local
+                and tool.name in _LOCAL_READONLY_HIDDEN
+            ):
                 continue
             if permission_mode in ("readonly", "ask") and tool.name in _ASK_HIDDEN:
                 continue
