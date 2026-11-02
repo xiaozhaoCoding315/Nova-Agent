@@ -35,7 +35,7 @@ const TERMINAL_TOOLS = new Set(['run_code', 'run_command', 'install_deps'])
 const FILE_TOOLS = new Set(['read_file', 'write_files', 'edit_file', 'read_uploaded_file'])
 const SEARCH_TOOLS = new Set(['search_code', 'grep', 'glob', 'impact_analysis', 'diagnose_error'])
 
-/** 按工具名把结果分发到终端卡 / 文件卡 / 检索卡 / 网页搜索卡 / 通用卡。 */
+/** 按工具名把结果分发到终端卡 / 文件卡 / 检索卡 / 网页搜索卡 / 诊断卡 / 通用卡。 */
 export function toolCardKind(name: string): ToolCardKind {
   if (TERMINAL_TOOLS.has(name)) return 'terminal'
   if (FILE_TOOLS.has(name)) return 'file'
