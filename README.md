@@ -87,7 +87,7 @@
 - **引用可核对**：每条命中都带真实 `路径:行号`，前端可一键复制引用
 
 ### Agent 循环 + Function-Calling
-- **内置工具 + MCP**：21 个内置工具（含 `update_plan` 计划卡）：`read_file` / `read_uploaded_file`（读取聊天附件） / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`local_write_file`（写回用户本机文件）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）、`web_search`（Bing / DuckDuckGo / Brave 公开网络搜索）、`spawn_agents`（把 1–4 个互不依赖的只读调研任务并行交给子代理，返回带文件行号、引用校验与用量的结果）；另可接入 allowlist 内的 MCP 工具
+- **内置工具 + MCP**：22 个内置工具（含 `update_plan` 计划卡）：`read_file` / `read_uploaded_file`（读取聊天附件） / `list_files`（精确读码）、`write_files`（带 diff、审批与快照的写入）、`edit_file`（精确替换，复用同一审批/快照）、`grep`（正则搜索，不依赖索引）、`glob`（按文件名查找）、`run_code`（沙箱执行，可切换 builder 环境）、`run_command`（仓库工作区真实 shell）、`local_run_command`（派发到用户本机执行，配合 nova agent）、`local_write_file`（写回用户本机文件）、`install_deps`（管理员联网安装依赖到仓库依赖卷）、`diagnose_error`（堆栈解析+仓库定位）、`diagnostics`（对仓库运行固定版本 ruff / mypy / tsc，返回结构化诊断）、`search_code`（符号+混合检索）、`impact_analysis`（变更影响面）、`json_tool`、`sql_tool`、`fetch_url`（带 SSRF 防护）、`web_search`（Bing / DuckDuckGo / Brave 公开网络搜索）、`spawn_agents`（把 1–4 个互不依赖的只读调研任务并行交给子代理，返回带文件行号、引用校验与用量的结果）；另可接入 allowlist 内的 MCP 工具
 - **子代理并行调研**：主 Agent 可用 `spawn_agents` 并行派生只读子代理。子代理有独立上下文，不能写文件、执行命令、联网或再派生；单个子代理最多 8 轮 / 300 秒，单次最多 4 个、并行 3 个，单轮对话最多 8 个任务。
 - 工具调用全链路可视：SSE 实时推送 `tool_call` / `tool_result` 事件，前端渲染折叠工具卡片（第 N 轮徽标、入参 / 结果 / 命令与退出码 / 耗时，流式期间显示"正在执行 xxx"状态行）；工具明细随消息持久化（`tool_events`），刷新后历史消息仍可展开回看
 - 项目规则：关联仓库根目录的 `AGENTS.md`（兼容 `CLAUDE.md`）会注入系统提示词，仓库约定不再靠口头提醒
@@ -103,6 +103,15 @@
 - 服务正常停止（收到关闭信号）时，未完成的回合会被标记为「已中断」，已生成的部分回复与工具记录保留；进程被强杀时事件仍留在服务端，但可见的部分回复可能缺失。点击「继续任务」发起新的回合，不会自动重放可能有副作用的工具调用。
 - 同一会话同时只允许一个活动回合；不同会话可以并行。
 - 当前部署要求单 uvicorn worker（审批与任务队列依赖进程内状态）。
+
+### 结构化诊断
+
+`diagnostics` 工具按仓库运行固定版本的静态检查：`ruff`（Python lint，JSON 输出）、`mypy`（Python 类型）、`tsc`（TypeScript，`--noEmit`）。命令由服务端构造（固定可执行文件与参数、`shell=False`），模型只能选择检查器、仓库内相对路径（最多 20 个）、tsc 的 `tsconfig` 与结果条数（最多 500）。
+
+- 服务端模式在 builder / node 沙箱里对**净化副本**运行，不写真实仓库，也不需要项目依赖外的安装。
+- 本地模式解析项目 `.venv` / `node_modules` 里的二进制，明确标注「无容器隔离」；只读/计划模式下该工具隐藏，确认模式首次调用需要审批。
+- 结果归一化为 `文件:行:列 / 级别 / 规则码 / 消息`，前端诊断卡按文件分组、可点击打开；无法解析的输出行保留尾部原文。
+- 镜像内的版本为 `ruff 0.8.6` / `mypy 1.13.0` / `tsc 5.6.3`；本地使用已安装版本，卡片会显示实际版本。
 
 ### Docker 安全沙箱（云端模式，绝不降级）
 - LLM 生成的代码只在锁定容器中执行：**禁网络 + 只读根文件系统 + 丢弃全部 capabilities + 非 root uid + pid/内存/CPU 限额**
@@ -521,7 +530,7 @@ cd frontend && npm run contract:check
 - 用户 API Key 使用 `SECRET_KEY` 派生的 Fernet 密钥加密存储，读写接口只返回 `••••后四位`；密钥不会进入对话、轨迹或工具参数
 - 工具输出、SSE 预览、轨迹、审计详情统一做密钥脱敏；脱敏是正则 best-effort，不替代真正的 DLP
 - 云端模式：代码执行只在锁定沙箱中进行；Docker 不可用时工具不可用，不存在宿主机执行路径。
-- 本地模式（`NOVA_MODE=local`）：命令在项目目录直接执行，**无容器隔离**；通过路径 jail、环境变量剥离、权限模式与审批降低风险，UI 页脚与本地模式对话框会标注（工具结果卡片不单独显示隔离提示）。
+- 本地模式（`NOVA_MODE=local`）：命令与诊断在项目目录直接执行，**无容器隔离**；通过路径 jail、环境变量剥离、权限模式与审批降低风险，UI 页脚与本地模式对话框会标注，`diagnostics` 结果卡会显示无隔离警告。
 - 文件工具统一走路径解析器：拒绝绝对路径、`..` 穿越、同前缀兄弟目录与符号链接逃逸；`.env`、私钥、凭据文件禁止读取与写入
 - 测试保护：修改已有测试文件时禁止删除测试或新增 skip 标记；红绿任务必须新建测试文件
 - `fetch_url` 有 SSRF 防护：仅公网 http(s)、逐跳校验重定向、拒绝内网地址、限制响应大小与类型
