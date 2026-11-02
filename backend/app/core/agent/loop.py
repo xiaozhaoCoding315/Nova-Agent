@@ -89,6 +89,7 @@ async def _reindex_after_edit(
 async def run_chat(
     user: dict, session: dict, user_message: str, repo_ids: list[str],
     turn_id: str | None = None, attachments: list[dict] | None = None,
+    persist_on_cancel: bool = False,
 ):
     started = time.perf_counter()
     turn_id = turn_id or str(uuid.uuid4())
@@ -323,6 +324,7 @@ async def run_chat(
             prompt_tokens=usage_total["prompt_tokens"],
             completion_tokens=usage_total["completion_tokens"],
         )
+        holder["message_id"] = message_id
         await _record_usage(user, session["id"], usage_total, len(tools_used))
         if active_lesson_ids:
             try:
@@ -778,11 +780,17 @@ async def run_chat(
             yield _sse("evidence", **evidence)
         report = await _build_report() if (content_parts or tools_used) else None
     except BaseException:
-        # Client pressed stop / disconnected: the request task is being
-        # cancelled, so awaiting persistence here would be interrupted.
-        # Persist in a background task instead and re-raise.
+        # Client pressed stop / turn was canceled.  With persist_on_cancel the
+        # background executor is waiting for the partial output to be durable,
+        # so awaiting here is safe (and shielded from a second cancellation).
         if "".join(content_parts).strip() or tools_used:
-            asyncio.create_task(_persist_turn())
+            if persist_on_cancel:
+                try:
+                    await asyncio.shield(_persist_turn())
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("chat_persist_on_cancel_failed", error=str(exc))
+            else:
+                asyncio.create_task(_persist_turn())
         raise
 
     # 4) persistence on the normal path (message_id is needed for the done event)

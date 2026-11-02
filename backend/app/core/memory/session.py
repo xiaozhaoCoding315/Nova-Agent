@@ -166,6 +166,23 @@ async def get_messages(
     ]
 
 
+async def get_message(message_id: int, session_id: str) -> dict | None:
+    rows = await query(
+        "SELECT id, role, content, attachments FROM messages "
+        "WHERE id = %s AND session_id = %s",
+        (message_id, session_id),
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "id": int(row[0]),
+        "role": row[1],
+        "content": row[2] or "",
+        "attachments": row[3] or [],
+    }
+
+
 async def recent_messages(
     session_id: str, limit: int = HISTORY_LIMIT, after_id: int = 0,
     user_id: int | None = None,
