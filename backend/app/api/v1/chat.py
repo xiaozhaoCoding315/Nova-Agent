@@ -290,7 +290,10 @@ async def chat_message(
     except Exception as exc:  # noqa: BLE001
         logger.warning("chat_turn_enqueue_failed", error=str(exc))
     if job_id:
-        await turn_store.set_job_id(turn_id, job_id)
+        try:
+            await turn_store.set_job_id(turn_id, job_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("chat_turn_set_job_failed", turn_id=turn_id, error=str(exc))
     else:
         turn_service.start_turn_task(turn_id)
 

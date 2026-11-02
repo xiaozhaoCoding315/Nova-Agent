@@ -119,6 +119,9 @@ class JobRunner:
                     "AND status = 'running'",
                     (active_ids,),
                 )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("job_requeue_on_shutdown_failed", error=str(exc))
+            try:
                 await execute(
                     "UPDATE jobs SET status = 'queued', started_at = NULL, "
                     "heartbeat_at = NULL, error = 'server shutdown; job requeued' "
@@ -209,12 +212,25 @@ class JobRunner:
             "status = CASE WHEN status = 'queued' THEN 'canceled' ELSE status END, "
             "finished_at = CASE WHEN status = 'queued' THEN now() ELSE finished_at END "
             f"WHERE id = %s AND status IN ('queued', 'running'){owner_sql} "
-            "RETURNING status",
+            "RETURNING status, kind, payload",
             params,
         )
         if not rows:
             return await self.get(job_id, user_id)
-        status = rows[0][0]
+        status, kind, payload = rows[0]
+        if kind == "chat_turn":
+            # The jobs API is a second cancellation surface for chat turns;
+            # bridge it to the authoritative turn flag so the executor stops.
+            turn_id = str((payload or {}).get("turn_id") or "")
+            if turn_id:
+                try:
+                    from app.core.turns import store as turn_store
+                    await turn_store.request_cancel(turn_id)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "chat_turn_cancel_bridge_failed",
+                        job_id=job_id, error=str(exc),
+                    )
         if status == "running":
             # Stop Docker containers that belong to this job in the background:
             # the API must return immediately, while the handler observes the

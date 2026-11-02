@@ -622,7 +622,7 @@ export const useChat = create<ChatState>((set, get) => ({
       if (latest?.status === 'interrupted') {
         set({ turnNotice: {
           kind: 'interrupted',
-          message: '上次任务因服务重启中断，已完成的部分已保留。',
+          message: '上次任务因服务中断；正常关闭时已生成的内容会保留。',
         } })
       } else if (latest?.status === 'failed') {
         set({ turnNotice: {
@@ -633,6 +633,7 @@ export const useChat = create<ChatState>((set, get) => ({
         set({ turnNotice: null })
       }
     } catch (err) {
+      if (get().selectionRevision !== revision) return
       set((s) => ({
         ...IDLE_STREAM,
         turnId: null,
@@ -668,6 +669,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   deleteSession: async (id) => {
     const state = get()
+    const revision = state.selectionRevision
     const wasCurrent = state.sessionId === id
     const turnId = state.backgroundTurns[id]
       ?? (state.sessionId === id ? (attachedTurnId ?? state.turnId) : null)
@@ -689,6 +691,7 @@ export const useChat = create<ChatState>((set, get) => ({
           : {}),
       }))
     } catch (err) {
+      if (get().selectionRevision !== revision) return
       const message = err instanceof ApiError ? err.message : '删除失败'
       if (wasCurrent) {
         set((s) => ({
@@ -870,7 +873,7 @@ export const useChat = create<ChatState>((set, get) => ({
           if (fresh?.status === 'interrupted') {
             set({ turnNotice: {
               kind: 'interrupted',
-              message: '任务在执行中被服务中断，已完成的部分已保留。',
+              message: '任务在执行中被服务中断；正常关闭时已生成的内容会保留。',
             } })
           } else if (fresh?.status === 'failed') {
             set({ error: fresh.error ?? '任务执行失败' })
@@ -938,7 +941,7 @@ export const useChat = create<ChatState>((set, get) => ({
         if (fresh?.status === 'interrupted') {
           set({ turnNotice: {
             kind: 'interrupted',
-            message: '上次任务因服务重启中断，已完成的部分已保留。',
+            message: '上次任务因服务中断；正常关闭时已生成的内容会保留。',
           } })
         } else if (fresh?.status === 'failed') {
           set({ error: fresh.error ?? '任务执行失败' })

@@ -72,7 +72,8 @@ async def execute_turn(turn_id: str) -> str:
             await store.finish_turn(turn_id, "failed", error=detail)
         return "failed"
     if not session or not message or not user:
-        await store.finish_turn(turn_id, "failed", error="任务上下文已丢失，无法继续")
+        with contextlib.suppress(Exception):
+            await store.finish_turn(turn_id, "failed", error="任务上下文已丢失，无法继续")
         return "failed"
 
     coalescer = events.EventCoalescer()
@@ -137,6 +138,7 @@ async def execute_turn(turn_id: str) -> str:
                 break
 
             await _flush(coalescer.feed(event))
+            await _flush(coalescer.flush_if_due())
             if event.get("event") == "done":
                 message_id = (event.get("data") or {}).get("message_id")
                 if isinstance(message_id, int) and message_id > 0:

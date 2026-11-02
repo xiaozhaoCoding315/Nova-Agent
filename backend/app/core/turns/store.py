@@ -71,7 +71,7 @@ async def _one_for_session(
         params.append(user_id)
     if active_only:
         sql += " AND status IN ('queued', 'running')"
-    sql += " ORDER BY created_at DESC LIMIT 1"
+    sql += " ORDER BY created_at DESC, id DESC LIMIT 1"
     rows = await query(sql, tuple(params))
     return _turn(rows[0]) if rows else None
 
@@ -150,8 +150,8 @@ async def recover_interrupted_turns() -> int:
 
 async def cleanup_old_turns(days: int = 30) -> int:
     rows = await execute(
-        "DELETE FROM turns WHERE status NOT IN ('queued', 'running') "
+        "DELETE FROM turns WHERE status = ANY(%s) "
         "AND created_at < now() - make_interval(days => %s) RETURNING id",
-        (days,),
+        (list(TERMINAL_STATUSES), days),
     )
     return len(rows)

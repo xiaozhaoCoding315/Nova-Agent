@@ -108,6 +108,31 @@ async def test_finish_turn_cannot_overwrite_canceled_row(monkeypatch):
     assert params == ("succeeded", None, 99, "t-1")
 
 
+@pytest.mark.asyncio
+async def test_get_latest_turn_orders_and_filters_by_owner(monkeypatch):
+    query = AsyncMock(return_value=[_row()])
+    monkeypatch.setattr(store_module, "query", query)
+
+    await store.get_latest_turn("s-1", 7)
+
+    sql, params = query.await_args.args
+    assert "ORDER BY created_at DESC, id DESC" in sql
+    assert params == ("s-1", 7)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_turns_deletes_only_terminal_statuses(monkeypatch):
+    execute = AsyncMock(return_value=[("t-1",)])
+    monkeypatch.setattr(store_module, "execute", execute)
+
+    count = await store.cleanup_old_turns(30)
+
+    assert count == 1
+    sql, params = execute.await_args.args
+    assert "status = ANY(%s)" in sql
+    assert params == (list(store.TERMINAL_STATUSES), 30)
+
+
 from app.core.turns import events  # noqa: E402
 
 events_module = sys.modules["app.core.turns.events"]
@@ -146,6 +171,62 @@ def test_coalescer_flush_if_due_waits_for_interval():
     assert coalescer.flush_if_due(
         now=coalescer._last_flush + events.FLUSH_INTERVAL_SECONDS + 0.1
     )[0][0] == "token"
+
+
+def test_sse_frame_formats_event_and_json():
+    frame = events.sse_frame("token", {"text": "你好"})
+
+    assert frame == 'event: token\ndata: {"text": "你好"}\n\n'
+
+
+def test_coalescer_flushes_at_token_threshold():
+    coalescer = events.EventCoalescer()
+
+    assert coalescer.feed({"event": "token", "data": {"text": "a" * 799}}) == []
+    batch = coalescer.feed({"event": "token", "data": {"text": "b"}})
+
+    assert batch == [("token", {"text": "a" * 799 + "b"})]
+
+
+def test_coalescer_merges_output_by_id_and_stream():
+    coalescer = events.EventCoalescer()
+    for text, stream, call_id in (
+        ("a", "stdout", "c1"),
+        ("b", "stderr", "c1"),
+        ("c", "stdout", "c2"),
+    ):
+        coalescer.feed({"event": "tool_output", "data": {
+            "id": call_id, "stream": stream, "name": "run", "text": text,
+        }})
+
+    batch = coalescer.flush()
+
+    assert [
+        (kind, payload["id"], payload["stream"], payload["text"])
+        for kind, payload in batch
+    ] == [
+        ("tool_output", "c1", "stdout", "a"),
+        ("tool_output", "c1", "stderr", "b"),
+        ("tool_output", "c2", "stdout", "c"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_load_events_clamps_limit(monkeypatch):
+    query = AsyncMock(return_value=[])
+    monkeypatch.setattr(events_module, "query", query)
+
+    await events.load_events("t-1", -5, limit=900)
+
+    _, params = query.await_args.args
+    assert params == ("t-1", 0, 500)
+
+
+@pytest.mark.asyncio
+async def test_max_seq_returns_zero_without_rows(monkeypatch):
+    monkeypatch.setattr(events_module, "query", AsyncMock(return_value=[]))
+
+    assert await events.max_seq("t-1") == 0
 
 
 @pytest.mark.asyncio
@@ -408,3 +489,75 @@ async def test_tail_turn_drains_all_pages_on_terminal(monkeypatch):
 
     assert len(frames) == 1 + 450  # synthetic turn frame + every persisted event
     assert '"text": "450"' in frames[-1]
+
+
+@pytest.mark.asyncio
+async def test_execute_turn_flushes_tokens_during_continuous_stream(monkeypatch):
+    _finish, appended = _install_executor_mocks(monkeypatch)
+    monkeypatch.setattr(events, "FLUSH_INTERVAL_SECONDS", 0.05)
+
+    async def fake_run_chat(*_args, **_kwargs):
+        for index in range(40):
+            await asyncio.sleep(0.01)
+            yield {"event": "token", "data": {"text": f"{index},"}}
+        yield {"event": "done", "data": {"message_id": 5}}
+
+    monkeypatch.setattr(service_module, "run_chat", fake_run_chat)
+
+    status = await turn_service.execute_turn("t-1")
+
+    assert status == "succeeded"
+    token_events = [payload for _, kind, payload in appended if kind == "token"]
+    # Without the per-iteration flush_if_due, all ~120 chars are written once
+    # when the generator ends instead of in ~0.05s slices while it runs.
+    assert len(token_events) >= 2
+    assert all(len(payload["text"]) < 800 for payload in token_events)
+
+
+@pytest.mark.asyncio
+async def test_execute_turn_drains_completed_pending_after_timeout(monkeypatch):
+    finish, appended = _install_executor_mocks(monkeypatch)
+    real_wait_for = asyncio.wait_for
+    calls = {"n": 0}
+
+    async def fake_wait_for(awaitable, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Let the shielded __anext__ task finish, then report a timeout so
+            # the executor's pending.done() drain branch is exercised.
+            await asyncio.sleep(0.02)
+            raise TimeoutError
+        return await real_wait_for(awaitable, timeout)
+
+    monkeypatch.setattr(service_module.asyncio, "wait_for", fake_wait_for)
+
+    async def fake_run_chat(*_args, **_kwargs):
+        yield {"event": "done", "data": {"message_id": 9}}
+
+    monkeypatch.setattr(service_module, "run_chat", fake_run_chat)
+
+    status = await turn_service.execute_turn("t-1")
+
+    assert status == "succeeded"
+    assert calls["n"] == 2
+    assert [kind for _, kind, _ in appended] == ["done"]
+    assert finish.await_args.kwargs["assistant_message_id"] == 9
+
+
+@pytest.mark.asyncio
+async def test_execute_turn_redacts_failure_before_persisting(monkeypatch):
+    finish, _ = _install_executor_mocks(monkeypatch)
+    secret = "sk-" + "a" * 24
+
+    async def fake_run_chat(*_args, **_kwargs):
+        raise RuntimeError(f"upstream rejected {secret}")
+        yield {}  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(service_module, "run_chat", fake_run_chat)
+
+    status = await turn_service.execute_turn("t-1")
+
+    assert status == "failed"
+    error = finish.await_args.kwargs["error"]
+    assert secret not in error
+    assert "[REDACTED]" in error

@@ -187,3 +187,70 @@ async def test_global_cap_ignores_uncapped_active_jobs(monkeypatch):
     assert await runner._claim_one() is None  # noqa: SLF001
     _, params = execute.await_args.args
     assert params[0] == ["index", "chat_turn"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_running_chat_turn_bridges_to_turn_flag(monkeypatch):
+    from app.core.sandbox import runtime as sandbox_runtime
+    from app.core.turns import store as turn_store
+
+    runner = JobRunner()
+    execute = AsyncMock(return_value=[("running", "chat_turn", {"turn_id": "t-1"})])
+    monkeypatch.setattr(runner_module, "execute", execute)
+    monkeypatch.setattr(
+        runner, "get", AsyncMock(return_value={"id": "j-1", "status": "running"}),
+    )
+    request_cancel = AsyncMock(return_value="running")
+    monkeypatch.setattr(turn_store, "request_cancel", request_cancel)
+    monkeypatch.setattr(
+        sandbox_runtime, "kill_job_containers", AsyncMock(return_value=0),
+    )
+
+    job = await runner.cancel("j-1", 7)
+
+    assert job["status"] == "running"
+    request_cancel.assert_awaited_once_with("t-1")
+    sql = execute.await_args.args[0]
+    assert "RETURNING status, kind, payload" in sql
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_chat_turn_still_marks_turn_canceled(monkeypatch):
+    from app.core.turns import store as turn_store
+
+    runner = JobRunner()
+    execute = AsyncMock(return_value=[("canceled", "chat_turn", {"turn_id": "t-2"})])
+    monkeypatch.setattr(runner_module, "execute", execute)
+    monkeypatch.setattr(
+        runner, "get", AsyncMock(return_value={"id": "j-2", "status": "canceled"}),
+    )
+    request_cancel = AsyncMock(return_value="canceled")
+    monkeypatch.setattr(turn_store, "request_cancel", request_cancel)
+
+    await runner.cancel("j-2", 7)
+
+    request_cancel.assert_awaited_once_with("t-2")
+
+
+@pytest.mark.asyncio
+async def test_cancel_other_kind_does_not_touch_turns(monkeypatch):
+    from app.core.sandbox import runtime as sandbox_runtime
+    from app.core.turns import store as turn_store
+
+    runner = JobRunner()
+    execute = AsyncMock(return_value=[("running", "index", {})])
+    monkeypatch.setattr(runner_module, "execute", execute)
+    monkeypatch.setattr(
+        runner, "get", AsyncMock(return_value={"id": "j-3", "status": "running"}),
+    )
+    request_cancel = AsyncMock()
+    monkeypatch.setattr(turn_store, "request_cancel", request_cancel)
+    monkeypatch.setattr(
+        sandbox_runtime, "kill_job_containers", AsyncMock(return_value=0),
+    )
+
+    await runner.cancel("j-3", 7)
+
+    request_cancel.assert_not_awaited()
+    await asyncio.sleep(0)
