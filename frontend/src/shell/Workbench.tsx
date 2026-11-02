@@ -47,8 +47,15 @@ export function Workbench({
     permissionMode, setPermissionMode, model, selectedRepoIds,
     attachments, uploading, uploadAttachment, removeAttachment,
     send, stop, clearError, streamUsage, contextMeter, turnNotice,
+    sessions, backgroundTurns, attachTurn, selectSession,
   } = useChat()
   const localMode = useMode((state) => state.mode?.local ?? false)
+  const backgroundTurn = sessionId ? backgroundTurns[sessionId] : undefined
+  const otherBackgroundSession = Object.keys(backgroundTurns)
+    .find((id) => id !== sessionId)
+  const otherBackgroundTitle = otherBackgroundSession
+    ? (sessions.find((item) => item.id === otherBackgroundSession)?.title ?? '另一个会话')
+    : null
   const { repos, refresh } = useRepos()
   const { settings: llmSettings } = useLlm()
   const [commandNotice, setCommandNotice] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
@@ -361,12 +368,52 @@ export function Workbench({
           emptyState={emptyState}
         />
 
+        {(backgroundTurn || otherBackgroundSession) && (
+          <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-xs">
+            <span className="flex-1 text-dim">
+              {backgroundTurn
+                ? '本会话有任务在后台执行，实时输出已断开。'
+                : `会话「${otherBackgroundTitle}」仍在后台执行。`}
+            </span>
+            {backgroundTurn ? (
+              <>
+                <button
+                  onClick={() => void attachTurn(backgroundTurn)}
+                  className="shrink-0 rounded-sm border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/40"
+                >
+                  重新连接
+                </button>
+                <button
+                  onClick={stop}
+                  className="shrink-0 rounded-sm border border-edge px-2.5 py-1 text-xs text-dim transition-colors duration-150 hover:border-faint hover:text-ink"
+                >
+                  停止
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  if (otherBackgroundSession) void selectSession(otherBackgroundSession)
+                }}
+                className="shrink-0 rounded-sm border border-accent/50 bg-accentSoft/20 px-2.5 py-1 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/40"
+              >
+                打开
+              </button>
+            )}
+          </div>
+        )}
+
         {turnNotice && (
           <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-xs">
-            <span className={clsx('flex-1', turnNotice.kind === 'incomplete' ? 'text-warn' : 'text-dim')}>
+            <span className={clsx(
+              'flex-1',
+              turnNotice.kind === 'incomplete' || turnNotice.kind === 'interrupted'
+                ? 'text-warn'
+                : 'text-dim',
+            )}>
               {turnNotice.message}
             </span>
-            {turnNotice.kind === 'incomplete' && (
+            {(turnNotice.kind === 'incomplete' || turnNotice.kind === 'interrupted') && (
               <button
                 onClick={() => {
                   useChat.setState({ turnNotice: null })
@@ -411,7 +458,7 @@ export function Workbench({
         )}
 
         <Composer
-          disabled={false}
+          disabled={Boolean(backgroundTurn)}
           streaming={streaming}
           model={effectiveModel}
           modelLabel={modelLabel}
