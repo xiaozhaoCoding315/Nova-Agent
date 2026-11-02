@@ -56,18 +56,25 @@ async def execute_turn(turn_id: str) -> str:
         fresh = await store.get_turn(turn_id)
         return fresh["status"] if fresh else "missing"
 
-    session = await session_mod.get_session(turn["session_id"], turn["user_id"])
-    message = (
-        await session_mod.get_message(turn["user_message_id"], turn["session_id"])
-        if turn.get("user_message_id")
-        else None
-    )
-    user = await get_user_by_id(turn["user_id"])
+    try:
+        session = await session_mod.get_session(turn["session_id"], turn["user_id"])
+        message = (
+            await session_mod.get_message(turn["user_message_id"], turn["session_id"])
+            if turn.get("user_message_id")
+            else None
+        )
+        user = await get_user_by_id(turn["user_id"])
+        seq = await events.max_seq(turn_id)
+    except Exception as exc:  # noqa: BLE001
+        detail = redact_text(f"{type(exc).__name__}: {exc}")[:2000]
+        logger.exception("turn_context_load_failed", turn_id=turn_id)
+        with contextlib.suppress(Exception):
+            await store.finish_turn(turn_id, "failed", error=detail)
+        return "failed"
     if not session or not message or not user:
         await store.finish_turn(turn_id, "failed", error="任务上下文已丢失，无法继续")
         return "failed"
 
-    seq = await events.max_seq(turn_id)
     coalescer = events.EventCoalescer()
     assistant_message_id: int | None = None
 
@@ -93,25 +100,38 @@ async def execute_turn(turn_id: str) -> str:
     last_cancel_check = 0.0
     try:
         while True:
+            now = time.monotonic()
+            if now - last_cancel_check >= _CANCEL_POLL_SECONDS:
+                last_cancel_check = now
+                if await store.is_cancel_requested(turn_id):
+                    await _stop_generator(pending, generator)
+                    pending = None
+                    await _flush(coalescer.flush())
+                    await store.finish_turn(turn_id, "canceled")
+                    return "canceled"
+
             if pending is None:
                 pending = asyncio.create_task(generator.__anext__())
+            event = None
             try:
                 event = await asyncio.wait_for(
                     asyncio.shield(pending), timeout=_TICK_SECONDS,
                 )
                 pending = None
             except asyncio.TimeoutError:
-                now = time.monotonic()
-                await _flush(coalescer.flush_if_due(now))
-                if now - last_cancel_check >= _CANCEL_POLL_SECONDS:
-                    last_cancel_check = now
-                    if await store.is_cancel_requested(turn_id):
-                        await _stop_generator(pending, generator)
+                if pending is not None and pending.done():
+                    try:
+                        event = pending.result()
+                    except StopAsyncIteration:
                         pending = None
-                        await _flush(coalescer.flush())
-                        await store.finish_turn(turn_id, "canceled")
-                        return "canceled"
-                continue
+                        break
+                    except BaseException:
+                        pending = None
+                        raise
+                    pending = None
+                else:
+                    await _flush(coalescer.flush_if_due())
+                    continue
             except StopAsyncIteration:
                 pending = None
                 break

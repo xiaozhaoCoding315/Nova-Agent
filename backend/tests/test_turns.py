@@ -324,3 +324,44 @@ async def test_run_chat_persists_partial_output_when_closed(monkeypatch):
 
     add_message.assert_awaited()
     assert add_message.await_args.args[2] == "部分输出"
+
+
+@pytest.mark.asyncio
+async def test_execute_turn_cancels_during_continuous_stream(monkeypatch):
+    finish, _ = _install_executor_mocks(monkeypatch)
+    checks = {"n": 0}
+
+    async def cancel_check(_turn_id):
+        checks["n"] += 1
+        return checks["n"] >= 2
+
+    monkeypatch.setattr(store, "is_cancel_requested", cancel_check)
+
+    async def fake_run_chat(*_args, **_kwargs):
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            yield {"event": "token", "data": {"text": "x"}}
+        yield {"event": "done", "data": {}}
+
+    monkeypatch.setattr(service_module, "run_chat", fake_run_chat)
+
+    status = await asyncio.wait_for(turn_service.execute_turn("t-1"), timeout=3)
+
+    assert status == "canceled"
+    assert finish.await_args.args == ("t-1", "canceled")
+    assert checks["n"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_execute_turn_marks_failed_when_context_load_errors(monkeypatch):
+    finish, _ = _install_executor_mocks(monkeypatch)
+    monkeypatch.setattr(
+        service_module.session_mod, "get_session",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    )
+
+    status = await turn_service.execute_turn("t-1")
+
+    assert status == "failed"
+    assert finish.await_args.args == ("t-1", "failed")
+    assert "RuntimeError" in finish.await_args.kwargs["error"]
