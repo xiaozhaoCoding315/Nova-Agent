@@ -71,6 +71,12 @@ type ChatState = {
 let abortController: AbortController | null = null
 /** 递增的流所有权；被替换的流在 finally/catch 中不得再写状态。 */
 let streamOwner = 0
+let selectionEpoch = 0
+
+function nextSelectionRevision(): number {
+  selectionEpoch += 1
+  return selectionEpoch
+}
 /** 当前正在跟随的回合 id（来自响应头或 attachTurn），用于取消与后台接管。 */
 let attachedTurnId: string | null = null
 /** 丢弃乱序返回的会话参数响应，避免旧响应覆盖新状态。 */
@@ -567,7 +573,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }))
     }
     detachStream()
-    const revision = get().selectionRevision + 1
+    const revision = nextSelectionRevision()
     try {
       const messages = await api.sessions.messages(id)
       if (get().selectionRevision >= revision) return
@@ -627,7 +633,13 @@ export const useChat = create<ChatState>((set, get) => ({
         set({ turnNotice: null })
       }
     } catch (err) {
-      set({ error: err instanceof ApiError ? err.message : '加载会话失败' })
+      set((s) => ({
+        ...IDLE_STREAM,
+        turnId: null,
+        turnStatus: null,
+        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        error: err instanceof ApiError ? err.message : '加载会话失败',
+      }))
     }
   },
 
@@ -641,20 +653,22 @@ export const useChat = create<ChatState>((set, get) => ({
     }
     detachStream()
     const inherited = state.historyRepoId
-    set((s) => ({
+    const revision = nextSelectionRevision()
+    set({
       ...IDLE_STREAM,
       sessionId: null,
-      selectionRevision: s.selectionRevision + 1,
+      selectionRevision: revision,
       messages: [], refs: [], model: null, provider: null,
       reasoningEffort: '', reasoningCleared: false, contextWindow: null,
       temperature: null, error: null, plan: null, approvals: [],
       selectedRepoIds: inherited ? [inherited] : [], attachments: [],
       contextMeter: null, turnId: null, turnStatus: null, turnNotice: null,
-    }))
+    })
   },
 
   deleteSession: async (id) => {
     const state = get()
+    const wasCurrent = state.sessionId === id
     const turnId = state.backgroundTurns[id]
       ?? (state.sessionId === id ? (attachedTurnId ?? state.turnId) : null)
     if (turnId) void api.turns.cancel(turnId).catch(() => {})
@@ -675,7 +689,18 @@ export const useChat = create<ChatState>((set, get) => ({
           : {}),
       }))
     } catch (err) {
-      set({ error: err instanceof ApiError ? err.message : '删除失败' })
+      const message = err instanceof ApiError ? err.message : '删除失败'
+      if (wasCurrent) {
+        set((s) => ({
+          ...IDLE_STREAM,
+          turnId: null,
+          turnStatus: null,
+          turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+          error: message,
+        }))
+      } else {
+        set({ error: message })
+      }
     }
   },
 
@@ -708,8 +733,9 @@ export const useChat = create<ChatState>((set, get) => ({
 
   stop: () => {
     const state = get()
-    const turnId = attachedTurnId ?? state.turnId
     const sessionId = state.sessionId
+    const turnId = attachedTurnId ?? state.turnId
+      ?? (sessionId ? state.backgroundTurns[sessionId] : undefined)
     const message = finishedAssistantMessage(state)
     if (turnId) void api.turns.cancel(turnId).catch(() => {})
     detachStream()
@@ -718,6 +744,7 @@ export const useChat = create<ChatState>((set, get) => ({
       ...IDLE_STREAM,
       turnId: null,
       turnStatus: turnId ? 'canceled' : null,
+      turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
       backgroundTurns: withoutBackground(s.backgroundTurns, sessionId),
     }))
     void get().loadSessions()
@@ -821,13 +848,19 @@ export const useChat = create<ChatState>((set, get) => ({
       const sessionId = state.sessionId
       const turnId = state.turnId ?? attachedTurnId
       if (message) set({ messages: [...state.messages, message] })
-      set({ ...IDLE_STREAM, turnId: null })
+      set((s) => ({
+        ...IDLE_STREAM,
+        turnId: null,
+        turnStatus: null,
+        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+      }))
       if (abortController === controller) {
         abortController = null
         attachedTurnId = null
       }
       if (turnId && sessionId) {
         const fresh = await fetchTurn(turnId)
+        if (!ownsStream(owner)) return
         if (fresh && !isTerminalStatus(fresh.status)) {
           set((s) => ({
             backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId },
@@ -877,15 +910,23 @@ export const useChat = create<ChatState>((set, get) => ({
       const sessionId = get().sessionId
       const fresh = await fetchTurn(turnId)
       if (!ownsStream(owner)) return
+      let messagesLoaded = true
       if (sessionId) {
         try {
           const messages = await api.sessions.messages(sessionId)
           if (ownsStream(owner) && get().sessionId === sessionId) set({ messages })
         } catch {
           /* replay state already shows what we have */
+          messagesLoaded = false
         }
       }
       if (!ownsStream(owner)) return
+      set((s) => ({
+        ...(messagesLoaded ? IDLE_STREAM : { streaming: false }),
+        turnId: null,
+        turnStatus: fresh?.status ?? null,
+        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+      }))
       if (fresh && !isTerminalStatus(fresh.status)) {
         if (sessionId) {
           set((s) => ({ backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId } }))
@@ -903,7 +944,6 @@ export const useChat = create<ChatState>((set, get) => ({
           set({ error: fresh.error ?? '任务执行失败' })
         }
       }
-      set({ ...IDLE_STREAM, turnId: null, turnStatus: fresh?.status ?? null })
       if (abortController === controller) {
         abortController = null
         attachedTurnId = null
