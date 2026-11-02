@@ -5,7 +5,8 @@ import type {
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
   LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
-  Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Usage, User, VerifyResult,
+  Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Turn, TurnSnapshot, Usage, User,
+  VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -149,6 +150,16 @@ export const api = {
         `/chat/sessions/${sessionId}/tools/${encodeURIComponent(toolCallId)}/reject`,
         { method: 'POST' },
       ),
+  },
+
+  turns: {
+    get: (id: string) => request<Turn>(`/chat/turns/${id}`),
+    active: (sessionId: string) =>
+      request<TurnSnapshot>(`/chat/sessions/${sessionId}/turns/active`),
+    cancel: (id: string) =>
+      request<{ ok: boolean; canceled: boolean }>(`/chat/turns/${id}/cancel`, {
+        method: 'POST',
+      }),
   },
 
   repos: {

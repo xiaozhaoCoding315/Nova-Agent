@@ -151,6 +151,25 @@ export type Session = {
   updated_at?: string
 }
 
+export type TurnStatus =
+  | 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted'
+
+export type Turn = {
+  id: string
+  session_id: string
+  status: TurnStatus
+  cancel_requested?: boolean
+  error?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  finished_at?: string | null
+}
+
+export type TurnSnapshot = {
+  turn: Turn | null
+  latest: Turn | null
+}
+
 export type PermissionMode = 'readonly' | 'ask' | 'auto' | 'full'
 
 export type EditRef = {

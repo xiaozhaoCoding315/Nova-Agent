@@ -3,11 +3,11 @@ import { api, ApiError } from '../lib/api'
 import {
   compactOverrides, providerSupportsReasoning, sanitizeOverrides,
 } from '../lib/overrides'
-import { streamChat } from '../lib/sse'
+import { streamChat, streamTurn } from '../lib/sse'
 import type {
   ContextMeter, DeliveryReport, EditRef, Evidence, FileAttachment, LlmOverrides, LlmProvider,
   Message, PermissionMode, PlanState, RetrievalHit, Session, StreamToolCard, StreamUsage,
-  SubagentFinding, SubagentRun, ToolApproval, ToolCall, ToolResult,
+  SubagentFinding, SubagentRun, ToolApproval, ToolCall, ToolResult, Turn, TurnStatus,
 } from '../lib/types'
 import { useLlm } from './llm'
 
@@ -42,6 +42,9 @@ type ChatState = {
   report: DeliveryReport | null
   streamUsage: StreamUsage | null
   contextMeter: ContextMeter | null
+  turnId: string | null
+  turnStatus: TurnStatus | null
+  backgroundTurns: Record<string, string>
   turnNotice: { kind: string; message: string } | null
   error: string | null
   setPermissionMode: (mode: PermissionMode) => void
@@ -58,6 +61,7 @@ type ChatState = {
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
   send: (content: string, repoIds: string[]) => Promise<void>
+  attachTurn: (turnId: string) => Promise<void>
   resolveApproval: (toolCallId: string, approved: boolean) => Promise<void>
   stop: () => void
   reset: () => void
@@ -65,6 +69,10 @@ type ChatState = {
 }
 
 let abortController: AbortController | null = null
+/** 递增的流所有权；被替换的流在 finally/catch 中不得再写状态。 */
+let streamOwner = 0
+/** 当前正在跟随的回合 id（来自响应头或 attachTurn），用于取消与后台接管。 */
+let attachedTurnId: string | null = null
 /** 丢弃乱序返回的会话参数响应，避免旧响应覆盖新状态。 */
 let overridesSeq = 0
 /** 串行化 PATCH：后一笔在本笔完成后才发出，保证服务器最后写入的是最新快照。 */
@@ -154,6 +162,259 @@ function updateSubagentRuns(
   })
 }
 
+type ChatSet = (
+  partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>),
+) => void
+
+const IDLE_STREAM = {
+  streaming: false,
+  streamText: '',
+  toolCards: [] as StreamToolCard[],
+  streamEdits: [] as EditRef[],
+  plan: null as PlanState | null,
+  subagentRuns: [] as SubagentRun[],
+  approvals: [] as ToolApproval[],
+  evidence: null as Evidence | null,
+  report: null as DeliveryReport | null,
+  streamUsage: null as StreamUsage | null,
+}
+
+function isTerminalStatus(status: TurnStatus | null | undefined): boolean {
+  return status === 'succeeded' || status === 'failed'
+    || status === 'canceled' || status === 'interrupted'
+}
+
+function normalizeTurnStatus(value: unknown): TurnStatus {
+  return value === 'queued' || value === 'running' || value === 'succeeded'
+    || value === 'failed' || value === 'canceled' || value === 'interrupted'
+    ? value
+    : 'running'
+}
+
+function beginStream(): { owner: number; controller: AbortController } {
+  abortController?.abort()
+  const owner = ++streamOwner
+  const controller = new AbortController()
+  abortController = controller
+  attachedTurnId = null
+  return { owner, controller }
+}
+
+function ownsStream(owner: number): boolean {
+  return owner === streamOwner
+}
+
+function detachStream(): void {
+  streamOwner += 1
+  abortController?.abort()
+  abortController = null
+  attachedTurnId = null
+}
+
+function withoutBackground(
+  turns: Record<string, string>, sessionId: string | null,
+): Record<string, string> {
+  if (!sessionId || !(sessionId in turns)) return turns
+  const next = { ...turns }
+  delete next[sessionId]
+  return next
+}
+
+async function fetchTurn(turnId: string): Promise<Turn | null> {
+  try {
+    return await api.turns.get(turnId)
+  } catch {
+    return null
+  }
+}
+
+function finishedAssistantMessage(state: ChatState): Message | null {
+  const {
+    streamText, toolCards, evidence, streamEdits, report,
+    contextMeter, plan, subagentRuns,
+  } = state
+  const finishedEvents = toolCards.filter((card) => card.result)
+  if (
+    !streamText && toolCards.length === 0 && streamEdits.length === 0
+    && subagentRuns.length === 0
+  ) return null
+  return {
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: streamText,
+    tool_json: {
+      ...(toolCards.length ? { tools_used: toolCards.map((c) => c.call.name) } : {}),
+      ...(finishedEvents.length
+        ? {
+            tool_events: finishedEvents.map((card) => ({
+              name: card.call.name,
+              ok: Boolean(card.result!.ok),
+              ms: card.result!.ms,
+              round: card.call.round,
+              command: card.command ?? null,
+              exit_code: card.exit_code ?? null,
+              timed_out: Boolean(card.timedOut),
+              args: card.call.args,
+              error: card.result!.ok ? null : card.result!.preview,
+              preview: card.result!.preview,
+              stdout_tail: card.result!.stdout_tail ?? null,
+              stderr_tail: card.result!.stderr_tail ?? null,
+              content_preview: card.result!.content_preview ?? null,
+            })),
+          }
+        : {}),
+      ...(evidence ? { evidence } : {}),
+      ...(streamEdits.length ? { edits: streamEdits } : {}),
+      ...(report ? { report } : {}),
+      ...(contextMeter ? { context: contextMeter } : {}),
+      ...(plan ? { plan } : {}),
+      ...(subagentRuns.length ? { subagents: subagentRuns } : {}),
+    },
+  }
+}
+
+function applyStreamEvent(
+  set: ChatSet,
+  event: string,
+  data: Record<string, any>,
+  sentinelPersisted: boolean,
+): void {
+  switch (event) {
+    case 'turn':
+      set({
+        turnId: data.turn_id ? String(data.turn_id) : null,
+        turnStatus: normalizeTurnStatus(data.status),
+      })
+      break
+    case 'meta':
+      set((s) => ({
+        sessionId: s.sessionId ?? data.session_id,
+        ...(data.model ? { model: data.model as string } : {}),
+        provider: data.provider ?? s.provider,
+        reasoningEffort: data.reasoning_effort ?? s.reasoningEffort,
+        ...(sentinelPersisted ? { reasoningCleared: true } : {}),
+        contextWindow: data.context_window ?? s.contextWindow,
+        ...(Array.isArray(data.repo_ids) ? { selectedRepoIds: data.repo_ids as string[] } : {}),
+        sessions: data.title
+          ? s.sessions.some((x) => x.id === data.session_id)
+            ? s.sessions.map((x) =>
+                x.id === data.session_id
+                  ? { ...x, title: data.title, repo_ids: data.repo_ids ?? x.repo_ids }
+                  : x,
+              )
+            : [{
+                id: data.session_id,
+                title: data.title,
+                message_count: 1,
+                repo_ids: data.repo_ids ?? [],
+              }, ...s.sessions]
+          : s.sessions,
+      }))
+      break
+    case 'retrieval':
+      set({ refs: data.hits ?? [] })
+      break
+    case 'context':
+      set({
+        contextMeter: {
+          window: Number(data.window ?? 0),
+          sections: (data.sections ?? {}) as Record<string, number>,
+          total: Number(data.total ?? 0),
+          actualPromptTokens: data.actual_prompt_tokens != null
+            ? Number(data.actual_prompt_tokens)
+            : null,
+        },
+      })
+      break
+    case 'token':
+      set((s) => ({ streamText: s.streamText + data.text }))
+      break
+    case 'tool_call':
+      set((s) => ({ toolCards: [...s.toolCards, { call: data as unknown as ToolCall }] }))
+      break
+    case 'tool_result':
+      set((s) => ({
+        toolCards: s.toolCards.map((card) =>
+          card.call.id === data.id
+            ? { ...card, result: data as unknown as ToolResult }
+            : card,
+        ),
+        approvals: s.approvals.filter((item) => item.id !== data.id),
+      }))
+      break
+    case 'tool_approval':
+      set((s) => ({
+        approvals: [
+          ...s.approvals.filter((item) => item.id !== data.id),
+          {
+            id: String(data.id ?? ''),
+            name: String(data.name ?? ''),
+            args: (data.args ?? {}) as Record<string, unknown>,
+            reason: String(data.reason ?? ''),
+          },
+        ],
+      }))
+      break
+    case 'tool_output':
+      set((s) => ({
+        toolCards: s.toolCards.map((card) =>
+          card.call.id === data.id
+            ? { ...card, output: `${card.output ?? ''}${data.text ?? ''}`.slice(-60_000) }
+            : card,
+        ),
+      }))
+      break
+    case 'notice':
+      set({ turnNotice: { kind: String(data.kind ?? ''), message: String(data.message ?? '') } })
+      break
+    case 'error':
+      set({ error: data.message ?? '生成失败' })
+      break
+    case 'usage':
+      set({
+        streamUsage: {
+          model: data.model as string | undefined,
+          prompt_tokens: Number(data.prompt_tokens ?? 0),
+          completion_tokens: Number(data.completion_tokens ?? 0),
+        },
+      })
+      break
+    case 'evidence':
+      set({ evidence: data as unknown as Evidence })
+      break
+    case 'done':
+      set({
+        report: (data.report ?? null) as DeliveryReport | null,
+        turnStatus: 'succeeded',
+      })
+      break
+    case 'subagent':
+      set((s) => ({ subagentRuns: updateSubagentRuns(s.subagentRuns, data) }))
+      break
+    case 'plan':
+      set({
+        plan: {
+          steps: Array.isArray(data.steps) ? data.steps : [],
+          explanation: (data.explanation as string | undefined) ?? null,
+        },
+      })
+      break
+    case 'edit_proposal':
+      set((s) => ({
+        streamEdits: [...s.streamEdits, {
+          id: data.id,
+          files: data.files ?? [],
+          staged: Boolean(data.staged),
+          status: data.status ?? 'pending',
+          diff: data.diff ?? '',
+        }],
+      }))
+      break
+    default:
+      break
+  }
+}
+
 export const useChat = create<ChatState>((set, get) => ({
   sessions: [],
   sessionId: null,
@@ -183,6 +444,9 @@ export const useChat = create<ChatState>((set, get) => ({
   report: null,
   streamUsage: null,
   contextMeter: null,
+  turnId: null,
+  turnStatus: null,
+  backgroundTurns: {},
   turnNotice: null,
   error: null,
 
@@ -295,9 +559,18 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   selectSession: async (id) => {
-    if (get().streaming) return
+    const state = get()
+    const previousTurn = attachedTurnId ?? state.turnId
+    if (state.sessionId && state.sessionId !== id && state.streaming && previousTurn) {
+      set((s) => ({
+        backgroundTurns: { ...s.backgroundTurns, [state.sessionId!]: previousTurn },
+      }))
+    }
+    detachStream()
+    const revision = get().selectionRevision + 1
     try {
       const messages = await api.sessions.messages(id)
+      if (get().selectionRevision >= revision) return
       const session = get().sessions.find((s) => s.id === id)
       const rawOverrides = session?.llm_overrides
       // 载入时同样按厂商能力清洗，避免过期持久化参数在 UI 上显示为已选中。
@@ -310,12 +583,15 @@ export const useChat = create<ChatState>((set, get) => ({
         && Object.prototype.hasOwnProperty.call(rawOverrides, 'reasoning_effort')
         && rawOverrides.reasoning_effort === '',
       )
-      set({
+      set((s) => ({
+        ...IDLE_STREAM,
         sessionId: id,
-        selectionRevision: get().selectionRevision + 1,
+        selectionRevision: revision,
         messages,
         refs: [],
         error: null,
+        turnId: null,
+        turnStatus: null,
         model: overrides.model ?? session?.model ?? null,
         provider: overrides.provider ?? null,
         reasoningEffort: overrides.reasoning_effort ?? '',
@@ -327,36 +603,74 @@ export const useChat = create<ChatState>((set, get) => ({
         contextMeter: null,
         plan: null,
         approvals: [],
+        backgroundTurns: withoutBackground(s.backgroundTurns, id),
         ...(session?.permission_mode ? { permissionMode: session.permission_mode } : {}),
-      })
+      }))
+      const snapshot = await api.turns.active(id).catch(() => null)
+      if (get().selectionRevision !== revision) return
+      if (snapshot?.turn) {
+        await get().attachTurn(snapshot.turn.id)
+        return
+      }
+      const latest = snapshot?.latest
+      if (latest?.status === 'interrupted') {
+        set({ turnNotice: {
+          kind: 'interrupted',
+          message: '上次任务因服务重启中断，已完成的部分已保留。',
+        } })
+      } else if (latest?.status === 'failed') {
+        set({ turnNotice: {
+          kind: 'failed',
+          message: `上次任务执行失败：${latest.error ?? '未知错误'}`,
+        } })
+      } else {
+        set({ turnNotice: null })
+      }
     } catch (err) {
       set({ error: err instanceof ApiError ? err.message : '加载会话失败' })
     }
   },
 
   newSession: () => {
-    if (get().streaming) return
-    const inherited = get().historyRepoId
-    set({
+    const state = get()
+    const previousTurn = attachedTurnId ?? state.turnId
+    if (state.sessionId && state.streaming && previousTurn) {
+      set((s) => ({
+        backgroundTurns: { ...s.backgroundTurns, [state.sessionId!]: previousTurn },
+      }))
+    }
+    detachStream()
+    const inherited = state.historyRepoId
+    set((s) => ({
+      ...IDLE_STREAM,
       sessionId: null,
-      selectionRevision: get().selectionRevision + 1,
+      selectionRevision: s.selectionRevision + 1,
       messages: [], refs: [], model: null, provider: null,
-      reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null, error: null, plan: null,
-      approvals: [], selectedRepoIds: inherited ? [inherited] : [], attachments: [],
-      contextMeter: null,
-    })
+      reasoningEffort: '', reasoningCleared: false, contextWindow: null,
+      temperature: null, error: null, plan: null, approvals: [],
+      selectedRepoIds: inherited ? [inherited] : [], attachments: [],
+      contextMeter: null, turnId: null, turnStatus: null, turnNotice: null,
+    }))
   },
 
   deleteSession: async (id) => {
+    const state = get()
+    const turnId = state.backgroundTurns[id]
+      ?? (state.sessionId === id ? (attachedTurnId ?? state.turnId) : null)
+    if (turnId) void api.turns.cancel(turnId).catch(() => {})
+    if (state.sessionId === id) detachStream()
     try {
       await api.sessions.remove(id)
       set((s) => ({
         sessions: s.sessions.filter((x) => x.id !== id),
+        backgroundTurns: withoutBackground(s.backgroundTurns, id),
         ...(s.sessionId === id
           ? {
+              ...IDLE_STREAM,
               sessionId: null, messages: [], refs: [], model: null, selectedRepoIds: [],
-              attachments: [], provider: null, reasoningEffort: '' as const, reasoningCleared: false,
-              contextWindow: null, temperature: null,
+              attachments: [], provider: null, reasoningEffort: '' as const,
+              reasoningCleared: false, contextWindow: null, temperature: null,
+              turnId: null, turnStatus: null, turnNotice: null,
             }
           : {}),
       }))
@@ -393,42 +707,54 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   stop: () => {
-    abortController?.abort()
+    const state = get()
+    const turnId = attachedTurnId ?? state.turnId
+    const sessionId = state.sessionId
+    const message = finishedAssistantMessage(state)
+    if (turnId) void api.turns.cancel(turnId).catch(() => {})
+    detachStream()
+    if (message) set({ messages: [...state.messages, message] })
+    set((s) => ({
+      ...IDLE_STREAM,
+      turnId: null,
+      turnStatus: turnId ? 'canceled' : null,
+      backgroundTurns: withoutBackground(s.backgroundTurns, sessionId),
+    }))
+    void get().loadSessions()
   },
 
   reset: () => {
-    abortController?.abort()
-    abortController = null
+    detachStream()
     set({
-      sessions: [], sessionId: null, messages: [], streaming: false, streamText: '',
-      toolCards: [], streamEdits: [], plan: null, subagentRuns: [], approvals: [], permissionMode: 'ask',
-      model: null, provider: null, reasoningEffort: '', reasoningCleared: false,
-      contextWindow: null, temperature: null,
-      overridesSaving: false,
-      selectedRepoIds: [], historyRepoId: null, attachments: [], uploading: false,
-      refs: [],
-      evidence: null, report: null, streamUsage: null, contextMeter: null, turnNotice: null, error: null,
+      ...IDLE_STREAM,
+      sessions: [], sessionId: null, messages: [],
+      permissionMode: 'ask', model: null, provider: null,
+      reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null,
+      overridesSaving: false, selectedRepoIds: [], historyRepoId: null,
+      attachments: [], uploading: false, refs: [],
+      turnId: null, turnStatus: null, backgroundTurns: {},
+      contextMeter: null, turnNotice: null, error: null,
     })
   },
 
   send: async (content, repoIds) => {
     if (get().streaming || get().uploading || !content.trim()) return
+    const currentSession = get().sessionId
+    if (currentSession && get().backgroundTurns[currentSession]) {
+      set({ error: '本会话仍有任务在后台执行，请先重新连接或停止。' })
+      return
+    }
     const pendingAttachments = get().attachments
 
     set((s) => ({
+      ...IDLE_STREAM,
       streaming: true,
-      streamText: '',
-      toolCards: [],
-      streamEdits: [],
-      plan: null,
-      subagentRuns: [],
-      approvals: [],
       refs: [],
-      report: null,
-      streamUsage: null,
       contextMeter: null,
       turnNotice: null,
       error: null,
+      turnId: null,
+      turnStatus: 'queued',
       attachments: [],
       messages: [
         ...s.messages,
@@ -442,8 +768,7 @@ export const useChat = create<ChatState>((set, get) => ({
       ],
     }))
 
-    const controller = new AbortController()
-    abortController = controller
+    const { owner, controller } = beginStream()
 
     // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
     const providerSpec = activeProviderSpec(get().provider)
@@ -473,201 +798,116 @@ export const useChat = create<ChatState>((set, get) => ({
           file_ids: pendingAttachments.map((item) => item.id),
         },
         (event, data) => {
-          switch (event) {
-            case 'meta':
-              set((s) => ({
-                sessionId: s.sessionId ?? data.session_id,
-                ...(data.model ? { model: data.model as string } : {}),
-                provider: data.provider ?? s.provider,
-                reasoningEffort: data.reasoning_effort ?? s.reasoningEffort,
-                // meta 到达时后端已把请求覆盖并入会话；此时 sentinel 才算落库。
-                ...(sentinelPersisted ? { reasoningCleared: true } : {}),
-                contextWindow: data.context_window ?? s.contextWindow,
-                ...(Array.isArray(data.repo_ids) ? { selectedRepoIds: data.repo_ids as string[] } : {}),
-                sessions: data.title
-                  ? s.sessions.some((x) => x.id === data.session_id)
-                    ? s.sessions.map((x) =>
-                        x.id === data.session_id
-                          ? { ...x, title: data.title, repo_ids: data.repo_ids ?? x.repo_ids }
-                          : x,
-                      )
-                    : [
-                        {
-                          id: data.session_id,
-                          title: data.title,
-                          message_count: 1,
-                          repo_ids: data.repo_ids ?? [],
-                        },
-                        ...s.sessions,
-                      ]
-                  : s.sessions,
-              }))
-              break
-            case 'retrieval':
-              set({ refs: data.hits ?? [] })
-              break
-            case 'context':
-              set({
-                contextMeter: {
-                  window: Number(data.window ?? 0),
-                  sections: (data.sections ?? {}) as Record<string, number>,
-                  total: Number(data.total ?? 0),
-                  actualPromptTokens: data.actual_prompt_tokens != null
-                    ? Number(data.actual_prompt_tokens)
-                    : null,
-                },
-              })
-              break
-            case 'token':
-              set((s) => ({ streamText: s.streamText + data.text }))
-              break
-            case 'tool_call':
-              set((s) => ({ toolCards: [...s.toolCards, { call: data as unknown as ToolCall }] }))
-              break
-            case 'tool_result':
-              set((s) => ({
-                toolCards: s.toolCards.map((card) =>
-                  card.call.id === data.id
-                    ? { ...card, result: data as unknown as ToolResult }
-                    : card,
-                ),
-              }))
-              break
-            case 'tool_approval':
-              set((s) => ({
-                approvals: [
-                  ...s.approvals.filter((item) => item.id !== data.id),
-                  {
-                    id: String(data.id ?? ''),
-                    name: String(data.name ?? ''),
-                    args: (data.args ?? {}) as Record<string, unknown>,
-                    reason: String(data.reason ?? ''),
-                  },
-                ],
-              }))
-              break
-            case 'tool_output':
-              set((s) => ({
-                toolCards: s.toolCards.map((card) =>
-                  card.call.id === data.id
-                    ? { ...card, output: `${card.output ?? ''}${data.text ?? ''}`.slice(-60_000) }
-                    : card,
-                ),
-              }))
-              break
-            case 'notice':
-              set({ turnNotice: { kind: String(data.kind ?? ''), message: String(data.message ?? '') } })
-              break
-            case 'error':
-              set({ error: data.message ?? '生成失败' })
-              break
-            case 'usage':
-              set({
-                streamUsage: {
-                  model: data.model as string | undefined,
-                  prompt_tokens: Number(data.prompt_tokens ?? 0),
-                  completion_tokens: Number(data.completion_tokens ?? 0),
-                },
-              })
-              break
-            case 'evidence':
-              set({ evidence: data as unknown as Evidence })
-              break
-            case 'done':
-              set({ report: (data.report ?? null) as DeliveryReport | null })
-              break
-            case 'subagent':
-              set((s) => ({ subagentRuns: updateSubagentRuns(s.subagentRuns, data) }))
-              break
-            case 'plan':
-              set({
-                plan: {
-                  steps: Array.isArray(data.steps) ? data.steps : [],
-                  explanation: (data.explanation as string | undefined) ?? null,
-                },
-              })
-              break
-            case 'edit_proposal':
-              set((s) => ({
-                streamEdits: [
-                  ...s.streamEdits,
-                  {
-                    id: data.id,
-                    files: data.files ?? [],
-                    staged: Boolean(data.staged),
-                    status: data.status ?? 'pending',
-                    diff: data.diff ?? '',
-                  },
-                ],
-              }))
-              break
-            default:
-              break
+          if (ownsStream(owner)) applyStreamEvent(set, event, data, sentinelPersisted)
+        },
+        controller.signal,
+        (info) => {
+          if (!ownsStream(owner)) return
+          attachedTurnId = info.turnId
+          if (info.turnId) set({ turnId: info.turnId })
+        },
+      )
+    } catch (err) {
+      if (ownsStream(owner)) {
+        set({ error: err instanceof ApiError ? err.message : '请求失败，请重试' })
+      }
+    } finally {
+      if (!ownsStream(owner)) {
+        void get().loadSessions()
+        return
+      }
+      const state = get()
+      const message = finishedAssistantMessage(state)
+      const sessionId = state.sessionId
+      const turnId = state.turnId ?? attachedTurnId
+      if (message) set({ messages: [...state.messages, message] })
+      set({ ...IDLE_STREAM, turnId: null })
+      if (abortController === controller) {
+        abortController = null
+        attachedTurnId = null
+      }
+      if (turnId && sessionId) {
+        const fresh = await fetchTurn(turnId)
+        if (fresh && !isTerminalStatus(fresh.status)) {
+          set((s) => ({
+            backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId },
+          }))
+        } else {
+          set((s) => ({ backgroundTurns: withoutBackground(s.backgroundTurns, sessionId) }))
+          if (fresh?.status === 'interrupted') {
+            set({ turnNotice: {
+              kind: 'interrupted',
+              message: '任务在执行中被服务中断，已完成的部分已保留。',
+            } })
+          } else if (fresh?.status === 'failed') {
+            set({ error: fresh.error ?? '任务执行失败' })
           }
+        }
+      }
+      void get().loadSessions()
+    }
+  },
+
+  attachTurn: async (turnId) => {
+    const { owner, controller } = beginStream()
+    attachedTurnId = turnId
+    set((s) => ({
+      ...IDLE_STREAM,
+      streaming: true,
+      turnId,
+      turnStatus: 'queued',
+      turnNotice: null,
+      error: null,
+      backgroundTurns: withoutBackground(s.backgroundTurns, get().sessionId),
+    }))
+    try {
+      await streamTurn(
+        turnId,
+        (event, data) => {
+          if (ownsStream(owner)) applyStreamEvent(set, event, data, false)
         },
         controller.signal,
       )
     } catch (err) {
-      set({ error: err instanceof ApiError ? err.message : '请求失败，请重试' })
-    } finally {
-      const {
-        streamText, toolCards, messages, evidence, streamEdits, report,
-        contextMeter, plan, subagentRuns,
-      } = get()
-      const finishedEvents = toolCards.filter((card) => card.result)
-      if (
-        streamText || toolCards.length > 0 || streamEdits.length > 0
-        || subagentRuns.length > 0
-      ) {
-        set({
-          messages: [
-            ...messages,
-            {
-              id: Date.now() + 1,
-              role: 'assistant',
-              content: streamText,
-              tool_json: {
-                ...(toolCards.length ? { tools_used: toolCards.map((c) => c.call.name) } : {}),
-                // 与后端 loop.py 持久化的 tool_events 同形：带上 stdout/stderr 尾部与
-                // 文件正文预览，避免本轮刚结束就退回只有 preview 的降级卡片。
-                ...(finishedEvents.length
-                  ? {
-                      tool_events: finishedEvents.map((card) => ({
-                        name: card.call.name,
-                        ok: Boolean(card.result!.ok),
-                        ms: card.result!.ms,
-                        round: card.call.round,
-                        command: card.command ?? null,
-                        exit_code: card.exit_code ?? null,
-                        timed_out: Boolean(card.timedOut),
-                        args: card.call.args,
-                        error: card.result!.ok ? null : card.result!.preview,
-                        preview: card.result!.preview,
-                        stdout_tail: card.result!.stdout_tail ?? null,
-                        stderr_tail: card.result!.stderr_tail ?? null,
-                        content_preview: card.result!.content_preview ?? null,
-                      })),
-                    }
-                  : {}),
-                ...(evidence ? { evidence } : {}),
-                ...(streamEdits.length ? { edits: streamEdits } : {}),
-                ...(report ? { report } : {}),
-                ...(contextMeter ? { context: contextMeter } : {}),
-                ...(plan ? { plan } : {}),
-                ...(subagentRuns.length ? { subagents: subagentRuns } : {}),
-              },
-            },
-          ],
-        })
+      if (ownsStream(owner)) {
+        set({ error: err instanceof ApiError ? err.message : '重新连接失败' })
       }
-      set((s) => ({
-        streaming: false, streamText: '', toolCards: [], streamEdits: [], plan: null,
-        subagentRuns: [],
-        approvals: [], evidence: null, report: null, streamUsage: null,
-        // 只有「未完成」通知要留给用户继续按钮；retry/continued 是过程性提示
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
-      }))
-      abortController = null
+    } finally {
+      if (!ownsStream(owner)) return
+      const sessionId = get().sessionId
+      const fresh = await fetchTurn(turnId)
+      if (!ownsStream(owner)) return
+      if (sessionId) {
+        try {
+          const messages = await api.sessions.messages(sessionId)
+          if (ownsStream(owner) && get().sessionId === sessionId) set({ messages })
+        } catch {
+          /* replay state already shows what we have */
+        }
+      }
+      if (!ownsStream(owner)) return
+      if (fresh && !isTerminalStatus(fresh.status)) {
+        if (sessionId) {
+          set((s) => ({ backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId } }))
+        }
+      } else {
+        if (sessionId) {
+          set((s) => ({ backgroundTurns: withoutBackground(s.backgroundTurns, sessionId) }))
+        }
+        if (fresh?.status === 'interrupted') {
+          set({ turnNotice: {
+            kind: 'interrupted',
+            message: '上次任务因服务重启中断，已完成的部分已保留。',
+          } })
+        } else if (fresh?.status === 'failed') {
+          set({ error: fresh.error ?? '任务执行失败' })
+        }
+      }
+      set({ ...IDLE_STREAM, turnId: null, turnStatus: fresh?.status ?? null })
+      if (abortController === controller) {
+        abortController = null
+        attachedTurnId = null
+      }
       void get().loadSessions()
     }
   },
