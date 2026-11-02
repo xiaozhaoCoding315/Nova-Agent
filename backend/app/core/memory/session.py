@@ -185,7 +185,7 @@ async def get_message(message_id: int, session_id: str) -> dict | None:
 
 async def recent_messages(
     session_id: str, limit: int = HISTORY_LIMIT, after_id: int = 0,
-    user_id: int | None = None,
+    user_id: int | None = None, before_id: int | None = None,
 ) -> list[dict]:
     sql = (
         "SELECT role, content FROM messages WHERE session_id = %s "
@@ -201,6 +201,9 @@ async def recent_messages(
     if after_id > 0:
         sql += " AND id > %s"
         params.append(after_id)
+    if before_id is not None:
+        sql += " AND id < %s"
+        params.append(before_id)
     sql += " ORDER BY id DESC LIMIT %s"
     params.append(limit)
     rows = await query(sql, tuple(params))

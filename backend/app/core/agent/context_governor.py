@@ -50,7 +50,9 @@ def compact_messages(
     def _shrink(index: int, head: int, tail: int) -> bool:
         nonlocal compacted
         message = messages[index]
-        content = str(message.get("content") or "")
+        content = message.get("content")
+        if not isinstance(content, str):
+            return False
         if len(content) <= head + tail + 80:
             return False
         omitted = len(content) - head - tail

@@ -135,3 +135,51 @@ def test_image_settings_defaults():
     assert settings.image_input_max_side == 8000
     assert settings.image_input_max_pixels == 40_000_000
     assert settings.image_input_max_total_kb == 10_240
+
+
+from app.core.agent.context_governor import compact_messages
+from app.core.agent.context_meter import IMAGE_TOKEN_ESTIMATE, estimate_messages
+
+
+def test_estimate_messages_counts_image_blocks():
+    message = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "看图"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ],
+    }
+    assert estimate_messages([message]) >= IMAGE_TOKEN_ESTIMATE
+
+
+def test_compaction_never_stringifies_block_content():
+    messages = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": [
+            {"type": "text", "text": "x" * 40_000},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+        ]},
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "latest"},
+    ]
+    compact_messages(messages, window=10, keep_recent=1)
+    assert isinstance(messages[1]["content"], list)
+    assert messages[1]["content"][1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_recent_messages_before_id_excludes_current(monkeypatch):
+    from app.core.memory import session as session_mod
+
+    captured = {}
+
+    async def fake_query(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return [("user", "older")]
+
+    monkeypatch.setattr(session_mod, "query", fake_query)
+    rows = await session_mod.recent_messages("s1", before_id=42, user_id=7)
+    assert "id < %s" in captured["sql"]
+    assert 42 in captured["params"]
+    assert rows == [{"role": "user", "content": "older"}]

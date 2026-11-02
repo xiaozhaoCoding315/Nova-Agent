@@ -8,6 +8,7 @@
 # 现代分词器经验值：中文约 0.6~0.8 token/字，拉丁文本约 4 字符/token。
 _CJK_RATIO = 0.75
 _OTHER_CHARS_PER_TOKEN = 3.8
+IMAGE_TOKEN_ESTIMATE = 1600
 
 
 def estimate_tokens(text: str) -> int:
@@ -19,13 +20,30 @@ def estimate_tokens(text: str) -> int:
     return max(1, round(cjk * _CJK_RATIO + other / _OTHER_CHARS_PER_TOKEN))
 
 
+def estimate_message_content(content) -> int:
+    """Estimate a message body that may be a string or multimodal block list."""
+    if isinstance(content, str):
+        return estimate_tokens(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                total += estimate_tokens(str(block.get("text") or ""))
+            elif block.get("type") == "image_url":
+                total += IMAGE_TOKEN_ESTIMATE
+        return total
+    return 0
+
+
 def estimate_messages(messages: list[dict]) -> int:
     """Estimate tokens for a chat message list (content + tool-call args)."""
     total = 0
     for message in messages:
         if not isinstance(message, dict):
             continue
-        total += estimate_tokens(message.get("content") or "") + 8
+        total += estimate_message_content(message.get("content")) + 8
         for call in message.get("tool_calls") or []:
             function = (call or {}).get("function") or {}
             total += estimate_tokens(str(function.get("arguments") or ""))

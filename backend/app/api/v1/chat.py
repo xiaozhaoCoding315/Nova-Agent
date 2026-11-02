@@ -8,6 +8,8 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.config import settings
+from app.core.agent.image_input import total_image_bytes
 from app.core.conflicts import ConflictError
 from app.core.editing.service import apply_edit, get_edit, reject_edit, revert_edit
 from app.core.indexing.pipeline import get_repo
@@ -249,6 +251,15 @@ async def chat_message(
             "id": file["id"], "filename": file["filename"],
             "mime": file["mime"], "size": file["size"],
         })
+
+    if total_image_bytes(attachments) > settings.image_input_max_total_kb * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "图片总大小超过 "
+                f"{settings.image_input_max_total_kb // 1024} MB 上限"
+            ),
+        )
 
     active = await turn_store.get_active_turn(session["id"], user["id"])
     if active:

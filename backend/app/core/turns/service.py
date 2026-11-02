@@ -96,6 +96,7 @@ async def execute_turn(turn_id: str) -> str:
         turn_id=turn_id,
         attachments=message.get("attachments") or [],
         persist_on_cancel=True,
+        user_message_id=turn.get("user_message_id"),
     )
     pending: asyncio.Task | None = None
     last_cancel_check = 0.0

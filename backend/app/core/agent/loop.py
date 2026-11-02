@@ -15,7 +15,18 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.core.agent.context_governor import compact_messages
-from app.core.agent.context_meter import estimate_messages, estimate_tokens
+from app.core.agent.context_meter import (
+    estimate_message_content,
+    estimate_messages,
+    estimate_tokens,
+)
+from app.core.agent.image_input import (
+    build_user_content,
+    is_image_rejection,
+    is_vision_image,
+    load_vision_images,
+    no_vision_content,
+)
 from app.core import approvals
 from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
@@ -89,7 +100,7 @@ async def _reindex_after_edit(
 async def run_chat(
     user: dict, session: dict, user_message: str, repo_ids: list[str],
     turn_id: str | None = None, attachments: list[dict] | None = None,
-    persist_on_cancel: bool = False,
+    persist_on_cancel: bool = False, user_message_id: int | None = None,
 ):
     started = time.perf_counter()
     turn_id = turn_id or str(uuid.uuid4())
@@ -159,7 +170,7 @@ async def run_chat(
         logger.warning("facts_load_failed", error=str(exc))
     history = await session_mod.recent_messages(
         session["id"], after_id=int(session.get("summary_upto_id") or 0),
-        user_id=user["id"],
+        user_id=user["id"], before_id=user_message_id,
     )
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
@@ -181,15 +192,31 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    vision_attachments = [
+        item for item in (attachments or []) if is_vision_image(item)
+    ]
+    vision_images: list[dict] = []
+    image_warnings: list[str] = []
+    if vision_attachments:
+        vision_images, image_warnings = await load_vision_images(
+            user["id"], vision_attachments,
+        )
+        for warning in image_warnings:
+            logger.warning("image_attachment_unreadable", warning=warning)
     attachment_block = ""
     if attachments:
-        lines = [
-            f"- {item['filename']}（id={item['id']}，{item['mime']}，{item['size']} bytes）"
-            for item in attachments[:5]
-        ]
+        lines = []
+        for item in attachments[:5]:
+            tag = "图片" if is_vision_image(item) else "文件"
+            lines.append(
+                f"- [{tag}] {item['filename']}（id={item['id']}，"
+                f"{item['mime']}，{item['size']} bytes）"
+            )
         attachment_block = (
             "\n\n本轮用户上传了附件：\n" + "\n".join(lines)
-            + "\n如需读取附件内容，请调用 read_uploaded_file 工具，不要臆测内容。"
+            + "\n图片附件会在模型支持视觉时直接随消息发送；不要臆测图片内容，"
+            "也不要调用 read_uploaded_file 读取图片。"
+            + "\n文本附件如需读取内容，请调用 read_uploaded_file 工具。"
         )
         system_content += attachment_block
     try:
@@ -214,10 +241,21 @@ async def run_chat(
             system_content += lesson_block
     except Exception as exc:  # noqa: BLE001
         logger.warning("lessons_inject_failed", error=str(exc))
+    if (
+        history
+        and history[-1].get("role") == "user"
+        and history[-1].get("content") == user_message
+    ):
+        history = history[:-1]
     messages: list[dict] = [
         {"role": "system", "content": system_content},
         *history,
+        {"role": "user", "content": user_message},
     ]
+    current_user_index = len(messages) - 1
+    vision_content = (
+        build_user_content(user_message, vision_images) if vision_images else None
+    )
 
     # 上下文计量：分段估算本次提示的构成，供前端展示「用了多少、用在哪里」。
     context_window = (
@@ -235,7 +273,11 @@ async def run_chat(
     }
     section_tokens["附件"] = estimate_tokens(attachment_block)
     section_tokens = {key: value for key, value in section_tokens.items() if value > 0}
-    history_tokens = estimate_messages(history) + estimate_tokens(user_message) + 8
+    history_tokens = (
+        estimate_messages(history)
+        + estimate_message_content(vision_content or user_message)
+        + 8
+    )
     section_tokens["历史与提问"] = history_tokens
     context_total = sum(section_tokens.values())
     context_info = {
@@ -245,6 +287,12 @@ async def run_chat(
         "estimate": True,
     }
     yield _sse("context", **context_info)
+
+    if image_warnings:
+        yield _sse(
+            "notice", kind="image_skipped",
+            message=f"{len(image_warnings)} 张图片读取失败，已忽略，本轮按其余内容继续。",
+        )
 
     ctx = ToolContext(
         user=user,
@@ -366,6 +414,8 @@ async def run_chat(
         "系统提示：你已连续调用多轮工具。请从中断处继续完成任务；"
         "若任务已完成，请直接给出最终答复与总结，不要再调用工具。"
     )
+    image_retry_available = bool(vision_images)
+    vision_notice_sent = False
     try:
         # 3) tool-calling rounds — 长任务模式：段触顶注入继续指令而不是终止，
         #    瞬时失败自动重试（对齐主流 Agent 的 driver 续跑模式）
@@ -397,7 +447,9 @@ async def run_chat(
 
             llm_failed: str | None = None
             llm_error_detail = ""
-            for attempt in range(max(int(settings.llm_round_retries), 0) + 1):
+            max_retries = max(int(settings.llm_round_retries), 0)
+            retries_used = 0
+            while True:
                 llm_failed = None
                 llm_error_detail = ""
                 try:
@@ -405,6 +457,25 @@ async def run_chat(
                         user["id"], model=session.get("model"),
                         overrides=session_overrides,
                     )
+                    if vision_images:
+                        if (
+                            getattr(llm, "supports_vision", False)
+                            and image_retry_available
+                        ):
+                            messages[current_user_index]["content"] = vision_content
+                        else:
+                            messages[current_user_index]["content"] = (
+                                no_vision_content(user_message)
+                            )
+                            if not vision_notice_sent:
+                                vision_notice_sent = True
+                                yield _sse(
+                                    "notice", kind="vision_unsupported",
+                                    message=(
+                                        "当前模型不支持图片输入，本轮图片仅保留为附件，"
+                                        "不会发送给模型。"
+                                    ),
+                                )
                     # Respect the user's configured window (BYOK), not just the
                     # server default used for the UI estimate.
                     round_window = resolve_context_window(user["id"], llm)
@@ -446,12 +517,38 @@ async def run_chat(
                     llm_error_detail = str(exc)
                     break
                 except Exception as exc:  # noqa: BLE001
+                    if (
+                        vision_images
+                        and image_retry_available
+                        and not round_text
+                        and not tool_calls
+                        and is_image_rejection(exc)
+                    ):
+                        image_retry_available = False
+                        messages[current_user_index]["content"] = no_vision_content(
+                            user_message
+                        )
+                        await trace_record(
+                            session["id"], turn_id, "image_rejected",
+                            {"reason": redact_text(str(exc))[:300]},
+                        )
+                        yield _sse(
+                            "notice", kind="vision_rejected",
+                            message="模型未接受图片，已按纯文本继续本轮。",
+                        )
+                        continue
                     llm_failed = "error"
                     llm_error_detail = redact_text(str(exc))
-                if round_text or tool_calls or attempt >= max(int(settings.llm_round_retries), 0):
+                if round_text or tool_calls or retries_used >= max_retries:
                     break
-                yield _sse("notice", kind="retry",
-                           message=f"模型连接抖动，自动重试（{attempt + 2}/{max(int(settings.llm_round_retries), 0) + 1}）…")
+                yield _sse(
+                    "notice", kind="retry",
+                    message=(
+                        "模型连接抖动，自动重试"
+                        f"（{retries_used + 2}/{max_retries + 1}）…"
+                    ),
+                )
+                retries_used += 1
 
             if llm_failed:
                 if llm_failed == "config":

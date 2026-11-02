@@ -702,3 +702,118 @@ def test_args_summary_persists_diagnostics_context():
     assert len(summary["note"]) == 300
     # Other tools keep their existing summary shape.
     assert loop_mod._args_summary({"query": "hi"}) == {"query": "hi"}
+
+
+class VisionLLM:
+    supports_vision = True
+
+    def __init__(self):
+        self.messages = None
+
+    async def astream_with_tools(self, messages, tools):
+        self.messages = messages
+        yield {"type": "content", "content": "看到了"}
+        yield {"type": "finish", "finish_reason": "stop"}
+
+
+class TextLLM:
+    supports_vision = False
+
+    def __init__(self):
+        self.messages = None
+
+    async def astream_with_tools(self, messages, tools):
+        self.messages = messages
+        yield {"type": "content", "content": "没有图片"}
+        yield {"type": "finish", "finish_reason": "stop"}
+
+
+class RejectingImageLLM:
+    supports_vision = True
+
+    def __init__(self):
+        self.calls: list = []
+
+    async def astream_with_tools(self, messages, tools):
+        self.calls.append(messages[-1]["content"])
+        if isinstance(messages[-1]["content"], list):
+            raise RuntimeError(
+                "Anthropic API 400: messages.0.content.1.image: invalid image"
+            )
+        yield {"type": "content", "content": "按文本继续"}
+        yield {"type": "finish", "finish_reason": "stop"}
+
+
+ATTACHMENTS = [{
+    "id": "f1", "filename": "shot.png", "mime": "image/png", "size": 24,
+}]
+LOADED_IMAGES = [{
+    "id": "f1", "filename": "shot.png", "mime": "image/png",
+    "data": b"\x89PNG\r\n\x1a\n",
+}]
+
+
+@pytest.mark.asyncio
+async def test_current_turn_images_become_image_blocks(monkeypatch):
+    llm = VisionLLM()
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+
+    await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    last = llm.messages[-1]
+    assert last["role"] == "user"
+    assert last["content"][0] == {"type": "text", "text": "图里是什么"}
+    assert last["content"][1]["type"] == "image_url"
+    assert last["content"][1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
+    loop_mod.session_mod.recent_messages.assert_awaited_once()
+    assert loop_mod.session_mod.recent_messages.await_args.kwargs["before_id"] == 5
+
+
+@pytest.mark.asyncio
+async def test_non_vision_model_gets_explicit_text_and_notice(monkeypatch):
+    llm = TextLLM()
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+
+    events = await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    assert isinstance(llm.messages[-1]["content"], str)
+    assert "不支持图片输入" in llm.messages[-1]["content"]
+    notice = next(event for event in events if event["event"] == "notice")
+    assert notice["data"]["kind"] == "vision_unsupported"
+
+
+@pytest.mark.asyncio
+async def test_image_rejection_retries_text_only_once(monkeypatch):
+    llm = RejectingImageLLM()
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod, "load_vision_images", AsyncMock(return_value=(LOADED_IMAGES, [])),
+    )
+
+    events = await _collect(loop_mod.run_chat(
+        USER, SESSION, "图里是什么", [],
+        user_message_id=5, attachments=ATTACHMENTS,
+    ))
+
+    assert len(llm.calls) == 2
+    assert isinstance(llm.calls[0], list)
+    assert isinstance(llm.calls[1], str)
+    assert "不支持图片输入" in llm.calls[1]
+    notice = next(event for event in events if event["event"] == "notice")
+    assert notice["data"]["kind"] == "vision_rejected"
+    assert any(event["event"] == "token" and event["data"]["text"] == "按文本继续"
+               for event in events)
