@@ -7,7 +7,7 @@
   python deploy/remote-deploy.py build                                   # 后台启动 docker compose build
   python deploy/remote-deploy.py status                                  # 查看构建/服务状态
   python deploy/remote-deploy.py logs                                    # 看构建日志尾部
-  python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.1.exe
+  python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.2.exe
 
 可选参数：--host（默认 60.205.0.224）、--user（默认 root）、--password、
 --remote-dir（默认 /opt/nova-agent）、--admin-password / --demo-password（缺省自动生成）、

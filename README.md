@@ -190,7 +190,7 @@ python scripts\build_desktop.py        # 前端构建 + PyInstaller 后端 + NSI
 `http://<服务器>:8000/downloads` 下载：
 
 ```bash
-python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.1.exe
+python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.2.exe
 ```
 
 也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
@@ -399,6 +399,9 @@ python nova.py local
 ## 本地执行器（nova agent）
 
 让 Nova 直接工作在你电脑的真实项目目录上。
+
+> 只有「连接服务器」模式需要它：Agent 跑在服务器容器里，必须靠本机执行器才能碰到你的电脑。
+> 「在本机运行」模式下后端就在本机，命令与文件直接执行，**不需要** `nova.py agent`。
 
 ```bash
 cd backend

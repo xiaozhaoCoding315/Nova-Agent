@@ -14,6 +14,7 @@ import type {
 import { repoStatus } from '../lib/ui'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
+import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
 
 const PERMISSIONS: { value: PermissionMode; label: string; hint: string }[] = [
@@ -63,6 +64,7 @@ export function ChatHeader({
   const setPermissionMode = useChat((state) => state.setPermissionMode)
   const repos = useRepos((state) => state.repos)
   const llmSettings = useLlm((state) => state.settings)
+  const localMode = useMode((state) => state.mode?.local ?? false)
   const picker = useModelPicker()
 
   const [permissionOpen, setPermissionOpen] = useState(false)
@@ -89,6 +91,8 @@ export function ChatHeader({
   }, [permissionOpen])
 
   useEffect(() => {
+    // 本机运行时后端就在这台电脑上，不需要服务端模式的本机执行器。
+    if (localMode) return
     let cancelled = false
     const poll = () => {
       api.local
@@ -104,7 +108,7 @@ export function ChatHeader({
       cancelled = true
       clearInterval(timer)
     }
-  }, [])
+  }, [localMode])
 
   useEffect(() => {
     if (!trajectoryOpen && !localOpen) return
@@ -297,6 +301,7 @@ export function ChatHeader({
         >
           <Activity size={13} />
         </button>
+        {!localMode && (
         <div className="relative">
           <button
             onClick={() => onLocalOpenChange(!localOpen)}
@@ -356,6 +361,7 @@ export function ChatHeader({
             </>
           )}
         </div>
+        )}
         <button
           onClick={onNewChat}
           className="hidden h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink xl:flex"
@@ -375,7 +381,7 @@ export function ChatHeader({
         </button>
         <span
           className="flex items-center gap-1.5 px-1 text-xs text-dim"
-          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.1.1'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
+          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.1.2'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
         >
           <StatusDot state={healthState} />
           <span className="hidden xl:inline">{HEALTH_LABEL[healthState]}</span>

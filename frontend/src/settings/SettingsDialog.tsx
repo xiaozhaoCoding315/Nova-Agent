@@ -229,7 +229,7 @@ function SettingsDialogBody({
               ))}
             </div>
             <p className="px-2 pb-1 pt-3 font-mono text-2xs text-faint">
-              v{health?.version ?? '2.1.1'} · {user?.display_name || user?.username || '本地用户'}
+              v{health?.version ?? '2.1.2'} · {user?.display_name || user?.username || '本地用户'}
             </p>
           </nav>
 

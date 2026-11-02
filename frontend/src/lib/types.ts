@@ -537,6 +537,7 @@ export type FileNode = {
 export type Health = {
   status: string
   version: string
+  env?: string
   components: Record<string, unknown>
 }
 

@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api'
 import { COMMANDS, type CommandName } from '../lib/commands'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
+import { useMode } from '../stores/mode'
 import { useRepos } from '../stores/repos'
 import { readStoredRun, useRun, writeStoredRun } from '../stores/run'
 import { ChatTimeline } from '../timeline/ChatTimeline'
@@ -46,6 +47,7 @@ export function Workbench({
     attachments, uploading, uploadAttachment, removeAttachment,
     send, stop, clearError, streamUsage, contextMeter, turnNotice,
   } = useChat()
+  const localMode = useMode((state) => state.mode?.local ?? false)
   const { repos, refresh } = useRepos()
   const { settings: llmSettings } = useLlm()
   const [commandNotice, setCommandNotice] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
@@ -276,7 +278,9 @@ export function Workbench({
       </div>
       <h2 className="mt-4 text-xl font-semibold">开始一段新的对话</h2>
       <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-dim">
-        直接提问、贴报错，或让 Nova 在沙箱里真实跑代码验证；接入本机后还能直接操作你的电脑。
+        {localMode
+          ? '直接提问、贴报错，或让 Nova 在这台电脑上真实跑代码、改文件——改动前按权限模式确认。'
+          : '直接提问、贴报错，或让 Nova 在沙箱里真实跑代码验证；接入本机后还能直接操作你的电脑。'}
       </p>
 
       <div className="mt-7 grid gap-2.5 sm:grid-cols-3">
@@ -285,14 +289,24 @@ export function Workbench({
           <p className="mt-1.5 text-sm font-medium text-ink">直接提问</p>
           <p className="mt-0.5 text-xs leading-relaxed text-dim">无需任何配置，问代码、贴报错，回答带证据。</p>
         </div>
-        <button
-          onClick={onOpenLocalAgent}
-          className="rounded-md border border-edge bg-panel/50 p-3.5 text-left transition-colors duration-150 hover:border-accent/40"
-        >
-          <MonitorDown size={14} className="text-accent" />
-          <p className="mt-1.5 text-sm font-medium text-ink">连接你的电脑</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
-        </button>
+        {localMode ? (
+          <div className="rounded-md border border-accentSoft/60 bg-accentSoft/10 p-3.5 text-left">
+            <MonitorDown size={14} className="text-accent" />
+            <p className="mt-1.5 text-sm font-medium text-ink">本机执行已开启</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-dim">
+              命令直接在这台电脑上运行，项目文件读写不经过服务器（无容器隔离）。
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={onOpenLocalAgent}
+            className="rounded-md border border-edge bg-panel/50 p-3.5 text-left transition-colors duration-150 hover:border-accent/40"
+          >
+            <MonitorDown size={14} className="text-accent" />
+            <p className="mt-1.5 text-sm font-medium text-ink">连接你的电脑</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-dim">挂上 nova agent，Nova 能在你的真实电脑上执行命令、生成文件。</p>
+          </button>
+        )}
         <button
           onClick={() => openRunPanel(selectedRepoIds[0])}
           className="rounded-md border border-edge bg-panel/50 p-3.5 text-left transition-colors duration-150 hover:border-accent/40"

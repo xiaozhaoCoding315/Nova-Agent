@@ -38,7 +38,7 @@ class MCPHttpClient:
         result = await self.request("initialize", {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "nova-agent", "version": "2.1.1"},
+            "clientInfo": {"name": "nova-agent", "version": "2.1.2"},
         }, timeout=15)
         await self.notify("notifications/initialized", {})
         return result
