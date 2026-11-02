@@ -52,6 +52,13 @@ async def test_enqueue_persists_job(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_enqueue_chat_turn_returns_none_when_runner_stopped():
+    from app.core.jobs import service as jobs_service
+
+    assert await jobs_service.enqueue_chat_turn("t-1", "s-1", 7) is None
+
+
+@pytest.mark.asyncio
 async def test_retry_requeues_only_failed_or_canceled(monkeypatch):
     runner = JobRunner()
     execute = AsyncMock(return_value=[("job-1",)])
@@ -79,6 +86,7 @@ def test_chat_turn_is_registered_uncapped():
     assert runner.has("chat_turn")
     spec = runner._handlers["chat_turn"]  # noqa: SLF001
     assert spec.uncapped is True
+    assert spec.concurrency == 8
 
 
 @pytest.mark.asyncio
@@ -88,7 +96,7 @@ async def test_global_cap_still_allows_uncapped_kind(monkeypatch):
     async def handler(ctx):
         return {}
 
-    runner.register("index", handler)
+    runner.register("index", handler, concurrency=2)
     runner.register("chat_turn", handler, uncapped=True)
     runner._active_kinds = {"index": 1}  # noqa: SLF001
     monkeypatch.setattr(runner_module.settings, "job_max_concurrency", 1)
@@ -102,6 +110,26 @@ async def test_global_cap_still_allows_uncapped_kind(monkeypatch):
     assert claimed is None
     _, params = execute.await_args.args
     assert params[0] == ["chat_turn"]
+
+
+@pytest.mark.asyncio
+async def test_uncapped_kind_still_bounded_by_own_concurrency(monkeypatch):
+    runner = JobRunner()
+
+    async def handler(ctx):
+        return {}
+
+    runner.register("index", handler, concurrency=2)
+    runner.register("chat_turn", handler, concurrency=8, uncapped=True)
+    runner._active_kinds = {"index": 1, "chat_turn": 8}  # noqa: SLF001
+    monkeypatch.setattr(runner_module.settings, "job_max_concurrency", 1)
+    monkeypatch.setattr(runner_module.settings, "nova_mode", "server")
+
+    execute = AsyncMock(return_value=[])
+    monkeypatch.setattr(runner_module, "execute", execute)
+
+    assert await runner._claim_one() is None  # noqa: SLF001
+    execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
