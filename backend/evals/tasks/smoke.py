@@ -10,6 +10,7 @@ from evals.checks import (
     file_exists,
     file_unchanged,
     final_text_contains,
+    final_text_matches,
     llm_saw_compaction,
     llm_saw_image,
     no_error_events,
@@ -242,6 +243,85 @@ CONTEXT_COMPACTION = EvalTask(
     ),
 )
 
+def _fix_applied(run) -> None:
+    content = "".join(run.repo.read("calc.py").split())
+    expect("returna+b" in content, f"calc.py 未修复：{run.repo.read('calc.py')[:300]!r}")
+
+
+def _used_read_tool(run) -> None:
+    names = {"read_file", "grep", "list_files"}
+    expect(
+        any(call.ok and call.name in names for call in run.tool_calls),
+        f"没有成功的读取类工具调用：{[(c.name, c.ok) for c in run.tool_calls]}",
+    )
+
+
+def _new_test_file(run) -> None:
+    expect(run.repo.exists("test_multiply_extra.py"), "未创建 test_multiply_extra.py")
+    expect(
+        "multiply" in run.repo.read("test_multiply_extra.py"),
+        "新测试未引用 multiply",
+    )
+
+
+LIVE_READ_LOCATE = EvalTask(
+    id="live_read_locate",
+    mode="live",
+    category="read",
+    description="真实模型定位函数并说明行为",
+    prompt=(
+        "在仓库中定位 add 函数的定义，告诉我它在哪个文件、哪一行，"
+        "并说明它当前返回什么。不要修改文件。"
+    ),
+    fixture="python_small",
+    timeout_s=300.0,
+    checks=(
+        final_text_contains("calc.py"),
+        final_text_matches(r"a\s*-\s*b"),
+        _used_read_tool,
+        changed_files_exactly(),
+    ),
+)
+
+LIVE_FIX_BUG = EvalTask(
+    id="live_fix_bug",
+    mode="live",
+    category="edit",
+    description="真实模型修复缺陷且不改测试",
+    prompt=(
+        "这个仓库的测试失败了。请阅读代码并修复 calc.py 中的缺陷，"
+        "使测试通过；不要修改测试文件。"
+    ),
+    fixture="python_small",
+    timeout_s=300.0,
+    checks=(
+        file_unchanged("test_calc.py"),
+        _fix_applied,
+        pytest_passes(),
+        changed_files_exactly("calc.py"),
+    ),
+)
+
+LIVE_ADD_TEST = EvalTask(
+    id="live_add_test",
+    mode="live",
+    category="edit",
+    description="真实模型新增测试且 pytest 通过",
+    prompt=(
+        "请为 calc.py 中的 multiply 函数补充一个 pytest 单元测试，"
+        "写入新文件 test_multiply_extra.py；不要修改 calc.py 和已有测试。"
+    ),
+    fixture="python_small",
+    timeout_s=300.0,
+    checks=(
+        _new_test_file,
+        pytest_passes("test_multiply_extra.py"),
+        file_unchanged("calc.py"),
+        file_unchanged("test_calc.py"),
+        changed_files_exactly("test_multiply_extra.py"),
+    ),
+)
+
 ALL_TASKS = (
     READ_AND_ANSWER,
     EDIT_FILE_MINIMAL,
@@ -250,4 +330,7 @@ ALL_TASKS = (
     PLAN_TOOL,
     VISION_IMAGE,
     CONTEXT_COMPACTION,
+    LIVE_READ_LOCATE,
+    LIVE_FIX_BUG,
+    LIVE_ADD_TEST,
 )
