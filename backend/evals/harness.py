@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import sys
 import time
+import types
 import uuid
 from contextlib import aclosing
 from pathlib import Path
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.core import reflection as reflection_mod
 from app.core import skills as skills_mod
+from app.core import tools as tools_pkg_mod
 from app.core import trace as trace_mod
 from app.core.agent import evidence as evidence_mod
 from app.core.agent import loop as loop_mod
@@ -28,7 +30,6 @@ from app.core.security import limits as limits_mod
 from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.tools import base as tools_base
 from app.core.tools import edit_file as edit_file_mod
-from app.core.tools import get_registry as real_get_registry
 from app.core.tools import write_files as write_files_mod
 from evals.fixtures import EVAL_PNG_BYTES, FixtureRepo
 from evals.models import EvalRun, EvalTask, ToolCallRecord
@@ -40,19 +41,37 @@ EMPTY_CITATIONS = {
     "missing": 0, "out_of_range": 0, "skipped": 0,
 }
 
+# Fixture-safe tools only.  Everything else registered in the production
+# registry reaches PostgreSQL, Qdrant, Docker, the network, or a provider, so
+# scripted evals must refuse it even if a script names it explicitly.
+SCRIPTED_TOOLS = frozenset({
+    "read_file", "list_files", "glob", "grep", "write_files", "edit_file",
+    "update_plan", "json_tool", "search_code",
+})
+
 
 class RecordingRegistry:
-    """Transparent registry proxy that records every tool result."""
+    """Transparent registry proxy that records every tool result.
 
-    def __init__(self, inner, records: list[ToolCallRecord]):
+    With ``allowed`` set the proxy also fails closed: tools outside the
+    allowlist are refused before the inner registry sees them, and ``specs``
+    only advertises permitted tools.
+    """
+
+    def __init__(
+        self,
+        inner,
+        records: list[ToolCallRecord],
+        allowed: frozenset[str] | None = None,
+    ):
         self._inner = inner
         self.records = records
+        self._allowed = allowed
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
 
-    async def execute(self, name: str, args: dict, ctx) -> dict:
-        result = await self._inner.execute(name, args, ctx)
+    def _record(self, name: str, args, ctx, result: dict) -> None:
         self.records.append(ToolCallRecord(
             id=str(getattr(ctx, "tool_call_id", "") or f"call-{len(self.records) + 1}"),
             name=name,
@@ -62,7 +81,30 @@ class RecordingRegistry:
             error_class=result.get("error_class"),
             output=result.get("output"),
         ))
+
+    async def execute(self, name: str, args: dict, ctx) -> dict:
+        if self._allowed is not None and name not in self._allowed:
+            result = {
+                "ok": False,
+                "error": f"工具 {name} 在 scripted eval 中被禁用",
+                "ms": 0,
+                "business": False,
+                "error_class": "policy",
+            }
+            self._record(name, args, ctx, result)
+            return result
+        result = await self._inner.execute(name, args, ctx)
+        self._record(name, args, ctx, result)
         return result
+
+    def specs(self, **kwargs) -> list[dict]:
+        specs = self._inner.specs(**kwargs)
+        if self._allowed is None:
+            return specs
+        return [
+            spec for spec in specs
+            if (spec.get("function") or {}).get("name") in self._allowed
+        ]
 
 
 class InProcessHarness:
@@ -88,25 +130,29 @@ class InProcessHarness:
         patcher.start()
         self._patchers.append(patcher)
 
-    def _patch_bindings(self, name: str, original, replacement) -> None:
+    def _patch_bindings(self, original, replacement) -> None:
         """Patch every loaded module attribute still bound to ``original``.
 
-        Tools bind shared seams into their own modules at import time
-        (``search_code.search_symbols``, ``run_command.log_audit``, ...), so
-        patching only the defining module would leave those call sites
-        reaching the real PostgreSQL / Qdrant / provider clients.
+        Tools bind shared seams into their own modules at import time under
+        arbitrary names (``search_code.search_symbols``,
+        ``subagent.trace_record``, ``from app.core.trace import record as
+        trace_record``, ...), so patching only the defining module by name
+        would leave those call sites reaching the real PostgreSQL / Qdrant /
+        provider clients.  Match by identity instead.
         """
+        this_module = sys.modules.get(__name__)
         for module in list(sys.modules.values()):
-            if module is None:
+            if not isinstance(module, types.ModuleType) or module is this_module:
                 continue
             try:
-                current = getattr(module, name, None)
-            except Exception:  # noqa: BLE001 — unusual module __getattr__
-                current = None
-            if current is replacement:
+                namespace = vars(module)
+            except TypeError:  # unusual module-like object without __dict__
                 continue
-            if current is original:
-                self._patch(module, name, replacement)
+            for attr, value in list(namespace.items()):
+                if value is replacement:
+                    continue
+                if value is original:
+                    self._patch(module, attr, replacement)
 
     async def _fake_create_edit(
         self,
@@ -180,6 +226,19 @@ class InProcessHarness:
         original_ensure_token_budget = limits_mod.ensure_token_budget
         original_verify_citations = evidence_mod.verify_citations
         original_search_symbols = symbols_mod.search_symbols
+        original_get_registry = tools_pkg_mod.get_registry
+
+        # One guarded proxy for the whole task.  Subagents import
+        # ``get_registry`` lazily from the defining package, so patching that
+        # package binding is what routes their tool calls through us.
+        self.registry = RecordingRegistry(
+            original_get_registry(),
+            self.records,
+            allowed=SCRIPTED_TOOLS if self.task.mode == "scripted" else None,
+        )
+
+        def _get_registry():
+            return self.registry
 
         async def _get_llm(*_args, **_kwargs):
             return self.executor
@@ -224,10 +283,8 @@ class InProcessHarness:
         self._patch(loop_mod, "ensure_token_budget", fake_ensure_token_budget)
         self._patch(loop_mod, "resolve_context_window", lambda _user_id, _llm=None: int(window))
         self._patch(loop_mod, "load_vision_images", _load_vision_images)
-        self._patch(
-            loop_mod, "get_registry",
-            lambda: RecordingRegistry(real_get_registry(), self.records),
-        )
+        self._patch(loop_mod, "get_registry", _get_registry)
+        self._patch(tools_pkg_mod, "get_registry", _get_registry)
         self._patch(tools_base, "log_audit", fake_log_audit)
         self._patch(jobs_service, "enqueue_index", AsyncMock(return_value="eval-job"))
         self._patch(
@@ -245,30 +302,24 @@ class InProcessHarness:
         # Direct-patch each defining module, then every module that imported
         # the same function object.  The tool modules bind these seams at
         # import time, so a defining-module-only patch is not enough.
+        self._patch_bindings(original_get_registry, _get_registry)
         self._patch(pipeline_mod, "get_repo", _get_repo)
-        self._patch_bindings("get_repo", original_get_repo, _get_repo)
+        self._patch_bindings(original_get_repo, _get_repo)
         self._patch(retriever_mod, "retrieve", fake_retrieve)
-        self._patch_bindings("retrieve", original_retrieve, fake_retrieve)
+        self._patch_bindings(original_retrieve, fake_retrieve)
         self._patch(llm_factory_mod, "get_llm", _get_llm)
-        self._patch_bindings("get_llm", original_get_llm, _get_llm)
+        self._patch_bindings(original_get_llm, _get_llm)
         self._patch(audit_mod, "log_audit", fake_log_audit)
-        self._patch_bindings("log_audit", original_log_audit, fake_log_audit)
+        self._patch_bindings(original_log_audit, fake_log_audit)
         self._patch(trace_mod, "record", fake_trace_record)
-        self._patch_bindings("trace_record", original_trace_record, fake_trace_record)
+        self._patch_bindings(original_trace_record, fake_trace_record)
         self._patch(usage_mod, "record_usage", fake_record_usage)
-        self._patch_bindings("record_usage", original_record_usage, fake_record_usage)
+        self._patch_bindings(original_record_usage, fake_record_usage)
         self._patch(limits_mod, "ensure_token_budget", fake_ensure_token_budget)
-        self._patch_bindings(
-            "ensure_token_budget", original_ensure_token_budget,
-            fake_ensure_token_budget,
-        )
-        self._patch_bindings(
-            "verify_citations", original_verify_citations, fake_verify_citations,
-        )
+        self._patch_bindings(original_ensure_token_budget, fake_ensure_token_budget)
+        self._patch_bindings(original_verify_citations, fake_verify_citations)
         self._patch(symbols_mod, "search_symbols", fake_search_symbols)
-        self._patch_bindings(
-            "search_symbols", original_search_symbols, fake_search_symbols,
-        )
+        self._patch_bindings(original_search_symbols, fake_search_symbols)
 
     def __exit__(self, exc_type, exc, tb):
         for patcher in reversed(self._patchers):

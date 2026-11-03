@@ -1,8 +1,10 @@
 """Harness patching, recording, and one end-to-end scripted turn."""
 import asyncio
 
+import httpx
 import pytest
 
+import app.core.tools as tools_pkg_mod
 import app.core.tools.diagnostics as diagnostics_mod
 import app.core.tools.install_deps as install_deps_mod
 import app.core.tools.local_exec as local_exec_mod
@@ -10,6 +12,7 @@ import app.core.tools.run_code as run_code_mod
 import app.core.tools.run_command as run_command_mod
 import app.core.tools.search_code as search_code_mod
 import app.db as db_mod
+from app.core.agent import loop as loop_mod
 from app.core.agent import subagent as subagent_mod
 from app.core.indexing import pipeline as pipeline_mod
 from app.core.memory import session as session_mod
@@ -78,6 +81,41 @@ async def test_recording_registry_records_success_and_policy_denial():
 
 
 @pytest.mark.asyncio
+async def test_recording_registry_denies_tool_outside_allowlist():
+    calls = []
+
+    class _Inner:
+        async def execute(self, name, args, ctx):
+            calls.append(name)
+            return {"ok": True, "output": {"name": name}, "ms": 1}
+
+    records = []
+    registry = RecordingRegistry(
+        _Inner(), records, allowed=frozenset({"read_file"}),
+    )
+
+    class _Ctx:
+        tool_call_id = "call-1"
+
+    allowed = await registry.execute("read_file", {"path": "calc.py"}, _Ctx())
+    assert allowed["ok"] is True
+    assert calls == ["read_file"]
+
+    denied = await registry.execute("impact_analysis", {"query": "x"}, _Ctx())
+    assert calls == ["read_file"]
+    assert denied == {
+        "ok": False,
+        "error": "工具 impact_analysis 在 scripted eval 中被禁用",
+        "ms": 0,
+        "business": False,
+        "error_class": "policy",
+    }
+    assert records[-1].name == "impact_analysis"
+    assert records[-1].ok is False
+    assert records[-1].error_class == "policy"
+
+
+@pytest.mark.asyncio
 async def test_harness_runs_a_plain_answer_without_external_services():
     task = _task((
         (
@@ -121,6 +159,58 @@ async def test_harness_repo_resolver_reaches_module_level_imports():
         assert run.tool_calls[0].name == "read_file"
         assert run.tool_calls[0].ok is True
         assert run.tool_calls[0].output["content"].startswith("def add")
+    finally:
+        repo.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_scripted_mode_denies_unlisted_tool_and_filters_specs(monkeypatch):
+    task = _task((
+        (
+            {"type": "tool_calls", "tool_calls": [{
+                "id": "call-1", "name": "web_search",
+                "arguments": '{"query": "nova"}',
+            }]},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ),
+        (
+            {"type": "content", "content": "已跳过联网"},
+            {"type": "finish", "finish_reason": "stop"},
+        ),
+    ))
+    network_clients = []
+
+    def _forbid_network(*_args, **_kwargs):
+        network_clients.append(1)
+        raise AssertionError("network")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _forbid_network)
+
+    excluded = {
+        "web_search", "fetch_url", "read_uploaded_file", "impact_analysis",
+        "diagnose_error", "run_command", "run_code", "diagnostics",
+        "install_deps", "local_run_command", "local_write_file", "sql_tool",
+        "spawn_agents",
+    }
+    repo = create_fixture("python_small")
+    try:
+        with InProcessHarness(task, repo, ScriptedExecutor(task.script)) as harness:
+            loop_registry = loop_mod.get_registry()
+            assert tools_pkg_mod.get_registry() is loop_registry
+            names = {
+                spec["function"]["name"]
+                for spec in loop_registry.specs(permission_mode="auto")
+            }
+            assert {"read_file", "edit_file"} <= names
+            assert names.isdisjoint(excluded)
+            run = await harness.run()
+        assert network_clients == []
+        assert run.error is None
+        blocked = [record for record in run.tool_calls if record.name == "web_search"]
+        assert blocked
+        assert blocked[0].ok is False
+        assert blocked[0].error_class == "policy"
+        assert "web_search" in (blocked[0].error or "")
     finally:
         repo.cleanup()
 
@@ -210,7 +300,13 @@ async def test_fake_create_edit_matches_real_repo_and_secret_checks():
 
 
 @pytest.mark.asyncio
-async def test_harness_search_code_tool_stays_off_the_database(monkeypatch):
+async def test_harness_search_code_tool_avoids_db_helpers(monkeypatch):
+    """Tripwire: ``search_code`` never reaches ``app.db.query``/``execute``.
+
+    The check deliberately covers only those helpers.  Import-time bindings
+    of ``retrieve``/``search_symbols`` are covered by the identity-scan test
+    below, and a direct ``psycopg.connect`` from elsewhere is not intercepted.
+    """
     task = _task((
         (
             {"type": "tool_calls", "tool_calls": [{
@@ -250,6 +346,7 @@ async def test_harness_search_code_tool_stays_off_the_database(monkeypatch):
 
 def test_harness_patches_tool_binding_sites_and_restores_them():
     binding_sites = (
+        (tools_pkg_mod, "get_registry"),
         (search_code_mod, "retrieve"),
         (search_code_mod, "search_symbols"),
         (subagent_mod, "get_llm"),
