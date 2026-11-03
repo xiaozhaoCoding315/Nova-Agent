@@ -144,12 +144,15 @@ def load_baseline(path: Path) -> dict:
         raise ValueError("基线 summary 必须是对象")
     if summary is not None:
         rate = summary.get("pass_rate")
-        if rate is not None and (
-            isinstance(rate, bool)
-            or not isinstance(rate, (int, float))
-            or not math.isfinite(rate)
-        ):
-            raise ValueError("基线 summary.pass_rate 必须是有限数字")
+        if rate is not None:
+            if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+                raise ValueError("基线 summary.pass_rate 必须是有限数字")
+            try:
+                finite = math.isfinite(rate)
+            except (OverflowError, TypeError) as exc:
+                raise ValueError("基线 summary.pass_rate 必须是有限数字") from exc
+            if not finite:
+                raise ValueError("基线 summary.pass_rate 必须是有限数字")
     tasks = data.get("tasks")
     if isinstance(tasks, dict):
         return data
