@@ -381,7 +381,7 @@ export function ChatHeader({
         </button>
         <span
           className="flex items-center gap-1.5 px-1 text-xs text-dim"
-          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.1.2'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
+          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.2.0'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
         >
           <StatusDot state={healthState} />
           <span className="hidden xl:inline">{HEALTH_LABEL[healthState]}</span>
