@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { Bot, FolderOpen, FolderUp, LogOut, Plus, Settings, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { IcpNotice } from '../components/IcpNotice'
 import { ImportDialog } from '../components/ImportDialog'
 import { LocalFolderDialog } from '../components/LocalFolderDialog'
 import { NewProjectDialog } from '../components/NewProjectDialog'
@@ -257,6 +258,7 @@ export function ProjectRail({
           <p className="px-2 pb-0.5 pt-1 font-mono text-2xs text-faint">
             {mode ? (local ? '本地模式 · 无容器隔离' : '云端模式 · 容器隔离') : '正在读取运行模式…'}
           </p>
+          <IcpNotice className="block px-2 pb-1.5 font-mono text-2xs text-dim hover:text-ink" />
         </div>
       </aside>
 

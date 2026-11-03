@@ -188,7 +188,11 @@ async def test_subagent_timeout(monkeypatch):
 
     assert result["status"] == "timeout"
     assert "超过 1 秒" in result["error"]
-    assert result["ms"] >= 1000
+    # 不能断言 >= 1000：asyncio 的超时用 time.monotonic() 计时，Windows 上它的
+    # 步进是 15–16ms，超时可能在 985ms 就被判定；而 result["ms"] 是 perf_counter
+    # 量的微秒级实测值，全量套件高负载时会读到 999，于是 >=1000 偶发失败。
+    # 这里要验的是「确实等到了超时点」，留一个时钟粒度的余量即可。
+    assert result["ms"] >= 950
     assert events[-1]["phase"] == "done"
 
 

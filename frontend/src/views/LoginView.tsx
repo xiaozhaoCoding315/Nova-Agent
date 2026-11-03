@@ -3,6 +3,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AuthPanel, type AuthMode } from '../components/AuthPanel'
+import { IcpNotice } from '../components/IcpNotice'
 import { StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import { useFocusTrap } from '../lib/focus'
@@ -427,7 +428,8 @@ export function LoginView() {
           <span className="font-mono">v{health?.version ?? '2.2.0'}</span>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
-          <span className="ml-auto hidden font-mono uppercase tracking-[0.16em] md:inline">
+          <span className="ml-auto hidden items-center gap-2 font-mono uppercase tracking-[0.16em] md:flex">
+            <IcpNotice className="normal-case tracking-normal text-dim hover:text-ink" />
             Nova Agent / evidence-first
           </span>
         </div>

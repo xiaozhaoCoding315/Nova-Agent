@@ -168,7 +168,12 @@ docker compose up -d --build  # 构建并启动全部服务
 
 公开多用户部署建议设 `LLM_ALLOW_SERVER_FALLBACK=false`，强制每个用户在设置页填写自己的 API Key，未配置时不会回退到服务端 Key。
 
-启用 HTTPS（有域名时）：`cp Caddyfile.example Caddyfile` 改成你的域名，然后 `docker compose --profile https up -d`，并在 `.env` 中设 `COOKIE_SECURE=true`。
+启用 HTTPS（有域名时）：仓库自带 `Caddyfile`（根域名给博客、`nova.` 子域名给 Nova，改域名即可），
+把 `.env` 的 `TRUSTED_PROXIES` 填成本项目 docker 网段（如 `172.18.0.0/16`，支持 CIDR；
+别填 Caddy 容器 IP，容器重建就变）、`APP_BIND` 改成 `127.0.0.1`（否则 `:8000` 是绕过
+HTTPS 的明文旁路），再 `docker compose --profile https up -d`。`COOKIE_SECURE` 留空时，
+后端靠 `TRUSTED_PROXIES` 采信 `X-Forwarded-Proto` 才判断得出 HTTPS，两项是一组的。
+大陆 ECS 需先完成 ICP 备案，详见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ### 方式二：本地开发
 

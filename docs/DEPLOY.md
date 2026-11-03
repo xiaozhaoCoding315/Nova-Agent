@@ -72,36 +72,77 @@ curl http://127.0.0.1:8000/api/v1/status/health
 
 ### 2. ICP 备案（大陆服务器必需）
 
-域名指向大陆 ECS 的 80/443 端口**必须 ICP 备案**，否则会被接入商阻断（直接用 IP:8000 访问不受影响）。
+域名指向大陆 ECS 的 80/443 端口**必须 ICP 备案**，否则会被接入商阻断。
+注意拦截是按 **Host 头**做的，不止 80/443——`http://域名:8000` 同样返回 403
+（页面标题 `Non-compliance ICP Filing`），只有直接用 `http://IP:8000` 不受影响。
 阿里云控制台搜「ICP 备案」免费办理：填个人/企业信息 → 幕布核验 → 管局审核，约 1–2 周。
-备案期间可继续用 `http://60.205.0.224:8000` 使用，不受影响。
+
+> 免费二级域名（如 `xxx.de5.net`）**无法备案**：备案是对根域名办的，办理人必须是
+> 该域名的实名持有人；境外注册商（Spaceship / Namecheap / GoDaddy）注册的域名
+> 也要先转入国内持牌注册商才能核验通过。
+
+备案期间可继续用 `http://<IP>:8000` 使用，不受影响。
 
 ### 3. 解析 + HTTPS
 
 备案通过后：
 
 ```bash
-# 控制台「云解析 DNS」：添加 A 记录  @ → 60.205.0.224（www 同理）
-cp Caddyfile.example Caddyfile   # 改成你的域名
-vim .env                         # 设置 TRUSTED_PROXIES=<Caddy 容器 IP>
+# 控制台「云解析 DNS」：两条 A 记录都指向本机
+#   @     → 60.205.0.224   （个人博客）
+#   nova  → 60.205.0.224   （Nova Agent）
+
+vim .env    # APP_BIND=127.0.0.1；填 TRUSTED_PROXIES（见下，填网段）；如需显示备案号填 ICP_BEIAN
+docker compose build app          # ICP_BEIAN 是构建期变量，必须重建镜像
 docker compose --profile https up -d
 ```
 
-Caddy 会自动申请并续期 Let's Encrypt 证书，之后用户访问 `https://你的域名`。
-`COOKIE_SECURE` 留空即可：后端按请求协议自动给 Cookie 加 `Secure`。
+`APP_BIND` 是关键的一步：默认 `0.0.0.0` 保留 `http://<IP>:8000` 直连（备案前只能
+这样访问，桌面客户端填的地址也是它）；切到 Caddy 后必须改成 `127.0.0.1`。否则
+`:8000` 就是一条绕过 HTTPS 的明文旁路——密码和会话 cookie 会在传输中裸奔，
+Caddy 签的证书也就形同虚设。
+
+仓库里的 `Caddyfile` 已经按「根域名给博客、`nova.` 子域名给 Nova」写好，
+一个 Caddy 同时托管两个站点并各自申请证书。域名换成别的就改 `Caddyfile`
+里那两行。
+
+**同一台机器上跑博客时注意**：博客自己的 compose 把 `80:3000` 直接绑在公网，
+和 Caddy 抢 80 端口，Caddy 会起不来、证书也签发不了。上线前先让博客让出 80：
+把 `Z-Blog/docker-compose.yml` 的 `ports: - "80:3000"` 注释掉（它只在 `blog_default`
+网络里，Caddy 通过 `blog-app-1:3000` 访问它），再 `docker compose up -d app`。
+
+Caddy 会自动申请并续期 Let's Encrypt 证书，之后访问 `https://zxycoder.cn` 与
+`https://nova.zxycoder.cn`。
+
+**`COOKIE_SECURE` 和 `TRUSTED_PROXIES` 是一组的，别只做一半**：Caddy 终止 TLS 后
+内部走 http，uvicorn 默认只采信来自 `127.0.0.1` 的 `X-Forwarded-Proto`（Caddy 容器
+不在其中），所以后端的 `request.url.scheme` 是 `http`。此时「按协议自动加 Secure」
+能生效，靠的正是 `TRUSTED_PROXIES` 里含 Caddy 的来源——两项都配好，会话 cookie
+才会带 `Secure`；只配 Caddy 不配 `TRUSTED_PROXIES`，cookie 就会在明文 HTTP 下
+传输。想少一层推断，直接显式写 `COOKIE_SECURE=true` 更稳。
 
 **必须设置 `TRUSTED_PROXIES`**：只有来自白名单的请求，后端才采信
-`X-Forwarded-For` / `X-Forwarded-Proto`。直连 `:8000` 时该端口是公网的，
-不设这一项任何人都能伪造转发头绕过注册限流和「游客每网络一次」限制。
-查 Caddy 容器在 compose 网络里的地址：
+`X-Forwarded-For` / `X-Forwarded-Proto`。不设这一项任何人都能伪造转发头绕过
+注册限流和「游客每网络一次」限制。
+
+设了 `APP_BIND=127.0.0.1` 之后，Caddy 通过 docker 内部网络访问 `app:8000`，到达
+app 的 peer 是 **Caddy 容器的 IP**——容器重建后会变（`172.18.0.2` → `172.18.0.3`），
+**填单个 IP 迟早失效**。`TRUSTED_PROXIES` 支持 CIDR，直接填 compose 给项目分配的
+网段，一次填对就永久有效：
 
 ```bash
-docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
-  "$(docker compose ps -q caddy)"
+docker network inspect nova-agent_default \
+  --format '{{(index .IPAM.Config 0).Subnet}}'   # 例如 172.18.0.0/16
 ```
 
-Caddy 与 app 同在默认 bridge 网络时通常是 `172.x.0.x`；也可以直接填 `*`
-（仅在 app 端口已改为只监听 127.0.0.1 时使用，见 `Caddyfile.example` 注释）。
+```bash
+# .env
+TRUSTED_PROXIES=172.18.0.0/16
+```
+
+填错的症状：所有请求都被算成同一个 IP，登录限流与「游客每网络一次」退化成
+全站共享额度。注意 `*` 虽然最省事，但它信任任何来源，只在 app 端口确实只监听
+回环时才该用——本项目已经满足这个前提，但填网段更窄、更安全。
 
 登录失败限流默认 `MAX_LOGIN_ATTEMPTS_PER_HOUR=20`，按「来源 IP」和
 「IP + 账号」两个维度各算一次：撞库脚本在单个 IP 上会被拖慢，同一个
@@ -110,6 +151,21 @@ Caddy 与 app 同在默认 bridge 网络时通常是 `172.x.0.x`；也可以直�
 这个限流会变成全站共享额度——所以它和反代配置是一组的。
 
 备案完成前想先内网试用域名，可以用 hosts 绑定测试。
+
+### 4. 备案号展示（备案通过后必做）
+
+大陆网站备案通过后必须在页面底部展示备案号并链接到 `beian.miit.gov.cn`，否则
+可能被抽查要求整改。Nova 在登录页页脚和左栏底部各渲染一处，内容来自构建期变量：
+
+```bash
+# .env
+ICP_BEIAN=粤ICP备12345678号-1
+docker compose build app && docker compose up -d --no-build app
+```
+
+留空则两处都不渲染（本地运行、桌面端、海外部署都不用填）。**这是构建期变量**：
+Vite 在打包时静态替换，改 `.env` 后不重建镜像不会生效。博客那边的备案号要改
+`Z-Blog` 自己的页脚组件，并重建它的镜像。
 
 ## 三、桌面客户端分发
 
@@ -196,8 +252,11 @@ docker exec -w /app nova-agent-app-1 python -m scripts.sandbox_smoke
 - [ ] `SECRET_KEY` 为 32+ 位随机值
 - [ ] 两个账号密码已改强密码
 - [ ] 有域名走 HTTPS（Caddy profile），或在前面加限流反向代理
-- [ ] `COOKIE_SECURE` 留空（自动按协议判断）或显式 `true`
-- [ ] `TRUSTED_PROXIES` 填反代地址；直连公网时保持留空
+- [ ] `COOKIE_SECURE` 显式 `true`，或留空但确认 `TRUSTED_PROXIES` 已含 Caddy 来源（两项缺一，cookie 就会走明文）
+- [ ] 走 Caddy 时 `.env` 已设 `APP_BIND=127.0.0.1`（否则 `:8000` 是绕过 HTTPS 的旁路）
+- [ ] `TRUSTED_PROXIES` 填本项目 docker 网段（如 `172.18.0.0/16`），不要填容器单个 IP；直连公网时留空
+- [ ] 博客让出 80 端口（否则 Caddy 抢不到 80，证书签不下来）
+- [ ] 备案通过后 `ICP_BEIAN` 已填并重建镜像
 - [ ] `LLM_ALLOW_SERVER_FALLBACK=false`（不想共用服务端 Key 时）
 - [ ] `MAX_USERS` 控制在预期规模内；游客额度按需收紧
 - [ ] `SANDBOX_ALLOW_NETWORK=false` 保持关闭

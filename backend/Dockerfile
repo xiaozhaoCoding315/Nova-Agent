@@ -10,6 +10,10 @@ RUN npm config set registry "$NPM_REGISTRY" \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm ci --no-audit --no-fund
 COPY frontend/ ./
+# ICP 备案号是构建期变量（Vite 在打包时把 import.meta.env 静态替换），
+# 所以只能在这里注入；留空则不渲染。改了它必须重建镜像，改 .env 不生效。
+ARG VITE_ICP_BEIAN=
+ENV VITE_ICP_BEIAN=$VITE_ICP_BEIAN
 RUN npm run build
 
 # ---------- Stage 2: official docker CLI (drives the code sandbox) ----------

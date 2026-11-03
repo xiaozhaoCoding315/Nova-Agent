@@ -1,0 +1,28 @@
+# Nova Agent 反代：两个站点共用一套 Caddy，自动申请/续期 Let's Encrypt 证书。
+#
+# 上线前确认：
+#   1. zxycoder.cn 与 nova.zxycoder.cn 的 A 记录都指向本机公网 IP
+#   2. ICP 备案已通过（大陆 ECS 未备案会被机房按 Host 头拦成 403）
+#   3. 阿里云安全组已放行 80 和 443（Caddy 用 80 做 HTTP→HTTPS 跳转和证书验证）
+#   4. .env 里 TRUSTED_PROXIES 已填本项目 docker 网段（如 172.18.0.0/16，
+#      见 docs/DEPLOY.md；不要填 Caddy 容器 IP，容器重建后会变）
+#   5. .env 里 APP_BIND 已改成 127.0.0.1，:8000 不再是绕过 HTTPS 的旁路
+#
+# 域名换成别的，改下面两处即可；改了域名也要同步改 .env 的 CORS_ORIGINS。
+
+# ---- 个人博客（Next.js，跑在 blog 项目自己的 compose 里）----
+zxycoder.cn {
+	encode zstd gzip
+	reverse_proxy blog-app-1:3000
+}
+
+# ---- Nova Agent ----
+nova.zxycoder.cn {
+	encode zstd gzip
+	reverse_proxy app:8000 {
+		# Caddy 会自动用真实来源覆盖客户端伪造的 X-Forwarded-For，但 X-Real-IP
+		# 是原样透传的。后端目前先读 XFF 所以利用不了，可这依赖两处代码的顺序；
+		# 这里直接覆盖掉，让伪造值根本到不了应用层。
+		header_up X-Real-IP {remote_host}
+	}
+}

@@ -2,7 +2,9 @@ name: nova-agent
 
 # 一键部署：cp .env.docker.example .env → 填 Key/密码 → docker compose up -d --build
 # 组件：app(FastAPI+前端静态) + postgres + qdrant + sandbox 镜像构建
-# 可选 HTTPS：准备域名后 cp Caddyfile.example Caddyfile，改域名，再 `docker compose --profile https up -d`
+# HTTPS：仓库自带 Caddyfile（根域名给博客、nova. 子域名给 Nova），备案通过后
+# 改 Caddyfile 里的域名、设 .env 的 TRUSTED_PROXIES 与 APP_BIND=127.0.0.1，
+# 再 `docker compose --profile https up -d`
 
 services:
   postgres:
@@ -57,8 +59,17 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        # 构建期变量：ICP 备案号会静态打进前端产物，改它必须重建镜像。
+        VITE_ICP_BEIAN: ${ICP_BEIAN:-}
+    # 公网入口。默认按 IP:8000 直连——备案下来之前只能这样访问，桌面客户端
+    # 里填的服务器地址也是它，所以默认保持不动。
+    #
+    # 走 Caddy（--profile https）时在 .env 里设 APP_BIND=127.0.0.1 收窄到回环：
+    # 那时 :8000 就是一条绕过 HTTPS 的明文旁路，账号密码和会话 cookie 会在
+    # 传输中裸奔，Caddy 的证书也等于白签。
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${APP_BIND:-0.0.0.0}:${BACKEND_PORT:-8000}:8000"
     environment:
       APP_ENV: prod
       AUTO_INIT_DB: "true"
@@ -183,7 +194,9 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # 可选：自动 HTTPS（需要域名解析到本机）
+  # 自动 HTTPS：域名解析到本机、ICP 备案通过后 `docker compose --profile https up -d`。
+  # 同一台机器上还有博客项目，所以这里把两个 compose 网络都接进来，一个 Caddy
+  # 同时托管 blog 与 nova 两个站点（见 Caddyfile）。
   caddy:
     image: caddy:2-alpine
     profiles: ["https"]
@@ -194,6 +207,13 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # 博客项目的网络由它自己的 compose 创建（名字是 blog_default）。
+    # external: true 只是声明「已在别处创建」，本文件不会去建它；
+    # 博客还没部署时 `--profile https up` 会报找不到该网络——那种情况下
+    # 先部署博客，或临时把这一项注释掉。
+    networks:
+      - default
+      - blog
     depends_on:
       - app
     restart: unless-stopped
@@ -204,3 +224,8 @@ volumes:
   repos_data:
   caddy_data:
   caddy_config:
+
+networks:
+  blog:
+    name: blog_default
+    external: true

@@ -99,6 +99,28 @@ def test_trusted_proxy_list_parses_comma_separated_entries(monkeypatch):
     assert settings.trusted_proxy_list == ["127.0.0.1", "10.1.2.3"]
 
 
+def test_trusted_proxy_accepts_a_cidr_range(monkeypatch):
+    """反代容器重建后 IP 会变，所以网段才是可长期使用的写法。"""
+    from app.api.v1.auth import _client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies", "172.18.0.0/16")
+    # Caddy 重建后从 .2 挪到 .3 也得继续被认作反代。
+    for peer in ("172.18.0.2", "172.18.0.3", "172.18.255.254"):
+        assert settings.is_trusted_proxy(peer), peer
+        assert _client_ip(_request({"X-Forwarded-For": "1.2.3.4"}, peer=peer)) == "1.2.3.4"
+    # 网段外的一律不采信，否则伪造转发头又能绕过限流。
+    assert not settings.is_trusted_proxy("172.19.0.5")
+    assert not settings.is_trusted_proxy("203.0.113.7")
+    assert _client_ip(_request({"X-Forwarded-For": "1.2.3.4"}, peer="203.0.113.7")) == "203.0.113.7"
+
+
+def test_malformed_cidr_entry_does_not_break_trust_matching(monkeypatch):
+    """手误写坏一个网段，只让它不匹配，不能让每个请求都 500。"""
+    monkeypatch.setattr(settings, "trusted_proxies", "10.0.0.0/,172.18.0.0/16")
+    assert not settings.is_trusted_proxy("10.0.0.1")
+    assert settings.is_trusted_proxy("172.18.0.4")
+
+
 def test_cookie_secure_follows_the_request_scheme_by_default(monkeypatch):
     from app.api.v1.auth import _cookie_secure
 
