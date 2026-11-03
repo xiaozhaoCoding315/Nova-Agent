@@ -1,0 +1,6 @@
+# Project lint baseline: ruff's historical default rule set.
+# Enabling broader rule families is a separate, codebase-wide cleanup.
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

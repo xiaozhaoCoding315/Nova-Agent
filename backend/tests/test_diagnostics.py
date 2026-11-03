@@ -4,10 +4,18 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
+from app.config import settings
+from app.core.agent.tool_output import build_preview
+from app.core.security.audit import AuditAction
+from app.core.security.policy import decide_tool
+from app.core.tools import build_registry
+from app.core.tools import diagnostics as diag
 from app.core.tools import diagnostics_parse as dp
+from app.core.tools.base import ToolBusinessError, ToolContext
 
 _NODE = shutil.which("node")
 _TSC_SCRIPT = (
@@ -252,16 +260,6 @@ def test_tail_text_redacts_before_truncating():
     assert dp.tail_text(text, limit=0) == ""
     assert dp.tail_text(text, limit=-1) == ""
 
-
-from unittest.mock import AsyncMock
-
-from app.config import settings
-from app.core.agent.tool_output import build_preview
-from app.core.security.audit import AuditAction
-from app.core.security.policy import decide_tool
-from app.core.tools import build_registry
-from app.core.tools import diagnostics as diag
-from app.core.tools.base import ToolBusinessError, ToolContext
 
 USER = {"id": 7, "username": "u", "role": "demo"}
 
