@@ -244,8 +244,10 @@ CONTEXT_COMPACTION = EvalTask(
 )
 
 def _fix_applied(run) -> None:
+    if not run.repo.exists("calc.py"):
+        expect(False, "calc.py 被删除")
     content = "".join(run.repo.read("calc.py").split())
-    expect("returna+b" in content, f"calc.py 未修复：{run.repo.read('calc.py')[:300]!r}")
+    expect("returna+b" in content, f"calc.py 未修复：{content[:120]!r}")
 
 
 def _used_read_tool(run) -> None:
@@ -261,6 +263,24 @@ def _new_test_file(run) -> None:
     expect(
         "multiply" in run.repo.read("test_multiply_extra.py"),
         "新测试未引用 multiply",
+    )
+
+
+def _new_test_catches_broken_multiply(run) -> None:
+    path = "test_multiply_extra.py"
+    expect(run.repo.exists(path), f"未创建 {path}")
+    calc = run.repo.root / "calc.py"
+    original = calc.read_text(encoding="utf-8")
+    broken = original.replace("return a * b", "return a + b")
+    expect(broken != original, "fixture 的 multiply 实现与预期不符")
+    try:
+        calc.write_text(broken, encoding="utf-8")
+        result = run.repo.run_pytest(path)
+    finally:
+        calc.write_text(original, encoding="utf-8")
+    expect(
+        result.returncode != 0,
+        f"{path} 在 multiply 被破坏后仍然通过，说明它没有真正测试 multiply",
     )
 
 
@@ -316,6 +336,7 @@ LIVE_ADD_TEST = EvalTask(
     checks=(
         _new_test_file,
         pytest_passes("test_multiply_extra.py"),
+        _new_test_catches_broken_multiply,
         file_unchanged("calc.py"),
         file_unchanged("test_calc.py"),
         changed_files_exactly("test_multiply_extra.py"),

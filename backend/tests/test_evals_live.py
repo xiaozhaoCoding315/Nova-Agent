@@ -45,6 +45,7 @@ def test_build_live_llm_builds_anthropic(monkeypatch):
     assert config.provider == "anthropic"
     assert config.model == "claude-test"
     assert isinstance(config.llm, AnthropicLLM)
+    assert config.llm.model == "claude-test"
 
 
 def test_auto_picks_first_configured_provider(monkeypatch):
