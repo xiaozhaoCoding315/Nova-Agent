@@ -7,6 +7,10 @@
   "author": "Nova Agent",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaozhaoCoding315/Nova-Agent.git"
+  },
   "scripts": {
     "start": "electron .",
     "dist:win": "electron-builder --win nsis --x64",
