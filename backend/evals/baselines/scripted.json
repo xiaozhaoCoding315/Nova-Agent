@@ -1,0 +1,18 @@
+{
+  "suite": "smoke",
+  "mode": "scripted",
+  "generated_at": "2026-11-03T07:17:14.395288+00:00",
+  "git_sha": "25b291e",
+  "tasks": {
+    "read_and_answer": "passed",
+    "edit_file_minimal": "passed",
+    "write_files_multi": "passed",
+    "permission_denied": "passed",
+    "plan_tool": "passed",
+    "vision_image": "passed",
+    "context_compaction": "passed"
+  },
+  "summary": {
+    "pass_rate": 1.0
+  }
+}
