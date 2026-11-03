@@ -100,7 +100,7 @@ API Key 只写入 PostgreSQL 的 `user_llm_providers.api_key_enc`（由 `secretK
 - HostExecutor 使用环境变量白名单（只保留 `PATH`、系统变量等），剥离 `*_KEY`、`*_TOKEN`、`*SECRET*`、`*PASSWORD*`、`*CREDENTIAL*`、`AWS_*` / `GOOGLE_*` / `AZURE_*`、`DATABASE_URL` 等敏感变量；命令工作目录与文件工具路径都被限制在项目根目录内（解析符号链接 / junction 后再校验）。
 - `install_deps` 默认禁用。只有把 `%APPDATA%\Nova\nova-config.json` 的 `"allowInstallDeps"` 改为 `true`（或启动前在 shell 设置 `LOCAL_ALLOW_INSTALL_DEPS=true`）并重启后，才会在非 `readonly` 模式下按次审批执行；Python 依赖要求项目根目录已有 `.venv`（或 `venv`）且包含 pip，否则报“未找到项目虚拟环境 .venv…”；Node 依赖要求根目录 `package.json`。`readonly` 始终拒绝。
 - 本地检索不启用 Qdrant / embedding，使用关键词 + 符号检索；引用仍是 `文件:行号`，证据校验逻辑不变。
-- 验证与修复任务在主机临时工作区运行：工作区的“验证”按钮对 Python 项目可用，Node / fullstack 项目在本地模式返回 `unsupported`（步骤标记 `skipped`）；“任务”视图中的修复任务（红-绿）以 Python / pytest 仓库为准。点击验证按钮即视为批准主机执行。
+- 验证与修复任务在主机临时工作区运行：Python 与 Node / fullstack 项目都会真正执行验证步骤（`package.json` 存在时按 `scripts` 跑 lint / tsc / test / build，Windows 主机生成 cmd.exe 语法）。只有检测不到 Python 或 Node 项目、或 `package.json` 没有可验证脚本时，才返回 `unsupported` 并在 `notes` 里说明原因；不会伪装通过。“任务”视图中的修复任务（红-绿）以 Python / pytest 仓库为准。点击验证按钮即视为批准主机执行。
 - `GET /api/v1/status/mode` 返回 `mode: local`、`auth: none`、`isolation: none`、`semantic_search: false`、`jobs_concurrency: 1` 与 `data_dir`；`GET /api/v1/status/health` 的 `qdrant` / `embedding` 显示 `disabled: local mode`。
 
 ## 5. 退出与残留检查
@@ -128,7 +128,7 @@ Get-Process python -ErrorAction SilentlyContinue
 | 搜索只有关键词结果 | 本地模式预期行为；health 会显示 `qdrant: disabled: local mode` |
 | 端口冲突 | 不传 `--port` 使用随机端口 |
 | 想重置本地数据库 | 退出后删除 `%APPDATA%\Nova\pgdata`；只重置数据库，`users/`、`skills/`、`downloads/`、`legacy-repos/`、`mcp.json` 与你的项目文件都会保留 |
-| 验证返回 `unsupported` | Node / fullstack 项目本地暂不支持，改用服务器模式或手动执行 |
+| 验证返回 `unsupported` | 未检测到 Python / Node 项目，或 `package.json` 没有可验证脚本；按 `notes` 的提示补齐后重试 |
 | pgserver 异常退出后无法重启 | 启动器会自动用同一数据目录尝试 `pg_ctl` 回退（使用 pgserver 自带或 `LOCAL_PG_BIN_DIR` 指定的二进制）；失败时数据目录会保留，按错误提示处理后重试，不要删除数据目录 |
 | 提示已有实例在运行 | 关闭另一个 `nova.py local` 进程；实例锁文件为数据目录旁的 `.nova-instance.lock` |
 | API Key 无法解密 | `secretKey` 已变化（例如删除/重建了 `nova-config.json`）；重新保存 Key |

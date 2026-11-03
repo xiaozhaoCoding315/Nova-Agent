@@ -32,6 +32,19 @@ def default_config_path(
     return base / "Nova" / FILENAME
 
 
+def install_deps_hint() -> str:
+    """指向真正要改的那个文件。
+
+    桌面壳自己也有一份叫 nova-config.json 的配置（运行方式、服务器地址），
+    但它在 ``%APPDATA%\\Nova Agent`` 下，与本文件不是同一个。只说文件名会让
+    用户改错地方，所以这里给出解析后的完整路径。
+    """
+    return (
+        "本地模式默认禁用依赖安装；如需开启，请把 "
+        f"{default_config_path()} 里的 allowInstallDeps 改为 true 并重启"
+    )
+
+
 def _atomic_write(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")

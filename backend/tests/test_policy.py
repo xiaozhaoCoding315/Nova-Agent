@@ -43,6 +43,22 @@ def test_install_deps_requires_admin_and_network(monkeypatch):
     assert not admin.allowed and "SANDBOX_ALLOW_NETWORK" in admin.reason
 
 
+def test_local_install_deps_denial_names_the_backend_config_file(monkeypatch):
+    """拒绝文案必须指向后端那份 nova-config.json 的完整路径。
+
+    桌面壳自己的配置也叫 nova-config.json，但位于 %APPDATA%\\Nova Agent；
+    只说文件名会让用户改错文件、怎么改都不生效。
+    """
+    from app.local.config import default_config_path
+
+    monkeypatch.setattr(settings, "nova_mode", "local")
+    monkeypatch.setattr(settings, "local_allow_install_deps", False)
+    decision = decide_tool("install_deps", "execute", None, {}, ctx())
+    assert not decision.allowed
+    assert str(default_config_path()) in decision.reason
+    assert "allowInstallDeps" in decision.reason
+
+
 def test_fetch_can_be_disabled(monkeypatch):
     monkeypatch.setattr(settings, "enable_fetch_url", False)
     decision = decide_tool("fetch_url", "network", None, {"url": "https://example.com"}, ctx())

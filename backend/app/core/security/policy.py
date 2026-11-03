@@ -416,11 +416,9 @@ def decide_tool(
         # ask requires a per-call approval, and the explicit opt-in replaces
         # the server's admin/network gates.
         if not settings.local_allow_install_deps:
-            return PolicyDecision(
-                False,
-                "本地模式默认禁用依赖安装；如需开启，请在 nova-config.json 设置 allowInstallDeps=true 后重启",
-                caps,
-            )
+            from app.local.config import install_deps_hint
+
+            return PolicyDecision(False, install_deps_hint(), caps)
         if not getattr(ctx, "approval_granted", False):
             return PolicyDecision(
                 False, "本地安装依赖需要你批准后才会执行", caps, requires_approval=True

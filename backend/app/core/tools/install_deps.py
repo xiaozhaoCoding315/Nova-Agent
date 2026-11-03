@@ -160,9 +160,9 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
             "本地模式下只读/计划权限不执行主机命令，请切换到确认模式后再执行"
         )
     if not settings.local_allow_install_deps:
-        raise ToolBusinessError(
-            "本地模式默认禁用依赖安装；如需开启，请在 nova-config.json 设置 allowInstallDeps=true 后重启"
-        )
+        from app.local.config import install_deps_hint
+
+        raise ToolBusinessError(install_deps_hint())
     if not getattr(ctx, "approval_granted", False):
         raise ToolBusinessError("本地安装依赖需要你批准")
 
@@ -263,16 +263,17 @@ _SERVER_DESCRIPTION = (
     "Python 读取 requirements.txt；Node 读取 package.json + lockfile（npm/pnpm/yarn）。"
     "安装后 verify 与 run_code 会自动挂载对应依赖卷。"
 )
-_LOCAL_DESCRIPTION = (
-    "把依赖安装到当前项目自身的 .venv / node_modules（联网）。"
-    "本地模式默认禁用：需在 nova-config.json 设置 allowInstallDeps=true 后重启，"
-    "且每次安装都需要你批准后才会执行。"
-)
-
-
 def tool_description() -> str:
     """Model-facing text; the local runtime is set at process startup."""
-    return _LOCAL_DESCRIPTION if settings.is_local else _SERVER_DESCRIPTION
+    if not settings.is_local:
+        return _SERVER_DESCRIPTION
+    from app.local.config import install_deps_hint
+
+    return (
+        "把依赖安装到当前项目自身的 .venv / node_modules（联网）。"
+        f"本地模式默认禁用：{install_deps_hint()}；"
+        "且每次安装都需要你批准后才会执行。"
+    )
 
 
 TOOL = ToolDefinition(

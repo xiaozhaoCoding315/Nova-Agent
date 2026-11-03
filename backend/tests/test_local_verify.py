@@ -398,11 +398,15 @@ async def test_install_deps_local_readonly_denied(monkeypatch):
 
 
 def test_local_install_deps_description_is_honest(monkeypatch):
+    from app.local.config import default_config_path
+
     monkeypatch.setattr(settings, "nova_mode", "local")
     local = install_deps_tool.tool_description()
     assert "默认禁用" in local
     assert "批准" in local
     assert "仅管理员" not in local
+    # 指向真正要改的那份配置（桌面壳的 nova-config.json 不是同一个文件）。
+    assert str(default_config_path()) in local
 
     monkeypatch.setattr(settings, "nova_mode", "server")
     assert "仅管理员" in install_deps_tool.tool_description()

@@ -428,7 +428,7 @@ python nova.py local
 
 首次启动向导填写项目绝对路径与智谱 API Key（默认 `zhipu` / `glm-4.7-flash`）；Key 只加密保存在本机。完整步骤、数据目录、安全边界与故障排查见 [docs/LOCAL_MODE.md](docs/LOCAL_MODE.md)。
 
-> Nova 不向 Nova 服务器上传代码、不发送遥测、不访问 Nova 服务器；但本地模式仍会把检索到的代码/文件上下文发送给你配置的 LLM 厂商 API。命令在项目目录直接执行，**没有容器隔离**，UI 页脚与本地模式对话框会标注。本地验证目前只支持 Python 项目，Node/fullstack 验证会返回 `unsupported`。
+> Nova 不向 Nova 服务器上传代码、不发送遥测、不访问 Nova 服务器；但本地模式仍会把检索到的代码/文件上下文发送给你配置的 LLM 厂商 API。命令在项目目录直接执行，**没有容器隔离**，UI 页脚与本地模式对话框会标注。本地验证对 Python 与 Node/fullstack 项目都会真正执行（Windows 主机生成 cmd.exe 语法）；只有检测不到可验证项目时才返回 `unsupported`。
 
 ## 本地执行器（nova agent）
 
