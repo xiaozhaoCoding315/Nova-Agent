@@ -499,12 +499,22 @@ ipcMain.handle('nova:connect', async (_event, rawUrl) => {
   return { ok: true }
 })
 
-/* ---------- 自动更新（可选） ---------- */
+/* ---------- 自动更新 ---------- */
+
+// GitHub Release 的固定地址：electron-builder 把 latest.yml / latest-mac.yml
+// 挂在 Release 页的 asset 上，generic provider 直接按文件名取。写死在这里，
+// 用户装完就能收到更新，不必再配 NOVA_UPDATE_URL。
+const DEFAULT_UPDATE_URL =
+  'https://github.com/xiaozhaoCoding315/Nova-Agent/releases/latest/download'
+
+function updateFeedUrl() {
+  return String(
+    process.env.NOVA_UPDATE_URL || loadConfig().updateUrl || DEFAULT_UPDATE_URL,
+  ).trim().replace(/\/+$/, '')
+}
 
 function setupAutoUpdate() {
-  const updateUrl = String(
-    process.env.NOVA_UPDATE_URL || loadConfig().updateUrl || '',
-  ).trim().replace(/\/+$/, '')
+  const updateUrl = updateFeedUrl()
   if (!app.isPackaged || !/^https?:\/\//i.test(updateUrl)) return
 
   let autoUpdater
@@ -519,6 +529,8 @@ function setupAutoUpdate() {
     autoUpdater.setFeedURL({ provider: 'generic', url: updateUrl })
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
+    // 未签名构建在 macOS 上 quitAndInstall 会被 Gatekeeper 拦下，先不自动装。
+    if (isMac) autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.on('error', (err) => console.warn('auto-update:', err?.message || err))
     autoUpdater.on('update-downloaded', async () => {
       const { response } = await showMessage({

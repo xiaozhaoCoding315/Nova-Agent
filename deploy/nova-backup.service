@@ -1,0 +1,25 @@
+# systemd unit：执行一次备份。由 nova-backup.timer 触发，也可手动 start。
+#
+# 安装（在部署目录 /opt/nova-agent 下）：
+#   sudo cp deploy/nova-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nova-backup.timer
+#   systemctl list-timers nova-backup.timer
+#
+# 若部署目录不在 /opt/nova-agent，改下面的 WorkingDirectory。
+[Unit]
+Description=Nova Agent 数据备份（PostgreSQL + Qdrant + repos）
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nova-agent
+Environment=BACKUP_DIR=/opt/nova-backups
+Environment=RETENTION_DAYS=14
+ExecStart=/usr/bin/env bash deploy/backup.sh
+# 备份过程本身不该无限挂住：给 1 小时上限，超时按失败记录。
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

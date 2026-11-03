@@ -62,3 +62,62 @@ def test_messages_last_hour_counts_used_slots():
     _rate_check(user, "chat", 5)
     _rate_check(user, "chat", 5)
     assert messages_last_hour(user["id"]) == 2
+
+# ---------- 反代信任与 cookie 策略 ----------
+
+def _request(headers: dict[str, str] | None = None, peer: str | None = "203.0.113.7",
+             scheme: str = "http"):
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "scheme": scheme,
+        "path": "/api/v1/auth/login",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+        "client": (peer, 12345) if peer else None,
+        "server": ("127.0.0.1", 8000),
+        "root_path": "",
+    }
+    return Request(scope)
+
+
+def test_forwarded_for_is_ignored_unless_the_peer_is_a_trusted_proxy(monkeypatch):
+    from app.api.v1.auth import _client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies", "")
+    spoofed = _request({"X-Forwarded-For": "1.2.3.4", "X-Real-IP": "5.6.7.8"})
+    # 没有配置反代时，伪造的转发头必须被丢弃，否则限流可以被无限绕过。
+    assert _client_ip(spoofed) == "203.0.113.7"
+
+    monkeypatch.setattr(settings, "trusted_proxies", "127.0.0.1,10.0.0.0/8")
+    trusted = _request({"X-Forwarded-For": "1.2.3.4, 9.9.9.9"}, peer="127.0.0.1")
+    assert _client_ip(trusted) == "1.2.3.4"
+
+
+def test_trusted_proxy_list_parses_comma_separated_entries(monkeypatch):
+    monkeypatch.setattr(settings, "trusted_proxies", " 127.0.0.1 , ,10.1.2.3 ")
+    assert settings.trusted_proxy_list == ["127.0.0.1", "10.1.2.3"]
+
+
+def test_cookie_secure_follows_the_request_scheme_by_default(monkeypatch):
+    from app.api.v1.auth import _cookie_secure
+
+    monkeypatch.setattr(settings, "cookie_secure", None)
+    assert _cookie_secure(_request(scheme="https")) is True
+    assert _cookie_secure(_request(scheme="http")) is False
+
+
+def test_cookie_secure_explicit_setting_wins(monkeypatch):
+    from app.api.v1.auth import _cookie_secure
+
+    # 反代在 TLS 终止、内部走 http 时，运维可以强制打开 Secure。
+    monkeypatch.setattr(settings, "cookie_secure", True)
+    assert _cookie_secure(_request(scheme="http")) is True
+
+
+def test_wildcard_trusts_every_peer(monkeypatch):
+    from app.api.v1.auth import _client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies", "*")
+    # 只有 app 端口只监听回环时才允许这么配（Caddy 与本机同栈）。
+    assert _client_ip(_request({"X-Forwarded-For": "1.2.3.4"})) == "1.2.3.4"

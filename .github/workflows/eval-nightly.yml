@@ -1,0 +1,109 @@
+name: Nightly Live Eval
+
+# 每晚用真实模型跑一次 live eval，捕捉 provider 行为漂移、提示词退化与工具回归。
+#
+# 与 CI 里的 scripted eval 互补：scripted 是 hermetic 的（不联网、不碰 Key），
+# 只能证明「代码路径没坏」；真实模型是否还按预期读文件、改代码、跑测试，
+# 只有 live 能回答。
+#
+# 需要一个 provider 的 API Key 作为仓库 secret（任选其一即可）：
+#   DEEPSEEK_API_KEY / ZHIPU_API_KEY / DASHSCOPE_API_KEY / ANTHROPIC_API_KEY
+# 未配置时本工作流会明确失败并指出要加哪个 secret，而不是静默跳过——
+# 一个永远不跑的夜间任务等于没有夜间任务。
+on:
+  schedule:
+    # UTC 19:17 = 北京时间次日 03:17。避开整点，减少 Actions 排队。
+    - cron: "17 19 * * *"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "指定 provider（留空 = auto）"
+        required: false
+        default: "deepseek"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-nightly
+  cancel-in-progress: true
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Pick a provider key
+        id: provider
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REQUESTED: ${{ github.event.inputs.provider }}
+        run: |
+          # auto 会按 LLM_MODEL_PRIORITY 选第一个有 Key 的厂商，可能选中额度
+          # 已耗尽的账号；夜间任务默认显式指定 deepseek，可用输入覆盖。
+          requested="${REQUESTED:-deepseek}"
+          case "$requested" in
+            deepseek) key="$DEEPSEEK_API_KEY"; env_name=DEEPSEEK_API_KEY ;;
+            zhipu) key="$ZHIPU_API_KEY"; env_name=ZHIPU_API_KEY ;;
+            dashscope) key="$DASHSCOPE_API_KEY"; env_name=DASHSCOPE_API_KEY ;;
+            anthropic) key="$ANTHROPIC_API_KEY"; env_name=ANTHROPIC_API_KEY ;;
+            auto|"")
+              for candidate in DEEPSEEK ZHIPU DASHSCOPE ANTHROPIC; do
+                eval "candidate_key=\$${candidate}_API_KEY"
+                if [ -n "$candidate_key" ]; then
+                  requested="$(echo "$candidate" | tr 'A-Z' 'a-z')"
+                  key="$candidate_key"; env_name="${candidate}_API_KEY"
+                  break
+                fi
+              done
+              ;;
+            *)
+              echo "::error::未知 provider：$requested"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${key:-}" ]; then
+            echo "::error::夜间 eval 需要至少一个 provider API Key secret。请在 Settings → Secrets → Actions 添加 DEEPSEEK_API_KEY（或 ZHIPU_API_KEY / DASHSCOPE_API_KEY / ANTHROPIC_API_KEY）。"
+            exit 1
+          fi
+
+          echo "provider=$requested" >> "$GITHUB_OUTPUT"
+          echo "key_name=$env_name" >> "$GITHUB_OUTPUT"
+          echo "使用 provider：$requested"
+
+      - name: Run live eval
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PROVIDER: ${{ steps.provider.outputs.provider }}
+        run: |
+          cd backend
+          # 报告路径固定，便于下一步作为 artifact 上传。
+          python -m evals run --mode live --provider "$PROVIDER" \
+            --json evals/reports/live-latest.json \
+            --md evals/reports/live-latest.md
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-report
+          path: |
+            backend/evals/reports/live-latest.json
+            backend/evals/reports/live-latest.md
+          if-no-files-found: warn

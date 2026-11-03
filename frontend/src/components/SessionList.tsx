@@ -2,9 +2,91 @@ import clsx from 'clsx'
 import {
   MessageSquarePlus, MoreHorizontal, Pencil, Search, Trash2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import type { Repo, Session } from '../lib/types'
 import { Button, Modal } from './common'
+
+/**
+ * 会话行的「更多操作」菜单。
+ *
+ * 会话行本身必须是一个按钮（否则键盘进不去），而按钮里不能再嵌按钮，
+ * 所以菜单入口是行的兄弟节点；这里补上 menu 的键盘语义：打开即聚焦首项、
+ * 上下键循环、Esc 收起并把焦点还给触发按钮。
+ */
+function SessionMenu({
+  onRename, onDelete, onClose, triggerRef,
+}: {
+  onRename: () => void
+  onDelete: () => void
+  onClose: () => void
+  triggerRef: RefObject<HTMLButtonElement>
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  // 父组件每次重渲染都会重建 onClose；放进依赖会让菜单重开、焦点被拽回
+  // 第一项，方向键就失效了。用 ref 取最新值。
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
+  useEffect(() => {
+    const items = () => Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+    )
+    items()[0]?.focus()
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeRef.current()
+        triggerRef.current?.focus()
+        return
+      }
+      const list = items()
+      if (list.length === 0) return
+      const index = list.indexOf(document.activeElement as HTMLButtonElement)
+      const move = (next: number) => {
+        event.preventDefault()
+        list[(next + list.length) % list.length].focus()
+      }
+      if (event.key === 'ArrowDown') move(index + 1)
+      else if (event.key === 'ArrowUp') move(index - 1)
+      else if (event.key === 'Home') move(0)
+      else if (event.key === 'End') move(list.length - 1)
+    }
+    menuRef.current?.addEventListener('keydown', onKey)
+    const node = menuRef.current
+    return () => node?.removeEventListener('keydown', onKey)
+  }, [triggerRef])
+
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-label="会话操作"
+        className="absolute right-1 top-8 z-30 w-28 overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-xl"
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-ink hover:bg-raised focus:bg-raised focus:outline-none"
+          onClick={onRename}
+        >
+          <Pencil size={12} /> 重命名
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-err hover:bg-err/10 focus:bg-err/10 focus:outline-none"
+          onClick={onDelete}
+        >
+          <Trash2 size={12} /> 删除
+        </button>
+      </div>
+    </>
+  )
+}
 
 function sessionDate(session: Session): Date | null {
   const value = session.updated_at || session.created_at
@@ -71,6 +153,8 @@ export function SessionList({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null)
+  // 菜单是会话行的兄弟节点，收起时要把焦点还给触发它的那个按钮。
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
 
   const groups = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -162,22 +246,21 @@ export function SessionList({
               return (
                 <div
                   key={session.id}
-                  onClick={() => {
-                    if (!renaming) onSelect(session.id)
-                  }}
                   className={clsx(
-                    'group relative mb-0.5 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
+                    'group relative mb-0.5 flex items-center gap-1 rounded-lg transition-colors',
                     active ? 'bg-accentSoft/35 text-ink' : 'text-dim hover:bg-raised/80 hover:text-ink',
                   )}
                 >
-                  <span
-                    className={clsx(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      active ? 'bg-accent' : 'bg-transparent',
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    {renaming ? (
+                  {/* 整行是一个按钮：键盘可以 Tab 进来、Enter/空格打开。
+                      操作按钮必须是它的兄弟节点，嵌套按钮在无障碍树里是无效结构。 */}
+                  {renaming ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
+                      <span
+                        className={clsx(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          active ? 'bg-accent' : 'bg-transparent',
+                        )}
+                      />
                       <input
                         autoFocus
                         value={renameValue}
@@ -191,59 +274,60 @@ export function SessionList({
                           }
                         }}
                         onBlur={() => commitRename(session.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        className="w-full rounded border border-accentSoft bg-base px-1 py-0.5 text-sm text-ink outline-none"
+                        aria-label="会话标题"
+                        className="min-w-0 flex-1 rounded border border-accentSoft bg-base px-1 py-0.5 text-sm text-ink outline-none"
                       />
-                    ) : (
-                      <p className="truncate text-base text-ink" title={session.title}>{session.title}</p>
-                    )}
-                    <p className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-dim/70">
-                      {project && <span className="truncate text-accent/70">{project}</span>}
-                      <span className="shrink-0">{session.message_count} 条</span>
-                      {date && <span className="shrink-0">· {relativeTime(date)}</span>}
-                    </p>
-                  </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(session.id)}
+                      aria-current={active ? 'true' : undefined}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+                    >
+                      <span
+                        className={clsx(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          active ? 'bg-accent' : 'bg-transparent',
+                        )}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base text-ink" title={session.title}>{session.title}</p>
+                        <p className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-dim/70">
+                          {project && <span className="truncate text-accent/70">{project}</span>}
+                          <span className="shrink-0">{session.message_count} 条</span>
+                          {date && <span className="shrink-0">· {relativeTime(date)}</span>}
+                        </p>
+                      </div>
+                    </button>
+                  )}
                   {!renaming && (
                     <button
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setMenuId((current) => (current === session.id ? null : session.id))
-                      }}
+                      ref={menuId === session.id ? menuTriggerRef : undefined}
+                      type="button"
+                      onClick={() => setMenuId((current) => (current === session.id ? null : session.id))}
                       className={clsx(
-                        'flex h-6 w-6 shrink-0 items-center justify-center rounded text-dim/60 transition-colors hover:bg-raised hover:text-ink',
+                        'mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-dim/60 transition-colors hover:bg-raised hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60',
                         menuId === session.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                       )}
-                      aria-label="会话操作"
+                      aria-label={`${session.title} 的更多操作`}
+                      aria-haspopup="menu"
+                      aria-expanded={menuId === session.id}
                     >
                       <MoreHorizontal size={13} />
                     </button>
                   )}
 
                   {menuId === session.id && (
-                    <>
-                      <div className="fixed inset-0 z-20" onClick={() => setMenuId(null)} />
-                      <div className="absolute right-1 top-8 z-30 w-28 overflow-hidden rounded-lg border border-edge bg-panel py-1 shadow-xl">
-                        <button
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-ink hover:bg-raised"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            startRename(session)
-                          }}
-                        >
-                          <Pencil size={12} /> 重命名
-                        </button>
-                        <button
-                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-err hover:bg-err/10"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setMenuId(null)
-                            setDeleteTarget(session)
-                          }}
-                        >
-                          <Trash2 size={12} /> 删除
-                        </button>
-                      </div>
-                    </>
+                    <SessionMenu
+                      onRename={() => startRename(session)}
+                      onDelete={() => {
+                        setMenuId(null)
+                        setDeleteTarget(session)
+                      }}
+                      onClose={() => setMenuId(null)}
+                      triggerRef={menuTriggerRef}
+                    />
                   )}
                 </div>
               )

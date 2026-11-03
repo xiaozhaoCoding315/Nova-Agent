@@ -45,6 +45,24 @@ curl http://127.0.0.1:8000/api/v1/status/health
 | `LLM_ALLOW_SERVER_FALLBACK` | 公开多用户部署设 `false`，强制每个用户填自己的 Key |
 | `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
 
+### 邮箱验证码（可选）
+
+线上实例的 `/api/v1/auth/config` 返回 `email_verification: true` 就说明已经启用了
+邮箱验证码；这需要 `SMTP_*` 五项都填好，否则注册页会卡在「请输入验证码」。
+四组变量缺一不可（`email_enabled` 要求 `SMTP_HOST`、`SMTP_USER`、`SMTP_PASSWORD`、
+`SMTP_FROM` 同时存在）：
+
+| 变量 | 说明 |
+|---|---|
+| `SMTP_HOST` / `SMTP_PORT` | QQ 邮箱 `smtp.qq.com:465`；阿里云邮件推送 `smtpdm.aliyun.com:465` |
+| `SMTP_USER` / `SMTP_PASSWORD` | QQ/163 的密码栏填**授权码**，不是登录密码 |
+| `SMTP_FROM` | 发件人显示名，如 `"Nova Agent <xxx@qq.com>"` |
+| `SMTP_SSL` | 465 端口用 `true`；587 端口设 `false`（走 STARTTLS） |
+| `EMAIL_VERIFY_REQUIRED` | 邮件启用后注册是否强制验证码；设 `false` 可先放开注册 |
+
+留空 `SMTP_HOST` 即为未启用邮件，注册页不会要求验证码，找回密码走恢复码。
+注意 `.env` 修改后要 `docker compose up -d app` 重建容器才生效。
+
 ## 二、绑定域名 + HTTPS
 
 ### 1. 买域名（阿里云万网）
@@ -65,11 +83,26 @@ curl http://127.0.0.1:8000/api/v1/status/health
 ```bash
 # 控制台「云解析 DNS」：添加 A 记录  @ → 60.205.0.224（www 同理）
 cp Caddyfile.example Caddyfile   # 改成你的域名
-vim .env                         # COOKIE_SECURE=true
+vim .env                         # 设置 TRUSTED_PROXIES=<Caddy 容器 IP>
 docker compose --profile https up -d
 ```
 
 Caddy 会自动申请并续期 Let's Encrypt 证书，之后用户访问 `https://你的域名`。
+`COOKIE_SECURE` 留空即可：后端按请求协议自动给 Cookie 加 `Secure`。
+
+**必须设置 `TRUSTED_PROXIES`**：只有来自白名单的请求，后端才采信
+`X-Forwarded-For` / `X-Forwarded-Proto`。直连 `:8000` 时该端口是公网的，
+不设这一项任何人都能伪造转发头绕过注册限流和「游客每网络一次」限制。
+查 Caddy 容器在 compose 网络里的地址：
+
+```bash
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+  "$(docker compose ps -q caddy)"
+```
+
+Caddy 与 app 同在默认 bridge 网络时通常是 `172.x.0.x`；也可以直接填 `*`
+（仅在 app 端口已改为只监听 127.0.0.1 时使用，见 `Caddyfile.example` 注释）。
+
 备案完成前想先内网试用域名，可以用 hosts 绑定测试。
 
 ## 三、桌面客户端分发
@@ -109,13 +142,27 @@ docker compose logs -f app        # 看日志
 docker compose ps                 # 服务状态
 # 升级版本
 git pull && docker compose up -d --build
-# 备份（PostgreSQL + Qdrant snapshot/体积包 + repos 卷，保留 7 天）
+# 备份（PostgreSQL + Qdrant snapshot/体积包 + repos 卷，保留 14 天）
 sudo BACKUP_DIR=/opt/nova-backups ./deploy/backup.sh
 # 恢复（会 drop 数据库并覆盖 repos/qdrant 卷，需输入 RESTORE 确认）
 sudo BACKUP_DIR=/opt/nova-backups ./deploy/restore.sh 2026-10-30_030000
 ```
 
 数据都在卷里（`pgdata` / `qdrant_data` / `repos_data`）和宿主机 `data/downloads`，重建容器不丢数据。
+
+**让备份自动跑起来**（否则只能靠人记得，出事时手上是几天前的包）：
+
+```bash
+sudo cp deploy/nova-backup.service deploy/nova-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nova-backup.timer
+systemctl list-timers nova-backup.timer     # 确认下次运行时间
+journalctl -u nova-backup.service -n 30     # 查看最近一次结果
+```
+
+默认每天 03:20 执行、保留 14 天；部署目录不是 `/opt/nova-agent` 时改
+`nova-backup.service` 里的 `WorkingDirectory`。备份脚本现在会在 dump 为空或
+gzip 损坏时**直接失败**，不会留下一个看似正常的空包。
 
 ### 升级后的索引迁移
 
@@ -142,8 +189,9 @@ docker exec -w /app nova-agent-app-1 python -m scripts.sandbox_smoke
 - [ ] `APP_ENV=prod`（compose 默认已设）
 - [ ] `SECRET_KEY` 为 32+ 位随机值
 - [ ] 两个账号密码已改强密码
-- [ ] `COOKIE_SECURE=true`（启用 HTTPS 后）
-- [ ] `LLM_ALLOW_SERVER_FALLBACK=false`（不想共用服务端 Key 时）
 - [ ] 有域名走 HTTPS（Caddy profile），或在前面加限流反向代理
+- [ ] `COOKIE_SECURE` 留空（自动按协议判断）或显式 `true`
+- [ ] `TRUSTED_PROXIES` 填反代地址；直连公网时保持留空
+- [ ] `LLM_ALLOW_SERVER_FALLBACK=false`（不想共用服务端 Key 时）
 - [ ] `MAX_USERS` 控制在预期规模内；游客额度按需收紧
 - [ ] `SANDBOX_ALLOW_NETWORK=false` 保持关闭

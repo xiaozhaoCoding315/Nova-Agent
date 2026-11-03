@@ -37,10 +37,27 @@ volume_name() {
   echo "$name"
 }
 
+# 管道里任何一段失败都要让整个脚本失败。默认 set -e 只看管道最后一个命令，
+# pg_dump 挂了 gzip 仍会「成功」，产出一个空文件，等真出事才发现。
+set -o pipefail
+
 echo "[1/3] PostgreSQL dump"
+DB_FILE="$BACKUP_DIR/db-$STAMP.sql.gz"
 docker compose exec -T postgres \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
-  | gzip > "$BACKUP_DIR/db-$STAMP.sql.gz"
+  | gzip > "$DB_FILE"
+
+# 空 dump 或解压失败都算备份失败：宁可这次报错，也不要留下一个看似正常的空备份。
+if ! gzip -t "$DB_FILE" 2>/dev/null; then
+  echo "backup failed: $DB_FILE is not a valid gzip stream" >&2
+  rm -f "$DB_FILE"
+  exit 1
+fi
+if ! [ -s "$DB_FILE" ]; then
+  echo "backup failed: $DB_FILE is empty" >&2
+  rm -f "$DB_FILE"
+  exit 1
+fi
 
 echo "[2/3] Qdrant snapshot"
 QDRANT_CID="$(docker compose ps -q qdrant)"

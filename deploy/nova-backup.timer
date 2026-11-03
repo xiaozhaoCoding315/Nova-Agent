@@ -1,0 +1,22 @@
+# 每天 03:20（服务器本地时区）跑一次备份。
+#
+# 安装：
+#   sudo cp deploy/nova-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nova-backup.timer
+#
+# 查看下次运行与历史：
+#   systemctl list-timers nova-backup.timer
+#   journalctl -u nova-backup.service -n 50
+#
+# Persistent=true 表示机器在 03:20 关机/重启，开机后会补跑一次。
+[Unit]
+Description=每日触发 Nova Agent 备份
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

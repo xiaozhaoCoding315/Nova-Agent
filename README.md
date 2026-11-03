@@ -224,8 +224,11 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1
 ```
 
 也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
-打包版可设置 `NOVA_UPDATE_URL`（generic 更新目录，需托管 `latest.yml` 与安装包）启用自动更新；
-代码签名/公证仍需自备证书。
+
+打包版默认从 `https://github.com/xiaozhaoCoding315/Nova-Agent/releases/latest/download`
+读取 `latest.yml` / `latest-mac.yml` 自动检查更新，下载完成后弹窗询问是否重启安装；
+如需换成自建更新源，设 `NOVA_UPDATE_URL`（generic 目录，需托管 `latest*.yml`、安装包与
+`.blockmap`）。macOS 未签名构建不会自动安装，需手动替换。代码签名/公证仍需自备证书。
 
 ## 配置项（.env 关键项）
 

@@ -70,7 +70,12 @@ class Settings(BaseSettings):
     # ---------- Auth ----------
     secret_key: str = "change-me-in-production"
     token_ttl_days: int = 7
-    cookie_secure: bool = False    # set true when served over HTTPS
+    # None = auto: secure whenever the request arrived over HTTPS (direct or
+    # through a trusted proxy). Explicit true/false overrides the detection.
+    cookie_secure: bool | None = None
+    # 反代地址白名单：只有来自这些来源的 X-Forwarded-For/Proto 才被采信。
+    # 直连公网时留空，任何客户端伪造的转发头都会被忽略。
+    trusted_proxies: str = ""
     admin_username: str = "admin"
     admin_password: str = ""
     demo_username: str = "demo"
@@ -246,6 +251,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_list(self) -> list[str]:
+        return [p.strip() for p in self.trusted_proxies.split(",") if p.strip()]
+
+    def is_trusted_proxy(self, host: str | None) -> bool:
+        """转发头只采信来自反代的请求。
+
+        8000 端口默认直接暴露在公网，若无条件相信 X-Forwarded-For，任何人
+        只要改一个请求头就能伪装成新 IP，绕过注册限流与游客一次性限制。
+        只有运维显式配置了 TRUSTED_PROXIES（例如 Caddy 容器网段）才放行。
+        `*` 表示信任所有来源，仅当 app 端口已只监听回环地址时才该使用。
+        """
+        if not host:
+            return False
+        trusted = self.trusted_proxy_list
+        return "*" in trusted or host in trusted
 
     @property
     def is_local(self) -> bool:

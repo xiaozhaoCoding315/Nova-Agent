@@ -54,10 +54,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nova-desktop-${{ matrix.os }}
+          # 除了安装包，还要带上 electron-updater 的元数据：没有 latest*.yml
+          # 客户端就查不到新版本，.blockmap 则决定增量下载能否生效。
           path: |
             desktop/out/*.exe
             desktop/out/*.dmg
             desktop/out/*.AppImage
+            desktop/out/*.zip
+            desktop/out/*.tar.gz
+            desktop/out/latest*.yml
+            desktop/out/*.blockmap
           if-no-files-found: error
 
   release:
@@ -80,4 +86,8 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.AppImage
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+            artifacts/**/latest*.yml
+            artifacts/**/*.blockmap
           generate_release_notes: true

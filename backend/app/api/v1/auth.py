@@ -51,13 +51,40 @@ _GUEST_COOKIE_MAX_AGE = 365 * 86400
 
 
 def _client_ip(request: Request) -> str:
-    """取真实来源 IP：优先反代头（Caddy/Nginx），否则直连地址。"""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()[:64]
-    return (request.headers.get("x-real-ip") or "").strip()[:64] or (
-        request.client.host if request.client else "unknown"
-    )
+    """取真实来源 IP：只信任已配置的反代，否则用直连地址。
+
+    X-Forwarded-For 是客户端可以随便写的。默认直连部署下无条件采信它，
+    等于把限流和「游客每网络一次」变成可绕过的摆设，所以先看来源是否在
+    TRUSTED_PROXIES 里。
+    """
+    peer = request.client.host if request.client else None
+    if settings.is_trusted_proxy(peer):
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()[:64]
+        real_ip = (request.headers.get("x-real-ip") or "").strip()
+        if real_ip:
+            return real_ip[:64]
+    return peer or "unknown"
+
+
+def _cookie_secure(request: Request) -> bool:
+    """HTTPS 下自动加 Secure，避免靠人记得改环境变量。
+
+    COOKIE_SECURE 显式设置时以它为准；未设置时按本次请求的实际协议判断。
+    uvicorn 只在来源可信时才把 X-Forwarded-Proto 写进 scheme，所以这里再
+    按 TRUSTED_PROXIES 补一条兜底：反代没配 FORWARDED_ALLOW_IPS 时也能正确。
+    """
+    if settings.cookie_secure is not None:
+        return settings.cookie_secure
+    if request.url.scheme == "https":
+        return True
+    peer = request.client.host if request.client else None
+    if settings.is_trusted_proxy(peer):
+        proto = (request.headers.get("x-forwarded-proto") or "")
+        if proto.split(",")[0].strip().lower() == "https":
+            return True
+    return False
 
 
 def _check_registration_rate(request: Request) -> None:
@@ -74,13 +101,13 @@ def _check_registration_rate(request: Request) -> None:
     bucket.append(now)
 
 
-def _set_cookie(response: Response, user: dict) -> None:
+def _set_cookie(response: Response, request: Request, user: dict) -> None:
     response.set_cookie(
         COOKIE_NAME,
         create_token(user),
         httponly=True,
         samesite="lax",
-        secure=settings.cookie_secure,
+        secure=_cookie_secure(request),
         max_age=settings.token_ttl_days * 86400,
         path="/",
     )
@@ -131,7 +158,7 @@ async def email_code(body: EmailCodeRequest, request: Request):
 
 
 @router.post("/auth/login", response_model=UserOut)
-async def login(body: LoginRequest, response: Response):
+async def login(body: LoginRequest, request: Request, response: Response):
     _ensure_server_mode()
     user = await authenticate(body.username, body.password)
     if not user:
@@ -142,7 +169,7 @@ async def login(body: LoginRequest, response: Response):
         )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    _set_cookie(response, user)
+    _set_cookie(response, request, user)
     await touch_login(user["id"])
     await log_audit(AuditAction.LOGIN, user_id=str(user["id"]), details={"username": user["username"]})
     return user
@@ -218,7 +245,7 @@ async def register(body: RegisterRequest, request: Request, response: Response):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-    _set_cookie(response, user)
+    _set_cookie(response, request, user)
     await log_audit("register", user_id=str(user["id"]), details={"username": user["username"]})
     return RegisterOut(user=user, recovery_code=recovery_code)
 
@@ -254,13 +281,13 @@ async def guest(request: Request, response: Response):
         user, _password = await create_guest_user(ip=ip)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-    _set_cookie(response, user)
+    _set_cookie(response, request, user)
     response.set_cookie(
         GUEST_USED_COOKIE,
         "1",
         httponly=True,
         samesite="lax",
-        secure=settings.cookie_secure,
+        secure=_cookie_secure(request),
         max_age=_GUEST_COOKIE_MAX_AGE,
         path="/",
     )
@@ -296,6 +323,7 @@ async def update_my_profile(body: ProfileUpdateRequest, user: dict = Depends(get
 @router.post("/auth/password", response_model=UserOut)
 async def update_my_password(
     body: PasswordChangeRequest,
+    request: Request,
     response: Response,
     user: dict = Depends(get_current_user),
 ):
@@ -304,7 +332,7 @@ async def update_my_password(
         updated = await change_password(user["id"], body.current_password, body.new_password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    _set_cookie(response, updated)
+    _set_cookie(response, request, updated)
     await log_audit("password_change", user_id=str(user["id"]), risk_level="warn")
     return updated
 
