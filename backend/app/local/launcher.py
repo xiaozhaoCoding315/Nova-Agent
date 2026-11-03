@@ -24,6 +24,7 @@ from pathlib import Path
 
 import structlog
 
+from app.local import job as local_job
 from app.local.config import runtime_env
 from app.local.pg import LocalPostgres, free_port
 
@@ -339,6 +340,13 @@ def run(
     env = runtime_env(config)
     env_map.update(env)
     _configure_logging()
+
+    # Join the kill-on-close job before PostgreSQL starts: pgserver launches
+    # the postmaster through an intermediate cmd.exe, so it is not in our
+    # process tree and a forced kill of this process would orphan it.
+    job = local_job.join_kill_on_close_job()
+    if job is None and local_job.is_supported():
+        logger.warning("local_job_unavailable")
 
     lock = InstanceLock.for_data_dir(Path(env["LOCAL_PG_DATA_DIR"]))
     lock.acquire()
