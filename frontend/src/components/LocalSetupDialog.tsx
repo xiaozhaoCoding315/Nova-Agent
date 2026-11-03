@@ -25,6 +25,8 @@ export function LocalSetupDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  // 桌面壳才有原生选择器；浏览器/服务器模式回退为手动输入路径。
+  const canBrowse = typeof window !== 'undefined' && !!window.novaDesktop?.pickDirectory
 
   useEffect(() => {
     if (!open) return
@@ -35,6 +37,20 @@ export function LocalSetupDialog({
   }, [open, status?.default_provider, status?.default_model])
 
   useFocusTrap(panelRef, open)
+
+  const browse = async () => {
+    const bridge = window.novaDesktop?.pickDirectory
+    if (!bridge) return
+    try {
+      const picked = await bridge()
+      if (picked.ok && picked.path) {
+        setPath(picked.path)
+        setError(null)
+      }
+    } catch {
+      setError('打开文件夹选择器失败，请手动粘贴绝对路径')
+    }
+  }
 
   const submit = async () => {
     if (!path.trim()) {
@@ -112,18 +128,30 @@ export function LocalSetupDialog({
               数据目录：{status.data_dir}
             </p>
           )}
-          <label className="block space-y-1">
-            <span className="text-xs text-dim">项目文件夹（绝对路径）</span>
-            <input
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-              placeholder={'D:\\code\\my-project'}
-              className={inputClass}
-            />
+          <div className="space-y-1">
+            <label htmlFor="local-setup-path" className="block text-xs text-dim">
+              项目文件夹（绝对路径）
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="local-setup-path"
+                value={path}
+                onChange={(event) => setPath(event.target.value)}
+                placeholder={'D:\\code\\my-project'}
+                className={`${inputClass} min-w-0 flex-1`}
+              />
+              {canBrowse && (
+                <Button size="sm" onClick={() => void browse()} className="shrink-0">
+                  <FolderOpen size={12} /> 选择文件夹
+                </Button>
+              )}
+            </div>
             <span className="text-2xs text-faint">
-              原生文件夹选择器将在后续桌面版提供；当前请粘贴绝对路径。
+              {canBrowse
+                ? '可以直接选择文件夹，也可以粘贴绝对路径。'
+                : '浏览器模式无法打开原生选择器；请粘贴项目文件夹的绝对路径。'}
             </span>
-          </label>
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="block space-y-1">
               <span className="text-xs text-dim">模型厂商</span>

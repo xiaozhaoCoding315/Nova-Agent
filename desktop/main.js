@@ -478,6 +478,22 @@ ipcMain.handle('nova:start-local', async () => {
   }
 })
 
+// 本地模式首次向导里的「选择文件夹」。只在桌面壳里有意义；浏览器/服务器
+// 模式下 window.novaDesktop 不存在，前端会自动隐藏这个按钮。
+ipcMain.handle('nova:pick-directory', async () => {
+  const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : setupWindow
+  const options = {
+    title: '选择要交给 Nova 的项目文件夹',
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: '使用此文件夹',
+  }
+  const result = owner
+    ? await dialog.showOpenDialog(owner, options)
+    : await dialog.showOpenDialog(options)
+  if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true }
+  return { ok: true, path: result.filePaths[0] }
+})
+
 ipcMain.handle('nova:connect', async (_event, rawUrl) => {
   const url = normalizeUrl(rawUrl)
   if (!/^https?:\/\/.+/.test(url)) {

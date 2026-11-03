@@ -587,11 +587,12 @@ async def test_local_verification_gates_node_profile(monkeypatch, tmp_path):
         {"id": "r1", "root_path": str(tmp_path)}, {"id": 1},
         permission_mode="ask", approval_granted=True,
     )
-    assert result["status"] == "unsupported"
+    # Node 步骤现在真的在主机上执行，而不是整组判为 unsupported。
+    assert result["status"] == "passed"
     assert result["image"] == "host"
-    assert verify_service.LOCAL_NODE_UNSUPPORTED in result["notes"]
-    assert all(step["status"] == "skipped" for step in result["steps"])
-    assert called["host"] == 0
+    assert called["host"] == len(profile.steps)
+    assert all(step["status"] == "passed" for step in result["steps"])
+    assert not any("暂不支持" in note for note in result["notes"])
     assert not any("镜像" in note for note in result["notes"])
 
 
@@ -740,7 +741,9 @@ async def test_install_deps_local_quotes_manifest_with_space(monkeypatch, tmp_pa
     assert result["installed"] is True
     assert quote_shell_arg("requirements dev.txt") in seen["command"]
     assert str(tmp_path / "python.exe") in seen["command"]
-    assert "暂不支持 Node" in result["hint"]
+    # 本地 Node 验证已按平台生成命令，不再提示「暂不支持」。
+    assert "暂不支持" not in result["hint"]
+    assert ".venv" in result["hint"]
 
 
 @pytest.mark.skipif(

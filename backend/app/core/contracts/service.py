@@ -27,7 +27,22 @@ DEFAULT_TARGETS = (
 )
 
 _CONTRACT_STEP = "契约检查"
-_CONTRACT_TARGET = "/tmp/nova-contract.d.ts"
+
+
+def _contract_target(platform: str | None) -> str:
+    """契约检查先写到一个临时文件，再与仓库里的类型文件比对。
+
+    Docker 沙箱里固定用 /tmp；本地主机（Windows）没有 /tmp，必须换成本地
+    临时目录，否则 openapi-typescript 直接写不进去。
+
+    路径用正斜杠：这个值还会被嵌进 ``node -e`` 的单引号字符串里，反斜杠
+    在那里是转义符——``%TEMP%\\nova-contract.d.ts`` 展开后 ``\\n`` 会变成
+    换行，node 读到的是一个不存在的路径。cmd.exe 与 openapi-typescript
+    都接受正斜杠。
+    """
+    if (platform or "posix") == "win32":
+        return "%TEMP%/nova-contract.d.ts"
+    return "/tmp/nova-contract.d.ts"
 
 
 def parse_nova_config(raw: str) -> dict:
@@ -109,18 +124,22 @@ def contract_step(files: dict[str, str], *, platform: str | None = None) -> dict
     shell_platform = platform or "posix"
     source = quote_shell_arg(info["source"], platform=shell_platform)
     target = quote_shell_arg(info["target"], platform=shell_platform)
+    tmp = _contract_target(shell_platform)
+    # 临时路径必须以命令行参数传进去，不能拼进 JS 字符串字面量：
+    # %TEMP% 展开后是反斜杠路径，`\n`、`\2` 在 JS 里是转义序列，
+    # 拼进去会变成一个不存在的路径（实测 node 报 ENOENT）。
     script = (
         "const fs=require('fs');"
-        f"const a=fs.readFileSync('{_CONTRACT_TARGET}','utf8').replace(/\\r\\n/g,'\\n');"
-        "if(!fs.existsSync(process.argv[1])){"
-        "console.error('contract target missing: '+process.argv[1]);process.exit(2);}"
-        "const b=fs.readFileSync(process.argv[1],'utf8').replace(/\\r\\n/g,'\\n');"
-        "if(a!==b){console.error('contract drift: regenerate '+process.argv[1]);process.exit(1);}"
+        "const a=fs.readFileSync(process.argv[1],'utf8').replace(/\\r\\n/g,'\\n');"
+        "if(!fs.existsSync(process.argv[2])){"
+        "console.error('contract target missing: '+process.argv[2]);process.exit(2);}"
+        "const b=fs.readFileSync(process.argv[2],'utf8').replace(/\\r\\n/g,'\\n');"
+        "if(a!==b){console.error('contract drift: regenerate '+process.argv[2]);process.exit(1);}"
         "console.log('contract ok');"
     )
     command = (
-        f"openapi-typescript {source} -o {_CONTRACT_TARGET} "
-        f"&& node -e \"{script}\" {target}"
+        f"openapi-typescript {source} -o {tmp} "
+        f"&& node -e \"{script}\" {tmp} {target}"
     )
     return {
         "name": _CONTRACT_STEP,

@@ -1,9 +1,9 @@
 """Run the verification profile for one repo.
 
-Server mode keeps using the builder sandbox images; local mode runs Python
-profiles on the host in a throwaway workspace (no container isolation).
-Node/fullstack profiles are reported as unsupported locally: their commands
-are POSIX shell snippets, so running them through cmd.exe would be broken.
+Server mode keeps using the builder sandbox images; local mode runs every
+profile step on the host in a throwaway workspace (no container isolation).
+Commands are generated for the shell that will run them (see
+``detect_profile``), so Node/fullstack profiles work locally too.
 """
 import sys
 import time
@@ -24,7 +24,6 @@ LOCAL_APPROVAL_REQUIRED = (
     "本地模式确认执行：验证会在你的电脑上运行命令（无容器隔离），需要你批准后执行"
 )
 LOCAL_HOST_NOTE = "本地模式在主机执行，无容器隔离"
-LOCAL_NODE_UNSUPPORTED = "本地模式暂不支持 Node/前端验证，请在服务器模式运行或手动执行"
 TRUNCATED_NOTE = "仓库文件较多，仅验证了部分文件（已截断）"
 
 
@@ -54,47 +53,6 @@ def _base_notes(profile, copy_stats: dict) -> list[str]:
 def _local_notes(profile) -> list[str]:
     """Drop Docker-image wording: local steps never use an image."""
     return [note for note in profile.notes if "镜像" not in note]
-
-
-def _node_unsupported_result(profile, copy_stats: dict, started: float, now: str) -> dict:
-    """Local mode cannot safely run the Node snippets (POSIX shell syntax).
-
-    Steps are reported as skipped, never executed, and the result is marked
-    unsupported instead of pretending a partial run proves anything.
-    """
-    steps = [
-        {
-            "name": step.name,
-            "command": step.command,
-            "required": step.required,
-            "status": "skipped",
-            "exit_code": -1,
-            "timed_out": False,
-            "stdout": "",
-            "stderr": LOCAL_NODE_UNSUPPORTED,
-            "duration_ms": 0,
-        }
-        for step in profile.steps
-    ]
-    return {
-        "status": "unsupported",
-        "stack": profile.stack,
-        "notes": _local_notes(profile) + _copy_note(copy_stats) + [LOCAL_NODE_UNSUPPORTED],
-        "steps": steps,
-        "exit_code": -1,
-        "stdout": "",
-        "stderr": LOCAL_NODE_UNSUPPORTED,
-        "command": " → ".join(step.command for step in profile.steps),
-        "image": "host",
-        "at": now,
-        "elapsed_ms": int((time.perf_counter() - started) * 1000),
-    }
-
-
-def _profile_needs_node(profile) -> bool:
-    return profile.stack in ("node", "fullstack") or any(
-        getattr(step, "image", "") == "node" for step in profile.steps
-    )
 
 
 def _tail(text: str | None, limit: int) -> str:
@@ -164,12 +122,8 @@ async def run_verification(
                 "at": now,
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
             }
-        if _profile_needs_node(profile):
-            logger.info(
-                "verification_unsupported_local",
-                repo_id=str(repo["id"]), stack=profile.stack,
-            )
-            return _node_unsupported_result(profile, copy_stats, started, now)
+        # Node 步骤按平台生成命令（cmd.exe / sh），本地也会真的执行；
+        # 机器上没装 node 时，必需步骤会以「命令不存在」失败并给出 stderr。
         return await _run_verification_host(
             repo, files, profile, started, now, copy_stats,
             job_id=job_id, user_id=user.get("id"),

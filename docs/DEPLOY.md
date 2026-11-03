@@ -103,6 +103,12 @@ docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
 Caddy 与 app 同在默认 bridge 网络时通常是 `172.x.0.x`；也可以直接填 `*`
 （仅在 app 端口已改为只监听 127.0.0.1 时使用，见 `Caddyfile.example` 注释）。
 
+登录失败限流默认 `MAX_LOGIN_ATTEMPTS_PER_HOUR=20`，按「来源 IP」和
+「IP + 账号」两个维度各算一次：撞库脚本在单个 IP 上会被拖慢，同一个
+账号被同一台机器反复试错也会被挡，但别人换 IP 无法把你的账号锁死。
+`TRUSTED_PROXIES` 没配对时，所有请求都会被算成反代那一个 IP，
+这个限流会变成全站共享额度——所以它和反代配置是一组的。
+
 备案完成前想先内网试用域名，可以用 hosts 绑定测试。
 
 ## 三、桌面客户端分发

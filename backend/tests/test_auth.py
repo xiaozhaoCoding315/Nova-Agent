@@ -121,3 +121,68 @@ def test_wildcard_trusts_every_peer(monkeypatch):
     monkeypatch.setattr(settings, "trusted_proxies", "*")
     # 只有 app 端口只监听回环时才允许这么配（Caddy 与本机同栈）。
     assert _client_ip(_request({"X-Forwarded-For": "1.2.3.4"})) == "1.2.3.4"
+
+
+# ---------- 登录限流 ----------
+
+def test_login_failures_are_throttled_per_ip(monkeypatch):
+    from app.api.v1 import auth as auth_mod
+
+    monkeypatch.setattr(settings, "max_login_attempts_per_hour", 3)
+    monkeypatch.setattr(settings, "trusted_proxies", "")
+    auth_mod._login_ip_buckets.clear()
+    auth_mod._login_user_buckets.clear()
+
+    req = _request(peer="198.51.100.9")
+    # 前 3 次失败都放行（401 由调用方决定），第 4 次直接 429。
+    for _ in range(3):
+        auth_mod._check_login_rate(req, "victim")
+        auth_mod._record_login_failure(req, "victim")
+    with pytest.raises(HTTPException) as exc:
+        auth_mod._check_login_rate(req, "victim")
+    assert exc.value.status_code == 429
+
+
+def test_successful_logins_do_not_consume_the_budget(monkeypatch):
+    from app.api.v1 import auth as auth_mod
+
+    monkeypatch.setattr(settings, "max_login_attempts_per_hour", 2)
+    auth_mod._login_ip_buckets.clear()
+    auth_mod._login_user_buckets.clear()
+
+    req = _request(peer="198.51.100.10")
+    # 只检查不记账：正常用户反复登录永远不会被自己的额度挡住。
+    for _ in range(10):
+        auth_mod._check_login_rate(req, "alice")
+    assert len(auth_mod._login_ip_buckets["198.51.100.10"]) == 0
+
+
+def test_login_throttle_does_not_let_a_third_party_lock_an_account(monkeypatch):
+    """攻击者换 IP 猛试别人的账号，不能把该账号的正常登录锁死。
+
+    账号桶是 (IP, 账号) 组合：换了 IP 就重新计数，受害者从自己的 IP
+    登录不会被别人的失败拖累。
+    """
+    from app.api.v1 import auth as auth_mod
+
+    monkeypatch.setattr(settings, "max_login_attempts_per_hour", 3)
+    auth_mod._login_ip_buckets.clear()
+    auth_mod._login_user_buckets.clear()
+
+    attacker = _request(peer="198.51.100.20")
+    for _ in range(5):
+        auth_mod._record_login_failure(attacker, "victim")
+
+    victim = _request(peer="203.0.113.9")
+    auth_mod._check_login_rate(victim, "victim")  # 不应抛 429
+
+
+def test_login_throttle_can_be_disabled(monkeypatch):
+    from app.api.v1 import auth as auth_mod
+
+    monkeypatch.setattr(settings, "max_login_attempts_per_hour", 0)
+    auth_mod._login_ip_buckets.clear()
+    req = _request(peer="198.51.100.11")
+    for _ in range(50):
+        auth_mod._record_login_failure(req, "bob")
+        auth_mod._check_login_rate(req, "bob")

@@ -56,7 +56,23 @@ def _read_json(files: dict[str, str], name: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _node_steps(files: dict[str, str], paths: list[str]) -> tuple[list[VerifyStep], list[str]]:
+def _node_steps(
+    files: dict[str, str], paths: list[str], *, platform: str | None = None,
+) -> tuple[list[VerifyStep], list[str]]:
+    """Build Node steps for the shell that will run them.
+
+    Docker 沙箱是 POSIX；本地主机在 Windows 上是 cmd.exe。原先这里只生成
+    POSIX 语法（``if [ ... ]; then``、``CI=1`` 前缀），导致本地模式干脆把
+    Node 项目整个判为 unsupported。按平台分别生成后，两边都能跑。
+    """
+    win = (platform or "posix") == "win32"
+
+    def env_prefix(*pairs: str) -> str:
+        # cmd.exe 没有 `VAR=x cmd` 语法；set 与命令必须分两步。
+        if not win:
+            return " ".join(f"{p}" for p in pairs) + " "
+        return " ".join(f"set {p}&&" for p in pairs) + " "
+
     package = _read_json(files, "package.json")
     scripts = package.get("scripts") if isinstance(package.get("scripts"), dict) else {}
     dependencies = {
@@ -86,9 +102,19 @@ def _node_steps(files: dict[str, str], paths: list[str]) -> tuple[list[VerifySte
             install = "npm ci --no-audit --no-fund"
         else:
             install = "npm install --no-audit --no-fund"
+        if win:
+            # cmd.exe 里判断目录用 `if exist`，不是 `[ -d ]`。
+            install_cmd = (
+                f"if exist node_modules (echo node_modules cached) else ({install})"
+            )
+        else:
+            install_cmd = (
+                f"if [ -d node_modules ]; then echo 'node_modules cached'; "
+                f"else {install}; fi"
+            )
         steps.append(VerifyStep(
             "安装 Node 依赖",
-            f"if [ -d node_modules ]; then echo 'node_modules cached'; else {install}; fi",
+            install_cmd,
             required=False,
             timeout=300,
             image="node",
@@ -100,7 +126,7 @@ def _node_steps(files: dict[str, str], paths: list[str]) -> tuple[list[VerifySte
 
     if "lint" in scripts:
         steps.append(VerifyStep(
-            "Lint（npm）", f"CI=1 {run_script('lint')}", required=False,
+            "Lint（npm）", f"{env_prefix('CI=1')}{run_script('lint')}", required=False,
             timeout=180, image="node", deps_kind="node",
         ))
     else:
@@ -116,7 +142,7 @@ def _node_steps(files: dict[str, str], paths: list[str]) -> tuple[list[VerifySte
 
     if "test" in scripts:
         steps.append(VerifyStep(
-            "Node 测试", f"CI=1 {run_script('test')}", required=True,
+            "Node 测试", f"{env_prefix('CI=1')}{run_script('test')}", required=True,
             timeout=180, image="node", deps_kind="node",
         ))
     else:
@@ -187,7 +213,7 @@ def detect_profile(
             notes.append("未配置 mypy，已跳过类型检查")
 
     if has_node:
-        node_steps, node_notes = _node_steps(files, paths)
+        node_steps, node_notes = _node_steps(files, paths, platform=platform)
         steps.extend(node_steps)
         notes.extend(node_notes)
         if has_python:

@@ -44,6 +44,9 @@ router = APIRouter()
 
 _REG_WINDOW = 3600
 _reg_buckets: dict[str, deque] = defaultdict(deque)
+# 登录限流与注册分开计数：注册窗口只关心「建了多少号」，登录关心「试了多少次」。
+_login_ip_buckets: dict[str, deque] = defaultdict(deque)
+_login_user_buckets: dict[str, deque] = defaultdict(deque)
 
 # 游客体验标记：签发一次、长期有效，防止同一浏览器反复薅游客额度
 GUEST_USED_COOKIE = "nova_guest_used"
@@ -87,18 +90,103 @@ def _cookie_secure(request: Request) -> bool:
     return False
 
 
-def _check_registration_rate(request: Request) -> None:
-    limit = settings.max_registrations_per_hour
-    if limit <= 0:
-        return
-    ip = _client_ip(request)
-    now = time.time()
-    bucket = _reg_buckets[ip]
+def _prune(bucket: deque, now: float) -> None:
     while bucket and now - bucket[0] > _REG_WINDOW:
         bucket.popleft()
+
+
+def _throttle(buckets: dict[str, deque], key: str, limit: int, message: str) -> None:
+    """滑动窗口计数：记一次并检查上限。limit <= 0 表示关闭。
+
+    注册用它：每来一次就占一格，「一小时内建了几个号」直接受限。
+    """
+    if limit <= 0:
+        return
+    now = time.time()
+    bucket = buckets[key]
+    _prune(bucket, now)
     if len(bucket) >= limit:
-        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail=message)
     bucket.append(now)
+
+
+def _check_registration_rate(request: Request) -> None:
+    _throttle(
+        _reg_buckets,
+        _client_ip(request),
+        settings.max_registrations_per_hour,
+        "注册过于频繁，请稍后再试",
+    )
+
+
+# 桶按 key 无限增长（用户名由攻击者随意指定），超过这个量级就清一遍过期项。
+_LOGIN_BUCKET_CAP = 20_000
+
+
+def _login_bucket(buckets: dict[str, deque], key: str, now: float) -> deque:
+    # 先建桶再清理：key 不能因为正好在清理里被删掉而丢失引用。
+    buckets[key]
+    if len(buckets) > _LOGIN_BUCKET_CAP:
+        stale = [k for k, b in buckets.items() if not b or now - b[-1] > _REG_WINDOW]
+        for stale_key in stale:
+            del buckets[stale_key]
+        if len(buckets) > _LOGIN_BUCKET_CAP:
+            # 仍然过多（大量活跃 IP 刷随机用户名）：只保留最近活动的那些。
+            keep = sorted(buckets.items(), key=lambda item: item[1][-1], reverse=True)
+            buckets.clear()
+            buckets.update(dict(keep[:_LOGIN_BUCKET_CAP]))
+    return buckets[key]
+
+
+def _login_keys(request: Request, username: str) -> tuple[str, str]:
+    """两个维度：来源 IP，以及（IP, 账号）组合。
+
+    只按 IP 挡不住针对同一账号的撞库；只按账号又会让任何人都能凭失败尝试
+    把别人的账号锁住一小时（拿别人账号做拒绝服务）。组合维度两头兼顾，
+    代价是分布式（多 IP）撞同一账号只能靠 IP 桶逐个拖慢。
+    """
+    ip = _client_ip(request)
+    return ip, f"{ip}:{username.strip().lower()[:64]}"
+
+
+def _record_login_failure(request: Request, username: str) -> None:
+    """登录失败后把两个桶都推一格。
+
+    _check_login_rate 只做判断不计数（否则一次成功登录也会消耗额度），
+    真正记账发生在这里，所以「试了 N 次都没成功」才会被限。
+    """
+    now = time.time()
+    ip_key, user_key = _login_keys(request, username)
+    for buckets, key in (
+        (_login_ip_buckets, ip_key),
+        (_login_user_buckets, user_key),
+    ):
+        bucket = _login_bucket(buckets, key, now)
+        _prune(bucket, now)
+        bucket.append(now)
+
+
+def _check_login_rate(request: Request, username: str) -> None:
+    """登录限流：按来源 IP 和账号各算一次。
+
+    只有失败才计数（见 login），正常登录不会消耗额度。账号维度跨 IP 累计，
+    这样分布式撞库也会在打到同一账号时被拦住；代价是该账号会被临时锁住，
+    但窗口只有 1 小时，且 MAX_LOGIN_ATTEMPTS_PER_HOUR 可调。
+    """
+    limit = settings.max_login_attempts_per_hour
+    if limit <= 0:
+        return
+    ip_key, user_key = _login_keys(request, username)
+    now = time.time()
+    for buckets, key, message in (
+        (_login_ip_buckets, ip_key, "登录尝试过于频繁，请稍后再试"),
+        (_login_user_buckets, user_key, "该账号登录尝试过于频繁，请稍后再试"),
+    ):
+        bucket = _login_bucket(buckets, key, now)
+        _prune(bucket, now)
+        # 只看不记：记账由 _record_login_failure 负责，成功登录不消耗额度。
+        if len(bucket) >= limit:
+            raise HTTPException(status_code=429, detail=message)
 
 
 def _set_cookie(response: Response, request: Request, user: dict) -> None:
@@ -160,8 +248,12 @@ async def email_code(body: EmailCodeRequest, request: Request):
 @router.post("/auth/login", response_model=UserOut)
 async def login(body: LoginRequest, request: Request, response: Response):
     _ensure_server_mode()
+    # 先看是否已经被刷爆，再验密码；否则撞库脚本可以无限重试。
+    _check_login_rate(request, body.username)
     user = await authenticate(body.username, body.password)
     if not user:
+        # 只有失败才计数：成功登录（含同一人反复刷新）不消耗额度。
+        _record_login_failure(request, body.username)
         await log_audit(
             AuditAction.LOGIN_FAILED,
             details={"username": body.username},

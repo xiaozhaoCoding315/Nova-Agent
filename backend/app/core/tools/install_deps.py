@@ -244,10 +244,8 @@ async def _install_deps_local(args: dict, ctx: ToolContext) -> dict:
         )
     hint = (
         "依赖已安装到项目自身的 .venv；后续 Python 验证会直接使用该环境。"
-        "本地模式暂不支持 Node/前端验证。"
         if kind == "python" else
-        "依赖已安装到项目自身的 node_modules；本地模式暂不支持 Node/前端验证，"
-        "请在服务器模式运行验证或手动执行。"
+        "依赖已安装到项目自身的 node_modules；后续 Node 验证会直接使用这些依赖。"
     )
     return {
         "installed": True,

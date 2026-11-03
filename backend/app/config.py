@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     registration_mode: str = "open"
     registration_invite_code: str = ""
     max_registrations_per_hour: int = 10
+    # 每小时允许的失败登录次数，按来源 IP 与「IP + 账号」各算一次；0 = 关闭。
+    max_login_attempts_per_hour: int = 20
     max_users: int = 50
     min_password_length: int = 8
     guest_enabled: bool = True

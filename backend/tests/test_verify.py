@@ -175,3 +175,71 @@ async def test_node_verification_fails_honestly_without_image(monkeypatch):
     assert result["status"] == "failed"
     assert any("node 镜像" in note for note in result["notes"])
     assert result["steps"][0]["status"] == "failed"
+
+
+# ---------- 本地（Windows）Node 验证 ----------
+
+_NODE_FILES = {
+    "package.json": (
+        '{"scripts": {"test": "vitest run", "build": "vite build", '
+        '"lint": "eslint ."}, "devDependencies": {"vite": "^5"}}'
+    ),
+    "package-lock.json": "{}",
+    "tsconfig.json": "{}",
+}
+
+
+def test_node_steps_use_posix_syntax_for_the_sandbox():
+    profile = detect_profile(_NODE_FILES)
+    install = next(s for s in profile.steps if s.name == "安装 Node 依赖")
+    assert "if [ -d node_modules ]" in install.command
+    test_step = next(s for s in profile.steps if s.name == "Node 测试")
+    assert test_step.command.startswith("CI=1 ")
+
+
+def test_node_steps_use_cmd_syntax_on_windows_hosts():
+    profile = detect_profile(_NODE_FILES, platform="win32")
+    install = next(s for s in profile.steps if s.name == "安装 Node 依赖")
+    # cmd.exe 不认识 [ -d ]，也不能把 CI=1 放在命令前面。
+    assert "if exist node_modules" in install.command
+    assert "if [ -d" not in install.command
+    test_step = next(s for s in profile.steps if s.name == "Node 测试")
+    assert test_step.command.startswith("set CI=1&&")
+    assert "CI=1 npm" not in test_step.command
+
+
+def test_windows_contract_step_writes_to_a_windows_temp_path():
+    from app.core.contracts.service import contract_step
+
+    step = contract_step(
+        {**_NODE_FILES, "contracts/openapi.json": "{}"}, platform="win32"
+    )
+    assert step is not None
+    # /tmp 在 Windows 主机上不存在，写进去会直接失败。
+    assert "/tmp/nova-contract.d.ts" not in step["command"]
+    assert "%TEMP%" in step["command"]
+
+    posix = contract_step(
+        {**_NODE_FILES, "contracts/openapi.json": "{}"}, platform="posix"
+    )
+    assert "/tmp/nova-contract.d.ts" in posix["command"]
+
+
+def test_contract_step_never_embeds_the_temp_path_in_js_source():
+    """临时路径必须作为 node 参数传入，不能拼进 JS 字符串字面量。
+
+    %TEMP% 展开后是反斜杠路径，拼进 '...' 里时 `\\n` / `\\2` 会被 JS 当成
+    转义序列，node 实际打开的是一个不存在的路径（实测 ENOENT）。这个回归
+    只检查 JS 源码段里不出现该路径。
+    """
+    from app.core.contracts.service import contract_step
+
+    for platform in ("win32", "posix"):
+        step = contract_step(
+            {**_NODE_FILES, "contracts/openapi.json": "{}"}, platform=platform
+        )
+        assert step is not None
+        js_source = step["command"].split("node -e \"", 1)[1].split('"', 1)[0]
+        assert "nova-contract.d.ts" not in js_source, platform
+        # 路径仍然作为 node 的 argv 传入。
+        assert "nova-contract.d.ts" in step["command"].split('" ', 1)[1], platform

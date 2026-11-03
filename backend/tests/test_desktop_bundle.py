@@ -95,3 +95,20 @@ def test_ci_publishes_the_update_metadata() -> None:
                          workflow, re.MULTILINE)
     sources = {source.rstrip("/") for source, _ in uploads}
     assert sources == {"desktop/out", "artifacts/**"}, uploads
+
+
+def test_folder_picker_bridge_is_wired_end_to_end() -> None:
+    """本地首次向导的原生选目录：主进程 handler + preload 暴露 + 前端调用。
+
+    三段任何一段缺失，按钮都会安静地不生效（浏览器模式下本来就该隐藏），
+    所以在这里一次性对齐三处名字。
+    """
+    main = (DESKTOP / "main.js").read_text(encoding="utf-8")
+    preload = (DESKTOP / "preload.js").read_text(encoding="utf-8")
+    dialog = (
+        ROOT / "frontend" / "src" / "components" / "LocalSetupDialog.tsx"
+    ).read_text(encoding="utf-8")
+    assert "ipcMain.handle('nova:pick-directory'" in main
+    assert "properties: ['openDirectory'" in main
+    assert "ipcRenderer.invoke('nova:pick-directory')" in preload
+    assert "window.novaDesktop?.pickDirectory" in dialog
