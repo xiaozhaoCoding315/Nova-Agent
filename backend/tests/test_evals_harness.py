@@ -23,10 +23,10 @@ from evals.harness import InProcessHarness, RecordingRegistry
 from evals.models import EvalTask
 
 
-def _task(script, checks=(), context_window=None, attachments=()):
+def _task(script, checks=(), context_window=None, attachments=(), mode="scripted"):
     return EvalTask(
         id="harness_task",
-        mode="scripted",
+        mode=mode,
         category="test",
         description="",
         prompt="读取 calc.py 并回答。",
@@ -155,6 +155,45 @@ async def test_harness_neutralizes_tool_hooks(monkeypatch):
             run = await harness.run()
         assert run.error is None
         hook.assert_not_awaited()
+    finally:
+        repo.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_harness_keeps_tool_hooks_in_live_mode(monkeypatch):
+    from unittest.mock import AsyncMock, patch
+
+    from app.config import settings
+    from app.core.security.hooks import HookResult
+    from app.core.tools import base as tools_base
+
+    task = _task(
+        (
+            (
+                {"type": "tool_calls", "tool_calls": [{
+                    "id": "call-1", "name": "read_file",
+                    "arguments": '{"path": "calc.py"}',
+                }]},
+                {"type": "finish", "finish_reason": "tool_calls"},
+            ),
+            (
+                {"type": "finish", "finish_reason": "stop"},
+                {"type": "text", "text": "done"},
+            ),
+        ),
+        mode="live",
+    )
+    repo = create_fixture("python_small")
+    hook = AsyncMock(return_value=HookResult(True, ""))
+    monkeypatch.setattr(settings, "tool_pre_hook", "tripwire")
+    monkeypatch.setattr(settings, "tool_post_hook", "tripwire")
+    try:
+        with patch.object(tools_base, "run_hook", hook), InProcessHarness(
+            task, repo, ScriptedExecutor(task.script)
+        ) as harness:
+            run = await harness.run()
+        assert run.error is None
+        hook.assert_awaited()
     finally:
         repo.cleanup()
 

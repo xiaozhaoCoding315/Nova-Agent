@@ -248,7 +248,8 @@ class InProcessHarness:
             return self.executor
 
         async def _no_hook(*_args, **_kwargs):
-            # Operator-configured hooks execute subprocesses; evals are hermetic.
+            # Operator-configured hooks execute subprocesses; scripted evals
+            # are hermetic.  Live evals keep the real hook behavior.
             return HookResult(True, "")
 
         async def _load_vision_images(_user_id, _attachments):
@@ -294,7 +295,8 @@ class InProcessHarness:
         self._patch(loop_mod, "get_registry", _get_registry)
         self._patch(tools_pkg_mod, "get_registry", _get_registry)
         self._patch(tools_base, "log_audit", fake_log_audit)
-        self._patch(tools_base, "run_hook", _no_hook)
+        if self.task.mode == "scripted":
+            self._patch(tools_base, "run_hook", _no_hook)
         self._patch(jobs_service, "enqueue_index", AsyncMock(return_value="eval-job"))
         self._patch(
             jobs_service, "enqueue_session_summary",
