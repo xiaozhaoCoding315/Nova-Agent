@@ -27,12 +27,15 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Lint backend
-        run: cd backend && python -m ruff check app tests scripts
+        run: cd backend && python -m ruff check app tests scripts evals
 
       - name: Backend tests
         env:
           NOVA_TEST_FAST: "1"
         run: cd backend && python -m pytest tests -q
+
+      - name: Agent eval smoke (scripted)
+        run: cd backend && python -m evals run --mode scripted --ci
 
       - name: OpenAPI contract check
         run: cd backend && python -m scripts.export_openapi --check

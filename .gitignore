@@ -46,3 +46,7 @@ desktop/out/
 desktop/release/
 backend/build/
 deploy/*.log
+
+# Agent eval reports (regenerated locally/CI)
+backend/evals/reports/*
+!backend/evals/reports/.gitkeep

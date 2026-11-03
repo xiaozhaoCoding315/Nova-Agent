@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import copy
 import inspect
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
 
 from app.config import settings
 from app.core.llm.anthropic import AnthropicLLM
@@ -84,9 +85,12 @@ def _configured_providers() -> list[str]:
     names = []
     for raw in settings.llm_priority_list:
         name = raw.strip().lower()
-        if name in ("zhipu", "deepseek", "dashscope", "anthropic") and _api_key(name):
-            if name not in names:
-                names.append(name)
+        if (
+            name in ("zhipu", "deepseek", "dashscope", "anthropic")
+            and _api_key(name)
+            and name not in names
+        ):
+            names.append(name)
     return names
 
 

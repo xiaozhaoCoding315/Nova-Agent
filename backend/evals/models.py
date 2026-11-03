@@ -1,8 +1,9 @@
 """Data models shared by the eval harness."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from evals.fixtures import FixtureRepo
@@ -49,7 +50,7 @@ class ToolCallRecord:
 @dataclass
 class EvalRun:
     task: EvalTask
-    repo: "FixtureRepo"
+    repo: FixtureRepo
     events: list[dict[str, Any]] = field(default_factory=list)
     final_text: str = ""
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
