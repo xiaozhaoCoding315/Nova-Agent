@@ -5,6 +5,7 @@ import json
 
 from evals.checks import (
     changed_files_exactly,
+    expect,
     file_contains,
     file_exists,
     file_unchanged,
@@ -59,6 +60,17 @@ def _long_history() -> tuple[dict, ...]:
     return tuple(messages)
 
 
+def _read_content_reached_model(run) -> None:
+    found = any(
+        message.get("role") == "tool"
+        and message.get("name") == "read_file"
+        and "return a - b" in str(message.get("content") or "")
+        for snapshot in run.llm_messages
+        for message in snapshot
+    )
+    expect(found, "read_file 的结果没有作为 tool 消息回传给模型")
+
+
 READ_AND_ANSWER = EvalTask(
     id="read_and_answer",
     mode="scripted",
@@ -69,6 +81,7 @@ READ_AND_ANSWER = EvalTask(
     checks=(
         final_text_contains("a - b"),
         tool_succeeded("read_file"),
+        _read_content_reached_model,
         no_error_events(),
     ),
     script=(
