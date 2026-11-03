@@ -26,6 +26,9 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Install lint tooling
+        run: pip install ruff==0.17.3
+
       - name: Lint backend
         run: cd backend && python -m ruff check app tests scripts
 
