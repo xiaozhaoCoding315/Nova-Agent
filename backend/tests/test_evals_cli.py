@@ -69,3 +69,18 @@ def test_malformed_baseline_returns_2(tmp_path, capsys):
     ])
     assert code == 2
     assert "基线" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("rate", ["[1]", '"high"', "NaN"])
+def test_baseline_with_invalid_pass_rate_returns_2(tmp_path, capsys, rate):
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(
+        '{"summary": {"pass_rate": ' + rate + '}, "tasks": {}}',
+        encoding="utf-8",
+    )
+    code = main([
+        "run", "--mode", "scripted", "--task", "read_and_answer",
+        "--baseline", str(baseline),
+    ])
+    assert code == 2
+    assert "pass_rate" in capsys.readouterr().err

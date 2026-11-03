@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -141,6 +142,14 @@ def load_baseline(path: Path) -> dict:
     summary = data.get("summary")
     if "summary" in data and not isinstance(summary, dict):
         raise ValueError("基线 summary 必须是对象")
+    if summary is not None:
+        rate = summary.get("pass_rate")
+        if rate is not None and (
+            isinstance(rate, bool)
+            or not isinstance(rate, (int, float))
+            or not math.isfinite(rate)
+        ):
+            raise ValueError("基线 summary.pass_rate 必须是有限数字")
     tasks = data.get("tasks")
     if isinstance(tasks, dict):
         return data

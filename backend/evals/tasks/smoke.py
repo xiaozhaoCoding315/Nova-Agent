@@ -253,7 +253,7 @@ def _fix_applied(run) -> None:
 
 
 def _used_read_tool(run) -> None:
-    names = {"read_file", "grep", "glob"}
+    names = {"read_file", "grep", "glob", "search_code"}
     expect(
         any(call.ok and call.name in names for call in run.tool_calls),
         f"没有成功的读取类工具调用：{[(c.name, c.ok) for c in run.tool_calls]}",

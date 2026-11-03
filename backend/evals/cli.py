@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from evals.executors import LIVE_PROVIDERS
 from evals.models import EvalTask
 from evals.report import (
     compare_baseline,
@@ -21,7 +22,6 @@ from evals.runner import run_suite
 from evals.tasks import ALL_TASKS, tasks_for_mode
 
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parent / "reports"
-LIVE_PROVIDERS = ("auto", "zhipu", "deepseek", "dashscope", "anthropic")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,6 +99,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"没有可运行的 {args.mode} 任务", file=sys.stderr)
         return 2
 
+    baseline = None
+    if args.baseline:
+        try:
+            baseline = load_baseline(args.baseline)
+        except (OSError, ValueError) as exc:
+            print(f"基线读取失败：{exc}", file=sys.stderr)
+            return 2
+
     report = asyncio.run(run_suite(
         tasks,
         args.mode,
@@ -107,12 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         keep=args.keep,
     ))
 
-    if args.baseline:
-        try:
-            report.baseline = compare_baseline(report, load_baseline(args.baseline))
-        except (OSError, ValueError) as exc:
-            print(f"基线读取失败：{exc}", file=sys.stderr)
-            return 2
+    if baseline is not None:
+        report.baseline = compare_baseline(report, baseline)
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     report_dir = Path(args.report_dir) if args.report_dir else DEFAULT_REPORT_DIR

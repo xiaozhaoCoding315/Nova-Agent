@@ -20,6 +20,10 @@ class EvalConfigError(RuntimeError):
     """Live eval cannot start because provider configuration is missing."""
 
 
+PROVIDERS = ("zhipu", "deepseek", "dashscope", "anthropic")
+LIVE_PROVIDERS = ("auto", *PROVIDERS)
+
+
 class ScriptedExecutor:
     supports_vision: bool
     context_window: int
@@ -85,11 +89,7 @@ def _configured_providers() -> list[str]:
     names = []
     for raw in settings.llm_priority_list:
         name = raw.strip().lower()
-        if (
-            name in ("zhipu", "deepseek", "dashscope", "anthropic")
-            and _api_key(name)
-            and name not in names
-        ):
+        if name in PROVIDERS and _api_key(name) and name not in names:
             names.append(name)
     return names
 
@@ -105,7 +105,7 @@ def build_live_llm(provider: str = "auto", model: str | None = None) -> LiveConf
             )
         requested = available[0]
 
-    if requested not in ("zhipu", "deepseek", "dashscope", "anthropic"):
+    if requested not in PROVIDERS:
         raise EvalConfigError(f"未知 provider：{requested}")
 
     key = _api_key(requested)
