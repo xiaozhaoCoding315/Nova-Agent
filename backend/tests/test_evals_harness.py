@@ -190,7 +190,7 @@ async def test_scripted_mode_denies_unlisted_tool_and_filters_specs(monkeypatch)
         "web_search", "fetch_url", "read_uploaded_file", "impact_analysis",
         "diagnose_error", "run_command", "run_code", "diagnostics",
         "install_deps", "local_run_command", "local_write_file", "sql_tool",
-        "spawn_agents",
+        "spawn_agents", "list_files",
     }
     repo = create_fixture("python_small")
     try:

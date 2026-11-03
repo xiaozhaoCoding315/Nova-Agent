@@ -41,11 +41,14 @@ EMPTY_CITATIONS = {
     "missing": 0, "out_of_range": 0, "skipped": 0,
 }
 
-# Fixture-safe tools only.  Everything else registered in the production
-# registry reaches PostgreSQL, Qdrant, Docker, the network, or a provider, so
-# scripted evals must refuse it even if a script names it explicitly.
+# Fixture-safe tools only: every name below is either fixture-backed or has
+# its external seams patched by ``InProcessHarness``.  Everything else
+# registered in the production registry reaches PostgreSQL, Qdrant, Docker,
+# the network, or a provider, so scripted evals must refuse it even if a
+# script names it explicitly.  ``list_files`` is excluded because it queries
+# ``repo_files`` through ``app.db``.
 SCRIPTED_TOOLS = frozenset({
-    "read_file", "list_files", "glob", "grep", "write_files", "edit_file",
+    "read_file", "glob", "grep", "write_files", "edit_file",
     "update_plan", "json_tool", "search_code",
 })
 
