@@ -101,6 +101,8 @@ EDIT_FILE_MINIMAL = EvalTask(
     checks=(
         tool_succeeded("edit_file"),
         file_contains("calc.py", "return a + b"),
+        file_contains("calc.py", "def multiply"),
+        pytest_passes(),
         file_unchanged("test_calc.py"),
         changed_files_exactly("calc.py"),
     ),
@@ -251,7 +253,7 @@ def _fix_applied(run) -> None:
 
 
 def _used_read_tool(run) -> None:
-    names = {"read_file", "grep", "list_files"}
+    names = {"read_file", "grep", "glob"}
     expect(
         any(call.ok and call.name in names for call in run.tool_calls),
         f"没有成功的读取类工具调用：{[(c.name, c.ok) for c in run.tool_calls]}",

@@ -46,6 +46,16 @@ def _task_row(task) -> str:
     )
 
 
+def _rate_fraction(summary: dict) -> str:
+    """Fraction matching the gated pass-rate denominator."""
+    denominator = max(1, summary["total"] - summary["skipped"])
+    suffix = f", skipped {summary['skipped']}" if summary["skipped"] else ""
+    return (
+        f"{summary['passed']}/{denominator} "
+        f"({summary['pass_rate'] * 100:.1f}%){suffix}"
+    )
+
+
 def render_markdown(report: SuiteReport) -> str:
     summary = report.summary
     lines = [
@@ -54,10 +64,7 @@ def render_markdown(report: SuiteReport) -> str:
         f"- Git: {report.git_sha} (dirty: {'yes' if report.git_dirty else 'no'})",
         f"- Started: {report.started_at}",
         f"- Duration: {report.duration_ms / 1000:.1f}s",
-        (
-            f"- Pass rate: {summary['passed']}/{summary['total']} "
-            f"({summary['pass_rate'] * 100:.1f}%)"
-        ),
+        f"- Pass rate: {_rate_fraction(summary)}",
     ]
     if report.provider:
         lines.append(f"- Provider: {report.provider} / {report.model}")
@@ -113,8 +120,7 @@ def render_summary(report: SuiteReport) -> str:
             f"{' (dirty)' if report.git_dirty else ''}"
         ),
         (
-            f"Pass rate: {summary['passed']}/{summary['total']} "
-            f"({summary['pass_rate'] * 100:.1f}%)  "
+            f"Pass rate: {_rate_fraction(summary)}  "
             f"Duration: {report.duration_ms / 1000:.1f}s"
         ),
     ]
@@ -130,14 +136,24 @@ def render_summary(report: SuiteReport) -> str:
 
 def load_baseline(path: Path) -> dict:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("基线文件顶层必须是对象")  # noqa: TRY004 — CLI catches ValueError
+    summary = data.get("summary")
+    if "summary" in data and not isinstance(summary, dict):
+        raise ValueError("基线 summary 必须是对象")
     tasks = data.get("tasks")
     if isinstance(tasks, dict):
         return data
     if isinstance(tasks, list):
-        data["tasks"] = {
-            str(item["task_id"]): str(item["status"])
+        if any(
+            not isinstance(item, dict)
+            or not item.get("task_id")
+            or not item.get("status")
             for item in tasks
-            if isinstance(item, dict) and item.get("task_id")
+        ):
+            raise ValueError("基线任务条目缺少 task_id 或 status")
+        data["tasks"] = {
+            str(item["task_id"]): str(item["status"]) for item in tasks
         }
         return data
     raise ValueError("基线文件缺少 tasks 对象或数组")

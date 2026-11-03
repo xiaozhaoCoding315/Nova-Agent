@@ -1,6 +1,8 @@
 """CLI parsing, report paths, and exit codes."""
 import json
 
+import pytest
+
 from evals.cli import main
 from evals.tasks import ALL_TASKS
 
@@ -44,3 +46,26 @@ def test_min_pass_rate_above_one_exits_1(tmp_path):
         "--json", str(tmp_path / "r.json"), "--md", str(tmp_path / "r.md"),
     ])
     assert code == 1
+
+
+def test_unknown_provider_returns_2(capsys):
+    assert main(["run", "--mode", "live", "--provider", "typo"]) == 2
+    assert "typo" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("rate", ["nan", "-0.1"])
+def test_invalid_min_pass_rate_returns_2(rate, capsys):
+    assert main(["run", "--mode", "scripted", "--min-pass-rate", rate]) == 2
+    assert "min-pass-rate" in capsys.readouterr().err
+
+
+def test_malformed_baseline_returns_2(tmp_path, capsys):
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("[]", encoding="utf-8")
+    code = main([
+        "run", "--mode", "scripted", "--task", "read_and_answer",
+        "--baseline", str(baseline),
+        "--json", str(tmp_path / "r.json"), "--md", str(tmp_path / "r.md"),
+    ])
+    assert code == 2
+    assert "基线" in capsys.readouterr().err

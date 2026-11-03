@@ -27,6 +27,7 @@ from app.core.memory import session as session_mod
 from app.core.rag import retriever as retriever_mod
 from app.core.security import audit as audit_mod
 from app.core.security import limits as limits_mod
+from app.core.security.hooks import HookResult
 from app.core.security.paths import is_secret_path, try_normalize_relpath
 from app.core.tools import base as tools_base
 from app.core.tools import edit_file as edit_file_mod
@@ -92,7 +93,7 @@ class RecordingRegistry:
                 "error": f"工具 {name} 在 scripted eval 中被禁用",
                 "ms": 0,
                 "business": False,
-                "error_class": "policy",
+                "error_class": "eval_policy",
             }
             self._record(name, args, ctx, result)
             return result
@@ -246,6 +247,10 @@ class InProcessHarness:
         async def _get_llm(*_args, **_kwargs):
             return self.executor
 
+        async def _no_hook(*_args, **_kwargs):
+            # Operator-configured hooks execute subprocesses; evals are hermetic.
+            return HookResult(True, "")
+
         async def _load_vision_images(_user_id, _attachments):
             images = []
             for item in self.task.attachments:
@@ -289,6 +294,7 @@ class InProcessHarness:
         self._patch(loop_mod, "get_registry", _get_registry)
         self._patch(tools_pkg_mod, "get_registry", _get_registry)
         self._patch(tools_base, "log_audit", fake_log_audit)
+        self._patch(tools_base, "run_hook", _no_hook)
         self._patch(jobs_service, "enqueue_index", AsyncMock(return_value="eval-job"))
         self._patch(
             jobs_service, "enqueue_session_summary",

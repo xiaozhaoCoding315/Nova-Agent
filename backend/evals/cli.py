@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ from evals.runner import run_suite
 from evals.tasks import ALL_TASKS, tasks_for_mode
 
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parent / "reports"
+LIVE_PROVIDERS = ("auto", "zhipu", "deepseek", "dashscope", "anthropic")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +78,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "list":
         _print_tasks()
         return 0
+
+    if args.provider not in LIVE_PROVIDERS:
+        print(f"未知 provider：{args.provider}", file=sys.stderr)
+        return 2
+    if not math.isfinite(args.min_pass_rate) or args.min_pass_rate < 0:
+        print("--min-pass-rate 必须是非负有限数", file=sys.stderr)
+        return 2
 
     if args.ci and args.mode != "scripted":
         print("--ci 只支持 scripted 模式", file=sys.stderr)

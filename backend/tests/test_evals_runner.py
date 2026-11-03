@@ -283,6 +283,25 @@ def test_compare_baseline_reports_regressions_improvements_and_missing():
     assert diff["pass_rate_delta"] == -0.5
 
 
+def test_render_summary_excludes_skipped_from_fraction():
+    report = _report(None)
+    report.tasks.append(TaskResult(
+        task_id="live_x", mode="live", category="read", status="skipped",
+    ))
+    text = render_summary(report)
+    assert "Pass rate: 1/2 (50.0%)" in text
+    assert "skipped 1" in text
+
+
+def test_empty_result_truncates_long_errors():
+    from evals.runner import _empty_result
+    from evals.tasks.smoke import READ_AND_ANSWER
+
+    result = _empty_result(READ_AND_ANSWER, "error", "x" * 5000)
+    assert result.error is not None
+    assert len(result.error) <= 1000
+
+
 def test_write_baseline_uses_task_statuses(tmp_path):
     report = _report(tmp_path)
     path = tmp_path / "baseline.json"

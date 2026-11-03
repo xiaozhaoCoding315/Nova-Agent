@@ -108,11 +108,11 @@ async def test_recording_registry_denies_tool_outside_allowlist():
         "error": "工具 impact_analysis 在 scripted eval 中被禁用",
         "ms": 0,
         "business": False,
-        "error_class": "policy",
+        "error_class": "eval_policy",
     }
     assert records[-1].name == "impact_analysis"
     assert records[-1].ok is False
-    assert records[-1].error_class == "policy"
+    assert records[-1].error_class == "eval_policy"
 
 
 @pytest.mark.asyncio
@@ -132,6 +132,29 @@ async def test_harness_runs_a_plain_answer_without_external_services():
         assert run.rounds == 1
         assert run.llm_messages
         assert run.tool_calls == []
+    finally:
+        repo.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_harness_neutralizes_tool_hooks(monkeypatch):
+    from unittest.mock import AsyncMock, patch
+
+    from app.config import settings
+    from app.core.tools import base as tools_base
+    from evals.tasks.smoke import READ_AND_ANSWER
+
+    repo = create_fixture("python_small")
+    hook = AsyncMock()
+    monkeypatch.setattr(settings, "tool_pre_hook", "tripwire")
+    monkeypatch.setattr(settings, "tool_post_hook", "tripwire")
+    try:
+        with patch.object(tools_base, "run_hook", hook), InProcessHarness(
+            READ_AND_ANSWER, repo, ScriptedExecutor(READ_AND_ANSWER.script)
+        ) as harness:
+            run = await harness.run()
+        assert run.error is None
+        hook.assert_not_awaited()
     finally:
         repo.cleanup()
 
@@ -209,7 +232,7 @@ async def test_scripted_mode_denies_unlisted_tool_and_filters_specs(monkeypatch)
         blocked = [record for record in run.tool_calls if record.name == "web_search"]
         assert blocked
         assert blocked[0].ok is False
-        assert blocked[0].error_class == "policy"
+        assert blocked[0].error_class == "eval_policy"
         assert "web_search" in (blocked[0].error or "")
     finally:
         repo.cleanup()

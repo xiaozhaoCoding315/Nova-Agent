@@ -23,10 +23,15 @@ from evals.harness import InProcessHarness
 from evals.models import EvalMode, EvalRun, EvalTask, SuiteReport, TaskResult
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_MAX_ERROR_CHARS = 1000
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _clip_error(text) -> str:
+    return redact_text(str(text))[:_MAX_ERROR_CHARS]
 
 
 def git_state() -> tuple[str, bool]:
@@ -72,7 +77,7 @@ def _result(
         completion_tokens=int(run.usage.get("completion_tokens") or 0),
         checks=checks,
         failure=failure,
-        error=redact_text(error) if error else None,
+        error=_clip_error(error) if error else None,
     )
 
 
@@ -82,7 +87,7 @@ def _empty_result(task: EvalTask, status: str, error: str) -> TaskResult:
         mode=task.mode,
         category=task.category,
         status=status,
-        error=redact_text(error),
+        error=_clip_error(error),
     )
 
 
@@ -128,7 +133,7 @@ async def run_task(
             try:
                 check(run)
             except CheckFailure as exc:
-                message = redact_text(str(exc))
+                message = _clip_error(str(exc))
                 checks.append({"name": name, "ok": False, "message": message})
                 return _result(run, "failed", checks, failure={
                     "check": name,
@@ -136,7 +141,7 @@ async def run_task(
                     "events_tail": _events_tail(run),
                 })
             except Exception as exc:  # noqa: BLE001
-                message = redact_text(f"{type(exc).__name__}: {exc}")
+                message = _clip_error(f"{type(exc).__name__}: {exc}")
                 checks.append({"name": name, "ok": False, "message": message})
                 return _result(run, "error", checks, error=f"检查器异常：{message}")
             checks.append({"name": name, "ok": True, "message": None})
