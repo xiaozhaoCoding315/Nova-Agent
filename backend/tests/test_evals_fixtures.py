@@ -1,4 +1,6 @@
 """Fixture repos used by eval tasks."""
+import stat
+
 from evals.fixtures import create_fixture
 
 
@@ -51,6 +53,17 @@ def test_run_pytest_fails_before_fix_and_passes_after_fix():
         assert repo.run_pytest().returncode == 0
     finally:
         repo.cleanup()
+
+
+def test_cleanup_removes_a_tree_with_read_only_files():
+    repo = create_fixture("python_small")
+    read_only = repo.root / "read_only.txt"
+    read_only.write_text("locked", encoding="utf-8")
+    read_only.chmod(stat.S_IREAD)
+
+    repo.cleanup()
+
+    assert not repo.root.exists()
 
 
 def test_is_unchanged_compares_against_initial_snapshot():

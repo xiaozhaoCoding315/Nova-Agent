@@ -72,6 +72,22 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _rmtree(root: Path) -> None:
+    """Remove ``root`` even when git left read-only entries behind.
+
+    Git marks loose objects read-only and Windows refuses to delete read-only
+    files, so add the owner write bit to every entry first.  The existing mode
+    bits are preserved: replacing them with a bare ``0o200`` would strip the
+    read/execute bits POSIX needs to descend into directories.
+    """
+    for path in root.rglob("*"):
+        try:
+            path.chmod(path.stat().st_mode | stat.S_IWRITE)
+        except OSError:
+            pass
+    shutil.rmtree(root, ignore_errors=True)
+
+
 def _visible_files(root: Path) -> dict[str, Path]:
     files: dict[str, Path] = {}
     for path in root.rglob("*"):
@@ -131,14 +147,7 @@ class FixtureRepo:
         )
 
     def cleanup(self) -> None:
-        # Git marks loose objects read-only, and Windows refuses to delete
-        # read-only files, so clear the bit before removing the tree.
-        for path in self.root.rglob("*"):
-            try:
-                path.chmod(stat.S_IWRITE)
-            except OSError:
-                pass
-        shutil.rmtree(self.root, ignore_errors=True)
+        _rmtree(self.root)
 
 
 def create_fixture(name: str) -> FixtureRepo:
@@ -158,10 +167,10 @@ def create_fixture(name: str) -> FixtureRepo:
         _git(root, "add", "-A")
         _git(root, "commit", "-q", "-m", "fixture")
     except FileNotFoundError as exc:
-        shutil.rmtree(root, ignore_errors=True)
+        _rmtree(root)
         raise RuntimeError("eval fixtures 需要本机安装 git") from exc
     except subprocess.CalledProcessError as exc:
-        shutil.rmtree(root, ignore_errors=True)
+        _rmtree(root)
         detail = (exc.stderr or "").strip()[-500:]
         raise RuntimeError(f"fixture git 初始化失败：{detail}") from exc
 

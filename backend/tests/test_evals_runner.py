@@ -1,10 +1,11 @@
 """Runner results, failure classification, and report rendering."""
+import asyncio
 import json
 
 import pytest
 
 from evals.checks import final_text_contains, tool_succeeded
-from evals.models import EvalTask, SuiteReport, TaskResult
+from evals.models import CheckFailure, EvalTask, SuiteReport, TaskResult
 from evals.report import (
     compare_baseline,
     load_baseline,
@@ -15,7 +16,7 @@ from evals.report import (
     write_json,
     write_markdown,
 )
-from evals.runner import run_task
+from evals.runner import run_suite, run_task
 
 
 def _task(checks=(), script=None, timeout_s=60.0, fixture="python_small"):
@@ -103,6 +104,118 @@ async def test_run_task_removes_the_fixture_directory(monkeypatch):
     result = await run_task(_task())
     assert result.status == "passed"
     assert roots and not roots[0].exists()
+
+
+class _BlockingExecutor:
+    """Yields one content event, then never finishes on its own."""
+
+    def __init__(self, _rounds, *, context_window=131_072, supports_vision=False):
+        self.context_window = context_window
+        self.supports_vision = supports_vision
+        self.llm_messages = []
+
+    async def astream_with_tools(self, messages, _tools):
+        self.llm_messages.append(messages)
+        yield {"type": "content", "content": "partial answer"}
+        await asyncio.Event().wait()
+
+
+def _capture_fixtures(monkeypatch):
+    from evals import runner as runner_mod
+
+    repos = []
+    real = runner_mod.create_fixture
+
+    def _record(name):
+        repo = real(name)
+        repos.append(repo)
+        return repo
+
+    monkeypatch.setattr(runner_mod, "create_fixture", _record)
+    return repos
+
+
+@pytest.mark.asyncio
+async def test_run_task_timeout_returns_error_and_removes_the_fixture(monkeypatch):
+    from evals import runner as runner_mod
+
+    repos = _capture_fixtures(monkeypatch)
+    monkeypatch.setattr(runner_mod, "ScriptedExecutor", _BlockingExecutor)
+
+    result = await asyncio.wait_for(run_task(_task(timeout_s=0.5)), timeout=15)
+
+    assert result.status == "error"
+    assert "任务超时" in (result.error or "")
+    assert repos and not repos[0].root.exists()
+
+
+@pytest.mark.asyncio
+async def test_run_suite_skips_live_tasks_without_a_provider(monkeypatch):
+    from evals import runner as runner_mod
+    from evals.executors import EvalConfigError
+
+    def _raise(_provider="auto", _model=None):
+        raise EvalConfigError("没有可用模型")
+
+    monkeypatch.setattr(runner_mod, "build_live_llm", _raise)
+
+    live_task = EvalTask(
+        id="live_task", mode="live", category="test", description="live",
+        prompt="hi", fixture="python_small", checks=(),
+    )
+    scripted_task = EvalTask(
+        id="scripted_would_error", mode="scripted", category="test",
+        description="must not run", prompt="hi", fixture="python_small",
+        checks=(), script=(),
+    )
+
+    report = await run_suite([live_task, scripted_task], "live")
+
+    assert len(report.tasks) == 1
+    result = report.tasks[0]
+    assert result.task_id == "live_task"
+    assert result.status == "skipped"
+    assert "没有可用模型" in (result.error or "")
+    assert report.provider is None
+
+
+@pytest.mark.asyncio
+async def test_run_task_marks_check_exception_as_error():
+    def boom_check(_run):
+        raise ValueError("boom")
+
+    result = await run_task(_task(checks=(boom_check,)))
+
+    assert result.status == "error"
+    assert (result.error or "").startswith("检查器异常")
+    assert result.checks[0]["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_task_redacts_secrets_in_check_failures():
+    secret = "sk-" + "a" * 24
+
+    def leak_check(_run):
+        raise CheckFailure(f"leaked {secret}")
+
+    result = await run_task(_task(checks=(leak_check,)))
+
+    assert result.status == "failed"
+    message = result.failure["message"]
+    assert "[REDACTED]" in message
+    assert secret not in message
+
+
+@pytest.mark.asyncio
+async def test_run_task_keep_retains_the_fixture(monkeypatch):
+    repos = _capture_fixtures(monkeypatch)
+    try:
+        result = await run_task(_task(), keep=True)
+        assert result.status == "passed"
+        assert repos and repos[0].root.exists()
+    finally:
+        for repo in repos:
+            repo.cleanup()
 
 
 def _report(tmp_path):
