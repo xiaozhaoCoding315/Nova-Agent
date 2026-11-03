@@ -397,7 +397,10 @@ async def test_kill_failure_is_surfaced_and_registry_retained(tmp_path, monkeypa
     proc = entries[pid][0]
     assert host.pid_alive(pid)
     try:
-        assert await asyncio.to_thread(original_kill, pid) is True
+        # On POSIX the killed child stays a zombie until its parent reaps it,
+        # so pid_alive() can still report it and _kill_tree_sync() returns
+        # False; wait() reaps it before the death assertion.
+        await asyncio.to_thread(original_kill, pid)
         proc.wait(timeout=5)
     finally:
         host._unregister("job-kill-fail", pid, "7")

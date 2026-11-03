@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import shutil
 import stat
 import subprocess
@@ -135,14 +136,16 @@ class FixtureRepo:
     def run_pytest(
         self, *targets: str, timeout: float = 60.0
     ) -> subprocess.CompletedProcess:
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
         return subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", *targets],
+            [sys.executable, "-B", "-m", "pytest", "-q", *targets],
             cwd=self.root,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            env=env,
             check=False,
         )
 

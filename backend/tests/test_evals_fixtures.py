@@ -74,3 +74,12 @@ def test_is_unchanged_compares_against_initial_snapshot():
         assert not repo.is_unchanged("calc.py")
     finally:
         repo.cleanup()
+
+
+def test_run_pytest_does_not_write_bytecode():
+    repo = create_fixture("python_small")
+    try:
+        repo.run_pytest()
+        assert not list(repo.root.rglob("__pycache__"))
+    finally:
+        repo.cleanup()

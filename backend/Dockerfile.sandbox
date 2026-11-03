@@ -15,3 +15,7 @@ RUN pip install --no-cache-dir \
         pytest==8.3.3
 
 WORKDIR /workspace
+
+# The runtime always passes --user explicitly; keep a plain `docker run`
+# non-root as well so a misconfigured caller cannot fall back to root.
+USER 65534:65534

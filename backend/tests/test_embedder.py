@@ -13,7 +13,12 @@ def test_embedder_returns_correct_dimensions():
     assert len(vectors[0]) == 3
 
 
-def test_factory_returns_embedder():
-    # Will fail until factory is implemented
+def test_factory_returns_embedder(monkeypatch):
+    from app.config import settings
+    from app.core.embedding import embedder as embedder_module
+
+    monkeypatch.setattr(settings, "dashscope_api_key", "sk-test")
+    monkeypatch.setattr(embedder_module, "_embedder", None)
+
     e = get_embedder()
     assert e is not None
