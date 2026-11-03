@@ -41,7 +41,7 @@ class ScriptedExecutor:
         self.llm_messages.append(copy.deepcopy(messages))
         if not self._rounds:
             raise ScriptExhausted(
-                f"LLM 调用次数超过脚本轮次（已调用 {len(self.llm_messages)} 次）"
+                f"ScriptExhausted: LLM 调用次数超过脚本轮次（已调用 {len(self.llm_messages)} 次）"
             )
         for event in self._rounds.pop(0):
             yield event

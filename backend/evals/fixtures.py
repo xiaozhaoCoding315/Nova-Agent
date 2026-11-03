@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -130,6 +131,13 @@ class FixtureRepo:
         )
 
     def cleanup(self) -> None:
+        # Git marks loose objects read-only, and Windows refuses to delete
+        # read-only files, so clear the bit before removing the tree.
+        for path in self.root.rglob("*"):
+            try:
+                path.chmod(stat.S_IWRITE)
+            except OSError:
+                pass
         shutil.rmtree(self.root, ignore_errors=True)
 
 
