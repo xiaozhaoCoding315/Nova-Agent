@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { api, ApiError } from '../lib/api'
 import {
-  compactOverrides, providerSupportsReasoning, sanitizeOverrides,
+  clearRequested, compactOverrides, providerSupportsReasoning, sanitizeOverrides,
 } from '../lib/overrides'
 import { streamChat, streamTurn } from '../lib/sse'
 import type {
@@ -475,6 +475,9 @@ export const useChat = create<ChatState>((set, get) => ({
     // 后端用 JSONB || 合并覆盖、无法删键：对不支持推理的厂商显式写空串，
     // 覆盖会话里残留的 reasoning_effort（factory 会把 "" 视为未设置）。
     // 仅在确实不支持时写，避免支持推理的厂商丢掉 credential 默认 effort。
+    // 「自动」= 把该键从会话覆盖里删掉。JSONB 合并删不掉键，所以显式点名。
+    const clear = clearRequested(patch)
+    if (clear.length) next.clear = clear
     const spec = activeProviderSpec(next.provider ?? null)
     if (spec && !providerSupportsReasoning(spec)) {
       next.reasoning_effort = ''
@@ -809,13 +812,18 @@ export const useChat = create<ChatState>((set, get) => ({
 
     // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
     const providerSpec = activeProviderSpec(get().provider)
-    const overrides = compactOverrides(sanitizeOverrides({
+    const raw = {
       provider: get().provider,
       model: get().model,
       reasoning_effort: get().reasoningEffort || undefined,
       context_window: get().contextWindow,
       temperature: get().temperature,
-    }, providerSpec))
+    }
+    const overrides = compactOverrides(sanitizeOverrides(raw, providerSpec))
+    // 请求里的覆盖会先并入会话持久化覆盖：把「自动」的键一并点名删除，
+    // 否则上一次 PATCH 没落盘时，会话里残留的旧温度会继续生效。
+    const clear = clearRequested(raw)
+    if (clear.length) overrides.clear = clear
     // 后端会先把请求覆盖并入会话持久化覆盖再读取；JSONB || 不能删键，必须显式
     // 用空串覆盖旧的 reasoning_effort。同 PATCH：仅对不支持推理的厂商这样做。
     const sentinelPersisted = Boolean(providerSpec && !providerSupportsReasoning(providerSpec))

@@ -639,6 +639,10 @@ async def test_ask_command_approval_pauses_then_runs(monkeypatch):
 
     result = next(e for e in events if e["event"] == "tool_result")
     assert result["data"]["ok"] is True
+    # The run panel renders exit codes from the live event, not only from
+    # persisted history, so the SSE payload must carry them too.
+    assert result["data"]["exit_code"] == 0
+    assert result["data"]["timed_out"] is False
     approvals.drop(SESSION["id"], "ap1")
 
 

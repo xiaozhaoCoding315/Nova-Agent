@@ -31,6 +31,7 @@ from app.models.schemas import (
     EditApproveOut,
     EditOut,
     EditRevertOut,
+    LlmOverrides,
     MessageOut,
     OkOut,
     ReviewOut,
@@ -43,6 +44,23 @@ from app.models.schemas import (
 )
 
 router = APIRouter()
+
+
+def _overrides_patch(overrides: LlmOverrides | None) -> dict:
+    """Translate a request's overrides into the patch ``update_llm_overrides`` takes.
+
+    ``exclude_none=True`` cannot say "drop this override" — an omitted key and
+    a null one look the same — so the body carries an explicit ``clear`` list
+    which becomes the sentinel the storage layer understands.
+    """
+    if overrides is None:
+        return {}
+    data = overrides.model_dump(exclude_none=True)
+    for key in data.pop("clear", None) or []:
+        data[key] = session_mod.CLEAR_OVERRIDE
+    return data
+
+
 logger = structlog.get_logger()
 
 _SSE_HEADERS = {
@@ -122,10 +140,7 @@ async def create_session(
     for repo_id in repo_ids:
         if not await get_repo(repo_id, user["id"]):
             raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
-    overrides = (
-        body.llm_overrides.model_dump(exclude_none=True)
-        if body and body.llm_overrides else {}
-    )
+    overrides = _overrides_patch(body.llm_overrides if body else None)
     session = await session_mod.create_session(
         user["id"], repo_ids=repo_ids, llm_overrides=overrides,
     )
@@ -160,7 +175,7 @@ async def update_session(
 
     if body.llm_overrides is not None:
         merged = await session_mod.update_llm_overrides(
-            session_id, user["id"], body.llm_overrides.model_dump(exclude_none=True),
+            session_id, user["id"], _overrides_patch(body.llm_overrides),
         )
         session["llm_overrides"] = merged or {}
 
@@ -196,8 +211,7 @@ async def chat_message(
     await check_chat_quota(user)
 
     incoming_overrides = (
-        body.llm_overrides.model_dump(exclude_none=True)
-        if body.llm_overrides else None
+        _overrides_patch(body.llm_overrides) if body.llm_overrides else None
     )
     if body.session_id:
         session = await session_mod.get_session(body.session_id, user["id"])

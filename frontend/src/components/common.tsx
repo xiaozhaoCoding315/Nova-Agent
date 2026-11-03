@@ -1,6 +1,8 @@
 import clsx from 'clsx'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useId, useRef } from 'react'
 import { X } from 'lucide-react'
+import { useFocusTrap } from '../lib/focus'
 
 export function Button({
   variant = 'ghost',
@@ -81,15 +83,27 @@ export function Modal({
   children: ReactNode
   width?: string
 }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useFocusTrap(panelRef, open)
+
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className={clsx('w-full rounded-xl border border-edge bg-panel shadow-2xl', width)}
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={clsx(
+          'w-full rounded-xl border border-edge bg-panel shadow-2xl outline-none',
+          width,
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-edge px-4 py-3">
-          <h3 className="text-md font-semibold">{title}</h3>
+          <h3 id={titleId} className="text-md font-semibold">{title}</h3>
           <button className="text-dim hover:text-ink" onClick={onClose} aria-label="关闭">
             <X size={16} />
           </button>

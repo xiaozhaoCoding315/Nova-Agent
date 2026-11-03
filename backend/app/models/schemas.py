@@ -225,6 +225,13 @@ class LlmOverrides(_ContextWindowBounds):
     context_window: Optional[int] = Field(default=None, ge=0, le=10_000_000)
     temperature: Optional[float] = Field(default=None, ge=0, le=2)
     max_tokens: Optional[int] = Field(default=None, ge=1, le=200_000)
+    # An override is stored in a JSONB object, where a null value cannot
+    # remove a key. Clients that want to fall back to the provider default
+    # (for example temperature "自动") name the keys to drop here.
+    clear: list[Literal["provider", "model", "reasoning_effort",
+                        "context_window", "temperature", "max_tokens"]] = Field(
+        default_factory=list,
+    )
 
 
 class SessionOut(BaseModel):

@@ -826,6 +826,10 @@ async def run_chat(
                 yield _sse(
                     "tool_result", id=tc.get("id", ""), name=name, ok=result["ok"],
                     ms=result["ms"], preview=preview,
+                    exit_code=output.get("exit_code") if isinstance(output, dict) else None,
+                    timed_out=(
+                        bool(output.get("timed_out")) if isinstance(output, dict) else False
+                    ),
                     stdout_tail=_output_tail(output, "stdout"),
                     stderr_tail=_output_tail(output, "stderr"),
                     content_preview=_content_preview(name, output),

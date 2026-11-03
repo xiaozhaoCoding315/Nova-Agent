@@ -1,6 +1,7 @@
 import { FolderOpen, KeyRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
+import { useFocusTrap } from '../lib/focus'
 import type { LocalSetupStatus } from '../lib/types'
 import { inputClass } from '../lib/ui'
 import { ModeBadge } from '../shell/ModeBadge'
@@ -24,7 +25,6 @@ export function LocalSetupDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const returnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -34,17 +34,7 @@ export function LocalSetupDialog({
     setError(null)
   }, [open, status?.default_provider, status?.default_model])
 
-  useEffect(() => {
-    if (!open) return
-    returnFocusRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null
-    panelRef.current?.focus()
-    return () => {
-      const target = returnFocusRef.current
-      if (target && document.contains(target)) target.focus()
-    }
-  }, [open])
+  useFocusTrap(panelRef, open)
 
   const submit = async () => {
     if (!path.trim()) {

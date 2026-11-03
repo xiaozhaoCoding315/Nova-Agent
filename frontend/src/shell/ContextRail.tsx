@@ -28,6 +28,9 @@ const TABS = [
 
 type RailTab = (typeof TABS)[number]['key']
 
+const railTabId = (key: RailTab) => `rail-tab-${key}`
+const railPanelId = 'rail-tab-panel'
+
 function readRailTab(): RailTab {
   try {
     const raw = localStorage.getItem(RAIL_TAB_KEY)
@@ -257,9 +260,24 @@ export function ContextRail({
                   return (
                     <button
                       key={item.key}
+                      id={railTabId(item.key)}
                       role="tab"
                       aria-selected={active}
+                      aria-controls={railPanelId}
+                      tabIndex={active ? 0 : -1}
                       onClick={() => setTab(item.key)}
+                      onKeyDown={(event) => {
+                        const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+                        const index = TABS.findIndex((tab) => tab.key === item.key)
+                        let next: RailTab | null = null
+                        if (step) next = TABS[(index + step + TABS.length) % TABS.length].key
+                        else if (event.key === 'Home') next = TABS[0].key
+                        else if (event.key === 'End') next = TABS[TABS.length - 1].key
+                        if (!next) return
+                        event.preventDefault()
+                        setTab(next)
+                        document.getElementById(railTabId(next))?.focus()
+                      }}
                       className={clsx(
                         'flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-sm px-1 text-2xs transition-colors duration-150',
                         active ? 'bg-accentSoft/40 text-ink' : 'text-dim hover:bg-raised hover:text-ink',
@@ -307,7 +325,12 @@ export function ContextRail({
           {runActive ? (
             <RunPanel />
           ) : (
-            <div className="h-full min-h-0">
+            <div
+              id={railPanelId}
+              role="tabpanel"
+              aria-labelledby={railTabId(tab)}
+              className="h-full min-h-0"
+            >
               {tab === 'files' && (
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="shrink-0 border-b border-edge/70 px-2 py-1.5">

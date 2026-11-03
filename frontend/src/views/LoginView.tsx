@@ -1,10 +1,11 @@
 import {
   ArrowUpRight, Check, HardDrive, Loader2, MonitorDown, Server, ShieldCheck, Terminal, X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AuthPanel, type AuthMode } from '../components/AuthPanel'
 import { StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
+import { useFocusTrap } from '../lib/focus'
 import type { Health } from '../lib/types'
 import { useAuth } from '../stores/auth'
 
@@ -156,6 +157,7 @@ const secondaryAction =
 export function LoginView() {
   const { guest, loadConfig, config } = useAuth()
   const [authOpen, setAuthOpen] = useState(false)
+  const authPanelRef = useRef<HTMLDivElement>(null)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [authNonce, setAuthNonce] = useState(0)
   const [guestBusy, setGuestBusy] = useState(false)
@@ -195,6 +197,8 @@ export function LoginView() {
       document.body.style.overflow = ''
     }
   }, [authOpen])
+
+  useFocusTrap(authPanelRef, authOpen)
 
   const openAuth = (mode: AuthMode) => {
     setAuthMode(mode)
@@ -436,7 +440,14 @@ export function LoginView() {
             if (event.target === event.currentTarget) setAuthOpen(false)
           }}
         >
-          <div className="relative w-full max-w-[420px] py-6" role="dialog" aria-modal="true" aria-label="登录与注册">
+          <div
+            ref={authPanelRef}
+            tabIndex={-1}
+            className="relative w-full max-w-[420px] py-6 outline-none"
+            role="dialog"
+            aria-modal="true"
+            aria-label="登录与注册"
+          >
             <button
               onClick={() => setAuthOpen(false)}
               className="absolute right-3 top-7 z-10 rounded-md p-1.5 text-dim transition-colors hover:bg-raised hover:text-ink"

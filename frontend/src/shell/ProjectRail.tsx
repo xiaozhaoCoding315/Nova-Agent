@@ -134,8 +134,12 @@ export function ProjectRail({
       <aside
         aria-label="项目与会话"
         className={clsx(
-          'fixed inset-y-0 left-0 z-40 flex w-[264px] shrink-0 flex-col border-r border-edge bg-panel transition-transform duration-150 md:static md:z-auto md:translate-x-0',
-          open ? 'translate-x-0' : '-translate-x-full',
+          // visibility 参与过渡：关闭时先滑出、动画结束才真正隐藏，打开时立即可见。
+          'fixed inset-y-0 left-0 z-40 flex w-[264px] shrink-0 flex-col border-r border-edge bg-panel transition-[transform,visibility] duration-150 md:static md:z-auto md:translate-x-0',
+          // 收起时只靠 transform 移出屏幕，控件仍在 Tab 序列里：屏幕阅读器能读到、
+          // 键盘能 Tab 到看不见的按钮。visibility:hidden 同时移出焦点与无障碍树，
+          // 而 md+ 是常驻侧栏，不受影响。
+          open ? 'translate-x-0' : '-translate-x-full max-md:invisible',
         )}
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-3">

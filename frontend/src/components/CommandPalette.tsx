@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useFocusTrap } from '../lib/focus'
 
 export type PaletteAction = {
   id: string
@@ -21,6 +22,8 @@ export function CommandPalette({
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(panelRef, open, { initialFocus: inputRef })
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -34,7 +37,6 @@ export function CommandPalette({
     if (open) {
       setQuery('')
       setIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 20)
     }
   }, [open])
 
@@ -69,7 +71,12 @@ export function CommandPalette({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[12vh]" onClick={onClose}>
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-edge bg-panel shadow-2xl"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="命令面板"
+        tabIndex={-1}
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-edge bg-panel shadow-2xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-edge px-3 py-2.5">

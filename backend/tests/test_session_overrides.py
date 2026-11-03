@@ -8,6 +8,9 @@ from pydantic import ValidationError
 from app.core.memory import session as session_mod
 from app.models.schemas import LlmOverrides, SessionUpdateRequest
 
+# Sentinel used by update_llm_overrides to clear an override (see its docstring).
+_CLEAR = session_mod.CLEAR_OVERRIDE
+
 
 def test_overrides_are_optional_and_validated():
     assert SessionUpdateRequest().llm_overrides is None
@@ -80,6 +83,66 @@ async def test_update_llm_overrides_merges_and_returns_returning(monkeypatch):
     assert "user_id = %s" in sql
     assert params == (json.dumps({"model": "glm-4.6"}, ensure_ascii=False), "s1", 7)
     assert merged == {"provider": "zhipu", "model": "glm-4.6"}
+
+
+@pytest.mark.asyncio
+async def test_update_llm_overrides_clears_a_key(monkeypatch):
+    execute = AsyncMock(return_value=[({"provider": "zhipu"},)])
+    monkeypatch.setattr(session_mod, "execute", execute)
+
+    merged = await session_mod.update_llm_overrides(
+        "s1", 7, {"temperature": _CLEAR},
+    )
+
+    sql, params = execute.await_args.args
+    assert " - 'temperature'" in sql
+    assert "|| %s::jsonb" in sql
+    assert params == (json.dumps({}, ensure_ascii=False), "s1", 7)
+    assert merged == {"provider": "zhipu"}
+
+
+@pytest.mark.asyncio
+async def test_update_llm_overrides_clears_and_sets_together(monkeypatch):
+    execute = AsyncMock(return_value=[({"provider": "zhipu", "model": "glm-4.6"},)])
+    monkeypatch.setattr(session_mod, "execute", execute)
+
+    await session_mod.update_llm_overrides(
+        "s1", 7, {"temperature": _CLEAR, "model": "glm-4.6"},
+    )
+
+    sql, params = execute.await_args.args
+    assert " - 'temperature'" in sql
+    assert params[0] == json.dumps({"model": "glm-4.6"}, ensure_ascii=False)
+
+
+def test_clear_list_is_validated():
+    assert LlmOverrides().clear == []
+    with pytest.raises(ValidationError):
+        # Via validate so an unknown key reaches pydantic instead of mypy.
+        LlmOverrides.model_validate({"clear": ["temperature", "nope"]})
+
+
+def test_api_translates_clear_into_the_storage_sentinel():
+    from app.api.v1 import chat as chat_api
+
+    body = LlmOverrides(temperature=0.2, clear=["max_tokens"])
+    assert chat_api._overrides_patch(body) == {
+        "temperature": 0.2, "max_tokens": _CLEAR,
+    }
+    # Nothing to translate, and no body at all, both mean "no patch".
+    assert chat_api._overrides_patch(LlmOverrides()) == {}
+    assert chat_api._overrides_patch(None) == {}
+
+
+@pytest.mark.asyncio
+async def test_create_session_drops_clear_signals(monkeypatch):
+    execute = AsyncMock(return_value=[])
+    monkeypatch.setattr(session_mod, "execute", execute)
+
+    await session_mod.create_session(7, llm_overrides={"temperature": _CLEAR})
+
+    _, params = execute.await_args.args
+    assert json.loads(params[4]) == {}
 
 
 @pytest.mark.asyncio

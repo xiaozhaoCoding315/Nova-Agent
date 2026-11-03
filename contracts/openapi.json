@@ -2526,6 +2526,21 @@
       },
       "LlmOverrides": {
         "properties": {
+          "clear": {
+            "items": {
+              "enum": [
+                "provider",
+                "model",
+                "reasoning_effort",
+                "context_window",
+                "temperature",
+                "max_tokens"
+              ],
+              "type": "string"
+            },
+            "title": "Clear",
+            "type": "array"
+          },
           "context_window": {
             "anyOf": [
               {

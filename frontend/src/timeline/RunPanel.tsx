@@ -3,6 +3,7 @@ import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FlaskConical, ShieldCheck, X, XOctagon,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { DiffView } from '../components/DiffView'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Spinner, StatusDot } from '../components/common'
@@ -114,18 +115,59 @@ function OutputSection({
 }
 
 function RecentMenu({
-  open, onSelect, onClose,
+  open, onSelect, onClose, triggerRef,
 }: {
   open: boolean
   onSelect: (taskId: string) => void
   onClose: () => void
+  triggerRef: RefObject<HTMLButtonElement>
 }) {
   const recent = useRun((state) => state.recent)
+  const menuRef = useRef<HTMLDivElement>(null)
+  // 父组件每次轮询都会重建 onClose；把它放进 effect 依赖会让菜单重开、
+  // 焦点被拽回第一项，方向键就失效了。用 ref 取最新值。
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
+  // role="menu" 意味着方向键切换焦点、Esc 收起并把焦点还给触发按钮；
+  // 只在打开时接管，收起后不干扰页面其他快捷键。
+  useEffect(() => {
+    if (!open) return
+    const items = () => Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+    )
+    items()[0]?.focus()
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeRef.current()
+        triggerRef.current?.focus()
+        return
+      }
+      const list = items()
+      if (list.length === 0) return
+      const index = list.indexOf(document.activeElement as HTMLButtonElement)
+      const move = (next: number) => {
+        event.preventDefault()
+        list[(next + list.length) % list.length].focus()
+      }
+      if (event.key === 'ArrowDown') move(index + 1)
+      else if (event.key === 'ArrowUp') move(index - 1)
+      else if (event.key === 'Home') move(0)
+      else if (event.key === 'End') move(list.length - 1)
+    }
+    menuRef.current?.addEventListener('keydown', onKey)
+    const node = menuRef.current
+    return () => node?.removeEventListener('keydown', onKey)
+  }, [open, triggerRef])
+
   if (!open) return null
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />
       <div
+        ref={menuRef}
         role="menu"
         aria-label="最近任务"
         className="absolute right-0 top-full z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-edge bg-panel p-1 shadow-pop"
@@ -141,7 +183,7 @@ function RecentMenu({
                 type="button"
                 role="menuitem"
                 onClick={() => onSelect(item.id)}
-                className="block w-full rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-raised"
+                className="block w-full rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-raised focus:bg-raised focus:outline-none"
               >
                 <span className="flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm text-ink">{item.title}</span>
@@ -173,6 +215,7 @@ export function RunPanel() {
   const [confirmReject, setConfirmReject] = useState(false)
   const [busy, setBusy] = useState<'apply' | 'reject' | 'review' | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const recentTriggerRef = useRef<HTMLButtonElement>(null)
 
   const repoId = task?.repo_id ?? selectedRepoId
 
@@ -247,6 +290,7 @@ export function RunPanel() {
         {meta && <Badge tone={meta.tone}>{meta.label}</Badge>}
         <div className="relative ml-auto shrink-0">
           <button
+            ref={recentTriggerRef}
             type="button"
             onClick={() => setRecentOpen((value) => !value)}
             className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-dim transition-colors hover:bg-raised hover:text-ink"
@@ -255,7 +299,12 @@ export function RunPanel() {
           >
             最近任务 <ChevronDown size={10} />
           </button>
-          <RecentMenu open={recentOpen} onSelect={restoreTask} onClose={() => setRecentOpen(false)} />
+          <RecentMenu
+            open={recentOpen}
+            onSelect={restoreTask}
+            onClose={() => setRecentOpen(false)}
+            triggerRef={recentTriggerRef}
+          />
         </div>
         <button
           type="button"

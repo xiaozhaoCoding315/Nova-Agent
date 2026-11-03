@@ -129,6 +129,10 @@ export type RegisterResult = {
   recovery_code: string
 }
 
+export type OverrideKey =
+  | 'provider' | 'model' | 'reasoning_effort'
+  | 'context_window' | 'temperature' | 'max_tokens'
+
 export type LlmOverrides = {
   provider?: string | null
   model?: string | null
@@ -136,6 +140,11 @@ export type LlmOverrides = {
   context_window?: number | null
   temperature?: number | null
   max_tokens?: number | null
+  /**
+   * 请求侧专用：这些键要回到厂商默认。后端把覆盖存在 JSONB 对象里，null
+   * 值删不掉键，所以「自动」必须显式点名要清除的键。
+   */
+  clear?: OverrideKey[]
 }
 
 export type Session = {

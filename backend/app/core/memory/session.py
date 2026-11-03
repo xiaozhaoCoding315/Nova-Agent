@@ -22,7 +22,12 @@ async def create_session(
     llm_overrides: dict | None = None,
 ) -> dict:
     session_id = str(uuid.uuid4())
-    overrides = llm_overrides or {}
+    # A new session has nothing stored to remove, so clear signals are simply
+    # not written rather than persisted as the sentinel.
+    overrides = {
+        key: value for key, value in (llm_overrides or {}).items()
+        if value != CLEAR_OVERRIDE
+    }
     await execute(
         "INSERT INTO sessions (id, user_id, title, model, llm_overrides) "
         "VALUES (%s, %s, %s, %s, %s::jsonb)",
@@ -129,14 +134,27 @@ async def rename_session(session_id: str, user_id: int, title: str) -> dict | No
     return {"id": str(r[0]), "title": r[1], "created_at": r[2], "updated_at": r[3]}
 
 
+# A JSONB ``||`` merge cannot delete a key, so clearing an override (for
+# example switching temperature back to the provider's default) needs an
+# explicit signal. Callers pass ``{key: CLEAR_OVERRIDE}``; the keys are removed
+# from the stored object before the merge.
+CLEAR_OVERRIDE = "__clear__"
+
+
 async def update_llm_overrides(
     session_id: str, user_id: int, overrides: dict,
 ) -> dict | None:
+    to_clear = [key for key, value in overrides.items() if value == CLEAR_OVERRIDE]
+    patch = {key: value for key, value in overrides.items() if key not in to_clear}
+    remove = "".join(f" - '{key}'" for key in to_clear)
+    stored = "COALESCE(llm_overrides, '{}'::jsonb)"
+    if remove:
+        stored = f"({stored}{remove})"
     rows = await execute(
-        "UPDATE sessions SET llm_overrides = "
-        "COALESCE(llm_overrides, '{}'::jsonb) || %s::jsonb, updated_at = now() "
+        f"UPDATE sessions SET llm_overrides = {stored} || %s::jsonb, "
+        "updated_at = now() "
         "WHERE id = %s AND user_id = %s RETURNING llm_overrides",
-        (json.dumps(overrides, ensure_ascii=False), session_id, user_id),
+        (json.dumps(patch, ensure_ascii=False), session_id, user_id),
     )
     return rows[0][0] if rows else None
 

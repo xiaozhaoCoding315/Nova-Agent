@@ -1,4 +1,4 @@
-import type { LlmOverrides, LlmProvider } from './types'
+import type { LlmOverrides, LlmProvider, OverrideKey } from './types'
 
 export function compactOverrides(value: LlmOverrides): LlmOverrides {
   const out: LlmOverrides = {}
@@ -8,7 +8,16 @@ export function compactOverrides(value: LlmOverrides): LlmOverrides {
   if (value.context_window != null) out.context_window = value.context_window
   if (value.temperature != null) out.temperature = value.temperature
   if (value.max_tokens != null) out.max_tokens = value.max_tokens
+  if (value.clear?.length) out.clear = [...value.clear]
   return out
+}
+
+/** 会话参数里允许「回到厂商默认」的键；其余键没有自动档。 */
+export const CLEARABLE_KEYS = ['context_window', 'temperature', 'max_tokens'] as const
+
+/** 显式置空的键就是「回到自动」的意图，后端需要逐键删除才能生效。 */
+export function clearRequested(patch: LlmOverrides): OverrideKey[] {
+  return CLEARABLE_KEYS.filter((key) => patch[key] === null)
 }
 
 export function providerSupportsReasoning(provider?: { supports_reasoning?: boolean } | null): boolean {

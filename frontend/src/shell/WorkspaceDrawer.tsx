@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef } from 'react'
+import { useFocusTrap } from '../lib/focus'
 import { useRepos } from '../stores/repos'
 import type { WorkspaceTab } from '../views/WorkspaceView'
 
@@ -22,20 +23,10 @@ export function WorkspaceDrawer({
 }) {
   const repoName = useRepos((state) => state.repos.find((repo) => repo.id === repoId)?.name)
   const closeRef = useRef<HTMLButtonElement>(null)
-  const triggerRef = useRef<HTMLElement | null>(null)
+  const panelRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (open) {
-      triggerRef.current = document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-      closeRef.current?.focus()
-      return
-    }
-    const trigger = triggerRef.current
-    triggerRef.current = null
-    if (trigger && document.contains(trigger)) trigger.focus()
-  }, [open])
+  // 焦点落到关闭按钮（而不是抽屉本身），Tab 在抽屉内循环，关闭后还给触发按钮。
+  useFocusTrap(panelRef, open, { initialFocus: closeRef })
 
   // 捕获阶段并检查 defaultPrevented：与 AppShell 的分层 Escape 配合，一次只关一层。
   useEffect(() => {
@@ -58,10 +49,12 @@ export function WorkspaceDrawer({
       role="presentation"
     >
       <section
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="工作区"
-        className="flex h-full w-[min(1100px,92vw)] flex-col border-l border-edge bg-base shadow-pop"
+        tabIndex={-1}
+        className="flex h-full w-[min(1100px,92vw)] flex-col border-l border-edge bg-base shadow-pop outline-none"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-edge px-2 font-mono">

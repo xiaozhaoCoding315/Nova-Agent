@@ -5,6 +5,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
+import { useFocusTrap } from '../lib/focus'
 import type { Health } from '../lib/types'
 import { useAuth } from '../stores/auth'
 import { useLlm } from '../stores/llm'
@@ -89,7 +90,6 @@ function SettingsDialogBody({
   const [metricsDays, setMetricsDays] = useState(7)
   const [refreshToken, setRefreshToken] = useState(0)
   const panelRef = useRef<HTMLDivElement>(null)
-  const returnFocusRef = useRef<HTMLElement | null>(null)
 
   const loadHealth = async () => {
     setHealthLoading(true)
@@ -103,17 +103,8 @@ function SettingsDialogBody({
     }
   }
 
-  // 打开时把焦点移入弹层，关闭后回到触发按钮（ProjectRail / 模型选择器等）。
-  useEffect(() => {
-    returnFocusRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null
-    panelRef.current?.focus()
-    return () => {
-      const target = returnFocusRef.current
-      if (target && document.contains(target)) target.focus()
-    }
-  }, [])
+  // 焦点移入、Tab 循环、关闭后回到触发按钮（ProjectRail / 模型选择器等）。
+  useFocusTrap(panelRef, true)
 
   // 只加载弹层外壳需要的数据（版本号）与模型配置；其他 section 按激活时各自加载。
   useEffect(() => {

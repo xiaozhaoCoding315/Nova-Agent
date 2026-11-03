@@ -2770,6 +2770,8 @@ export interface components {
         };
         /** LlmOverrides */
         LlmOverrides: {
+            /** Clear */
+            clear?: ("provider" | "model" | "reasoning_effort" | "context_window" | "temperature" | "max_tokens")[];
             /** Context Window */
             context_window?: number | null;
             /** Max Tokens */

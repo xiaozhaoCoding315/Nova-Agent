@@ -9,6 +9,10 @@ import { Spinner } from './common'
 
 export type AuthMode = 'login' | 'register' | 'reset'
 
+const VISIBLE_MODES: AuthMode[] = ['login', 'register', 'reset']
+const tabId = (mode: AuthMode) => `auth-tab-${mode}`
+const panelId = 'auth-tab-panel'
+
 /** 登录、注册与找回密码表单；从 LoginView 的 AuthModal 抽出，仅改变外观与布局。 */
 export function AuthPanel({
   initialMode,
@@ -46,6 +50,11 @@ export function AuthPanel({
 
   const registrationOpen = config?.registration_mode !== 'closed'
   const emailVerification = config?.email_verification === true
+
+  // 注册关闭时「注册」页签不存在；停在那一档会既没有选中项、也没有 Tab 停靠点。
+  useEffect(() => {
+    if (!registrationOpen && mode === 'register') setMode('login')
+  }, [registrationOpen, mode])
 
   const sendCode = async () => {
     if (!email.trim() || sending || codeCountdown > 0) return
@@ -111,26 +120,58 @@ export function AuthPanel({
       </div>
 
       <div role="tablist" aria-label="认证方式" className="mb-4 flex rounded-md border border-edge bg-base/40 p-0.5">
-        {(['login', 'register', 'reset'] as AuthMode[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={mode === key}
-            onClick={() => { setMode(key); setError(null); setNotice(null) }}
-            className={clsx(
-              'flex-1 rounded-sm px-2 py-1.5 text-sm transition-colors duration-150',
-              mode === key ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:text-ink',
-              // 找回密码需要可达；只有关闭注册时隐藏注册页签。
-              key === 'register' && !registrationOpen && 'hidden',
-            )}
-          >
-            {key === 'login' ? '登录' : key === 'register' ? '注册' : '找回密码'}
-          </button>
-        ))}
+        {VISIBLE_MODES.map((key) => {
+          // 注册关闭时该页签整个不渲染：留在 tablist 里会变成一个选不中的「注册」。
+          if (key === 'register' && !registrationOpen) return null
+          const selected = mode === key
+          return (
+            <button
+              key={key}
+              id={tabId(key)}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={panelId}
+              // roving tabindex：整组只占一个 Tab 停靠点，组内用方向键切换。
+              tabIndex={selected ? 0 : -1}
+              onClick={() => { setMode(key); setError(null); setNotice(null) }}
+              onKeyDown={(event) => {
+                const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+                const list = VISIBLE_MODES.filter((item) => (
+                  item !== 'register' || registrationOpen
+                ))
+                if (event.key === 'Home' || event.key === 'End') {
+                  event.preventDefault()
+                  const next = event.key === 'Home' ? list[0] : list[list.length - 1]
+                  setMode(next)
+                  document.getElementById(tabId(next))?.focus()
+                  return
+                }
+                if (!step) return
+                event.preventDefault()
+                const index = list.indexOf(key)
+                const next = list[(index + step + list.length) % list.length]
+                setMode(next)
+                document.getElementById(tabId(next))?.focus()
+              }}
+              className={clsx(
+                'flex-1 rounded-sm px-2 py-1.5 text-sm transition-colors duration-150',
+                selected ? 'bg-accentSoft/50 text-ink' : 'text-dim hover:text-ink',
+              )}
+            >
+              {key === 'login' ? '登录' : key === 'register' ? '注册' : '找回密码'}
+            </button>
+          )
+        })}
       </div>
 
-      <form onSubmit={submit} className="space-y-3">
+      <form
+        id={panelId}
+        role="tabpanel"
+        aria-labelledby={tabId(mode)}
+        onSubmit={submit}
+        className="space-y-3"
+      >
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}

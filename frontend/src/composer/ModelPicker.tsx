@@ -3,6 +3,7 @@ import { Check, Loader2, Search, Star, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ProviderIcon } from '../components/ProviderIcon'
 import { ApiError } from '../lib/api'
+import { useFocusTrap } from '../lib/focus'
 import {
   providerSupportsReasoning, providerSupportsTemperature, sanitizeOverrides,
 } from '../lib/overrides'
@@ -66,6 +67,9 @@ export function ModelPicker({
   const [savingDefault, setSavingDefault] = useState(false)
   const [defaultFeedback, setDefaultFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const feedbackTimer = useRef<number | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  // 浮层自带全屏遮罩，是模态的：Tab 关在里面，关闭后焦点回到触发按钮。
+  useFocusTrap(panelRef, open)
 
   const providers = settings?.providers ?? []
   const credentials = settings?.credentials ?? []
@@ -231,10 +235,13 @@ export function ModelPicker({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" />
       <div
+        ref={panelRef}
         role="dialog"
+        aria-modal="true"
         aria-label="模型选择"
+        tabIndex={-1}
         className={clsx(
-          'z-50 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-panel shadow-pop',
+          'z-50 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-panel shadow-pop outline-none',
           placement === 'below'
             ? 'fixed inset-x-2 top-12 sm:absolute sm:inset-x-auto sm:left-0 sm:top-full sm:mt-1.5'
             : 'absolute bottom-full right-0 mb-2',
@@ -502,9 +509,19 @@ export function ModelPicker({
             <section>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-2xs uppercase tracking-[0.12em] text-faint">温度</p>
-                <span className="font-mono text-2xs text-faint">
-                  {value.temperature == null ? '自动' : value.temperature.toFixed(1)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-pressed={value.temperature == null}
+                    onClick={() => onChange({ temperature: null })}
+                    className={optionClass(value.temperature == null)}
+                  >
+                    自动
+                  </button>
+                  <span className="font-mono text-2xs text-faint">
+                    {value.temperature == null ? '默认' : value.temperature.toFixed(1)}
+                  </span>
+                </div>
               </div>
               <input
                 type="range"
