@@ -97,6 +97,27 @@ def test_ci_publishes_the_update_metadata() -> None:
     assert sources == {"desktop/out", "artifacts/**"}, uploads
 
 
+def test_tray_and_autostart_are_wired() -> None:
+    """托盘与开机自启：关窗要能隐藏而不是退出，且隐藏时不能丢后端。
+
+    这几处都是「错了也看不出来」的接线：缺 close 拦截就变成关窗即退，
+    缺 window-all-closed 分支会让隐藏的窗口反过来退出整个进程。
+    """
+    main = (DESKTOP / "main.js").read_text(encoding="utf-8")
+    assert "new Tray(" in main
+    assert "app.setLoginItemSettings(" in main
+    assert "app.getLoginItemSettings()" in main
+    # 关窗拦截：只隐藏，不销毁（销毁会停掉本地后端）。
+    assert "event.preventDefault()\n    mainWindow.hide()" in main
+    # window-all-closed 在「留在托盘」时不能退出。
+    assert "if (minimizeToTray) return" in main
+    # 开机自启的隐藏启动：Windows 带 --hidden，macOS 读 wasOpenedAtLogin。
+    # openAsHidden 在 macOS 13+ 已废弃且恒为 false，不能再靠它。
+    assert "'--hidden'" in main
+    assert "wasOpenedAtLogin" in main
+    assert "openAsHidden:" not in main
+
+
 def test_folder_picker_bridge_is_wired_end_to_end() -> None:
     """本地首次向导的原生选目录：主进程 handler + preload 暴露 + 前端调用。
 

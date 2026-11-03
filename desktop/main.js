@@ -4,23 +4,31 @@
 //   local  —— 在本机启动随安装包分发的后端（内嵌 PostgreSQL），数据留在本机；
 //   server —— 连接一台已部署的 Nova 服务器，本机只做界面。
 // 首次启动让用户二选一，之后记住；菜单「运行」可随时切换。
-const { app, BrowserWindow, Menu, dialog, ipcMain, net, shell } = require('electron')
+const {
+  app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, net, shell,
+} = require('electron')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 
 const isMac = process.platform === 'darwin'
+const isWin = process.platform === 'win32'
 const LOCAL_START_TIMEOUT_MS = 120_000
 const LOCAL_STOP_TIMEOUT_MS = 8_000
+// 开机自启时带这个参数：只留托盘，不弹主窗口。
+const HIDDEN_START = process.argv.includes('--hidden')
 
 let mainWindow = null
 let setupWindow = null
 let launchWindow = null
 let launchStatus = null
+let tray = null
 let backend = null
 let backendUrl = ''
 let stoppingBackend = false
 let quitting = false
+// 关闭窗口后是否留在托盘（来自 nova-config.json 的 minimizeToTray）。
+let minimizeToTray = false
 
 /* ---------- 配置持久化 ---------- */
 
@@ -362,6 +370,14 @@ function createMainWindow(url) {
   })
 
   mainWindow.loadURL(url)
+
+  // 「关闭窗口后留在托盘」：关窗只是隐藏，后端继续跑，托盘点一下就能回来。
+  // 真正的退出走菜单「退出」或托盘菜单，那时 quitting 已置位。
+  mainWindow.on('close', (event) => {
+    if (!minimizeToTray || quitting) return
+    event.preventDefault()
+    mainWindow.hide()
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -435,8 +451,11 @@ async function startLocalMode() {
     mainWindow.loadURL(url)
   } else {
     createMainWindow(url)
+    // 开机自启：后端照常起来，但不把窗口推到用户眼前（托盘里能点开）。
+    if (startedHidden() && minimizeToTray) mainWindow.hide()
   }
   if (setupWindow) setupWindow.close()
+  syncTray()
   setupAutoUpdate()
   return url
 }
@@ -565,6 +584,150 @@ function setupAutoUpdate() {
   }
 }
 
+/* ---------- 托盘与开机自启 ---------- */
+
+// Windows / Linux 用系统级自启项；macOS 走登录项。两者都由 Electron 自己
+// 管理（不额外写注册表 / LaunchAgent），这样卸载时能一并清掉。
+function startupSupported() {
+  // Electron 只在 Windows / macOS 实现登录项；Linux 下 setLoginItemSettings
+  // 是空操作，与其假装成功不如直接告诉用户。
+  return app.isPackaged && (isWin || isMac)
+}
+
+// 开机自启是否以隐藏方式启动（Windows 看 --hidden，macOS 看登录项标记）。
+// macOS 的 openAsHidden 在 13 以后已废弃且恒为 false，改看 wasOpenedAtLogin：
+// 由系统登录项拉起时同样不该把窗口推到用户眼前。
+function startedHidden() {
+  if (!startupSupported()) return false
+  if (isMac) {
+    try {
+      return !!app.getLoginItemSettings().wasOpenedAtLogin
+    } catch {
+      return false
+    }
+  }
+  return HIDDEN_START
+}
+
+function startupEnabled() {
+  if (!startupSupported()) return false
+  try {
+    return app.getLoginItemSettings().openAtLogin
+  } catch {
+    return false
+  }
+}
+
+function setStartup(enabled) {
+  if (!startupSupported()) {
+    void showMessage({
+      type: 'info',
+      title: '仅安装版支持开机自启',
+      message: '请先安装 Nova Agent（安装包版本），开发模式下无法注册开机自启。',
+      buttons: ['好'],
+    })
+    return false
+  }
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      // 开机自启时静默进托盘，不抢用户的桌面。macOS 由 startedHidden()
+      // 读 wasOpenedAtLogin 判断，这里不再传已废弃的 openAsHidden。
+      args: isMac ? [] : ['--hidden'],
+    })
+    return true
+  } catch (err) {
+    void showMessage({
+      type: 'error',
+      title: '无法设置开机自启',
+      message: errorText(err),
+      buttons: ['好'],
+    })
+    return false
+  }
+}
+
+function trayImage() {
+  // 托盘图标在 Windows 上需要小图；512px 的 icon.png 直接塞进去会显示不全。
+  const source = path.join(__dirname, 'icon.png')
+  const image = nativeImage.createFromPath(source)
+  if (image.isEmpty()) return image
+  return image.resize({ width: isMac ? 18 : 20, height: isMac ? 18 : 20 })
+}
+
+function showMainWindow() {
+  const win = mainWindow ?? setupWindow ?? launchWindow
+  if (!win || win.isDestroyed()) {
+    // 托盘里窗口已被销毁：按当前模式重建一个。
+    const nextUrl = normalizeUrl(loadConfig().serverUrl)
+    if (loadConfig().mode === 'local' && backendUrl) {
+      createMainWindow(backendUrl)
+    } else if (nextUrl) {
+      createMainWindow(nextUrl)
+    } else {
+      createSetupWindow('', '')
+    }
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    {
+      label: backendUrl ? `本机运行 · ${backendUrl}` : '连接服务器',
+      enabled: false,
+    },
+    { type: 'separator' },
+    { label: '打开 Nova Agent', click: () => showMainWindow() },
+    {
+      label: '重新启动本地服务',
+      enabled: loadConfig().mode === 'local',
+      click: async () => {
+        await switchToLocal()
+        showMainWindow()
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '开机自动启动',
+      type: 'checkbox',
+      checked: startupEnabled(),
+      click: (item) => setStartup(item.checked),
+    },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() },
+  ])
+}
+
+function syncTray() {
+  // 只有「留在托盘」打开时才常驻；否则关闭窗口就是退出，不占系统托盘。
+  if (!minimizeToTray) {
+    if (tray) {
+      tray.destroy()
+      tray = null
+    }
+    return
+  }
+  if (tray) {
+    tray.setContextMenu(buildTrayMenu())
+    return
+  }
+  const image = trayImage()
+  if (image.isEmpty()) {
+    // 图标读不出来时不要建一个看不见的托盘（用户会以为程序没了）。
+    console.warn('tray icon unavailable; skipping tray')
+    return
+  }
+  tray = new Tray(image)
+  tray.setToolTip('Nova Agent')
+  tray.setContextMenu(buildTrayMenu())
+  tray.on('click', () => showMainWindow())
+  tray.on('double-click', () => showMainWindow())
+}
+
 /* ---------- 菜单 ---------- */
 
 function buildMenu() {
@@ -581,6 +744,23 @@ function buildMenu() {
           click: async () => {
             if (!backend && loadConfig().mode !== 'local') return
             await switchToLocal()
+          },
+        },
+        { type: 'separator' },
+        {
+          label: '开机自动启动',
+          type: 'checkbox',
+          checked: startupEnabled(),
+          click: (item) => setStartup(item.checked),
+        },
+        {
+          label: '关闭窗口后留在托盘',
+          type: 'checkbox',
+          checked: minimizeToTray,
+          click: (item) => {
+            minimizeToTray = item.checked
+            saveConfig({ minimizeToTray })
+            syncTray()
           },
         },
         { type: 'separator' },
@@ -637,9 +817,11 @@ if (!gotLock) {
   })
 
   app.whenReady().then(async () => {
-    buildMenu()
-
     const cfg = loadConfig()
+    minimizeToTray = !!cfg.minimizeToTray
+    buildMenu()
+    syncTray()
+
     const savedUrl = normalizeUrl(cfg.serverUrl)
     const mode = cfg.mode || (savedUrl ? 'server' : '')
 
@@ -653,6 +835,7 @@ if (!gotLock) {
     } else if (mode === 'server') {
       if (savedUrl && (await checkServer(savedUrl))) {
         createMainWindow(savedUrl)
+        if (startedHidden() && minimizeToTray) mainWindow.hide()
         setupAutoUpdate()
       } else {
         createSetupWindow(
@@ -679,13 +862,18 @@ if (!gotLock) {
   })
 
   app.on('before-quit', (event) => {
-    if (quitting || !backend || backend.exitCode !== null) return
+    if (quitting || !backend || backend.exitCode !== null) {
+      quitting = true
+      return
+    }
     quitting = true
     event.preventDefault()
     void stopLocalBackend().finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {
+    // 留在托盘时不退出：后端继续服务，托盘菜单可以重新打开窗口。
+    if (minimizeToTray) return
     if (!isMac) app.quit()
   })
 }
