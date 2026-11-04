@@ -10,10 +10,19 @@ name: Nightly Live Eval
 #   DEEPSEEK_API_KEY / ZHIPU_API_KEY / DASHSCOPE_API_KEY / ANTHROPIC_API_KEY
 # 未配置时本工作流会明确失败并指出要加哪个 secret，而不是静默跳过——
 # 一个永远不跑的夜间任务等于没有夜间任务。
+#
+# 定时触发暂时关闭：仓库还没有任何 provider secret，唯一的定时运行在
+# "Pick a provider key" 一步失败，等于每天凌晨固定红一次，反而训练人
+# 忽略 Actions 的红点。保留 workflow_dispatch，想手动跑随时可以。
+#
+# 重新开启的步骤：
+#   1. Settings → Secrets → Actions 添加 DEEPSEEK_API_KEY（或其它 provider）
+#   2. 取消下面 schedule 的注释
+#   3. 手动 dispatch 跑一次确认是绿的，再让定时接管
 on:
-  schedule:
-    # UTC 19:17 = 北京时间次日 03:17。避开整点，减少 Actions 排队。
-    - cron: "17 19 * * *"
+  # schedule:
+  #   # UTC 19:17 = 北京时间次日 03:17。避开整点，减少 Actions 排队。
+  #   - cron: "17 19 * * *"
   workflow_dispatch:
     inputs:
       provider:
