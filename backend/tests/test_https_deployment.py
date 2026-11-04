@@ -53,8 +53,17 @@ def test_caddyfile_routes_both_sites() -> None:
     # 每条站点块都要有 reverse_proxy，且指向正确的容器。
     assert "reverse_proxy app:8000" in text
     assert "reverse_proxy blog-app-1:3000" in text
-    hosts = re.findall(r"^([a-z0-9.-]+)\s*\{", text, flags=re.MULTILINE)
-    assert len(hosts) >= 2, hosts
+    # 站点行可以是多主机写法（"a.cn, www.a.cn {"），每个域名都要有证书，
+    # 所以这里按逗号拆开计数，而不是只认行首那一个。
+    hosts = [
+        host.strip()
+        for line in text.splitlines()
+        for host in re.findall(r"^([a-z0-9.\-,\s]+?)\s*\{", line, flags=re.MULTILINE)
+        for host in host.split(",")
+        if host.strip()
+    ]
+    assert len(hosts) >= 3, hosts
+    assert any("www." in host for host in hosts), hosts
 
 
 def test_caddy_overrides_the_spoofable_real_ip_header() -> None:
