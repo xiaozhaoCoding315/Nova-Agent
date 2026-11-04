@@ -344,6 +344,21 @@ def _copy_sanitized_workspace(root: str, include_git: bool) -> str:
                 if include_git:
                     keep.append(name)
                 continue
+            if rel.startswith(".git/"):
+                # .git 内部的子目录（refs/、objects/、logs/、hooks/）每一段
+                # 都命中 _SECRET_DIRS 里的 ".git"，走 is_secret_path 会被当成
+                # 密钥目录整棵丢掉。那样拷出来的 .git 只剩 HEAD/index/config，
+                # 根本不是仓库，git 会报 "not a git repository" —— 只读模式的
+                # git 诊断（git status/diff/log）就是这样静默失效的。
+                # 与下面的文件循环保持一致：include_git 为真时整棵树都拷，
+                # 凭据只靠 _scrub_git_config 从 config 里清掉。
+                #
+                # 唯一的例外是 hooks/：那是 git 会真正执行的内容，而仓库可能
+                # 来自不可信的 zip 导入。git status/diff/log 都不需要它，所以
+                # 别在修这个 bug 的同时把它引进沙箱。
+                if include_git and name != "hooks":
+                    keep.append(name)
+                continue
             if is_secret_path(rel):
                 continue
             if os.path.islink(os.path.join(dirpath, name)):

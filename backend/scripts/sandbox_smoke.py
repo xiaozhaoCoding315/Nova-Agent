@@ -8,7 +8,13 @@ from app.core.sandbox.runtime import execute, sandbox_status
 
 
 async def _run(command: str, *, files: dict | None = None) -> dict:
-    return await execute(files=files or {}, command=command, timeout=60)
+    # execute() 拒绝空 files（"no files provided"）——沙箱是按「挂载一组文件再
+    # 跑命令」建模的，没有文件就没有容器可起。探针本身不需要用户代码，但必须
+    # 给一个占位文件，否则每次都会拿到 exit_code=-1，把「git 未安装」之类的
+    # 假失败混进结果里。
+    return await execute(
+        files=files or {"probe.py": "print('probe')"}, command=command, timeout=60
+    )
 
 
 async def main() -> int:

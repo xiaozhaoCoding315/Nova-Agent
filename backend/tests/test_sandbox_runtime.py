@@ -42,6 +42,36 @@ def test_sanitized_workspace_excludes_secrets(tmp_path):
         shutil.rmtree(copy, ignore_errors=True)
 
 
+def test_sanitized_workspace_keeps_the_whole_git_tree(tmp_path):
+    """只拷 HEAD/config 的 .git 不是仓库，git 会报 "not a git repository"。
+
+    原来的测试只写了 .git/HEAD 和 .git/config 两个文件，于是漏掉了真正的
+    坑：目录循环把 .git 下的每一层子目录都交给 is_secret_path 判断，而
+    _SECRET_DIRS 里有 ".git"，refs/、objects/、logs/ 全被当成密钥目录丢掉。
+    文件循环有专门的 .git/ 分支，目录循环没有，两边不一致。
+    """
+    _write(tmp_path / "main.py", "print(1)")
+    _write(tmp_path / ".git" / "HEAD", "ref: refs/heads/main\n")
+    _write(tmp_path / ".git" / "config", "[core]\n\trepositoryformatversion = 0\n")
+    _write(tmp_path / ".git" / "index", "DIRC")
+    _write(tmp_path / ".git" / "refs" / "heads" / "main", "0" * 40 + "\n")
+    _write(tmp_path / ".git" / "objects" / "ab" / ("cdef" * 10), "blob")
+    _write(tmp_path / ".git" / "logs" / "HEAD", "log line\n")
+    # 仓库可能来自不可信的 zip 导入，.git/hooks 是 git 会真正执行的内容，
+    # 而 git status/diff/log 都用不到它——不该被带进沙箱。
+    _write(tmp_path / ".git" / "hooks" / "pre-commit", "#!/bin/sh\necho pwned\n")
+
+    copy = Path(rt._copy_sanitized_workspace(str(tmp_path), include_git=True))
+    try:
+        assert (copy / ".git" / "refs" / "heads" / "main").is_file()
+        assert (copy / ".git" / "objects" / "ab" / ("cdef" * 10)).is_file()
+        assert (copy / ".git" / "logs" / "HEAD").is_file()
+        assert not (copy / ".git" / "hooks").exists()
+        assert not (copy / ".env").exists()
+    finally:
+        shutil.rmtree(copy, ignore_errors=True)
+
+
 def test_sanitized_workspace_can_exclude_git(tmp_path):
     _write(tmp_path / "main.py", "print(1)")
     _write(tmp_path / ".git" / "HEAD", "ref: refs/heads/main")
