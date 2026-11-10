@@ -2,7 +2,7 @@ import { FileText } from 'lucide-react'
 import { EditCard } from '../components/EditCard'
 import { Markdown } from '../components/Markdown'
 import { PlanCard } from '../components/PlanCard'
-import { Spinner } from '../components/common'
+import { DotLoader } from './DotLoader'
 import { api } from '../lib/api'
 import { isVisionImage } from '../lib/attachments'
 import type {
@@ -207,7 +207,7 @@ function StreamingContent({
         <Markdown content={stream.text} />
       ) : (
         <p className="flex items-center gap-2 text-sm text-dim">
-          <Spinner className="h-3 w-3" />
+          <DotLoader />
           {statusText}
         </p>
       )}
@@ -252,8 +252,18 @@ export function TurnView({
   const meta: string[] = []
   if (toolCount > 0) meta.push(`${toolCount} 个工具`)
   if (elapsed > 0) meta.push(formatDuration(elapsed))
-  if (evidence && evidence.citations.length > 0) {
-    meta.push(`证据 ${evidence.verified}/${evidence.citations.length}`)
+
+  // 细节默认收成一簇，悬停/聚焦才展开：证据圆点已经在左侧信号轨上，
+  // 这里再排一串等宽文字只会让轮末变成一堵墙。
+  // 只收「证据」这一类：轮数、tokens 这类数字在 RunSummary 里已经有了，
+  // 塞进来会让 `+N` 变成一个没有信息量的按钮。
+  const detail: string[] = []
+  if (evidence) {
+    if (evidence.citations.length > 0) {
+      detail.push(`证据 ${evidence.verified}/${evidence.citations.length}`)
+    }
+    if (evidence.missing > 0) detail.push(`缺引用 ${evidence.missing}`)
+    if (evidence.executed) detail.push('沙箱实测')
   }
 
   return (
@@ -279,10 +289,27 @@ export function TurnView({
             />
           )}
         </div>
-        {!stream && meta.length > 0 && (
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-edge/60 pt-1.5 font-mono text-2xs text-faint">
-            {meta.join(' · ')}
-          </p>
+        {!stream && (meta.length > 0 || detail.length > 0) && (
+          <div className="mt-3 flex items-center gap-1.5 border-t border-edge/60 pt-1.5 font-mono text-2xs text-faint">
+            {meta.length > 0 && <span>{meta.join(' · ')}</span>}
+            {detail.length > 0 && (
+              <div className="group/meta relative">
+                <button
+                  type="button"
+                  className="rounded px-1 text-faint transition-colors duration-150 hover:bg-raised hover:text-dim focus-visible:bg-raised focus-visible:text-dim"
+                  aria-label={`本轮详情：${detail.join('，')}`}
+                >
+                  +{detail.length}
+                </button>
+                <span
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute bottom-full left-0 z-10 mb-1 whitespace-nowrap rounded-md border border-edge bg-panel px-2 py-1 text-2xs text-dim opacity-0 shadow-pop transition-opacity duration-150 group-hover/meta:visible group-hover/meta:opacity-100 group-focus-within/meta:visible group-focus-within/meta:opacity-100"
+                >
+                  {detail.join(' · ')}
+                </span>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

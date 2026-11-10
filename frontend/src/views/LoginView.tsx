@@ -3,6 +3,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AuthPanel, type AuthMode } from '../components/AuthPanel'
+import { HeroComposer } from '../components/HeroComposer'
 import { IcpNotice } from '../components/IcpNotice'
 import { StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
@@ -260,6 +261,7 @@ export function LoginView() {
 
         <nav className="ml-6 hidden items-center gap-5 text-xs text-dim md:flex" aria-label="页面导航">
           <a className="transition-colors hover:text-ink" href="#proof">证据</a>
+          <a className="transition-colors hover:text-ink" href="#ledger">账本</a>
           <a className="transition-colors hover:text-ink" href="#run-modes">运行方式</a>
           <a className="transition-colors hover:text-ink" href="#download">下载</a>
         </nav>
@@ -337,7 +339,7 @@ export function LoginView() {
             )}
           </div>
 
-          <RunLedger />
+          <HeroComposer onStart={() => openAuth('login')} />
         </section>
 
         <section id="proof" className="border-y border-edge/60" aria-label="证据链">
@@ -350,6 +352,32 @@ export function LoginView() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section id="ledger" className="grid gap-8 py-16 md:py-20 lg:grid-cols-[0.85fr_1.15fr] lg:items-start lg:gap-14">
+          <div className="min-w-0">
+            <p className="font-mono text-2xs uppercase tracking-[0.18em] text-faint">one run</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink md:text-3xl">
+              一次会话留下的，是一条可复查的账本。
+            </h2>
+            <p className="mt-3 max-w-md text-sm leading-6 text-dim">
+              每一步工具调用都记着参数与结果，每一条引用都指向真实文件行，
+              补丁在写入前以 diff 呈现。会话结束后，这条账本仍然在。
+            </p>
+            <ul className="mt-5 space-y-2 font-mono text-xs text-dim">
+              {[
+                '工具、命令与退出码逐条留痕',
+                '引用核验：不存在或越界的行号直接标红',
+                '未验证的结论会被显式标为未验证',
+              ].map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="text-accent" aria-hidden="true">─</span>
+                  <span className="min-w-0">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <RunLedger />
         </section>
 
         <section id="run-modes" className="py-16 md:py-20">

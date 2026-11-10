@@ -93,6 +93,26 @@ body {
 /* 光标保持静态，不再做 1s 无限闪烁；其余 landing 动画已随旧登录页删除。 */
 .nova-caret { animation: none; }
 
+/* ---------- 点阵等待指示（timeline/DotLoader） ---------- */
+/* 每个点自己明暗呼吸，靠 animation-delay 错开相位形成斜向流动。
+   基态是不透明的，所以 reduced-motion 下动画跑完就停在满亮度点阵上。 */
+@keyframes nova-dot {
+  0%,
+  100% { opacity: 1; }
+  50% { opacity: 0.22; }
+}
+
+/* ---------- 验证码错误抖动（components/OtpInput） ---------- */
+/* 提交失败时抖一次，不是输入过程中的噪音；reduced-motion 下由全局兜底压平。 */
+@keyframes nova-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+.nova-shake { animation: nova-shake 0.32s ease-in-out; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

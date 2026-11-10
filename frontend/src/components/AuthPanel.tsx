@@ -5,6 +5,7 @@ import type { FormEvent } from 'react'
 import { api, ApiError } from '../lib/api'
 import { inputClass } from '../lib/ui'
 import { useAuth } from '../stores/auth'
+import { OtpInput } from './OtpInput'
 import { Spinner } from './common'
 
 export type AuthMode = 'login' | 'register' | 'reset'
@@ -27,7 +28,15 @@ export function AuthPanel({
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
+  // 邀请链接形如 /?invite=NOVA-XXXX-XXXX-XXXX：管理员在设置里复制链接发给对方，
+  // 打开注册页时邀请码已经填好，不用再手工抄一遍。
+  const [inviteCode, setInviteCode] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('invite')?.trim() ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [recoveryCode, setRecoveryCode] = useState('')
   const [email, setEmail] = useState('')
   const [emailCode, setEmailCode] = useState('')
@@ -35,6 +44,10 @@ export function AuthPanel({
   const [resetByEmail, setResetByEmail] = useState(true)
   const [busy, setBusy] = useState(false)
   const [sending, setSending] = useState(false)
+  /** 验证码提交失败：抖一次并标红，下一次输入即清除。 */
+  const [codeInvalid, setCodeInvalid] = useState(false)
+  /** 失败计数：同一组错误值重复提交时也要重放抖动。 */
+  const [shakeKey, setShakeKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -104,7 +117,13 @@ export function AuthPanel({
         setRecoveryCode('')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '操作失败，请重试')
+      const message = err instanceof ApiError ? err.message : '操作失败，请重试'
+      setError(message)
+      // 只在「验证码」这个词出现在错误里时才抖：密码错、用户名重复不该让验证码格抖动。
+      if (emailCode && message.includes('验证码')) {
+        setCodeInvalid(true)
+        setShakeKey((value) => value + 1)
+      }
     } finally {
       setBusy(false)
     }
@@ -208,24 +227,26 @@ export function AuthPanel({
               autoComplete="email"
               className={inputClass}
             />
-            <div className="flex gap-2">
-              <input
-                value={emailCode}
-                onChange={(e) => setEmailCode(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="邮箱验证码"
-                inputMode="numeric"
-                maxLength={6}
-                className={`${inputClass} flex-1`}
-              />
+            <OtpInput
+              value={emailCode}
+              onChange={(next) => { setEmailCode(next); setCodeInvalid(false) }}
+              invalid={codeInvalid}
+              shakeKey={shakeKey}
+              disabled={busy}
+            />
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => void sendCode()}
                 aria-label={sending ? '正在发送验证码' : undefined}
                 disabled={sending || codeCountdown > 0 || !email.trim()}
-                className="shrink-0 rounded-md border border-accent/40 bg-accentSoft/40 px-3 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/60 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 shrink-0 items-center rounded-md border border-accent/40 bg-accentSoft/40 px-3 text-xs text-accent transition-colors duration-150 hover:bg-accentSoft/60 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {sending ? <Loader2 size={12} className="animate-spin" /> : codeCountdown > 0 ? `${codeCountdown}s` : '发送验证码'}
               </button>
+              <span className="text-2xs text-faint">
+                {emailCode.length === 6 ? '已填满，可以提交' : `${emailCode.length} / 6 位`}
+              </span>
             </div>
           </>
         )}

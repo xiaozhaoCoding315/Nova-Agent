@@ -197,6 +197,11 @@ scp desktop/out/Nova-Agent-Setup-2.0.0.exe server:~/nova-agent/data/downloads/
 无需重启。用户从登录页点「下载桌面客户端」或直接访问 `http://<服务器>:8000/downloads` 下载；
 安装后首次启动填服务器地址（如 `http://<服务器IP>:8000`），登录即用。
 
+`/downloads` 是前端的 React 页面（`frontend/src/views/DownloadsView.tsx`），列表数据来自
+公开接口 `GET /api/v1/downloads`，实时读目录，所以放文件后刷新即可，不需要重建镜像。
+后端只保留 `/downloads/files/*` 的静态直链；SPA 的其他路径由 `app/main.py` 的兜底路由
+返回 `index.html`，带扩展名的资源缺文件仍是真 404。
+
 ## 四、日常运维
 
 ```bash

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Check, Loader2, Search, Star, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, Plus, Search, Star, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ProviderIcon } from '../components/ProviderIcon'
 import { ApiError } from '../lib/api'
@@ -14,6 +14,13 @@ import { useLlm } from '../stores/llm'
 
 const REASONING_OPTIONS: { value: '' | 'low' | 'medium' | 'high'; label: string }[] = [
   { value: '', label: '自动' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+]
+
+/** 「自动」是开关，不是一档；三档强度单独成组，语义与滑块/分段控件一致。 */
+const EFFORT_STEPS: { value: 'low' | 'medium' | 'high'; label: string }[] = [
   { value: 'low', label: '低' },
   { value: 'medium', label: '中' },
   { value: 'high', label: '高' },
@@ -64,6 +71,8 @@ export function ModelPicker({
   const [customContext, setCustomContext] = useState('')
   const [contextError, setContextError] = useState<string | null>(null)
   const [tempDraft, setTempDraft] = useState(1)
+  /** 「更多参数」默认收起：首屏只留厂商 / 模型 / 推理强度。 */
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [savingDefault, setSavingDefault] = useState(false)
   const [defaultFeedback, setDefaultFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const feedbackTimer = useRef<number | null>(null)
@@ -124,6 +133,8 @@ export function ModelPicker({
     setContextError(null)
     setTempDraft(value.temperature ?? 1)
     setDefaultFeedback(null)
+    // 会话里已经改过上下文或温度时，直接展开，别让用户以为设置丢了。
+    setAdvancedOpen(value.context_window != null || value.temperature != null)
     if (feedbackTimer.current != null) {
       window.clearTimeout(feedbackTimer.current)
       feedbackTimer.current = null
@@ -264,7 +275,7 @@ export function ModelPicker({
         <div className="max-h-[calc(100vh-190px)] space-y-3 overflow-y-auto px-3 py-2.5">
           <section>
             <p className="mb-1.5 text-2xs uppercase tracking-[0.12em] text-faint">厂商</p>
-            <div className="max-h-40 space-y-0.5 overflow-y-auto pr-0.5">
+            <div className="max-h-52 space-y-px overflow-y-auto pr-0.5">
               {orderedProviders.length === 0 && (
                 <p className="px-1 py-1 text-xs text-dim">还没有可用的厂商配置。</p>
               )}
@@ -272,21 +283,18 @@ export function ModelPicker({
                 const credential = credentialMap.get(provider.id)
                 if (!credential) {
                   return (
-                    <div
+                    <button
                       key={provider.id}
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 opacity-50"
+                      type="button"
+                      onClick={onConfigure}
+                      title={`${provider.label} 还没有保存 Key，点击配置`}
+                      aria-label={`配置 ${provider.label}`}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-xs text-faint transition-colors hover:bg-raised hover:text-dim"
                     >
-                      <ProviderIcon id={provider.id} size={15} className="text-faint" />
-                      <span className="min-w-0 flex-1 truncate text-sm text-dim">{provider.label}</span>
-                      <button
-                        type="button"
-                        onClick={onConfigure}
-                        className="shrink-0 rounded-sm border border-edge px-1.5 py-0.5 text-2xs text-dim transition-colors hover:text-ink"
-                        aria-label={`配置 ${provider.label}`}
-                      >
-                        配置
-                      </button>
-                    </div>
+                      <ProviderIcon id={provider.id} size={13} className="shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{provider.label}</span>
+                      <Plus size={11} className="shrink-0" />
+                    </button>
                   )
                 }
                 const selected = provider.id === activeProviderId
@@ -296,25 +304,22 @@ export function ModelPicker({
                     type="button"
                     onClick={() => selectProvider(provider)}
                     aria-pressed={selected}
+                    title={`${provider.label} · ${credential.model}`}
                     className={clsx(
-                      'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors',
+                      'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-xs transition-colors',
                       selected
-                        ? 'border-accent/40 bg-accentSoft/30 text-ink'
-                        : 'border-transparent text-dim hover:bg-raised hover:text-ink',
+                        ? 'bg-accentSoft/40 text-ink'
+                        : 'text-dim hover:bg-raised hover:text-ink',
                     )}
                   >
                     <ProviderIcon
                       id={provider.id}
-                      size={15}
-                      className={selected ? 'text-accent' : 'text-faint'}
+                      size={13}
+                      className={selected ? 'shrink-0 text-accent' : 'shrink-0 text-faint'}
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{provider.label}</span>
-                      <span className="block truncate font-mono text-2xs text-faint">
-                        {credential.model}
-                      </span>
-                    </span>
-                    {selected && <Check size={12} className="shrink-0 text-accent" />}
+                    <span className="min-w-0 flex-1 truncate">{provider.label}</span>
+                    <span className="shrink-0 font-mono text-2xs text-faint">{credential.model}</span>
+                    {selected && <Check size={11} className="shrink-0 text-accent" />}
                   </button>
                 )
               })}
@@ -404,31 +409,87 @@ export function ModelPicker({
 
           {activeProvider && providerSupportsReasoning(activeProvider) && (
             <section>
-              <p className="mb-1.5 text-2xs uppercase tracking-[0.12em] text-faint">推理强度</p>
-              <div className="grid grid-cols-4 gap-1" role="group" aria-label="推理强度">
-                {REASONING_OPTIONS.map((option) => (
-                  <button
-                    key={option.value || 'auto'}
-                    type="button"
-                    aria-pressed={currentEffort === option.value}
-                    onClick={() => onChange({ reasoning_effort: option.value })}
-                    className={optionClass(currentEffort === option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-2xs uppercase tracking-[0.12em] text-faint">推理强度</p>
+                <button
+                  type="button"
+                  onClick={() => onChange({ reasoning_effort: '' })}
+                  aria-pressed={currentEffort === ''}
+                  className={clsx(
+                    'rounded-full px-1.5 py-0.5 text-2xs transition-colors',
+                    currentEffort === ''
+                      ? 'bg-accentSoft/40 text-accent'
+                      : 'text-faint hover:bg-raised hover:text-dim',
+                  )}
+                  title="不覆盖厂商默认，跟随凭据里的设置"
+                >
+                  自动
+                </button>
+              </div>
+              <div
+                role="radiogroup"
+                aria-label="推理强度"
+                className={clsx(
+                  'grid grid-cols-3 gap-1 transition-opacity',
+                  currentEffort === '' && 'opacity-50',
+                )}
+              >
+                {EFFORT_STEPS.map((option) => {
+                  const active = currentEffort === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => onChange({ reasoning_effort: option.value })}
+                      className={clsx(
+                        'rounded-sm border py-1 text-xs transition-colors',
+                        active
+                          ? 'border-accent/50 bg-accentSoft/40 text-ink'
+                          : 'border-edge text-dim hover:border-accent/30 hover:text-ink',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
               </div>
               {currentEffort === '' && (
                 reasoningCleared ? (
                   <p className="mt-1 text-2xs text-dim">已关闭（不继承默认）</p>
                 ) : defaultEffortLabel ? (
                   <p className="mt-1 text-2xs text-faint">自动（默认 {defaultEffortLabel}）</p>
-                ) : null
+                ) : (
+                  <p className="mt-1 text-2xs text-faint">自动：跟随凭据里的默认强度</p>
+                )
               )}
             </section>
           )}
 
           {activeProvider && (
+            <section>
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((value) => !value)}
+                aria-expanded={advancedOpen}
+                className="flex w-full items-center gap-1.5 rounded-sm py-0.5 text-left transition-colors hover:text-ink"
+              >
+                {advancedOpen
+                  ? <ChevronDown size={11} className="shrink-0 text-faint" />
+                  : <ChevronRight size={11} className="shrink-0 text-faint" />}
+                <span className="text-2xs uppercase tracking-[0.12em] text-faint">更多参数</span>
+                {!advancedOpen && (
+                  <span className="ml-auto truncate font-mono text-2xs text-faint">
+                    {currentContext != null ? formatWindow(currentContext) : '上下文自动'}
+                    {value.temperature != null ? ` · T ${value.temperature.toFixed(1)}` : ''}
+                  </span>
+                )}
+              </button>
+            </section>
+          )}
+
+          {activeProvider && advancedOpen && (
             <section>
               <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-2xs uppercase tracking-[0.12em] text-faint">上下文窗口</p>
@@ -505,7 +566,7 @@ export function ModelPicker({
             </section>
           )}
 
-          {activeProvider && providerSupportsTemperature(activeProvider) && (
+          {activeProvider && advancedOpen && providerSupportsTemperature(activeProvider) && (
             <section>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-2xs uppercase tracking-[0.12em] text-faint">温度</p>

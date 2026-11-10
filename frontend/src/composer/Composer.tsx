@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  ArrowUp, Check, ChevronDown, Cpu, FileText, Loader2, Paperclip, ShieldCheck, Slash, Square, X,
+  ArrowUp, Check, ChevronDown, Cpu, FileText, Loader2, Plus, ShieldCheck, Slash, Square, X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react'
@@ -27,6 +27,13 @@ const PERMISSION_HINT: Record<PermissionMode, string> = {
 }
 
 const PERMISSION_ORDER: PermissionMode[] = ['readonly', 'ask', 'auto', 'full']
+
+/** 底栏控件共用的圆形 / 胶囊外观：无描边，悬停才显底色。 */
+const roundControl =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-dim transition-colors duration-150 hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+/** 胶囊默认不 shrink；模型胶囊单独放开收缩，窄屏才挤得下发送按钮。 */
+const pillControl =
+  'flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs text-dim transition-colors duration-150 hover:bg-raised hover:text-ink'
 
 /** 终端输入框：`›` 前缀、无边框 textarea、底部工具行（附件 / 命令 / 模型 / 权限 / 上下文 / 发送）。 */
 export function Composer({
@@ -293,12 +300,26 @@ export function Composer({
   }
 
   const chipLabel = picker.value.provider && model ? `${picker.value.provider}/${model}` : modelLabel
+  /**
+   * 模型胶囊只显示模型名（厂商已在浮层首行），底栏宽度要留给权限与发送。
+   * 未配置时不展示 Workbench 传进来的长提示语，胶囊里只留一个可点的「选择模型」。
+   */
+  const modelShort = model ?? (modelLabel.startsWith('未配置') ? '选择模型' : modelLabel)
+  const effortLabel = picker.value.reasoning_effort === 'low'
+    ? '低'
+    : picker.value.reasoning_effort === 'medium'
+      ? '中'
+      : picker.value.reasoning_effort === 'high' ? '高' : '自动'
+  /** 推理强度只有厂商支持时才在胶囊上出现，避免显示一个改不动的值。 */
+  const showEffort = Boolean(
+    picker.settings?.providers.find((item) => item.id === activeProviderId)?.supports_reasoning,
+  )
 
   return (
     <div className="shrink-0 border-t border-edge bg-base/95 px-4 py-3">
       <div className="mx-auto max-w-4xl">
         <div
-          className="relative rounded-md border border-edge bg-panel transition-colors duration-150 focus-within:border-accent/40"
+          className="relative rounded-lg border border-edge bg-panel transition-colors duration-150 focus-within:border-accent/40"
           onDragOver={(event) => event.preventDefault()}
           onDrop={onDrop}
         >
@@ -426,44 +447,27 @@ export function Composer({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 px-2.5 pb-2 pt-1">
+          <div className="flex items-center gap-0.5 px-1.5 pb-1.5 pt-0.5">
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={uploading || attachments.length >= 5}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-edge bg-raised/60 text-dim transition-colors duration-150 hover:text-ink disabled:opacity-40"
+              className={roundControl}
               title="上传附件（最多 5 个，可拖拽）"
               aria-label="上传附件"
             >
-              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />}
             </button>
 
             <button
               type="button"
               onClick={insertSlash}
               disabled={disabled || streaming}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-edge bg-raised/60 text-dim transition-colors duration-150 hover:text-ink disabled:opacity-40"
+              className={roundControl}
               title="插入斜杠命令"
               aria-label="插入斜杠命令"
             >
-              <Slash size={12} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPermissionOpen(false)
-                setModelOpen((open) => !open)
-              }}
-              aria-haspopup="dialog"
-              aria-expanded={modelOpen}
-              aria-label={`模型：${chipLabel}，打开模型选择`}
-              title={`本会话模型：${chipLabel}`}
-              className="flex h-7 min-w-0 items-center gap-1.5 rounded-sm border border-edge bg-raised/60 py-0 pl-2 pr-1.5 text-xs text-dim transition-colors duration-150 hover:border-faint hover:text-ink"
-            >
-              <Cpu size={12} className="shrink-0 text-accent/80" />
-              <span className="max-w-[90px] truncate font-mono sm:max-w-[180px]">{chipLabel}</span>
-              <ChevronDown size={11} className="shrink-0 text-faint" />
+              <Slash size={13} />
             </button>
 
             <div className="relative shrink-0">
@@ -478,13 +482,14 @@ export function Composer({
                 aria-label={`权限：${PERMISSION_LABEL[permissionMode]}`}
                 title={PERMISSION_HINT[permissionMode]}
                 className={clsx(
-                  'flex h-7 items-center gap-1.5 rounded-sm border border-edge bg-raised/60 px-2 text-xs text-dim transition-colors duration-150 hover:text-ink',
-                  permissionMode === 'full' && 'border-err/40 text-err',
+                  pillControl,
+                  'shrink-0',
+                  permissionMode === 'full' && 'text-err hover:text-err',
                 )}
               >
-                <ShieldCheck size={12} className="shrink-0" />
-                <span className="hidden whitespace-nowrap sm:inline">{PERMISSION_LABEL[permissionMode]}</span>
-                <ChevronDown size={11} className="hidden text-faint sm:inline" />
+                <ShieldCheck size={13} className="shrink-0" />
+                <span className="whitespace-nowrap">{PERMISSION_LABEL[permissionMode]}</span>
+                <ChevronDown size={11} className="shrink-0 text-faint" />
               </button>
               {permissionOpen && (
                 <>
@@ -534,19 +539,42 @@ export function Composer({
               )}
             </div>
 
-            <ContextMeterChip meter={contextMeter} />
+            <ContextMeterChip meter={contextMeter} repoCount={contextCount} />
 
-            <span className="hidden text-2xs text-faint lg:inline">
-              {contextCount > 0 ? `${contextCount} 个仓库` : '未关联仓库'}
-            </span>
+            <div className="ml-auto flex min-w-0 shrink items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setPermissionOpen(false)
+                  setModelOpen((open) => !open)
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={modelOpen}
+                aria-label={`模型：${chipLabel}，打开模型选择`}
+                title={`本会话模型：${chipLabel}`}
+                className={clsx(pillControl, 'min-w-0 max-w-[46vw] shrink sm:max-w-none')}
+              >
+                <Cpu size={13} className="shrink-0 text-accent/80" />
+                {/* 窄屏放不下「模型 · 强度」：只留图标，完整信息在 title 与浮层里。 */}
+                <span className="hidden min-w-0 truncate font-mono sm:inline">{modelShort}</span>
+                {showEffort && (
+                  <>
+                    <span className="hidden shrink-0 text-faint/60 sm:inline" aria-hidden="true">·</span>
+                    <span className="hidden shrink-0 text-2xs text-faint sm:inline">{effortLabel}</span>
+                  </>
+                )}
+                <ChevronDown size={11} className="shrink-0 text-faint" />
+              </button>
 
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <span className="hidden text-2xs text-faint lg:inline">Enter 发送 · Shift+Enter 换行</span>
+              <span className="hidden shrink-0 px-1.5 text-2xs text-faint xl:inline">
+                Enter 发送 · Shift+Enter 换行
+              </span>
+
               {streaming ? (
                 <button
                   type="button"
                   onClick={onStop}
-                  className="flex h-8 items-center gap-1.5 rounded-sm border border-err/40 px-2.5 text-sm text-err transition-colors duration-150 hover:bg-err/10"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-err transition-colors duration-150 hover:bg-err/10"
                   title="停止生成"
                 >
                   <Square size={11} /> 停止
@@ -556,7 +584,7 @@ export function Composer({
                   type="button"
                   onClick={() => void submit()}
                   disabled={disabled || uploading || commandBusy || !value.trim()}
-                  className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent text-graphite transition-colors duration-150 hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-graphite transition-colors duration-150 hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-30"
                   title="发送"
                   aria-label="发送"
                 >

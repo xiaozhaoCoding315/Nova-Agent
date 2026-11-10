@@ -598,6 +598,21 @@ export type Health = {
   components: Record<string, unknown>
 }
 
+/** /api/v1/downloads 的一个安装包。 */
+export type DownloadFile = {
+  name: string
+  platform: string
+  size: number
+  modified_at: string
+  url: string
+}
+
+export type DownloadsListing = {
+  files: DownloadFile[]
+  directory: string
+  hint: string
+}
+
 export type ExtensionTool = {
   name: string
   description: string

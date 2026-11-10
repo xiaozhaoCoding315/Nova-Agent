@@ -1277,6 +1277,67 @@
         "title": "DeploymentOut",
         "type": "object"
       },
+      "DownloadFileOut": {
+        "description": "DOWNLOADS_DIR 里的一个安装包；`url` 是可直接下载的相对路径。",
+        "properties": {
+          "modified_at": {
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "platform",
+          "size",
+          "modified_at",
+          "url"
+        ],
+        "title": "DownloadFileOut",
+        "type": "object"
+      },
+      "DownloadsOut": {
+        "properties": {
+          "directory": {
+            "title": "Directory",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadFileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "hint": {
+            "default": "",
+            "title": "Hint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "files",
+          "directory"
+        ],
+        "title": "DownloadsOut",
+        "type": "object"
+      },
       "EditApproveOut": {
         "properties": {
           "applied": {
@@ -6531,6 +6592,28 @@
         "summary": "Teardown Deploy",
         "tags": [
           "deploys"
+        ]
+      }
+    },
+    "/api/v1/downloads": {
+      "get": {
+        "description": "公开接口：安装包下载不需要登录，与安装包直链一致。",
+        "operationId": "list_downloads_api_v1_downloads_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Downloads",
+        "tags": [
+          "downloads"
         ]
       }
     },

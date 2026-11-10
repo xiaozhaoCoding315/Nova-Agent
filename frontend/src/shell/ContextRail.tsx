@@ -61,6 +61,7 @@ export function ContextRail({
   onToggle,
   onOpenFile,
   onOpenWorkspace,
+  width,
 }: {
   /** `< lg` 覆盖层是否展开。桌面是否可见由 `collapsed` 决定。 */
   open: boolean
@@ -73,6 +74,8 @@ export function ContextRail({
   onToggle: () => void
   onOpenFile: (path: string, repoId?: string) => void
   onOpenWorkspace: (options: { repoId?: string; path?: string; tab: WorkspaceTab }) => void
+  /** 桌面宽度（可拖拽）；窄屏覆盖层固定 320px，上限受视口约束。 */
+  width: number
 }) {
   const refs = useChat((state) => state.refs)
   const streamEdits = useChat((state) => state.streamEdits)
@@ -215,8 +218,9 @@ export function ContextRail({
       )}
       <aside
         aria-label="上下文栏"
+        style={{ '--rail-w': `${width}px` } as React.CSSProperties}
         className={clsx(
-          'w-[320px] shrink-0 flex-col border-l border-edge bg-panel lg:bg-panel/50',
+          'w-[320px] shrink-0 flex-col border-l border-edge bg-panel lg:w-[var(--rail-w)] lg:bg-panel/50',
           open
             ? 'fixed inset-y-0 right-0 z-40 flex max-w-[92vw] shadow-pop lg:static lg:z-auto lg:max-w-none lg:shadow-none'
             : 'hidden lg:flex',

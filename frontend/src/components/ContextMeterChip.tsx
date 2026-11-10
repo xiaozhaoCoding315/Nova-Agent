@@ -16,51 +16,84 @@ function toneOf(pct: number): { bar: string; text: string } {
   return { bar: 'bg-accent', text: 'text-accent' }
 }
 
+/** 圆环半径与周长：18px 画布内留 2px 描边余量。 */
+const RING_RADIUS = 6.5
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
 /**
- * 上下文计量条：显示本轮提示的估算 token 与窗口占比，点击展开构成分解
- * （系统提示 / 检索 / 记忆 / 历史…），对齐桌面端 Agent 的上下文可视化习惯。
+ * 上下文计量：输入框底栏里的一个小圆环，点击展开构成分解
+ * （系统提示 / 检索 / 记忆 / 历史…）。
+ *
+ * 圆环只表达占比，具体数字放在 title 与展开面板里——底栏一行要放
+ * 附件、命令、权限、模型、发送，长数字会把模型胶囊挤掉。
  */
-export function ContextMeterChip({ meter }: { meter: ContextMeter | null }) {
+export function ContextMeterChip({
+  meter,
+  repoCount,
+}: {
+  meter: ContextMeter | null
+  /** 关联仓库数；为空时展开面板里不显示这一行。 */
+  repoCount?: number
+}) {
   const [open, setOpen] = useState(false)
   if (!meter || !meter.window) return null
 
   const pct = Math.min(100, Math.round((meter.total / meter.window) * 100))
   const tone = toneOf(pct)
   const sections = Object.entries(meter.sections).sort((a, b) => b[1] - a[1])
+  const summary = `本轮上下文 ${formatTokens(meter.total)} / ${formatTokens(meter.window)}（${pct}%）`
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={clsx(
-          'flex items-center gap-1.5 rounded-lg border bg-raised/70 px-2 py-1 text-xs transition-colors',
-          open ? 'border-accent/50 text-ink' : 'border-edge/80 text-dim hover:text-ink',
+          'flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150',
+          open ? 'bg-raised text-ink' : 'text-dim hover:bg-raised hover:text-ink',
         )}
-        title="本轮提示的上下文占用（估算）"
+        title={summary}
+        aria-label={summary}
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
-        <Gauge size={12} className={tone.text} />
-        <span className="tabular-nums">{formatTokens(meter.total)}</span>
-        <span className="text-dim/50">/ {formatTokens(meter.window)}</span>
-        <span className="relative hidden h-1 w-10 overflow-hidden rounded-full bg-raised sm:block">
-          <span
-            className={clsx('absolute inset-y-0 left-0 rounded-full', tone.bar)}
-            style={{ width: `${Math.max(3, pct)}%` }}
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="-rotate-90">
+          <circle cx="9" cy="9" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-edge" />
+          <circle
+            cx="9"
+            cy="9"
+            r={RING_RADIUS}
+            fill="none"
+            strokeWidth="2"
+            strokeLinecap="round"
+            stroke="currentColor"
+            className={tone.text}
+            strokeDasharray={RING_CIRCUMFERENCE}
+            // 至少留一小段弧，0% 时也看得出这是一个计量环而不是空按钮。
+            strokeDashoffset={RING_CIRCUMFERENCE * (1 - Math.max(0.04, pct / 100))}
           />
-        </span>
-        <span className={clsx('hidden text-2xs tabular-nums sm:inline', tone.text)}>{pct}%</span>
+        </svg>
       </button>
 
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-xl border border-edge bg-panel p-3 shadow-xl">
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            role="dialog"
+            aria-label="上下文占用"
+            className="absolute bottom-full right-0 z-30 mb-2 w-72 rounded-xl border border-edge bg-panel p-3 shadow-xl"
+          >
             <div className="flex items-baseline gap-1.5">
               <span className="text-sm font-semibold">本轮上下文</span>
               <span className={clsx('text-xs tabular-nums', tone.text)}>
                 {formatTokens(meter.total)} / {formatTokens(meter.window)}（{pct}%）
               </span>
             </div>
+            {repoCount != null && (
+              <p className="mt-0.5 text-2xs text-dim">
+                {repoCount > 0 ? `关联 ${repoCount} 个仓库` : '未关联仓库'}
+              </p>
+            )}
             <p className="mt-0.5 text-2xs leading-relaxed text-dim/70">
               按字符估算，实际以模型返回的用量为准
               {meter.actualPromptTokens ? `（本轮实际 ${formatTokens(meter.actualPromptTokens)}）` : ''}。
@@ -68,7 +101,9 @@ export function ContextMeterChip({ meter }: { meter: ContextMeter | null }) {
             </p>
             <div className="mt-2.5 space-y-1.5">
               {sections.length === 0 && (
-                <p className="text-xs text-dim">暂无构成数据。</p>
+                <p className="flex items-center gap-1.5 text-xs text-dim">
+                  <Gauge size={11} /> 暂无构成数据。
+                </p>
               )}
               {sections.map(([label, tokens]) => {
                 const share = meter.total > 0 ? Math.round((tokens / meter.total) * 100) : 0

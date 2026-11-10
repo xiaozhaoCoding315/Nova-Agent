@@ -548,6 +548,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Downloads
+         * @description 公开接口：安装包下载不需要登录，与安装包直链一致。
+         */
+        get: operations["list_downloads_api_v1_downloads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/edits/{edit_id}": {
         parameters: {
             query?: never;
@@ -2230,6 +2250,37 @@ export interface components {
             url?: string | null;
             /** User Id */
             user_id: number;
+        };
+        /**
+         * DownloadFileOut
+         * @description DOWNLOADS_DIR 里的一个安装包；`url` 是可直接下载的相对路径。
+         */
+        DownloadFileOut: {
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+            /** Name */
+            name: string;
+            /** Platform */
+            platform: string;
+            /** Size */
+            size: number;
+            /** Url */
+            url: string;
+        };
+        /** DownloadsOut */
+        DownloadsOut: {
+            /** Directory */
+            directory: string;
+            /** Files */
+            files: components["schemas"]["DownloadFileOut"][];
+            /**
+             * Hint
+             * @default
+             */
+            hint: string;
         };
         /** EditApproveOut */
         EditApproveOut: {
@@ -4883,6 +4934,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_downloads_api_v1_downloads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadsOut"];
                 };
             };
         };

@@ -124,6 +124,22 @@ class InviteCodeOut(BaseModel):
     expires_at: Optional[datetime] = None
 
 
+class DownloadFileOut(BaseModel):
+    """DOWNLOADS_DIR 里的一个安装包；`url` 是可直接下载的相对路径。"""
+
+    name: str
+    platform: str
+    size: int
+    modified_at: datetime
+    url: str
+
+
+class DownloadsOut(BaseModel):
+    files: list[DownloadFileOut]
+    directory: str
+    hint: str = ""
+
+
 class AdminUserUpdateRequest(BaseModel):
     status: Optional[Literal["active", "disabled"]] = None
     role: Optional[Literal["admin", "demo"]] = None

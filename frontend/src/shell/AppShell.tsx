@@ -16,6 +16,7 @@ import type { WorkspaceTab } from '../views/WorkspaceView'
 import { ChatHeader } from './ChatHeader'
 import { ContextRail } from './ContextRail'
 import { ProjectRail } from './ProjectRail'
+import { RailResizer, useRailWidth } from './RailResizer'
 import { WorkspaceDrawer } from './WorkspaceDrawer'
 
 const Workbench = lazy(() => import('./Workbench').then((m) => ({ default: m.Workbench })))
@@ -87,6 +88,9 @@ export function AppShell() {
     () => window.matchMedia('(min-width: 1024px)').matches,
   )
   const [localAgentOpen, setLocalAgentOpen] = useState(false)
+  /** 两侧栏的桌面宽度：拖动改、双击复位、记在 localStorage 里。 */
+  const projectRail = useRailWidth({ key: 'project', initial: 264, min: 208, max: 420 })
+  const contextRail = useRailWidth({ key: 'context', initial: 320, min: 260, max: 560 })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined)
@@ -321,6 +325,17 @@ export function AppShell() {
         onClose={() => setRailOpen(false)}
         onOpenSettings={() => openSettings()}
         onShowChat={() => setSettingsOpen(false)}
+        width={projectRail.width}
+      />
+      <RailResizer
+        side="right"
+        width={projectRail.width}
+        min={208}
+        max={420}
+        onChange={projectRail.update}
+        onReset={projectRail.reset}
+        label="调整项目栏宽度"
+        className="hidden md:block"
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -373,6 +388,19 @@ export function AppShell() {
         </div>
       </main>
 
+      {/* 把手放在右栏左侧：桌面端它占据 0 宽，视觉线正好压住右栏的左边框。 */}
+      {contextRailActive && (
+        <RailResizer
+          side="left"
+          width={contextRail.width}
+          min={260}
+          max={560}
+          onChange={contextRail.update}
+          onReset={contextRail.reset}
+          label="调整上下文栏宽度"
+          className="hidden lg:block"
+        />
+      )}
       <ContextRail
         open={contextRailOpen}
         collapsed={contextRailCollapsed}
@@ -382,6 +410,7 @@ export function AppShell() {
         onToggle={toggleContextRail}
         onOpenFile={(path, repoId) => openWorkspace(repoId, path)}
         onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
+        width={contextRail.width}
       />
 
       {settingsOpen && (

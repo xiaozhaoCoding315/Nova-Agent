@@ -264,7 +264,11 @@ def main() -> int:
             f"http://127.0.0.1:8000/downloads/files/{source.name}",
         )
         print(f"下载接口 HTTP {out.strip()}")
-        code, out = run(ssh, "curl -s http://127.0.0.1:8000/downloads | grep -c 'item'")
+        code, out = run(
+            ssh,
+            "curl -s http://127.0.0.1:8000/api/v1/downloads | python3 -c "
+            "'import json,sys; print(len(json.load(sys.stdin)[\"files\"]))'",
+        )
         print(f"下载页条目数：{out.strip()}")
 
     elif args.phase == "health":

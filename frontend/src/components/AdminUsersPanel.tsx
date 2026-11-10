@@ -1,5 +1,5 @@
-import { Ban, CheckCircle2, Coins, Copy, Plus, RefreshCw, SlidersHorizontal, Ticket, Trash2, Users } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Ban, CheckCircle2, Coins, Copy, Link2, Plus, RefreshCw, SlidersHorizontal, Ticket, Trash2, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { AdminUser, InviteCode } from '../lib/types'
 import { formatBytes, inputClass } from '../lib/ui'
@@ -45,6 +45,7 @@ export function AdminUsersPanel() {
   const [inviteExpiresDays, setInviteExpiresDays] = useState('30')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
+  const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -140,6 +141,33 @@ export function AdminUsersPanel() {
     }
   }
 
+  /** 邀请链接：打开后注册页已填好邀请码，省掉对方手抄一串码的步骤。 */
+  const inviteLink = (code: string) => `${window.location.origin}/?invite=${encodeURIComponent(code)}`
+
+  const copyInviteLink = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(code))
+      setCopiedLink(code)
+      setTimeout(() => setCopiedLink(null), 1500)
+    } catch {
+      /* 同上 */
+    }
+  }
+
+  const inviteStats = useMemo(() => {
+    const now = Date.now()
+    let usable = 0
+    let exhausted = 0
+    let expired = 0
+    for (const invite of invites) {
+      const isExpired = invite.expires_at ? new Date(invite.expires_at).getTime() < now : false
+      if (invite.used_count >= invite.max_uses) exhausted += 1
+      else if (isExpired) expired += 1
+      else usable += 1
+    }
+    return { usable, exhausted, expired }
+  }, [invites])
+
   const createInvite = async () => {
     setInviteBusy(true)
     setError(null)
@@ -226,10 +254,17 @@ export function AdminUsersPanel() {
       )}
 
       <section className="rounded-xl border border-edge bg-panel p-4">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <Ticket size={14} className="text-accent" />
           <h3 className="text-base font-medium text-ink">注册邀请码</h3>
           <span className="text-xs text-dim">当前部署注册需邀请码；游客体验不受影响</span>
+          <span className="ml-auto flex items-center gap-1.5 font-mono text-2xs text-faint">
+            <span className="text-ok">{inviteStats.usable} 可用</span>
+            <span aria-hidden="true">·</span>
+            <span>{inviteStats.exhausted} 用完</span>
+            <span aria-hidden="true">·</span>
+            <span>{inviteStats.expired} 过期</span>
+          </span>
         </div>
         <div className="grid gap-2 sm:grid-cols-[1fr,90px,90px,auto]">
           <input
@@ -299,6 +334,14 @@ export function AdminUsersPanel() {
                           >
                             {copiedCode === invite.code ? <CheckCircle2 size={12} className="text-ok" /> : <Copy size={12} />}
                             {copiedCode === invite.code ? '已复制' : '复制'}
+                          </button>
+                          <button
+                            onClick={() => void copyInviteLink(invite.code)}
+                            className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-dim hover:bg-raised hover:text-ink"
+                            title="复制邀请链接：打开后注册页自动填好邀请码"
+                          >
+                            {copiedLink === invite.code ? <CheckCircle2 size={12} className="text-ok" /> : <Link2 size={12} />}
+                            {copiedLink === invite.code ? '已复制' : '链接'}
                           </button>
                           <button
                             onClick={() => void removeInvite(invite.id)}

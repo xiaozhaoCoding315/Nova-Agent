@@ -1,6 +1,6 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  ContractStatus, DebtReport, DebtSnapshot, Deployment, EditRecord, Extensions,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, DownloadsListing, EditRecord, Extensions,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
@@ -218,6 +218,8 @@ export const api = {
   },
 
   extensions: () => request<Extensions>('/extensions'),
+
+  downloads: () => request<DownloadsListing>('/downloads'),
 
   files: {
     list: (params: { repoId?: string; sessionId?: string } = {}) => {

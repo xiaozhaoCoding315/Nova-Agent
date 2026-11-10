@@ -1,14 +1,12 @@
 import asyncio
-import html
 import time
-import urllib.parse
 from pathlib import Path
 
 import structlog
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -193,143 +191,8 @@ _DOWNLOADS_DIR = Path(settings.downloads_dir)
 _DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _human_size(size: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{size:.1f} {unit}" if unit != "B" else f"{size} B"
-        size /= 1024
-    return f"{size:.1f} GB"
-
-
-def _platform_label(filename: str) -> str:
-    lower = filename.lower()
-    if lower.endswith(".exe") or "windows" in lower or "win-" in lower:
-        return "Windows"
-    if lower.endswith(".dmg") or "macos" in lower or "darwin" in lower:
-        return "macOS"
-    if lower.endswith((".appimage", ".deb", ".rpm", ".tar.gz")):
-        return "Linux"
-    return "安装包"
-
-
-_DOWNLOADS_STYLE = """
-:root { color-scheme: dark; }
-* { box-sizing: border-box; }
-body {
-  margin: 0; min-height: 100vh; background: #0B0C0E; color: #EDE8DE;
-  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-  "Microsoft YaHei", sans-serif;
-  display: flex; justify-content: center; padding: 40px 20px 64px;
-}
-.wrap { width: 100%; max-width: 640px; }
-.top { display: flex; align-items: center; gap: 10px; margin-bottom: 56px; }
-.wordmark {
-  display: flex; align-items: center; gap: 8px; font: 500 11px/1 ui-monospace,
-  "SFMono-Regular", "JetBrains Mono", Consolas, monospace; letter-spacing: .18em;
-  text-transform: uppercase; color: #9A958C;
-}
-.dot { width: 6px; height: 6px; border-radius: 50%; background: #8FE388; }
-.top a {
-  margin-left: auto; color: #9A958C; text-decoration: none; font-size: 12px;
-  transition: color .15s ease;
-}
-.top a:hover { color: #EDE8DE; }
-.eyebrow {
-  font: 500 10px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
-  letter-spacing: .2em; text-transform: uppercase; color: #6B675F; margin: 0 0 14px;
-}
-h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.2; letter-spacing: -.02em; font-weight: 600; }
-.sub { margin: 0 0 32px; color: #9A958C; font-size: 13px; max-width: 46em; }
-.note {
-  margin: 0 0 28px; padding: 10px 12px; border-left: 2px solid #2A2E34;
-  color: #6B675F; font-size: 12px;
-}
-a.item {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 16px; margin-bottom: 8px; border: 1px solid #2A2E34; border-radius: 6px;
-  background: #121417; text-decoration: none; color: #EDE8DE;
-  transition: border-color .15s ease, background .15s ease;
-}
-a.item:hover { border-color: #8FE388; background: #1A1D21; }
-.left { min-width: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.badge {
-  font: 500 9px/1 ui-monospace, Consolas, monospace; letter-spacing: .12em;
-  text-transform: uppercase; color: #8FE388; border: 1px solid #20351F;
-  background: #20351F; border-radius: 3px; padding: 3px 5px; white-space: nowrap;
-}
-.name { font: 500 13px/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace; word-break: break-all; }
-.meta { color: #6B675F; white-space: nowrap; font: 11px/1 ui-monospace, Consolas, monospace; }
-.empty {
-  color: #9A958C; font-size: 13px; border: 1px dashed #2A2E34; border-radius: 6px; padding: 20px;
-}
-code {
-  background: #1A1D21; border: 1px solid #2A2E34; border-radius: 3px;
-  padding: 1px 5px; font: 11px ui-monospace, Consolas, monospace; color: #9A958C;
-}
-.foot {
-  margin-top: 40px; padding-top: 16px; border-top: 1px solid #1A1D21;
-  color: #6B675F; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
-}
-.foot a { color: #9A958C; text-decoration: underline; text-underline-offset: 3px; }
-.foot a:hover { color: #8FE388; }
-@media (max-width: 520px) {
-  body { padding: 24px 16px 48px; }
-  .top { margin-bottom: 36px; }
-  h1 { font-size: 25px; }
-  a.item { align-items: flex-start; flex-direction: column; gap: 8px; }
-}
-"""
-
-
-@app.get("/downloads", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/downloads/", response_class=HTMLResponse, include_in_schema=False)
-async def downloads_page() -> HTMLResponse:
-    """列出安装包目录内容。动态生成，放入文件后刷新页面即可见。"""
-    files = sorted(
-        (p for p in _DOWNLOADS_DIR.iterdir() if p.is_file() and not p.name.startswith(".")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    rows = []
-    for path in files:
-        stat = path.stat()
-        name = html.escape(path.name)
-        href = urllib.parse.quote(path.name)
-        platform = html.escape(_platform_label(path.name))
-        modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
-        rows.append(
-            f'<a class="item" href="/downloads/files/{href}" download>'
-            f'<span class="left"><span class="badge">{platform}</span>'
-            f'<span class="name">{name}</span></span>'
-            f'<span class="meta">{_human_size(stat.st_size)} · {modified}</span></a>'
-        )
-    body = (
-        "".join(rows)
-        if rows
-        else '<p class="empty">暂无安装包。请管理员把安装包放入 <code>DOWNLOADS_DIR</code>（默认 data/downloads）目录。</p>'
-    )
-    return HTMLResponse(
-        "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<meta name=\"color-scheme\" content=\"dark\">"
-        "<title>桌面客户端 · Nova Agent</title><style>"
-        f"{_DOWNLOADS_STYLE}</style></head><body><div class=\"wrap\">"
-        "<div class=\"top\"><span class=\"wordmark\"><span class=\"dot\"></span>Nova Agent</span>"
-        "<a href=\"/\">返回工作台 →</a></div>"
-        "<p class=\"eyebrow\">Desktop client</p>"
-        "<h1>在桌面打开 Nova Agent</h1>"
-        "<p class=\"sub\">安装包有两种用法：在本机运行（自带后端与数据库，数据留在你的电脑），"
-        "或连接本服务器（仓库、会话与执行结果保存在服务器上）。</p>"
-        "<p class=\"note\">也可以不安装任何东西，直接在浏览器里使用相同的工作台。"
-        "安装包更新后重新下载覆盖安装即可，数据与会话不受影响。"
-        "本机运行没有容器隔离，Agent 执行的命令会直接影响那台电脑。</p>"
-        f"{body}"
-        "<div class=\"foot\"><a href=\"/\">在浏览器中打开</a>"
-        "<span>安装后选择「在本机运行」或填写本服务器地址。</span></div>"
-        "</div></body></html>"
-    )
-
-
+# 列表由前端 /downloads 路由渲染（数据来自 /api/v1/downloads），
+# 这里只保留安装包直链。页面不再由后端内联 HTML 生成，避免两套设计语言。
 app.mount("/downloads/files", StaticFiles(directory=_DOWNLOADS_DIR), name="downloads_files")
 
 _FRONTEND_DIST = (
@@ -338,5 +201,33 @@ _FRONTEND_DIST = (
     else Path(__file__).resolve().parents[2] / "frontend" / "dist"
 )
 
-if (settings.app_env == "prod" or settings.is_local) and _FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+
+@app.get("/{path:path}", include_in_schema=False, response_model=None)
+async def frontend(path: str) -> FileResponse:
+    """前端产物：有对应文件的直接返回，其余页面路径交给 SPA 自己渲染。
+
+    之前这里是 `StaticFiles(html=True)` 挂在 `/` 上，匹配不到文件会直接 404，
+    于是 `/downloads` 和未知路径都进不了 React，前端既没有下载页也画不出 404。
+    现在由这条路由兜底：
+
+    - `assets/*.js` 这类带扩展名的路径缺文件就返回真 404，不会被 HTML 外壳
+      伪装成 200（否则浏览器会拿一个 index.html 去当模块解析）；
+    - 其余无扩展名路径一律吐 index.html，由前端按 `location.pathname`
+      决定渲染工作台、下载页还是 404。
+    """
+    if settings.app_env != "prod" and not settings.is_local:
+        raise HTTPException(status_code=404, detail="not found")
+    # 未知的 API 路径必须保持 JSON 404：客户端按状态码与 detail 处理错误，
+    # 收到一张 HTML 页面只会把「接口不存在」显示成解析失败。
+    if path == "api" or path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="not found")
+    root = _FRONTEND_DIST.resolve()
+    candidate = (root / path).resolve()
+    if candidate.is_file() and root in candidate.parents:
+        return FileResponse(candidate)
+    if "." in path.rsplit("/", 1)[-1]:
+        raise HTTPException(status_code=404, detail="not found")
+    index = root / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="前端产物不存在")
+    return FileResponse(index, media_type="text/html")
