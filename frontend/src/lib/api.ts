@@ -164,9 +164,22 @@ export const api = {
   },
 
   sessions: {
-    list: (repoId?: string) =>
-      request<Session[]>(`/chat/sessions${repoId ? `?repo_id=${encodeURIComponent(repoId)}` : ''}`),
-    create: (repoIds: string[] = []) => request<Session>('/chat/sessions', json({ repo_ids: repoIds })),
+    list: (repoId?: string, scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string }) => {
+      const params = new URLSearchParams()
+      if (repoId) params.set('repo_id', repoId)
+      if (scope?.productMode) params.set('product_mode', scope.productMode)
+      if (scope?.thesisProjectId) params.set('thesis_project_id', scope.thesisProjectId)
+      const suffix = params.toString()
+      return request<Session[]>(`/chat/sessions${suffix ? `?${suffix}` : ''}`)
+    },
+    create: (
+      repoIds: string[] = [],
+      scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string },
+    ) => request<Session>('/chat/sessions', json({
+      repo_ids: repoIds,
+      product_mode: scope?.productMode ?? 'dev',
+      thesis_project_id: scope?.thesisProjectId ?? null,
+    })),
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),

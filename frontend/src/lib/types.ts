@@ -156,6 +156,8 @@ export type Session = {
   primary_repo_id?: string | null
   model?: string | null
   llm_overrides?: LlmOverrides
+  product_mode?: 'dev' | 'thesis'
+  thesis_project_id?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -844,6 +846,8 @@ export type ThesisProject = {
   status: string
   document_count: number
   open_issue_count: number
+  source_repo_id?: string | null
+  source_notes?: string
   created_at?: string | null
   updated_at?: string | null
 }
@@ -1066,4 +1070,6 @@ export type ThesisProjectInput = {
   school?: string
   degree?: ThesisDegree
   template_id?: string
+  source_repo_id?: string | null
+  source_notes?: string
 }

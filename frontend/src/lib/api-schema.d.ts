@@ -2601,10 +2601,18 @@ export interface components {
             model?: string | null;
             /** Permission Mode */
             permission_mode?: ("readonly" | "ask" | "auto" | "full") | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[] | null;
             /** Session Id */
             session_id?: string | null;
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** ContractStatusOut */
         ContractStatusOut: {
@@ -3881,8 +3889,16 @@ export interface components {
         /** SessionCreateRequest */
         SessionCreateRequest: {
             llm_overrides?: components["schemas"]["LlmOverrides"] | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** SessionOut */
         SessionOut: {
@@ -3908,8 +3924,16 @@ export interface components {
             permission_mode: string;
             /** Primary Repo Id */
             primary_repo_id?: string | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
             /** Title */
             title: string;
             /** Updated At */
@@ -4593,6 +4617,13 @@ export interface components {
              */
             school: string;
             /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
              * Template Id
              * @default generic-undergraduate-v1
              */
@@ -4628,6 +4659,13 @@ export interface components {
              * @default
              */
             school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
             /**
              * Status
              * @default draft
@@ -4670,6 +4708,13 @@ export interface components {
              */
             school: string;
             /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
              * Status
              * @default draft
              */
@@ -4690,6 +4735,10 @@ export interface components {
             degree?: ("undergraduate" | "master" | "doctor") | null;
             /** School */
             school?: string | null;
+            /** Source Notes */
+            source_notes?: string | null;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
             /** Template Id */
             template_id?: string | null;
             /** Title */
@@ -5650,6 +5699,8 @@ export interface operations {
         parameters: {
             query?: {
                 repo_id?: string | null;
+                product_mode?: "dev" | "thesis";
+                thesis_project_id?: string | null;
             };
             header?: never;
             path?: never;

@@ -36,10 +36,14 @@ type ThesisState = {
   disclosures: ThesisDisclosure[]
   report: ThesisReport | null
   scan: ThesisScanResult | null
+  /** 写作面板的快捷指令：AI 对话面板监听后填入输入框。 */
+  chatSeed: string
   loading: boolean
   busy: boolean
   fixing: string | null
   error: string | null
+  setChatSeed: (seed: string) => void
+  updateProject: (patch: Partial<ThesisProjectInput>) => Promise<void>
   refresh: () => Promise<void>
   loadTemplates: () => Promise<void>
   selectProject: (id: string) => Promise<void>
@@ -79,12 +83,32 @@ export const useThesis = create<ThesisState>((set, get) => ({
   disclosures: [],
   report: null,
   scan: null,
+  chatSeed: '',
   loading: false,
   busy: false,
   fixing: null,
   error: null,
 
   clearError: () => set({ error: null }),
+
+  setChatSeed: (chatSeed) => set({ chatSeed }),
+
+  updateProject: async (patch) => {
+    const current = get().current
+    if (!current) return
+    try {
+      const updated = await api.thesis.updateProject(current.id, patch)
+      set((state) => ({
+        current: state.current ? { ...state.current, ...updated } : state.current,
+        projects: state.projects.map((item) =>
+          item.id === updated.id ? { ...item, ...updated } : item,
+        ),
+      }))
+    } catch (err) {
+      set({ error: errorMessage(err, '保存论文项目失败') })
+      throw err
+    }
+  },
 
   loadTemplates: async () => {
     if (get().templates.length > 0) return

@@ -259,6 +259,8 @@ class SessionOut(BaseModel):
     primary_repo_id: Optional[str] = None
     model: Optional[str] = None
     llm_overrides: dict = Field(default_factory=dict)
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -266,6 +268,8 @@ class SessionOut(BaseModel):
 class SessionCreateRequest(BaseModel):
     repo_ids: list[str] = Field(default_factory=list, max_length=5)
     llm_overrides: Optional[LlmOverrides] = None
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
 
 
 class MessageOut(BaseModel):
@@ -291,6 +295,10 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(default=None, max_length=120)
     llm_overrides: Optional[LlmOverrides] = None
     file_ids: list[str] = Field(default_factory=list, max_length=5)
+    # Only used when this request creates a new session. Thesis chat stays in
+    # its own history bucket instead of showing up in the dev-mode session list.
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
 
 
 class TurnOut(BaseModel):
@@ -966,6 +974,8 @@ class ThesisProjectCreate(BaseModel):
     school: str = Field(default="", max_length=120)
     degree: Literal["undergraduate", "master", "doctor"] = "undergraduate"
     template_id: str = Field(default="generic-undergraduate-v1", max_length=80)
+    source_repo_id: Optional[str] = None
+    source_notes: str = Field(default="", max_length=4000)
 
 
 class ThesisProjectUpdate(BaseModel):
@@ -973,6 +983,9 @@ class ThesisProjectUpdate(BaseModel):
     school: Optional[str] = Field(default=None, max_length=120)
     degree: Optional[Literal["undergraduate", "master", "doctor"]] = None
     template_id: Optional[str] = Field(default=None, max_length=80)
+    source_repo_id: Optional[str] = Field(default=None, max_length=64)
+    # An empty string explicitly detaches; omitting the key leaves it alone.
+    source_notes: Optional[str] = Field(default=None, max_length=4000)
 
 
 class ThesisProjectOut(BaseModel):
@@ -984,6 +997,8 @@ class ThesisProjectOut(BaseModel):
     status: str = "draft"
     document_count: int = 0
     open_issue_count: int = 0
+    source_repo_id: Optional[str] = None
+    source_notes: str = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

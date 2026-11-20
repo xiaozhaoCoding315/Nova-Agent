@@ -45,6 +45,7 @@ async def test_get_session_returns_overrides(monkeypatch):
     overrides = {"provider": "anthropic", "model": "claude-sonnet-5"}
     query = AsyncMock(return_value=[(
         "s1", "t", None, "ask", None, None, [], 0, "legacy-model", None, overrides,
+        "dev", None,
     )])
     monkeypatch.setattr(session_mod, "query", query)
 
@@ -60,6 +61,7 @@ async def test_list_sessions_returns_overrides(monkeypatch):
     overrides = {"model": "glm-4.6", "reasoning_effort": "high"}
     query = AsyncMock(return_value=[(
         "s1", "t", None, None, 2, "ask", [], "legacy-model", None, overrides,
+        "dev", None,
     )])
     monkeypatch.setattr(session_mod, "query", query)
 

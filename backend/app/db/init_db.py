@@ -1103,6 +1103,42 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_reference "
         "ON thesis_citation_evidence (project_id, reference_index)",
     ]),
+    # 23: thesis chat sessions and the optional engineering project they sit on.
+    (23, [
+        "ALTER TABLE sessions "
+        "ADD COLUMN IF NOT EXISTS product_mode VARCHAR(16) NOT NULL DEFAULT 'dev'",
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS thesis_project_id UUID",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_product "
+        "ON sessions (user_id, product_mode, updated_at DESC)",
+        "ALTER TABLE thesis_projects ADD COLUMN IF NOT EXISTS source_repo_id UUID",
+        "ALTER TABLE thesis_projects "
+        "ADD COLUMN IF NOT EXISTS source_notes TEXT NOT NULL DEFAULT ''",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'sessions_thesis_project_fk'
+            ) THEN
+                ALTER TABLE sessions ADD CONSTRAINT sessions_thesis_project_fk
+                    FOREIGN KEY (thesis_project_id)
+                    REFERENCES thesis_projects(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_projects_source_repo_fk'
+            ) THEN
+                ALTER TABLE thesis_projects ADD CONSTRAINT thesis_projects_source_repo_fk
+                    FOREIGN KEY (source_repo_id)
+                    REFERENCES repos(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+        """,
+    ]),
 ]
 
 

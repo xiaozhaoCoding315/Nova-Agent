@@ -54,7 +54,8 @@ PROJECT_COLUMNS = """
     p.created_at, p.updated_at,
     (SELECT count(*) FROM thesis_documents d WHERE d.project_id = p.id) AS document_count,
     (SELECT count(*) FROM thesis_issues i WHERE i.project_id = p.id AND i.status = 'open')
-        AS open_issue_count
+        AS open_issue_count,
+    p.source_repo_id::text, p.source_notes
 """
 
 DOCUMENT_COLUMNS = """
@@ -118,6 +119,8 @@ def _project_row(row: tuple) -> dict[str, Any]:
         "updated_at": row[7],
         "document_count": int(row[8] or 0),
         "open_issue_count": int(row[9] or 0),
+        "source_repo_id": row[10],
+        "source_notes": row[11] or "",
     }
 
 
@@ -289,6 +292,14 @@ async def get_project(user_id: int, project_id: str) -> dict[str, Any] | None:
     return _project_row(rows[0]) if rows else None
 
 
+async def _owned_repo(user_id: int, repo_id: str) -> bool:
+    rows = await query(
+        "SELECT 1 FROM repos WHERE id = %s AND user_id = %s",
+        (repo_id, user_id),
+    )
+    return bool(rows)
+
+
 async def create_project(
     user_id: int,
     *,
@@ -296,14 +307,22 @@ async def create_project(
     school: str = "",
     degree: str = "undergraduate",
     template_id: str = GENERIC_TEMPLATE["id"],
+    source_repo_id: str | None = None,
+    source_notes: str = "",
 ) -> dict[str, Any]:
     template = get_template(template_id)
+    if source_repo_id and not await _owned_repo(user_id, source_repo_id):
+        raise ValueError("工程项目不存在或无权访问")
     project_id = str(uuid.uuid4())
     await execute(
         "INSERT INTO thesis_projects "
-        "(id, user_id, title, school, degree, template_id, status) "
-        "VALUES (%s, %s, %s, %s, %s, %s, 'draft')",
-        (project_id, user_id, title.strip(), school.strip(), degree, template["id"]),
+        "(id, user_id, title, school, degree, template_id, status, "
+        "source_repo_id, source_notes) "
+        "VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s)",
+        (
+            project_id, user_id, title.strip(), school.strip(), degree, template["id"],
+            source_repo_id or None, source_notes.strip(),
+        ),
     )
     project = await get_project(user_id, project_id)
     if not project:
@@ -319,6 +338,8 @@ async def update_project(
     school: str | None = None,
     degree: str | None = None,
     template_id: str | None = None,
+    source_repo_id: str | None = None,
+    source_notes: str | None = None,
 ) -> dict[str, Any] | None:
     project_id = _valid_uuid(project_id)
     assignments: list[str] = []
@@ -335,6 +356,18 @@ async def update_project(
     if template_id is not None:
         assignments.append("template_id = %s")
         params.append(get_template(template_id)["id"])
+    if source_repo_id is not None:
+        repo_id = source_repo_id.strip()
+        if repo_id:
+            if not await _owned_repo(user_id, repo_id):
+                raise ValueError("工程项目不存在或无权访问")
+            assignments.append("source_repo_id = %s")
+            params.append(repo_id)
+        else:
+            assignments.append("source_repo_id = NULL")
+    if source_notes is not None:
+        assignments.append("source_notes = %s")
+        params.append(source_notes.strip())
     if assignments:
         assignments.append("updated_at = now()")
         params.extend([project_id, user_id])

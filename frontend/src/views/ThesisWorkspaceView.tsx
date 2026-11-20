@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  BookOpen, Check, CheckCircle2, Eye, EyeOff, FileText, Plus, Settings2, ShieldCheck,
-  Trash2, Undo2, Upload,
+  BookOpen, Check, CheckCircle2, Eye, EyeOff, FileText, MessageSquare, Plus, Settings2,
+  ShieldCheck, Trash2, Undo2, Upload, X,
 } from 'lucide-react'
 import type { DragEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
@@ -11,6 +11,8 @@ import { useThesis } from '../stores/thesis'
 import { CitationPanel } from '../thesis/CitationPanel'
 import { DisclosurePanel } from '../thesis/DisclosurePanel'
 import { ExportPanel } from '../thesis/ExportPanel'
+import { ThesisChatPanel } from '../thesis/ThesisChatPanel'
+import { WritingPanel } from '../thesis/WritingPanel'
 
 const DEGREE_LABEL: Record<string, string> = {
   undergraduate: '本科',
@@ -24,10 +26,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   citation: '引用',
 }
 
-type TabKey = 'issues' | 'citations' | 'disclosure' | 'export'
+type TabKey = 'issues' | 'writing' | 'citations' | 'disclosure' | 'export'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'issues', label: '问题' },
+  { key: 'writing', label: '写作' },
   { key: 'citations', label: '引用' },
   { key: 'disclosure', label: 'AI 使用声明' },
   { key: 'export', label: '导出' },
@@ -248,6 +251,7 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
   const [dragging, setDragging] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [tab, setTab] = useState<TabKey>('issues')
+  const [chatOpen, setChatOpen] = useState(false)
   const [preview, setPreview] = useState<{ issue: ThesisIssue; data: ThesisFixPreview } | null>(null)
   const [previewLoading, setPreviewLoading] = useState<string | null>(null)
   const [form, setForm] = useState<CreateForm>({
@@ -261,6 +265,17 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // 桌面宽度下右侧栏常驻；关掉移动端抽屉，避免同一面板被挂载两次。
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1280px)')
+    const closeOnDesktop = () => {
+      if (media.matches) setChatOpen(false)
+    }
+    closeOnDesktop()
+    media.addEventListener('change', closeOnDesktop)
+    return () => media.removeEventListener('change', closeOnDesktop)
+  }, [])
 
   useEffect(() => {
     if (loading || current || projects.length === 0) return
@@ -526,6 +541,9 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Button size="sm" className="xl:hidden" onClick={() => setChatOpen(true)}>
+                  <MessageSquare size={13} /> AI 写作
+                </Button>
                 <Button size="sm" onClick={onOpenSettings}>
                   <Settings2 size={13} /> 模型设置
                 </Button>
@@ -662,7 +680,9 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
                     ? citationIssueCount
                     : item.key === 'disclosure'
                       ? disclosures.length
-                      : fixes.filter((fix) => !fix.undone_at).length
+                      : item.key === 'export'
+                        ? fixes.filter((fix) => !fix.undone_at).length
+                        : 0
                 return (
                   <button
                     key={item.key}
@@ -865,6 +885,9 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
             </div>
             )}
 
+            {tab === 'writing' && (
+              <WritingPanel project={current} />
+            )}
             {tab === 'citations' && (
               <div className="mt-4"><CitationPanel /></div>
             )}
@@ -887,6 +910,42 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
           />
         )}
       </section>
+
+      <aside className="hidden w-[340px] shrink-0 flex-col border-l border-edge xl:flex">
+        {current ? (
+          <ThesisChatPanel project={current} onOpenSettings={onOpenSettings} />
+        ) : (
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs leading-relaxed text-faint">
+            选择或新建一个论文项目后，就可以在这里与 AI 一起读项目、搭提纲、写章节草稿。
+          </div>
+        )}
+      </aside>
+
+      {chatOpen && current && (
+        <div
+          className="fixed inset-0 z-40 flex justify-end bg-black/50 xl:hidden"
+          onClick={() => setChatOpen(false)}
+        >
+          <div
+            className="flex h-full w-[min(400px,94vw)] flex-col border-l border-edge bg-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+              <span className="font-mono text-2xs uppercase tracking-wide text-faint">AI 写作</span>
+              <button
+                onClick={() => setChatOpen(false)}
+                className="rounded-sm p-1 text-dim hover:text-ink"
+                aria-label="关闭 AI 写作面板"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ThesisChatPanel project={current} onOpenSettings={onOpenSettings} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <Modal open={preview !== null} onClose={() => setPreview(null)} title="预览修复">
         {preview && (

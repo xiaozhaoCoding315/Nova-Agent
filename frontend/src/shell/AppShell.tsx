@@ -191,6 +191,12 @@ export function AppShell() {
     setPaletteOpen(false)
   }, [thesisMode])
 
+  // 两个产品面的对话历史分开加载；切回开发模式时重新取开发会话。
+  useEffect(() => {
+    useChat.getState().setScope(thesisMode ? 'thesis' : 'dev', null)
+    if (!thesisMode) void useChat.getState().loadSessions()
+  }, [thesisMode])
+
   /** 打开设置弹层；默认从「模型与密钥」开始，ModelPicker 的「管理密钥」也走这里。 */
   const openSettings = (section?: SettingsSection) => {
     setSettingsSection(section)

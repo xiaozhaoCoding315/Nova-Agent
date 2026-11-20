@@ -62,13 +62,18 @@ async def create_thesis_project(
     body: ThesisProjectCreate,
     user: dict = Depends(get_current_user),
 ):
-    project = await service.create_project(
-        user["id"],
-        title=body.title,
-        school=body.school,
-        degree=body.degree,
-        template_id=body.template_id,
-    )
+    try:
+        project = await service.create_project(
+            user["id"],
+            title=body.title,
+            school=body.school,
+            degree=body.degree,
+            template_id=body.template_id,
+            source_repo_id=body.source_repo_id,
+            source_notes=body.source_notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await log_audit(
         AuditAction.THESIS_PROJECT_CREATE,
         user_id=str(user["id"]),
@@ -95,14 +100,20 @@ async def update_thesis_project(
     body: ThesisProjectUpdate,
     user: dict = Depends(get_current_user),
 ):
-    project = await service.update_project(
-        user["id"],
-        project_id,
-        title=body.title,
-        school=body.school,
-        degree=body.degree,
-        template_id=body.template_id,
-    )
+    provided = body.model_fields_set
+    try:
+        project = await service.update_project(
+            user["id"],
+            project_id,
+            title=body.title,
+            school=body.school,
+            degree=body.degree,
+            template_id=body.template_id,
+            source_repo_id=body.source_repo_id if "source_repo_id" in provided else None,
+            source_notes=body.source_notes if "source_notes" in provided else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not project:
         raise HTTPException(status_code=404, detail="论文项目不存在")
     return project

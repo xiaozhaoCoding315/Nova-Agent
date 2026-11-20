@@ -20,6 +20,8 @@ async def create_session(
     model: str | None = None,
     repo_ids: list[str] | None = None,
     llm_overrides: dict | None = None,
+    product_mode: str = "dev",
+    thesis_project_id: str | None = None,
 ) -> dict:
     session_id = str(uuid.uuid4())
     # A new session has nothing stored to remove, so clear signals are simply
@@ -29,9 +31,14 @@ async def create_session(
         if value != CLEAR_OVERRIDE
     }
     await execute(
-        "INSERT INTO sessions (id, user_id, title, model, llm_overrides) "
-        "VALUES (%s, %s, %s, %s, %s::jsonb)",
-        (session_id, user_id, title, model, json.dumps(overrides, ensure_ascii=False)),
+        "INSERT INTO sessions "
+        "(id, user_id, title, model, llm_overrides, product_mode, thesis_project_id) "
+        "VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)",
+        (
+            session_id, user_id, title, model,
+            json.dumps(overrides, ensure_ascii=False),
+            product_mode, thesis_project_id,
+        ),
     )
     if repo_ids:
         await set_repo_ids(session_id, repo_ids, user_id=user_id)
@@ -40,6 +47,8 @@ async def create_session(
         "permission_mode": "ask", "repo_ids": list(repo_ids or []), "model": model,
         "primary_repo_id": (repo_ids or [None])[0],
         "llm_overrides": overrides,
+        "product_mode": product_mode,
+        "thesis_project_id": thesis_project_id,
     }
 
 
@@ -51,7 +60,8 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
                    SELECT jsonb_agg(sr.repo_id ORDER BY sr.created_at)
                    FROM session_repos sr WHERE sr.session_id = s.id
                ), '[]'::jsonb),
-               s.summary_upto_id, s.model, s.primary_repo_id, s.llm_overrides
+               s.summary_upto_id, s.model, s.primary_repo_id, s.llm_overrides,
+               s.product_mode, s.thesis_project_id::text
         FROM sessions s
         WHERE s.id = %s AND s.user_id = %s
         """,
@@ -68,12 +78,23 @@ async def get_session(session_id: str, user_id: int) -> dict | None:
         "model": r[8],
         "primary_repo_id": str(r[9]) if r[9] else None,
         "llm_overrides": r[10] or {},
+        "product_mode": r[11] or "dev",
+        "thesis_project_id": r[12],
     }
 
 
 async def list_sessions(
-    user_id: int, limit: int = 50, repo_id: str | None = None
+    user_id: int,
+    limit: int = 50,
+    repo_id: str | None = None,
+    product_mode: str = "dev",
+    thesis_project_id: str | None = None,
 ) -> list[dict]:
+    """List one product surface's sessions.
+
+    ``product_mode`` defaults to ``dev``: thesis conversations stay out of the
+    coding session list even for the same user.
+    """
     repo_clause = ""
     params: list = [user_id]
     if repo_id:
@@ -82,6 +103,11 @@ async def list_sessions(
             "WHERE sr.session_id = s.id AND sr.repo_id::text = %s)"
         )
         params.append(repo_id)
+    product_clause = "AND s.product_mode = %s"
+    params.append(product_mode)
+    if thesis_project_id:
+        product_clause += " AND s.thesis_project_id = %s"
+        params.append(thesis_project_id)
     params.append(limit)
     rows = await query(
         f"""
@@ -92,9 +118,10 @@ async def list_sessions(
                    SELECT jsonb_agg(sr.repo_id ORDER BY sr.created_at)
                    FROM session_repos sr WHERE sr.session_id = s.id
                ), '[]'::jsonb),
-               s.model, s.primary_repo_id, s.llm_overrides
+               s.model, s.primary_repo_id, s.llm_overrides,
+               s.product_mode, s.thesis_project_id::text
         FROM sessions s
-        WHERE s.user_id = %s {repo_clause}
+        WHERE s.user_id = %s {repo_clause} {product_clause}
         ORDER BY s.updated_at DESC
         LIMIT %s
         """,
@@ -109,6 +136,8 @@ async def list_sessions(
             "model": r[7],
             "primary_repo_id": str(r[8]) if r[8] else None,
             "llm_overrides": r[9] or {},
+            "product_mode": r[10] or "dev",
+            "thesis_project_id": r[11],
         }
         for r in rows
     ]

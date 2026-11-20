@@ -192,6 +192,16 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    thesis_project_id = session.get("thesis_project_id")
+    if thesis_project_id:
+        try:
+            from app.core.thesis.chat_context import build_thesis_context
+            thesis_context = await build_thesis_context(user["id"], thesis_project_id)
+            if thesis_context:
+                system_content += f"\n\n{thesis_context}"
+                prompt_sections["thesis"] = thesis_context
+        except Exception as exc:  # noqa: BLE001 - context must not break the turn
+            logger.warning("thesis_context_inject_failed", error=str(exc))
     vision_attachments = [
         item for item in (attachments or []) if is_vision_image(item)
     ]

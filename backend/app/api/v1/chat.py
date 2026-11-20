@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import time
 import uuid
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -118,17 +119,38 @@ def _session_payload(session: dict, message_count: int = 0) -> dict:
         "primary_repo_id": session.get("primary_repo_id"),
         "model": session.get("model"),
         "llm_overrides": session.get("llm_overrides") or {},
+        "product_mode": session.get("product_mode") or "dev",
+        "thesis_project_id": session.get("thesis_project_id"),
         "created_at": session.get("created_at"),
         "updated_at": session.get("updated_at"),
     }
 
 
+async def _validate_thesis_project(user_id: int, project_id: str | None) -> str | None:
+    """Return the thesis project id after checking ownership, or None."""
+    if not project_id:
+        return None
+    from app.core.thesis import service as thesis_service
+
+    project = await thesis_service.get_project(user_id, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="论文项目不存在")
+    return project["id"]
+
+
 @router.get("/chat/sessions", response_model=list[SessionOut])
 async def list_sessions(
     repo_id: str | None = Query(default=None),
+    product_mode: Literal["dev", "thesis"] = Query(default="dev"),
+    thesis_project_id: str | None = Query(default=None),
     user: dict = Depends(get_current_user),
 ):
-    return await session_mod.list_sessions(user["id"], repo_id=repo_id)
+    return await session_mod.list_sessions(
+        user["id"],
+        repo_id=repo_id,
+        product_mode=product_mode,
+        thesis_project_id=thesis_project_id,
+    )
 
 
 @router.post("/chat/sessions", response_model=SessionOut)
@@ -141,8 +163,13 @@ async def create_session(
         if not await get_repo(repo_id, user["id"]):
             raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
     overrides = _overrides_patch(body.llm_overrides if body else None)
+    product_mode = body.product_mode if body else "dev"
+    thesis_project_id = await _validate_thesis_project(
+        user["id"], body.thesis_project_id if body and product_mode == "thesis" else None,
+    )
     session = await session_mod.create_session(
         user["id"], repo_ids=repo_ids, llm_overrides=overrides,
+        product_mode=product_mode, thesis_project_id=thesis_project_id,
     )
     return _session_payload(session)
 
@@ -223,8 +250,16 @@ async def chat_message(
             )
             session["llm_overrides"] = merged or {}
     else:
+        thesis_project_id = await _validate_thesis_project(
+            user["id"],
+            body.thesis_project_id if body.product_mode == "thesis" else None,
+        )
         session = await session_mod.create_session(
-            user["id"], model=body.model, llm_overrides=incoming_overrides,
+            user["id"],
+            model=body.model,
+            llm_overrides=incoming_overrides,
+            product_mode=body.product_mode,
+            thesis_project_id=thesis_project_id,
         )
 
     if body.model and body.model.strip() != (session.get("model") or ""):

@@ -260,6 +260,13 @@ Nova Agent
 - 定位：不生成完整项目、不代写论文；只做复现、验证、解释。
 - 成本：开源版免费；用户只承担自己的模型/算力成本。
 
+### 6.8 工程项目关联与论文对话（M0–M3 已落地）
+
+- 论文项目通过 `source_repo_id` 关联一个已有仓库；本地模式可直接登记本机文件夹（`/repos/local`），与开发模式共用 HostExecutor、权限模式与工具集，原地读写、不复制文件、无容器隔离。
+- AI 写作助手复用现有 Agent 对话（`/chat/message`），不另建 LLM 通道；论文题目、模板、项目说明、最新 DOCX 统计/提纲、未处理问题和已导入参考文献由 `chat_context.py` 注入系统提示（上限约 6500 字符）。
+- 历史隔离：`sessions.product_mode` 区分 `dev` / `thesis`，`sessions.thesis_project_id` 绑定项目；开发模式会话列表默认只返回 `dev`，论文对话按项目和 `thesis` 过滤。
+- 边界写进系统提示：只使用已导入文献、技术事实需 `文件路径:行号`、正文草稿标注「AI 草稿，需本人核对与改写」、拒绝代写整篇论文/降重/规避 AIGC。
+
 ---
 
 ## 7. 与现有 Nova 的映射
@@ -318,6 +325,7 @@ backend/app/core/thesis/
 │  └─ templates.py        # 学校声明模板
 ├─ report/
 │  └─ builder.py          # 报告 docx/html
+├─ chat_context.py        # 论文事实与写作边界注入 Agent 系统提示
 └─ service.py             # 编排：扫描/修复/导出
 ```
 
@@ -342,7 +350,8 @@ GET    /api/v1/thesis/projects/{id}/versions
 ### 8.2 数据模型
 
 ```text
-thesis_projects(id, user_id, title, school, college, degree, major, template_id, created_at)
+thesis_projects(id, user_id, title, school, college, degree, major, template_id,
+                source_repo_id, source_notes, created_at)
 thesis_documents(id, project_id, version, filename, sha256, page_count, word_count, path)
 thesis_issues(id, project_id, document_id, rule_id, category, severity, location_json,
               current, expected, evidence, fix_type, confidence, status)
@@ -352,9 +361,10 @@ thesis_citation_evidence(id, citation_id, source, url, page, quote, support, con
 thesis_disclosures(id, project_id, tool, version, purpose, stage, prompt, output, modified, created_at)
 thesis_templates(id, school, college, degree, year, rules_json, source, version)
 thesis_reports(id, project_id, document_id, kind, path, created_at)
+sessions(..., product_mode, thesis_project_id)   # 论文对话与开发会话隔离
 ```
 
-沿用现有数据库/迁移方式；本地模式与服务器模式共用领域模型。
+沿用现有数据库/迁移方式；本地模式与服务器模式共用领域模型。`source_repo_id` 允许论文项目复用开发模式的仓库（含本机文件夹），删除仓库时置空。
 
 ### 8.3 前端
 
@@ -369,18 +379,21 @@ frontend/src/
 │  ├─ CitationPanel.tsx
 │  ├─ DisclosurePanel.tsx
 │  ├─ ExportPanel.tsx
+│  ├─ WritingPanel.tsx     # 项目关联、项目说明、写作快捷指令
+│  ├─ ThesisChatPanel.tsx  # 复用 Agent 对话的写作助手（右栏/抽屉）
 │  └─ TemplatePicker.tsx
 └─ stores/thesis.ts
 ```
 
 - 顶部产品模式切换：`开发 | 论文`，存 `localStorage`；不改现有 `WorkspaceTab`。
-- `AppShell` 按模式渲染 `WorkspaceView` 或 `ThesisWorkspaceView`；对话/输入框/模型选择复用。
+- `AppShell` 按模式渲染 `WorkspaceView` 或 `ThesisWorkspaceView`；论文对话复用 `useChat` 的 Agent 流、审批与权限模式，历史按 `product_mode` / `thesis_project_id` 隔离。
+- 桌面宽度下 AI 写作助手常驻右栏，窄屏用抽屉；同一时刻只挂载一个面板。
 - 不做富文本编辑器；问题详情显示段落文本 + 位置；「在 Word 中打开」调用系统默认程序。
 - 不新增 PDF 查看器；引用证据显示页码 + 原文片段 + 来源链接。
 
 ### 8.4 Agent 工具与技能
 
-论文模式不是静态面板，Agent 仍可调用工具：
+论文模式不是静态面板，Agent 仍可调用开发模式的同一套工具（读/搜/改本地文件、执行命令、检索仓库）；系统提示会附加论文事实与写作边界（见 6.8）。规划中的论文专用工具：
 
 ```text
 thesis_scan(project_id, scope)                 # 触发体检

@@ -985,6 +985,15 @@
             ],
             "title": "Permission Mode"
           },
+          "product_mode": {
+            "default": "dev",
+            "enum": [
+              "dev",
+              "thesis"
+            ],
+            "title": "Product Mode",
+            "type": "string"
+          },
           "repo_ids": {
             "anyOf": [
               {
@@ -1009,6 +1018,17 @@
               }
             ],
             "title": "Session Id"
+          },
+          "thesis_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thesis Project Id"
           }
         },
         "required": [
@@ -4189,6 +4209,15 @@
               }
             ]
           },
+          "product_mode": {
+            "default": "dev",
+            "enum": [
+              "dev",
+              "thesis"
+            ],
+            "title": "Product Mode",
+            "type": "string"
+          },
           "repo_ids": {
             "items": {
               "type": "string"
@@ -4196,6 +4225,17 @@
             "maxItems": 5,
             "title": "Repo Ids",
             "type": "array"
+          },
+          "thesis_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thesis Project Id"
           }
         },
         "title": "SessionCreateRequest",
@@ -4256,12 +4296,32 @@
             ],
             "title": "Primary Repo Id"
           },
+          "product_mode": {
+            "default": "dev",
+            "enum": [
+              "dev",
+              "thesis"
+            ],
+            "title": "Product Mode",
+            "type": "string"
+          },
           "repo_ids": {
             "items": {
               "type": "string"
             },
             "title": "Repo Ids",
             "type": "array"
+          },
+          "thesis_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thesis Project Id"
           },
           "title": {
             "title": "Title",
@@ -5636,6 +5696,23 @@
             "title": "School",
             "type": "string"
           },
+          "source_notes": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Source Notes",
+            "type": "string"
+          },
+          "source_repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repo Id"
+          },
           "template_id": {
             "default": "generic-undergraduate-v1",
             "maxLength": 80,
@@ -5699,6 +5776,22 @@
             "default": "",
             "title": "School",
             "type": "string"
+          },
+          "source_notes": {
+            "default": "",
+            "title": "Source Notes",
+            "type": "string"
+          },
+          "source_repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repo Id"
           },
           "status": {
             "default": "draft",
@@ -5772,6 +5865,22 @@
             "title": "School",
             "type": "string"
           },
+          "source_notes": {
+            "default": "",
+            "title": "Source Notes",
+            "type": "string"
+          },
+          "source_repo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repo Id"
+          },
           "status": {
             "default": "draft",
             "title": "Status",
@@ -5835,6 +5944,30 @@
               }
             ],
             "title": "School"
+          },
+          "source_notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Notes"
+          },
+          "source_repo_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repo Id"
           },
           "template_id": {
             "anyOf": [
@@ -7359,6 +7492,36 @@
                 }
               ],
               "title": "Repo Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "product_mode",
+            "required": false,
+            "schema": {
+              "default": "dev",
+              "enum": [
+                "dev",
+                "thesis"
+              ],
+              "title": "Product Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "thesis_project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thesis Project Id"
             }
           }
         ],

@@ -35,6 +35,10 @@ type ChatState = {
   overridesSaving: boolean
   selectedRepoIds: string[]
   historyRepoId: string | null
+  /** 会话历史所属产品面；论文模式的对话不会出现在开发模式列表里。 */
+  productMode: 'dev' | 'thesis'
+  thesisProjectId: string | null
+  setScope: (productMode: 'dev' | 'thesis', thesisProjectId: string | null) => void
   attachments: FileAttachment[]
   uploading: boolean
   refs: RetrievalHit[]
@@ -443,6 +447,8 @@ export const useChat = create<ChatState>((set, get) => ({
   overridesSaving: false,
   selectedRepoIds: [],
   historyRepoId: null,
+  productMode: 'dev',
+  thesisProjectId: null,
   attachments: [],
   uploading: false,
   refs: [],
@@ -566,9 +572,40 @@ export const useChat = create<ChatState>((set, get) => ({
     }
   },
 
+  setScope: (productMode, thesisProjectId) => {
+    const state = get()
+    if (state.productMode === productMode && state.thesisProjectId === thesisProjectId) {
+      return
+    }
+    detachStream()
+    set({
+      ...IDLE_STREAM,
+      productMode,
+      thesisProjectId,
+      sessions: [],
+      sessionId: null,
+      messages: [],
+      selectedRepoIds: [],
+      historyRepoId: null,
+      attachments: [],
+      turnId: null,
+      turnStatus: null,
+      backgroundTurns: {},
+      contextMeter: null,
+      turnNotice: null,
+      error: null,
+    })
+  },
+
   loadSessions: async () => {
+    const { productMode, thesisProjectId, historyRepoId } = get()
     try {
-      set({ sessions: await api.sessions.list(get().historyRepoId ?? undefined) })
+      set({
+        sessions: await api.sessions.list(historyRepoId ?? undefined, {
+          productMode,
+          thesisProjectId: thesisProjectId ?? undefined,
+        }),
+      })
     } catch {
       /* session list failures are non-fatal */
     }
@@ -771,6 +808,7 @@ export const useChat = create<ChatState>((set, get) => ({
       permissionMode: 'ask', model: null, provider: null,
       reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null,
       overridesSaving: false, selectedRepoIds: [], historyRepoId: null,
+      productMode: 'dev' as const, thesisProjectId: null,
       attachments: [], uploading: false, refs: [],
       turnId: null, turnStatus: null, backgroundTurns: {},
       contextMeter: null, turnNotice: null, error: null,
@@ -841,6 +879,8 @@ export const useChat = create<ChatState>((set, get) => ({
           model: get().model ?? undefined,
           llm_overrides: overrides,
           file_ids: pendingAttachments.map((item) => item.id),
+          product_mode: get().productMode,
+          thesis_project_id: get().thesisProjectId ?? undefined,
         },
         (event, data) => {
           if (ownsStream(owner)) applyStreamEvent(set, event, data, sentinelPersisted)

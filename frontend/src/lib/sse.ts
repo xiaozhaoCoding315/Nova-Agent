@@ -13,6 +13,8 @@ export type ChatStreamBody = {
   model?: string
   llm_overrides?: LlmOverrides
   file_ids?: string[]
+  product_mode?: 'dev' | 'thesis'
+  thesis_project_id?: string
 }
 
 async function readSSE(
