@@ -9,6 +9,7 @@ class AuditAction:
     LOGIN = "login"
     LOGIN_FAILED = "login_failed"
     CHAT_MESSAGE = "chat_message"
+    CHAT_PERMISSION_CHANGE = "chat_permission_change"
     TOOL_CALL = "tool_call"
     SANDBOX_RUN = "sandbox_run"
     RISK_BLOCKED = "risk_blocked"
@@ -21,6 +22,7 @@ class AuditAction:
     DEPLOY = "deploy"
     DEPLOY_STOP = "deploy_stop"
     THESIS_PROJECT_CREATE = "thesis_project_create"
+    THESIS_PROJECT_UPDATE = "thesis_project_update"
     THESIS_PROJECT_DELETE = "thesis_project_delete"
     THESIS_DOCUMENT_IMPORT = "thesis_document_import"
     THESIS_SCAN = "thesis_scan"
@@ -36,6 +38,7 @@ class AuditAction:
     THESIS_DISCLOSURE_CREATE = "thesis_disclosure_create"
     THESIS_DISCLOSURE_DELETE = "thesis_disclosure_delete"
     THESIS_EXPORT = "thesis_export"
+    THESIS_TOOL_READ = "thesis_tool_read"
 
 # In-memory buffer for fast access
 _audit_buffer = []

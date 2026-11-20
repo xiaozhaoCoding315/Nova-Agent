@@ -55,6 +55,98 @@ jobs:
       - name: Contract drift check
         run: cd frontend && npm run contract:check
 
+  security:
+    # Advisory for now: it reports known vulnerabilities without blocking PRs
+    # until the current findings are triaged. Promote to blocking afterwards.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm audit (high and above)
+        run: cd frontend && npm audit --omit=dev --audit-level=high
+
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nova_agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Apply migrations on an empty database (twice)
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import asyncio
+
+          from app.db import query
+          from app.db.init_db import LATEST_SCHEMA_VERSION, init_postgres
+
+          REQUIRED_CONSTRAINTS = {
+              "sessions_product_mode_check",
+              "thesis_documents_status_check",
+              "thesis_issues_severity_check",
+              "thesis_issues_status_check",
+          }
+
+          async def main() -> None:
+              await init_postgres()
+              # Startup may race a previous partial run; the second call must
+              # be a no-op and must not fail on existing indexes/constraints.
+              await init_postgres()
+
+              rows = await query("SELECT max(version) FROM schema_migrations")
+              current = int(rows[0][0] or 0)
+              assert current == LATEST_SCHEMA_VERSION, (current, LATEST_SCHEMA_VERSION)
+
+              rows = await query(
+                  "SELECT conname FROM pg_constraint WHERE conname = ANY(%s)",
+                  (list(REQUIRED_CONSTRAINTS),),
+              )
+              found = {row[0] for row in rows}
+              assert found == REQUIRED_CONSTRAINTS, found
+              print(f"schema v{current} ok; {len(found)} constraints present")
+
+          asyncio.run(main())
+          PY
+
   sandbox-smoke:
     runs-on: ubuntu-latest
     steps:

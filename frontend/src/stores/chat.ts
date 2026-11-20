@@ -76,6 +76,8 @@ let abortController: AbortController | null = null
 /** 递增的流所有权；被替换的流在 finally/catch 中不得再写状态。 */
 let streamOwner = 0
 let selectionEpoch = 0
+/** 产品面/项目作用域的代际；切 scope 后到达的旧响应一律丢弃。 */
+let scopeEpoch = 0
 
 function nextSelectionRevision(): number {
   selectionEpoch += 1
@@ -574,17 +576,32 @@ export const useChat = create<ChatState>((set, get) => ({
 
   setScope: (productMode, thesisProjectId) => {
     const state = get()
-    if (state.productMode === productMode && state.thesisProjectId === thesisProjectId) {
+    // `null` 表示“沿用当前论文项目”：AppShell 只在模式切换时调用，不能把
+    // 面板刚设好的项目作用域清掉。
+    const nextProject = productMode === 'thesis'
+      ? (thesisProjectId ?? state.thesisProjectId)
+      : null
+    if (state.productMode === productMode && state.thesisProjectId === nextProject) {
       return
     }
+    scopeEpoch += 1
+    nextSelectionRevision()
     detachStream()
     set({
       ...IDLE_STREAM,
       productMode,
-      thesisProjectId,
+      thesisProjectId: nextProject,
       sessions: [],
       sessionId: null,
       messages: [],
+      permissionMode: 'ask',
+      model: null,
+      provider: null,
+      reasoningEffort: '',
+      reasoningCleared: false,
+      contextWindow: null,
+      temperature: null,
+      overridesSaving: false,
       selectedRepoIds: [],
       historyRepoId: null,
       attachments: [],
@@ -599,13 +616,14 @@ export const useChat = create<ChatState>((set, get) => ({
 
   loadSessions: async () => {
     const { productMode, thesisProjectId, historyRepoId } = get()
+    const scope = scopeEpoch
     try {
-      set({
-        sessions: await api.sessions.list(historyRepoId ?? undefined, {
-          productMode,
-          thesisProjectId: thesisProjectId ?? undefined,
-        }),
+      const sessions = await api.sessions.list(historyRepoId ?? undefined, {
+        productMode,
+        thesisProjectId: thesisProjectId ?? undefined,
       })
+      if (scope !== scopeEpoch) return
+      set({ sessions })
     } catch {
       /* session list failures are non-fatal */
     }
@@ -801,6 +819,8 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   reset: () => {
+    scopeEpoch += 1
+    nextSelectionRevision()
     detachStream()
     set({
       ...IDLE_STREAM,

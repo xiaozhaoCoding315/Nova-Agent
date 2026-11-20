@@ -73,6 +73,7 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
     () => repos.find((repo) => repo.id === project.source_repo_id) ?? null,
     [repos, project.source_repo_id],
   )
+  const notesDirty = notes !== (project.source_notes ?? '')
 
   const saveNotes = async () => {
     setSaving(true)
@@ -147,7 +148,8 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
             <Button
               size="sm"
               onClick={() => setFolderOpen(true)}
-              title={localMode ? '打开本机文件夹' : '仅本地模式支持'}
+              disabled={!localMode}
+              title={localMode ? '打开本机文件夹' : '仅桌面客户端本地模式支持'}
             >
               <FolderOpen size={13} /> 打开本地文件夹
             </Button>
@@ -175,7 +177,7 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
               这些信息会随每次对话进入上下文，减少它猜测。
             </p>
           </div>
-          <Button size="sm" onClick={() => void saveNotes()} disabled={saving || notes === (project.source_notes ?? '')}>
+          <Button size="sm" onClick={() => void saveNotes()} disabled={saving || !notesDirty}>
             {saving ? <Spinner /> : <Save size={13} />} 保存
           </Button>
         </div>
@@ -187,6 +189,12 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
           placeholder="例：系统面向校内二手交易，后端 FastAPI，前端 React；我负责检索与权限模块；测试数据为 200 条模拟记录，无真实个人信息。"
           className="mt-3 w-full resize-y rounded-md border border-edge bg-base px-2.5 py-2 text-sm leading-relaxed text-ink outline-none focus:border-accent"
         />
+        <p className="mt-1.5 flex items-center justify-between text-2xs text-faint">
+          <span>只保存在你自己的论文项目里，随对话进入上下文。</span>
+          <span className={notesDirty ? 'text-warn' : ''}>
+            {notesDirty ? '有未保存的修改' : '已保存'}
+          </span>
+        </p>
       </section>
 
       <section className="rounded-lg border border-edge bg-panel/40 p-4">

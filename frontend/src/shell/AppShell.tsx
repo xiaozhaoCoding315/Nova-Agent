@@ -192,6 +192,8 @@ export function AppShell() {
   }, [thesisMode])
 
   // 两个产品面的对话历史分开加载；切回开发模式时重新取开发会话。
+  // 进入论文模式时项目作用域由 ThesisChatPanel 设置；这里传 null 表示沿用，
+  // 不会把面板刚设好的 thesis_project_id 覆盖掉。
   useEffect(() => {
     useChat.getState().setScope(thesisMode ? 'thesis' : 'dev', null)
     if (!thesisMode) void useChat.getState().loadSessions()

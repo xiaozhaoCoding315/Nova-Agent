@@ -145,6 +145,25 @@ class Settings(BaseSettings):
     image_input_max_pixels: int = 40_000_000
     image_input_max_total_kb: int = 10_240
 
+    # ---------- Thesis mode ----------
+    # Server installs may expose DOCX parsing to every signed-in user.  Keep
+    # an explicit switch so an operator can turn the heavy document surface
+    # off without disabling the rest of the product.
+    thesis_server_enabled: bool = True
+    thesis_guest_enabled: bool = False
+    thesis_max_projects: int = 10
+    thesis_max_documents: int = 20
+    thesis_max_reference_pdfs: int = 20
+    # DOCX archive guards (decompressed size, entry count, ratio).  A normal
+    # thesis with images stays far below these limits.
+    thesis_max_uncompressed_mb: int = 200
+    thesis_max_zip_entries: int = 5000
+    thesis_max_zip_entry_mb: int = 100
+    thesis_max_zip_ratio: int = 200
+    # Snapshot original DOCX files around a thesis chat turn and restore them
+    # if a tool modified the thesis container.
+    thesis_protect_files: bool = True
+
     # ---------- Builder ----------
     # Boot generated projects in a throwaway container after approval
     # (health check, then immediate teardown) — "runs" beats "compiles".

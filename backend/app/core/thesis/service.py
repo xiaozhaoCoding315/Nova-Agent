@@ -15,7 +15,11 @@ import structlog
 from fastapi import UploadFile
 
 from app.config import settings
-from app.core.storage.user_storage import sanitize_filename, thesis_container
+from app.core.storage.user_storage import (
+    sanitize_filename,
+    thesis_container,
+    used_bytes,
+)
 from app.core.thesis.citations.extract import audit_citations
 from app.core.thesis.citations.fulltext import (
     extract_pdf_pages,
@@ -41,7 +45,12 @@ from app.core.thesis.report.builder import (
     render_report_html,
     write_export_package,
 )
-from app.core.thesis.rules.builtin import GENERIC_TEMPLATE, get_template, list_templates
+from app.core.thesis.rules.builtin import (
+    GENERIC_TEMPLATE,
+    get_template,
+    get_template_strict,
+    list_templates,
+)
 from app.core.thesis.rules.engine import run_rules
 from app.db import execute, query, transaction
 
@@ -105,6 +114,51 @@ def _valid_uuid(value: str) -> str:
         return str(uuid.UUID(str(value)))
     except (AttributeError, TypeError, ValueError) as exc:
         raise LookupError("论文项目不存在") from exc
+
+
+def _validate_docx_archive(path: Path) -> None:
+    """Reject decompression bombs and OOXML external-entity declarations.
+
+    python-docx/lxml do not expose archive limits, so we inspect the zip
+    before handing it to the parser.  A DOCTYPE/ENTITY declaration is never
+    needed in a DOCX and is rejected outright.
+    """
+    max_total = settings.thesis_max_uncompressed_mb * 1024 * 1024
+    max_entry = settings.thesis_max_zip_entry_mb * 1024 * 1024
+    with zipfile.ZipFile(path) as archive:
+        infos = archive.infolist()
+        if len(infos) > settings.thesis_max_zip_entries:
+            raise ValueError(
+                f"DOCX 压缩包条目过多（{len(infos)}），上限为 "
+                f"{settings.thesis_max_zip_entries}"
+            )
+        total = sum(int(info.file_size) for info in infos)
+        if total > max_total:
+            raise ValueError(
+                f"DOCX 解压后过大（{total // (1024 * 1024)}MB），上限为 "
+                f"{settings.thesis_max_uncompressed_mb}MB"
+            )
+        for info in infos:
+            if info.flag_bits & 0x1:
+                raise ValueError("DOCX 包含加密条目，无法安全解析")
+            if info.file_size > max_entry:
+                raise ValueError(f"DOCX 条目 {info.filename} 超过单条上限")
+            if info.compress_size > 0 and info.file_size > 0:
+                ratio = info.file_size / info.compress_size
+                if ratio > settings.thesis_max_zip_ratio:
+                    raise ValueError(
+                        f"DOCX 条目 {info.filename} 压缩比异常（{ratio:.0f}:1）"
+                    )
+        for info in infos:
+            name = info.filename.lower()
+            if not (name.endswith(".xml") or name.endswith(".rels")):
+                continue
+            with archive.open(info) as handle:
+                head = handle.read(2 * 1024 * 1024).lower()
+            if b"<!doctype" in head or b"<!entity" in head:
+                raise ValueError(
+                    f"DOCX XML 包含不允许的外部实体声明：{info.filename}"
+                )
 
 
 def _project_row(row: tuple) -> dict[str, Any]:
@@ -310,7 +364,12 @@ async def create_project(
     source_repo_id: str | None = None,
     source_notes: str = "",
 ) -> dict[str, Any]:
-    template = get_template(template_id)
+    count = await query(
+        "SELECT count(*) FROM thesis_projects WHERE user_id = %s", (user_id,)
+    )
+    if (int(count[0][0] or 0) if count else 0) >= settings.thesis_max_projects:
+        raise ValueError(f"每个用户最多创建 {settings.thesis_max_projects} 个论文项目")
+    template = get_template_strict(template_id)
     if source_repo_id and not await _owned_repo(user_id, source_repo_id):
         raise ValueError("工程项目不存在或无权访问")
     project_id = str(uuid.uuid4())
@@ -355,7 +414,7 @@ async def update_project(
         params.append(degree)
     if template_id is not None:
         assignments.append("template_id = %s")
-        params.append(get_template(template_id)["id"])
+        params.append(get_template_strict(template_id)["id"])
     if source_repo_id is not None:
         repo_id = source_repo_id.strip()
         if repo_id:
@@ -399,10 +458,17 @@ async def delete_project(user_id: int, project_id: str) -> bool:
     project = await get_project(user_id, project_id)
     if not project:
         return False
-    await execute(
-        "DELETE FROM thesis_projects WHERE id = %s AND user_id = %s",
-        (project_id, user_id),
-    )
+    await transaction([
+        (
+            "UPDATE sessions SET product_mode = 'dev', thesis_project_id = NULL "
+            "WHERE thesis_project_id = %s AND user_id = %s",
+            (project_id, user_id),
+        ),
+        (
+            "DELETE FROM thesis_projects WHERE id = %s AND user_id = %s",
+            (project_id, user_id),
+        ),
+    ])
     await asyncio.to_thread(
         shutil.rmtree, thesis_container(user_id, project_id), True
     )
@@ -463,15 +529,65 @@ async def _latest_document_full(user_id: int, project_id: str) -> dict[str, Any]
     }
 
 
+async def list_artifact_paths(user_id: int, project_id: str) -> list[str]:
+    """Known DOCX/PDF artifact paths for the per-turn integrity guard."""
+    project_id = _valid_uuid(project_id)
+    rows = await query(
+        "SELECT storage_path, working_path FROM thesis_documents "
+        "WHERE project_id = %s AND user_id = %s "
+        "UNION ALL "
+        "SELECT storage_path, NULL FROM thesis_reference_pdfs "
+        "WHERE project_id = %s AND user_id = %s",
+        (project_id, user_id, project_id, user_id),
+    )
+    paths: list[str] = []
+    for storage, working in rows:
+        for value in (storage, working):
+            if value:
+                paths.append(str(value))
+    return paths
+
+
+async def get_latest_document_model(
+    user_id: int, project_id: str,
+) -> DocumentModel | None:
+    """Latest parsed document model, for the read-only thesis tools."""
+    project_id = _valid_uuid(project_id)
+    full = await _latest_document_full(user_id, project_id)
+    if not full:
+        return None
+    raw = full.get("document_model")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return None
+    if not isinstance(raw, dict):
+        return None
+    return DocumentModel.from_dict(raw)
+
+
 async def import_document(
     user_id: int,
     project_id: str,
     upload: UploadFile,
+    *,
+    max_storage_bytes: int | None = None,
 ) -> dict[str, Any]:
     project_id = _valid_uuid(project_id)
     project = await get_project(user_id, project_id)
     if not project:
         raise LookupError("论文项目不存在")
+
+    count = await query(
+        "SELECT count(*) FROM thesis_documents WHERE project_id = %s AND user_id = %s",
+        (project_id, user_id),
+    )
+    if (int(count[0][0] or 0) if count else 0) >= settings.thesis_max_documents:
+        raise ValueError(
+            f"每个论文项目最多保留 {settings.thesis_max_documents} 份 DOCX；"
+            "请先删除旧版本或新建项目"
+        )
 
     filename = sanitize_filename(upload.filename or "thesis.docx")
     if not filename.lower().endswith(".docx"):
@@ -498,9 +614,17 @@ async def import_document(
             raise ValueError("文件为空")
         if not zipfile.is_zipfile(tmp_path):
             raise ValueError("不是有效的 DOCX 文件（zip 结构损坏）")
+        await asyncio.to_thread(_validate_docx_archive, tmp_path)
         with zipfile.ZipFile(tmp_path) as archive:
             if "word/document.xml" not in archive.namelist():
                 raise ValueError("DOCX 缺少 word/document.xml")
+        if max_storage_bytes is not None:
+            used = await used_bytes(user_id)
+            if used + total > max_storage_bytes:
+                raise ValueError(
+                    "存储空间不足：论文文档会计入用户存储配额，"
+                    "请删除旧文档/参考 PDF 后重试"
+                )
         tmp_path.replace(final_path)
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -531,8 +655,8 @@ async def import_document(
         status = "failed"
         parse_error = str(exc)[:2000]
 
-    try:
-        await execute(
+    queries: list[tuple[str, tuple]] = [
+        (
             "INSERT INTO thesis_documents "
             "(id, project_id, user_id, filename, storage_path, sha256, size, mime, "
             "status, parse_error, document_model, stats) "
@@ -542,26 +666,32 @@ async def import_document(
                 sha256, total, DOCX_MIME, status, parse_error,
                 model_json, json.dumps(stats, ensure_ascii=False),
             ),
-        )
-        await execute(
+        ),
+        (
             "UPDATE thesis_projects SET status = %s, updated_at = now() "
             "WHERE id = %s AND user_id = %s",
             (status if status == "parsed" else "failed", project_id, user_id),
-        )
-        # New source document invalidates previous results and citation rows.
-        await execute(
-            "DELETE FROM thesis_issues WHERE project_id = %s AND user_id = %s",
-            (project_id, user_id),
-        )
-        await execute(
-            "DELETE FROM thesis_citations WHERE project_id = %s AND user_id = %s",
-            (project_id, user_id),
-        )
-        await execute(
-            "DELETE FROM thesis_citation_evidence "
-            "WHERE project_id = %s AND user_id = %s",
-            (project_id, user_id),
-        )
+        ),
+    ]
+    # A failed re-import must not destroy the last good scan/reference results.
+    if status == "parsed":
+        queries.extend([
+            (
+                "DELETE FROM thesis_issues WHERE project_id = %s AND user_id = %s",
+                (project_id, user_id),
+            ),
+            (
+                "DELETE FROM thesis_citations WHERE project_id = %s AND user_id = %s",
+                (project_id, user_id),
+            ),
+            (
+                "DELETE FROM thesis_citation_evidence "
+                "WHERE project_id = %s AND user_id = %s",
+                (project_id, user_id),
+            ),
+        ])
+    try:
+        await transaction(queries)
     except Exception:
         final_path.unlink(missing_ok=True)
         raise
@@ -680,7 +810,11 @@ async def scan_project(
         raise ValueError("文档模型为空，请重新导入后重试")
 
     model = DocumentModel.from_dict(model_data)
-    template = get_template(template_id or project["template_id"])
+    template = (
+        get_template_strict(template_id)
+        if template_id is not None
+        else get_template(project["template_id"])
+    )
     audit = audit_citations(model, template)
     drafts = run_rules(model, template["id"], citation_audit=audit)
 
@@ -1182,6 +1316,8 @@ async def import_reference_pdf(
     user_id: int,
     project_id: str,
     upload: UploadFile,
+    *,
+    max_storage_bytes: int | None = None,
 ) -> dict[str, Any]:
     project_id = _valid_uuid(project_id)
     project = await get_project(user_id, project_id)
@@ -1191,8 +1327,10 @@ async def import_reference_pdf(
         "SELECT count(*) FROM thesis_reference_pdfs WHERE project_id = %s AND user_id = %s",
         (project_id, user_id),
     )
-    if int(count[0][0] or 0) >= 20:
-        raise ValueError("每个项目最多附加 20 个参考文献 PDF")
+    if (int(count[0][0] or 0) if count else 0) >= settings.thesis_max_reference_pdfs:
+        raise ValueError(
+            f"每个项目最多附加 {settings.thesis_max_reference_pdfs} 个参考文献 PDF"
+        )
 
     filename = sanitize_filename(upload.filename or "reference.pdf")
     if not filename.lower().endswith(".pdf"):
@@ -1221,6 +1359,12 @@ async def import_reference_pdf(
             if probe.read(5) != b"%PDF-":
                 raise ValueError("不是有效的 PDF 文件")
         pages = await asyncio.to_thread(extract_pdf_pages, tmp_path)
+        if max_storage_bytes is not None:
+            used = await used_bytes(user_id)
+            if used + total > max_storage_bytes:
+                raise ValueError(
+                    "存储空间不足：参考 PDF 会计入用户存储配额，请清理后重试"
+                )
         tmp_path.replace(final_path)
         page_count = len(pages)
         await execute(
@@ -1569,6 +1713,10 @@ async def export_project(user_id: int, project_id: str) -> tuple[Path, str] | No
     if fixed_docx is not None and not fixed_docx.is_file():
         fixed_docx = None
     export_dir = thesis_container(user_id, project_id) / "exports"
+    # Each export is a one-shot download; keep only the zip produced here.
+    if export_dir.is_dir():
+        for stale in export_dir.glob("*.zip"):
+            stale.unlink(missing_ok=True)
     zip_path = await asyncio.to_thread(
         write_export_package,
         export_dir,

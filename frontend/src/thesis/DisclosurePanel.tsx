@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Spinner } from '../components/common'
 import type { ThesisDisclosureInput } from '../lib/types'
 import { useThesis } from '../stores/thesis'
@@ -24,9 +24,21 @@ function formatDate(value?: string | null): string {
 }
 
 export function DisclosurePanel() {
-  const { disclosures, busy, addDisclosure, removeDisclosure, exportPackage } = useThesis()
+  const {
+    disclosures, busy, addDisclosure, removeDisclosure, exportPackage,
+    disclosureDraft, clearDisclosureDraft,
+  } = useThesis()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<ThesisDisclosureInput>(EMPTY_FORM)
+
+  // AI 对话面板的「记入 AI 使用声明」把这一轮的工具、提示与输出预填进来；
+  // 用户仍需确认后才会保存。
+  useEffect(() => {
+    if (!disclosureDraft) return
+    setForm({ ...EMPTY_FORM, ...disclosureDraft })
+    setOpen(true)
+    clearDisclosureDraft()
+  }, [disclosureDraft, clearDisclosureDraft])
 
   const update = (patch: Partial<ThesisDisclosureInput>) => {
     setForm((value) => ({ ...value, ...patch }))

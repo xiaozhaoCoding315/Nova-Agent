@@ -252,6 +252,10 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
   const [localError, setLocalError] = useState<string | null>(null)
   const [tab, setTab] = useState<TabKey>('issues')
   const [chatOpen, setChatOpen] = useState(false)
+  // CSS 隐藏的桌面 aside 仍会挂载组件；用媒体查询决定只渲染一份面板。
+  const [desktopChat, setDesktopChat] = useState(
+    () => window.matchMedia('(min-width: 1280px)').matches,
+  )
   const [preview, setPreview] = useState<{ issue: ThesisIssue; data: ThesisFixPreview } | null>(null)
   const [previewLoading, setPreviewLoading] = useState<string | null>(null)
   const [form, setForm] = useState<CreateForm>({
@@ -261,21 +265,42 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
     templateId: '',
   })
   const fileRef = useRef<HTMLInputElement>(null)
+  const mobileChatRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  // 桌面宽度下右侧栏常驻；关掉移动端抽屉，避免同一面板被挂载两次。
+  // 桌面宽度下右侧栏常驻；关掉移动端抽屉，保证同一时间只挂载一份面板。
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)')
-    const closeOnDesktop = () => {
+    const sync = () => {
+      setDesktopChat(media.matches)
       if (media.matches) setChatOpen(false)
     }
-    closeOnDesktop()
-    media.addEventListener('change', closeOnDesktop)
-    return () => media.removeEventListener('change', closeOnDesktop)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
   }, [])
+
+  // 移动端抽屉按对话框处理：Esc 关闭，打开后把焦点送进输入框。
+  useEffect(() => {
+    if (!chatOpen || desktopChat) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setChatOpen(false)
+    }
+    // 组件里的 `document` 是当前论文文档状态，DOM 必须走 window.document。
+    window.document.addEventListener('keydown', onKey)
+    const timer = window.setTimeout(() => {
+      mobileChatRef.current
+        ?.querySelector<HTMLElement>('textarea, select, button')
+        ?.focus()
+    }, 0)
+    return () => {
+      window.document.removeEventListener('keydown', onKey)
+      window.clearTimeout(timer)
+    }
+  }, [chatOpen, desktopChat])
 
   useEffect(() => {
     if (loading || current || projects.length === 0) return
@@ -911,22 +936,28 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
         )}
       </section>
 
-      <aside className="hidden w-[340px] shrink-0 flex-col border-l border-edge xl:flex">
-        {current ? (
-          <ThesisChatPanel project={current} onOpenSettings={onOpenSettings} />
-        ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs leading-relaxed text-faint">
-            选择或新建一个论文项目后，就可以在这里与 AI 一起读项目、搭提纲、写章节草稿。
-          </div>
-        )}
-      </aside>
+      {desktopChat && (
+        <aside className="flex w-[340px] shrink-0 flex-col border-l border-edge">
+          {current ? (
+            <ThesisChatPanel project={current} onOpenSettings={onOpenSettings} />
+          ) : (
+            <div className="flex h-full items-center justify-center px-4 text-center text-xs leading-relaxed text-faint">
+              选择或新建一个论文项目后，就可以在这里与 AI 一起读项目、搭提纲、写章节草稿。
+            </div>
+          )}
+        </aside>
+      )}
 
-      {chatOpen && current && (
+      {!desktopChat && chatOpen && current && (
         <div
           className="fixed inset-0 z-40 flex justify-end bg-black/50 xl:hidden"
           onClick={() => setChatOpen(false)}
         >
           <div
+            ref={mobileChatRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI 写作助手"
             className="flex h-full w-[min(400px,94vw)] flex-col border-l border-edge bg-panel"
             onClick={(event) => event.stopPropagation()}
           >

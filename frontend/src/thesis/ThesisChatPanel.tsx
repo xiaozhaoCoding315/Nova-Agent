@@ -55,16 +55,18 @@ export function ThesisChatPanel({
 
   const chatSeed = useThesis((state) => state.chatSeed)
   const setChatSeed = useThesis((state) => state.setChatSeed)
+  const seedDisclosure = useThesis((state) => state.seedDisclosure)
 
   const [input, setInput] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const repoIds = project.source_repo_id ? [project.source_repo_id] : []
 
-  // 每个论文项目有自己的对话范围；进入时清空内存态，历史按项目从服务端取。
+  // 每个论文项目有自己的对话范围；scope 变化会清空内存态，历史按项目从
+  // 服务端取。这里不能 newSession()：面板重挂载（移动端抽屉开关）会把
+  // 用户正在看的会话清掉。
   useEffect(() => {
     setScope('thesis', project.id)
-    newSession()
     setSelectedRepoIds(project.source_repo_id ? [project.source_repo_id] : [])
     void loadSessions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,6 +95,18 @@ export function ThesisChatPanel({
     newSession()
     setSelectedRepoIds(repoIds)
     setInput('')
+  }
+
+  /** 把这一轮对话预填进「AI 使用声明」；用户确认后才会保存。 */
+  const recordDisclosure = (prompt: string, output: string) => {
+    seedDisclosure({
+      tool: 'Nova Agent',
+      stage: 'AI 写作对话',
+      purpose: '阅读项目、搭建提纲或起草章节草稿（本人已核对并修改）',
+      prompt: prompt.slice(0, 2000),
+      output: output.slice(0, 2000),
+      modified: true,
+    })
   }
 
   return (
@@ -176,22 +190,39 @@ export function ThesisChatPanel({
           </div>
         )}
 
-        {messages.filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => (
-          <div key={item.id} className={clsx('flex', item.role === 'user' ? 'justify-end' : 'justify-start')}>
-            <div
-              className={clsx(
-                'max-w-[92%] rounded-lg px-2.5 py-2 text-xs leading-relaxed',
-                item.role === 'user'
-                  ? 'bg-accentSoft/40 text-ink'
-                  : 'border border-edge bg-base/60 text-dim',
-              )}
-            >
-              {item.role === 'assistant'
-                ? <Markdown content={item.content} />
-                : <p className="whitespace-pre-wrap">{item.content}</p>}
+        {messages.filter((item) => item.role === 'user' || item.role === 'assistant').map((item, index, visible) => {
+          const prompt = visible
+            .slice(0, index)
+            .reverse()
+            .find((entry) => entry.role === 'user')?.content ?? ''
+          return (
+            <div key={item.id} className={clsx('flex', item.role === 'user' ? 'justify-end' : 'justify-start')}>
+              <div
+                className={clsx(
+                  'max-w-[92%] rounded-lg px-2.5 py-2 text-xs leading-relaxed',
+                  item.role === 'user'
+                    ? 'bg-accentSoft/40 text-ink'
+                    : 'border border-edge bg-base/60 text-dim',
+                )}
+              >
+                {item.role === 'assistant'
+                  ? <Markdown content={item.content} />
+                  : <p className="whitespace-pre-wrap">{item.content}</p>}
+                {item.role === 'assistant' && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-edge/60 pt-1.5 text-2xs text-faint">
+                    <span>AI 草稿 · 需本人核对</span>
+                    <button
+                      onClick={() => recordDisclosure(prompt, item.content)}
+                      className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                    >
+                      记入 AI 使用声明
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {streaming && (
           <div className="flex justify-start">
@@ -216,6 +247,11 @@ export function ThesisChatPanel({
                     <Spinner /> 正在阅读与思考…
                   </span>
                 )}
+              {streamText && (
+                <p className="mt-1.5 border-t border-edge/60 pt-1.5 text-2xs text-faint">
+                  AI 草稿 · 需本人核对 · 完成后可记入 AI 使用声明
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -249,6 +285,20 @@ export function ThesisChatPanel({
             {error}
             <div className="mt-1 flex gap-2">
               <button onClick={clearError} className="text-2xs text-dim underline">关闭</button>
+              {messages.some((item) => item.role === 'user') && (
+                <button
+                  onClick={() => {
+                    const lastUser = [...messages].reverse().find((item) => item.role === 'user')
+                    if (!lastUser) return
+                    clearError()
+                    setInput(lastUser.content)
+                    inputRef.current?.focus()
+                  }}
+                  className="text-2xs text-accent underline"
+                >
+                  重新编辑上一条
+                </button>
+              )}
               <button onClick={onOpenSettings} className="text-2xs text-accent underline">模型与密钥</button>
             </div>
           </div>

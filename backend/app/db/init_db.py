@@ -1139,7 +1139,87 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         END $$;
         """,
     ]),
+    # 24: thesis FK indexes, constraint checks and orphaned thesis sessions.
+    (24, [
+        "CREATE INDEX IF NOT EXISTS idx_sessions_thesis_project "
+        "ON sessions (thesis_project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_projects_source_repo "
+        "ON thesis_projects (source_repo_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_issues_user "
+        "ON thesis_issues (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_issue "
+        "ON thesis_fixes (issue_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_user "
+        "ON thesis_fixes (user_id, applied_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citations_document "
+        "ON thesis_citations (document_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citations_user "
+        "ON thesis_citations (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_disclosures_user "
+        "ON thesis_disclosures (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_reference_pdfs_user "
+        "ON thesis_reference_pdfs (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_pdf "
+        "ON thesis_citation_evidence (pdf_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_document "
+        "ON thesis_citation_evidence (document_id)",
+        # A project's chat must not outlive the project as a thesis session
+        # without a project; reset those rows so they cannot open broken chats.
+        "UPDATE sessions SET product_mode = 'dev', thesis_project_id = NULL "
+        "WHERE product_mode = 'thesis' AND thesis_project_id IS NULL",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'sessions_product_mode_check'
+            ) THEN
+                ALTER TABLE sessions ADD CONSTRAINT sessions_product_mode_check
+                    CHECK (product_mode IN ('dev', 'thesis')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_documents_status_check'
+            ) THEN
+                ALTER TABLE thesis_documents ADD CONSTRAINT thesis_documents_status_check
+                    CHECK (status IN ('uploaded', 'parsed', 'failed')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_issues_severity_check'
+            ) THEN
+                ALTER TABLE thesis_issues ADD CONSTRAINT thesis_issues_severity_check
+                    CHECK (severity IN ('info', 'warn', 'blocker')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_issues_status_check'
+            ) THEN
+                ALTER TABLE thesis_issues ADD CONSTRAINT thesis_issues_status_check
+                    CHECK (status IN ('open', 'ignored', 'fixed')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+    ]),
 ]
+
+
+LATEST_SCHEMA_VERSION = _MIGRATIONS[-1][0] if _MIGRATIONS else 0
 
 
 def _target_dbname() -> str:

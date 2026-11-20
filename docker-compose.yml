@@ -33,7 +33,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.sandbox
-    image: nova-sandbox:latest
+    image: ${NOVA_SANDBOX_IMAGE:-nova-sandbox:latest}
     entrypoint: ["true"]
     restart: "no"
 
@@ -42,7 +42,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.builder
-    image: nova-builder:latest
+    image: ${NOVA_BUILDER_IMAGE:-nova-builder:latest}
     entrypoint: ["true"]
     restart: "no"
 
@@ -51,11 +51,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.node-builder
-    image: nova-node:latest
+    image: ${NOVA_NODE_IMAGE:-nova-node:latest}
     entrypoint: ["true"]
     restart: "no"
 
   app:
+    # 默认本地构建（tag 与 CI 的 ghcr 镜像布局一致）。已发布镜像可直接
+    # `docker compose pull && docker compose up -d --no-build`，不必在 2G ECS 上构建。
+    image: ${NOVA_APP_IMAGE:-nova-agent-app:latest}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -144,9 +147,9 @@ services:
       GUEST_ONCE_IP_DAYS: ${GUEST_ONCE_IP_DAYS:-7}
 
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-true}
-      SANDBOX_IMAGE: nova-sandbox:latest
-      SANDBOX_BUILDER_IMAGE: nova-builder:latest
-      SANDBOX_NODE_IMAGE: nova-node:latest
+      SANDBOX_IMAGE: ${NOVA_SANDBOX_IMAGE:-nova-sandbox:latest}
+      SANDBOX_BUILDER_IMAGE: ${NOVA_BUILDER_IMAGE:-nova-builder:latest}
+      SANDBOX_NODE_IMAGE: ${NOVA_NODE_IMAGE:-nova-node:latest}
       SANDBOX_ALLOW_NETWORK: ${SANDBOX_ALLOW_NETWORK:-false}
       SANDBOX_HOST_DATA_DIR: ${SANDBOX_HOST_DATA_DIR:-}
       SANDBOX_MASK_SECRETS: ${SANDBOX_MASK_SECRETS:-true}

@@ -5,12 +5,15 @@ tool executes and returns allow/deny plus the capabilities that justified the
 decision.  Tools still enforce their own path/sandbox guards; this layer makes
 the rules explicit, auditable and consistent across tools.
 """
+import os
 import re
 import shlex
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 
 from app.config import settings
+from app.core.product_modes import THESIS, THESIS_SENSITIVE_TOOLS
 from app.core.security.commands import CommandClass, classify_command
 from app.core.security.paths import (
     is_nova_secret_path,
@@ -46,6 +49,11 @@ CATEGORY_CAPABILITIES = {
 }
 
 WRITE_CAPABILITIES = {"fs.write", "proc.exec", "git.write", "deploy"}
+# Thesis mode keeps the full dev tool set, but these calls get a per-call
+# approval even in auto/full.  The model can still use them after the user
+# explicitly approves; the point is that a thesis turn never silently writes
+# files, runs host commands or sends content to the network.
+_THESIS_SENSITIVE_TOOLS = THESIS_SENSITIVE_TOOLS
 DENY_COMMANDS = (
     re.compile(r"\bgit\s+push\b", re.IGNORECASE),
     re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE),
@@ -240,6 +248,75 @@ def _host_allowed(host: str, allowed: str) -> bool:
     return any(host == domain or host.endswith("." + domain) for domain in domains)
 
 
+def _resolved_protected_roots(ctx) -> list[Path]:
+    roots: list[Path] = []
+    for raw in getattr(ctx, "protected_roots", ()) or ():
+        if not raw:
+            continue
+        try:
+            roots.append(Path(raw).expanduser().resolve())
+        except OSError:
+            continue
+    return roots
+
+
+def _under_protected_root(path: Path, roots: list[Path]) -> Path | None:
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return None
+    for root in roots:
+        if resolved == root or root in resolved.parents:
+            return root
+    return None
+
+
+def _protected_path_hit(args: dict, ctx) -> str | None:
+    """Return a protected root when an argument points inside it.
+
+    Relative paths are resolved against every repo root the turn can see, so
+    an edit proposal that walks into the thesis container is caught before the
+    tool runs.  Read-only thesis tools do not go through this check because
+    their arguments are section names, not paths.
+    """
+    roots = _resolved_protected_roots(ctx)
+    if not roots:
+        return None
+    repo_roots = list((getattr(ctx, "repo_roots", {}) or {}).values())
+    for value in _path_values(args):
+        raw = str(value).strip()
+        if raw in ("", ".", "./"):
+            continue
+        candidates: list[Path] = []
+        if os.path.isabs(raw):
+            candidates.append(Path(raw))
+        else:
+            candidates.extend(Path(root) / raw for root in repo_roots if root)
+        for candidate in candidates:
+            hit = _under_protected_root(candidate, roots)
+            if hit:
+                return str(hit)
+    return None
+
+
+def _protected_command_hit(args: dict, ctx) -> str | None:
+    """Catch direct references to protected roots in shell/code text.
+
+    This is a guardrail, not a sandbox: obfuscated commands are still caught by
+    the per-turn file guard that snapshots and restores DOCX artifacts.
+    """
+    roots = _resolved_protected_roots(ctx)
+    if not roots:
+        return None
+    text = " ".join(
+        str(args.get(key) or "") for key in ("command", "code", "script")
+    ).lower()
+    for root in roots:
+        if str(root).lower() in text:
+            return str(root)
+    return None
+
+
 def decide_tool(
     name: str,
     category: str,
@@ -269,6 +346,14 @@ def decide_tool(
             return PolicyDecision(False, f"路径不安全：{value}", caps)
         if is_secret_path(rel):
             return PolicyDecision(False, f"拒绝访问密钥/凭据文件：{rel}", caps)
+
+    protected = _protected_path_hit(args, ctx)
+    if protected:
+        return PolicyDecision(
+            False,
+            f"论文原始文件受保护，工具不能直接读写：{protected}",
+            caps,
+        )
 
     # Local readonly/plan has neither the container's sanitized copy nor
     # secret masking: even a "read-only" shell command would read the real
@@ -379,6 +464,30 @@ def decide_tool(
             f"当前为计划（只读）模式，已阻止 {name}；请切换权限模式（变更前确认 / 自主 / 完全访问）后再试",
             caps,
         )
+
+    # Thesis mode uses the same tools and HostExecutor semantics as dev mode,
+    # but a turn may not silently write files, execute host commands or send
+    # content to the network.  Each such call needs an explicit approval even
+    # when the session is set to auto/full.
+    if getattr(ctx, "product_mode", "dev") == THESIS:
+        protected_command = _protected_command_hit(args, ctx)
+        if protected_command:
+            return PolicyDecision(
+                False,
+                f"论文原始文件受保护，命令不能直接访问：{protected_command}",
+                caps,
+            )
+        if (
+            (name in _THESIS_SENSITIVE_TOOLS or name.startswith("mcp__"))
+            and not getattr(ctx, "approval_granted", False)
+        ):
+            return PolicyDecision(
+                False,
+                "论文模式确认执行：该操作会写文件、执行命令或联网，"
+                "需要你逐次批准。",
+                caps,
+                requires_approval=True,
+            )
 
     if name == "fetch_url":
         if not settings.enable_fetch_url:

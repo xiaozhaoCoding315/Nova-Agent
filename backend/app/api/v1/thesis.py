@@ -6,9 +6,13 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
+from starlette.background import BackgroundTask
 
+from app.config import settings
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
+from app.core.security.limits import check_job_quota
+from app.core.storage.user_storage import storage_limit_bytes
 from app.core.thesis import service
 from app.core.thesis.rules.builtin import list_templates
 from app.models.schemas import (
@@ -47,6 +51,22 @@ def _raise_http(exc: Exception) -> NoReturn:
     raise exc
 
 
+def require_thesis_access(user: dict = Depends(get_current_user)) -> dict:
+    """Mode-level gate shared by every thesis route.
+
+    The deployment switch lets a server admin disable the whole mode; guests
+    are refused by default because thesis files are long-lived and personal.
+    """
+    if not settings.thesis_server_enabled:
+        raise HTTPException(status_code=403, detail="论文模式在当前部署中已关闭")
+    if user.get("is_guest") and not settings.thesis_guest_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="访客账号不能使用论文模式，请注册正式账号",
+        )
+    return user
+
+
 @router.get("/thesis/templates", response_model=list[ThesisTemplateOut])
 async def get_thesis_templates(user: dict = Depends(get_current_user)):
     return list_templates()
@@ -60,7 +80,7 @@ async def get_thesis_projects(user: dict = Depends(get_current_user)):
 @router.post("/thesis/projects", response_model=ThesisProjectOut, status_code=201)
 async def create_thesis_project(
     body: ThesisProjectCreate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         project = await service.create_project(
@@ -85,7 +105,7 @@ async def create_thesis_project(
 @router.get("/thesis/projects/{project_id}", response_model=ThesisProjectDetailOut)
 async def get_thesis_project(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -98,9 +118,12 @@ async def get_thesis_project(
 async def update_thesis_project(
     project_id: str,
     body: ThesisProjectUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     provided = body.model_fields_set
+    before = await service.get_project(user["id"], project_id)
+    if not before:
+        raise HTTPException(status_code=404, detail="论文项目不存在")
     try:
         project = await service.update_project(
             user["id"],
@@ -116,13 +139,32 @@ async def update_thesis_project(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not project:
         raise HTTPException(status_code=404, detail="论文项目不存在")
+    await log_audit(
+        AuditAction.THESIS_PROJECT_UPDATE,
+        user_id=str(user["id"]),
+        details={
+            "project_id": project_id,
+            "before": {
+                "title": before.get("title"),
+                "template_id": before.get("template_id"),
+                "source_repo_id": before.get("source_repo_id"),
+            },
+            "after": {
+                "title": project.get("title"),
+                "template_id": project.get("template_id"),
+                "source_repo_id": project.get("source_repo_id"),
+            },
+            "fields": sorted(provided),
+        },
+        risk_level="warn" if "template_id" in provided or "source_repo_id" in provided else "safe",
+    )
     return project
 
 
 @router.delete("/thesis/projects/{project_id}", response_model=OkOut)
 async def delete_thesis_project(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     if not await service.delete_project(user["id"], project_id):
         raise HTTPException(status_code=404, detail="论文项目不存在")
@@ -140,7 +182,7 @@ async def delete_thesis_project(
 )
 async def get_thesis_documents(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -156,10 +198,14 @@ async def get_thesis_documents(
 async def upload_thesis_document(
     project_id: str,
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_import")
     try:
-        document = await service.import_document(user["id"], project_id, file)
+        document = await service.import_document(
+            user["id"], project_id, file,
+            max_storage_bytes=storage_limit_bytes(user),
+        )
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
         _raise_http(exc)
     await log_audit(
@@ -182,7 +228,7 @@ async def upload_thesis_document(
 )
 async def get_thesis_document(
     document_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     document = await service.get_document(user["id"], document_id, include_model=True)
     if not document:
@@ -197,8 +243,9 @@ async def get_thesis_document(
 async def scan_thesis_project(
     project_id: str,
     template_id: str | None = Query(default=None, max_length=80),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_scan")
     try:
         result = await service.scan_project(user["id"], project_id, template_id=template_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -223,7 +270,7 @@ async def scan_thesis_project(
 async def get_thesis_issues(
     project_id: str,
     status: str = Query(default="open", pattern="^(open|ignored|fixed|all)$"),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -237,7 +284,7 @@ async def get_thesis_issues(
 )
 async def get_thesis_report(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     report = await service.build_report(user["id"], project_id)
     if not report:
@@ -249,7 +296,7 @@ async def get_thesis_report(
 async def update_thesis_issue(
     issue_id: str,
     body: ThesisIssueUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         issue = await service.set_issue_status(user["id"], issue_id, body.status)
@@ -271,7 +318,7 @@ async def update_thesis_issue(
 )
 async def preview_thesis_fix(
     issue_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         preview = await service.preview_issue_fix(user["id"], issue_id)
@@ -283,7 +330,7 @@ async def preview_thesis_fix(
 @router.post("/thesis/issues/{issue_id}/apply", response_model=ThesisApplyOut)
 async def apply_thesis_fix(
     issue_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         result = await service.apply_issue_fix(user["id"], issue_id)
@@ -304,7 +351,7 @@ async def apply_thesis_fix(
 @router.post("/thesis/issues/{issue_id}/undo", response_model=ThesisApplyOut)
 async def undo_thesis_fix(
     issue_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         result = await service.undo_issue_fix(user["id"], issue_id)
@@ -324,7 +371,7 @@ async def undo_thesis_fix(
 )
 async def get_thesis_fixes(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -338,7 +385,7 @@ async def get_thesis_fixes(
 )
 async def get_thesis_citations(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     result = await service.get_citations(user["id"], project_id)
     if not result:
@@ -352,8 +399,9 @@ async def get_thesis_citations(
 )
 async def audit_thesis_citations(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_citation_audit")
     try:
         result = await service.audit_project_citations(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -376,8 +424,9 @@ async def audit_thesis_citations(
 )
 async def verify_thesis_citation_metadata(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_citation_metadata")
     try:
         result = await service.verify_citation_metadata(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -403,7 +452,7 @@ async def verify_thesis_citation_metadata(
 )
 async def get_thesis_reference_pdfs(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -419,10 +468,14 @@ async def get_thesis_reference_pdfs(
 async def upload_thesis_reference_pdf(
     project_id: str,
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_reference_pdf")
     try:
-        pdf = await service.import_reference_pdf(user["id"], project_id, file)
+        pdf = await service.import_reference_pdf(
+            user["id"], project_id, file,
+            max_storage_bytes=storage_limit_bytes(user),
+        )
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
         _raise_http(exc)
     await log_audit(
@@ -441,7 +494,7 @@ async def upload_thesis_reference_pdf(
 @router.delete("/thesis/reference-pdfs/{pdf_id}", response_model=OkOut)
 async def delete_thesis_reference_pdf(
     pdf_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     if not await service.delete_reference_pdf(user["id"], pdf_id):
         raise HTTPException(status_code=404, detail="参考文献 PDF 不存在")
@@ -459,7 +512,7 @@ async def delete_thesis_reference_pdf(
 )
 async def get_thesis_citation_evidence(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -473,8 +526,9 @@ async def get_thesis_citation_evidence(
 )
 async def locate_thesis_citation_evidence(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_citation_locate")
     try:
         result = await service.locate_citation_evidence(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -498,7 +552,7 @@ async def locate_thesis_citation_evidence(
 async def update_thesis_citation_evidence(
     evidence_id: str,
     body: ThesisCitationEvidenceUpdate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         evidence = await service.update_citation_evidence(
@@ -525,7 +579,7 @@ async def update_thesis_citation_evidence(
 )
 async def get_thesis_disclosures(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     project = await service.get_project(user["id"], project_id)
     if not project:
@@ -541,7 +595,7 @@ async def get_thesis_disclosures(
 async def create_thesis_disclosure(
     project_id: str,
     body: ThesisDisclosureCreate,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     disclosure = await service.create_disclosure(
         user["id"],
@@ -567,7 +621,7 @@ async def create_thesis_disclosure(
 @router.delete("/thesis/disclosures/{disclosure_id}", response_model=OkOut)
 async def delete_thesis_disclosure(
     disclosure_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         deleted = await service.delete_disclosure(user["id"], disclosure_id)
@@ -587,7 +641,7 @@ async def delete_thesis_disclosure(
 async def export_thesis_report(
     project_id: str,
     fmt: str = Query(default="html", alias="format", pattern="^(html|docx)$"),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
     try:
         result = await service.export_report_file(user["id"], project_id, fmt)
@@ -608,8 +662,9 @@ async def export_thesis_report(
 @router.post("/thesis/projects/{project_id}/export")
 async def export_thesis_package(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_thesis_access),
 ):
+    check_job_quota(user, "thesis_export")
     try:
         result = await service.export_project(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -622,4 +677,10 @@ async def export_thesis_package(
         user_id=str(user["id"]),
         details={"project_id": project_id, "filename": filename},
     )
-    return FileResponse(path, filename=filename, media_type="application/zip")
+    return FileResponse(
+        path,
+        filename=filename,
+        media_type="application/zip",
+        # The zip is a one-shot download; remove it once the response is sent.
+        background=BackgroundTask(lambda: path.unlink(missing_ok=True)),
+    )

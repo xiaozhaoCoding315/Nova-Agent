@@ -44,6 +44,17 @@ def setup_logging() -> None:
         )
         file_handler.setFormatter(logging.Formatter("%(message)s"))
         root.addHandler(file_handler)
+    elif settings.is_local:
+        # Desktop/local runs keep a bounded size-rotated log so a long-running
+        # local session cannot fill the user's disk.
+        file_handler = logging.handlers.RotatingFileHandler(
+            target,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        root.addHandler(file_handler)
 
     root.setLevel(level)
 

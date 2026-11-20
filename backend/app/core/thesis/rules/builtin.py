@@ -68,6 +68,26 @@ def get_template(template_id: str | None = None) -> dict[str, Any]:
     return GENERIC_TEMPLATE
 
 
+def get_template_strict(template_id: str | None) -> dict[str, Any]:
+    """User-supplied template ids must match exactly.
+
+    ``get_template`` keeps a generic fallback for old rows and internal reads;
+    silently falling back for a *new* user input would switch the school
+    template and delete the previous scan results.  API inputs use this
+    function instead.
+    """
+    if template_id is None:
+        return get_template(None)
+    # The built-in fallback is not in the template library on disk, but it is
+    # the default for projects created without an explicit template.
+    if template_id == GENERIC_TEMPLATE["id"]:
+        return GENERIC_TEMPLATE
+    for template in _all_templates():
+        if template["id"] == template_id:
+            return template
+    raise ValueError(f"未知论文模板：{template_id}")
+
+
 def list_templates() -> list[dict[str, Any]]:
     return [
         {

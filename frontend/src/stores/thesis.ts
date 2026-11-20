@@ -23,6 +23,9 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback
 }
 
+/** 切换项目/登出后丢弃迟到的旧项目响应，避免覆盖新项目的面板数据。 */
+let thesisEpoch = 0
+
 type ThesisState = {
   projects: ThesisProject[]
   templates: ThesisTemplate[]
@@ -38,10 +41,15 @@ type ThesisState = {
   scan: ThesisScanResult | null
   /** 写作面板的快捷指令：AI 对话面板监听后填入输入框。 */
   chatSeed: string
+  /** AI 对话里点「记入 AI 使用声明」时预填的草稿，由声明面板消费。 */
+  disclosureDraft: ThesisDisclosureInput | null
+  seedDisclosure: (input: ThesisDisclosureInput) => void
+  clearDisclosureDraft: () => void
   loading: boolean
   busy: boolean
   fixing: string | null
   error: string | null
+  reset: () => void
   setChatSeed: (seed: string) => void
   updateProject: (patch: Partial<ThesisProjectInput>) => Promise<void>
   refresh: () => Promise<void>
@@ -84,12 +92,41 @@ export const useThesis = create<ThesisState>((set, get) => ({
   report: null,
   scan: null,
   chatSeed: '',
+  disclosureDraft: null,
   loading: false,
   busy: false,
   fixing: null,
   error: null,
 
   clearError: () => set({ error: null }),
+
+  seedDisclosure: (disclosureDraft) => set({ disclosureDraft }),
+  clearDisclosureDraft: () => set({ disclosureDraft: null }),
+
+  // 论文项目是账号私有数据；登出/换号时必须清空，不能留给下一个账号。
+  reset: () => {
+    thesisEpoch += 1
+    set({
+      projects: [],
+      templates: [],
+      current: null,
+      document: null,
+      issues: [],
+      fixes: [],
+      citations: null,
+      referencePdfs: [],
+      evidence: [],
+      disclosures: [],
+      report: null,
+      scan: null,
+      chatSeed: '',
+      disclosureDraft: null,
+      loading: false,
+      busy: false,
+      fixing: null,
+      error: null,
+    })
+  },
 
   setChatSeed: (chatSeed) => set({ chatSeed }),
 
@@ -120,19 +157,23 @@ export const useThesis = create<ThesisState>((set, get) => ({
   },
 
   refresh: async () => {
+    const epoch = thesisEpoch
     set({ loading: true, error: null })
     try {
       const [projects, templates] = await Promise.all([
         api.thesis.projects(),
         get().templates.length > 0 ? Promise.resolve(get().templates) : api.thesis.templates(),
       ])
+      if (epoch !== thesisEpoch) return
       set({ projects, templates, loading: false })
     } catch (err) {
+      if (epoch !== thesisEpoch) return
       set({ loading: false, error: errorMessage(err, '加载论文项目失败') })
     }
   },
 
   selectProject: async (id) => {
+    const epoch = ++thesisEpoch
     set({
       loading: true,
       error: null,
@@ -157,6 +198,7 @@ export const useThesis = create<ThesisState>((set, get) => ({
           api.thesis.citationEvidence(id).catch(() => [] as ThesisCitationEvidence[]),
           api.thesis.disclosures(id).catch(() => [] as ThesisDisclosure[]),
         ])
+      if (epoch !== thesisEpoch) return
       const latest = current.documents[0]
       let document: ThesisDocumentDetail | null = null
       let issues: ThesisIssue[] = []
@@ -167,6 +209,7 @@ export const useThesis = create<ThesisState>((set, get) => ({
           api.thesis.issues(id, 'all').catch(() => [] as ThesisIssue[]),
           api.thesis.report(id).catch(() => null),
         ])
+        if (epoch !== thesisEpoch) return
         document = doc
         issues = issueList
         report = reportData
@@ -184,6 +227,7 @@ export const useThesis = create<ThesisState>((set, get) => ({
         loading: false,
       })
     } catch (err) {
+      if (epoch !== thesisEpoch) return
       set({ loading: false, error: errorMessage(err, '加载论文项目失败') })
     }
   },
