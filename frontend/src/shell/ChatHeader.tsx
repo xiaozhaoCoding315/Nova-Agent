@@ -4,6 +4,7 @@ import {
   PanelRight, Plus, ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { ProductModeSwitch } from '../components/ProductModeSwitch'
 import { StatusDot } from '../components/common'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
@@ -174,6 +175,8 @@ export function ChatHeader({
       >
         <PanelLeft size={15} />
       </button>
+
+      <ProductModeSwitch compact />
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="max-w-[180px] truncate text-sm text-ink" title={currentRepo?.name ?? '全部项目'}>

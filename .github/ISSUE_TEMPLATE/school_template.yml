@@ -1,0 +1,55 @@
+name: 学校模板贡献
+description: 提交某所学校的论文格式模板或规则
+title: "[Template] "
+labels: ["thesis-template"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        学校模板是论文模式的核心资产。请只提交**公开可引用**的格式要求，或你已获得授权的材料；不要上传学生论文、导师个人信息或学校内部未公开文件。
+  - type: input
+    id: school
+    attributes:
+      label: 学校 / 学院
+      placeholder: 例如：某某大学 计算机学院
+    validations:
+      required: true
+  - type: input
+    id: degree
+    attributes:
+      label: 适用学位
+      placeholder: 本科 / 硕士 / 博士
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: 规则来源
+      description: 学校官网、公开的研究生院文件链接，或你获得的授权说明
+    validations:
+      required: true
+  - type: textarea
+    id: rules
+    attributes:
+      label: 关键格式要求
+      description: 页边距、纸张、标题层级、页眉页脚、图表题注、参考文献格式等
+      placeholder: |
+        纸张：A4
+        页边距：上 2.5cm，下 2.5cm，左 3.0cm，右 2.5cm
+        标题：一级标题黑体三号，二级标题……
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: 脱敏样例（可选）
+      description: 可以放一份自己制作的无正文敏感信息的格式样例说明，不要上传真实论文。
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: 来源与隐私确认
+      options:
+        - label: 我确认规则来源公开可引用，或我已获得提交授权
+          required: true
+        - label: 提交内容不包含真实学生论文、个人信息或未公开的学校内部文件
+          required: true

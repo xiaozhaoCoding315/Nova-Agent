@@ -822,3 +822,248 @@ export type DebtReport = {
   latest: DebtSnapshot | null
   history: DebtSnapshot[]
 }
+
+export type ThesisDegree = 'undergraduate' | 'master' | 'doctor'
+
+export type ThesisTemplate = {
+  id: string
+  name: string
+  description: string
+  source: string
+  version?: string
+  degree: string
+  is_sample: boolean
+}
+
+export type ThesisProject = {
+  id: string
+  title: string
+  school: string
+  degree: ThesisDegree | string
+  template_id: string
+  status: string
+  document_count: number
+  open_issue_count: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisStats = {
+  block_count?: number
+  paragraph_count?: number
+  table_count?: number
+  heading_count?: number
+  max_heading_level?: number
+  char_count?: number
+  word_count?: number
+  image_count?: number
+  section_count?: number
+  page_break_count?: number
+  empty_paragraph_count?: number
+  has_toc?: boolean
+  [key: string]: number | boolean | undefined
+}
+
+export type ThesisDocument = {
+  id: string
+  project_id: string
+  filename: string
+  sha256: string
+  size: number
+  mime: string
+  status: 'parsed' | 'failed' | string
+  parse_error?: string | null
+  stats: ThesisStats
+  version?: number
+  has_working_copy?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisOutlineNode = {
+  level: number
+  text: string
+  block_index: number
+  style: string
+}
+
+export type ThesisDocumentDetail = ThesisDocument & {
+  outline: ThesisOutlineNode[]
+  warnings: string[]
+}
+
+export type ThesisProjectDetail = ThesisProject & {
+  documents: ThesisDocument[]
+}
+
+export type ThesisIssue = {
+  id: string
+  project_id: string
+  document_id: string
+  rule_id: string
+  category: string
+  severity: 'blocker' | 'warn' | 'info' | string
+  title: string
+  detail: string
+  location: Record<string, unknown>
+  evidence: Record<string, unknown>
+  status: string
+  fix_type?: string | null
+  fix_available?: boolean
+  source?: string
+  template_version?: string
+  confidence?: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisFixPreview = {
+  issue_id: string
+  fix_type: string
+  payload: Record<string, unknown>
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  verification: Record<string, unknown>
+  note: string
+}
+
+export type ThesisFix = {
+  id: string
+  project_id: string
+  document_id: string
+  issue_id?: string | null
+  rule_id: string
+  fix_type: string
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  applied_at?: string | null
+  undone_at?: string | null
+}
+
+export type ThesisApplyResult = {
+  issue: ThesisIssue
+  fix: ThesisFix
+  document: ThesisDocument
+  remaining_counts: ThesisIssueCounts
+}
+
+export type ThesisCitation = {
+  id: string
+  project_id: string
+  document_id: string
+  kind: 'reference' | 'in_text' | string
+  raw: string
+  normalized: Record<string, unknown>
+  status: string
+  confidence: string
+  doi?: string
+  metadata_status?: string
+  metadata?: Record<string, unknown>
+  metadata_fetched_at?: string | null
+  created_at?: string | null
+}
+
+export type ThesisCitationAudit = {
+  project_id: string
+  document_id: string
+  references: Record<string, unknown>[]
+  in_text: Record<string, unknown>[]
+  citations: ThesisCitation[]
+  reference_section_found: boolean
+  generated_at: string
+}
+
+export type ThesisReferencePdf = {
+  id: string
+  project_id: string
+  filename: string
+  sha256: string
+  size: number
+  page_count: number
+  created_at?: string | null
+}
+
+export type ThesisCitationEvidence = {
+  id: string
+  project_id: string
+  document_id?: string | null
+  reference_index?: number | null
+  reference_raw: string
+  pdf_id?: string | null
+  pdf_filename: string
+  page?: number | null
+  quote: string
+  score: number
+  method: string
+  support: 'needs_review' | 'supported' | 'partial' | 'unsupported' | string
+  note: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisEvidenceLocateResult = {
+  project_id: string
+  document_id: string
+  pdfs: ThesisReferencePdf[]
+  evidence: ThesisCitationEvidence[]
+  matched: number
+  total_references: number
+  located_at: string
+}
+
+export type ThesisDisclosure = {
+  id: string
+  project_id: string
+  tool: string
+  tool_version: string
+  purpose: string
+  stage: string
+  prompt: string
+  output: string
+  modified: boolean
+  created_at?: string | null
+}
+
+export type ThesisDisclosureInput = {
+  tool: string
+  tool_version?: string
+  purpose?: string
+  stage?: string
+  prompt?: string
+  output?: string
+  modified?: boolean
+}
+
+export type ThesisIssueCounts = {
+  blocker: number
+  warn: number
+  info: number
+  total: number
+}
+
+export type ThesisScanResult = {
+  project_id: string
+  document_id: string
+  template_id: string
+  issues: ThesisIssue[]
+  counts: ThesisIssueCounts
+  scanned_at: string
+}
+
+export type ThesisReport = {
+  project: ThesisProject
+  document: ThesisDocument | null
+  template: ThesisTemplate
+  counts: ThesisIssueCounts
+  by_category: Record<string, number>
+  issues: ThesisIssue[]
+  fixes: ThesisFix[]
+  generated_at: string
+}
+
+export type ThesisProjectInput = {
+  title: string
+  school?: string
+  degree?: ThesisDegree
+  template_id?: string
+}

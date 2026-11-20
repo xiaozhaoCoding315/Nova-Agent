@@ -947,3 +947,248 @@ class BrainOut(BaseModel):
 
 
 FileNodeOut.model_rebuild()
+
+
+# ---------- Thesis mode ----------
+
+class ThesisTemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    source: str = ""
+    version: str = ""
+    degree: str = "undergraduate"
+    is_sample: bool = False
+
+
+class ThesisProjectCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    school: str = Field(default="", max_length=120)
+    degree: Literal["undergraduate", "master", "doctor"] = "undergraduate"
+    template_id: str = Field(default="generic-undergraduate-v1", max_length=80)
+
+
+class ThesisProjectUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    school: Optional[str] = Field(default=None, max_length=120)
+    degree: Optional[Literal["undergraduate", "master", "doctor"]] = None
+    template_id: Optional[str] = Field(default=None, max_length=80)
+
+
+class ThesisProjectOut(BaseModel):
+    id: str
+    title: str
+    school: str = ""
+    degree: str = "undergraduate"
+    template_id: str = "generic-undergraduate-v1"
+    status: str = "draft"
+    document_count: int = 0
+    open_issue_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisDocumentOut(BaseModel):
+    id: str
+    project_id: str
+    filename: str
+    sha256: str
+    size: int = 0
+    mime: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    status: str = "parsed"
+    parse_error: Optional[str] = None
+    stats: dict = Field(default_factory=dict)
+    version: int = 1
+    has_working_copy: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisOutlineNode(BaseModel):
+    level: int
+    text: str
+    block_index: int = 0
+    style: str = ""
+
+
+class ThesisDocumentDetailOut(ThesisDocumentOut):
+    outline: list[ThesisOutlineNode] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ThesisIssueOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    rule_id: str
+    category: str
+    severity: str
+    title: str
+    detail: str = ""
+    location: dict = Field(default_factory=dict)
+    evidence: dict = Field(default_factory=dict)
+    status: str = "open"
+    fix_type: Optional[str] = None
+    fix_available: bool = False
+    source: str = ""
+    template_version: str = ""
+    confidence: str = "high"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisIssueUpdate(BaseModel):
+    status: Literal["open", "ignored"]
+
+
+class ThesisIssueCountsOut(BaseModel):
+    blocker: int = 0
+    warn: int = 0
+    info: int = 0
+    total: int = 0
+
+
+class ThesisScanOut(BaseModel):
+    project_id: str
+    document_id: str
+    template_id: str
+    issues: list[ThesisIssueOut] = Field(default_factory=list)
+    counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+    scanned_at: datetime
+
+
+class ThesisProjectDetailOut(ThesisProjectOut):
+    documents: list[ThesisDocumentOut] = Field(default_factory=list)
+
+
+class ThesisReportOut(BaseModel):
+    project: ThesisProjectOut
+    document: Optional[ThesisDocumentOut] = None
+    template: ThesisTemplateOut
+    counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+    by_category: dict[str, int] = Field(default_factory=dict)
+    issues: list[ThesisIssueOut] = Field(default_factory=list)
+    fixes: list[dict] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class ThesisFixPreviewOut(BaseModel):
+    issue_id: str
+    fix_type: str
+    payload: dict = Field(default_factory=dict)
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+    verification: dict = Field(default_factory=dict)
+    note: str = ""
+
+
+class ThesisFixOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    issue_id: Optional[str] = None
+    rule_id: str = ""
+    fix_type: str = ""
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+    applied_at: Optional[datetime] = None
+    undone_at: Optional[datetime] = None
+
+
+class ThesisApplyOut(BaseModel):
+    issue: ThesisIssueOut
+    fix: ThesisFixOut
+    document: ThesisDocumentOut
+    remaining_counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+
+
+class ThesisCitationOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    kind: str
+    raw: str = ""
+    normalized: dict = Field(default_factory=dict)
+    status: str = "unverified"
+    confidence: str = "medium"
+    doi: str = ""
+    metadata_status: str = ""
+    metadata: dict = Field(default_factory=dict)
+    metadata_fetched_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class ThesisReferencePdfOut(BaseModel):
+    id: str
+    project_id: str
+    filename: str
+    sha256: str = ""
+    size: int = 0
+    page_count: int = 0
+    created_at: Optional[datetime] = None
+
+
+class ThesisCitationEvidenceOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: Optional[str] = None
+    reference_index: Optional[int] = None
+    reference_raw: str = ""
+    pdf_id: Optional[str] = None
+    pdf_filename: str = ""
+    page: Optional[int] = None
+    quote: str = ""
+    score: float = 0.0
+    method: str = ""
+    support: str = "needs_review"
+    note: str = ""
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisCitationEvidenceUpdate(BaseModel):
+    support: Literal["needs_review", "supported", "partial", "unsupported"]
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ThesisEvidenceLocateOut(BaseModel):
+    project_id: str
+    document_id: str = ""
+    pdfs: list[ThesisReferencePdfOut] = Field(default_factory=list)
+    evidence: list[ThesisCitationEvidenceOut] = Field(default_factory=list)
+    matched: int = 0
+    total_references: int = 0
+    located_at: datetime
+
+
+class ThesisCitationAuditOut(BaseModel):
+    project_id: str
+    document_id: str = ""
+    references: list[dict] = Field(default_factory=list)
+    in_text: list[dict] = Field(default_factory=list)
+    citations: list[ThesisCitationOut] = Field(default_factory=list)
+    reference_section_found: bool = False
+    generated_at: datetime
+
+
+class ThesisDisclosureCreate(BaseModel):
+    tool: str = Field(default="", max_length=120)
+    tool_version: str = Field(default="", max_length=40)
+    purpose: str = Field(default="", max_length=2000)
+    stage: str = Field(default="", max_length=80)
+    prompt: str = Field(default="", max_length=8000)
+    output: str = Field(default="", max_length=8000)
+    modified: bool = True
+
+
+class ThesisDisclosureOut(BaseModel):
+    id: str
+    project_id: str
+    tool: str = ""
+    tool_version: str = ""
+    purpose: str = ""
+    stage: str = ""
+    prompt: str = ""
+    output: str = ""
+    modified: bool = True
+    created_at: Optional[datetime] = None

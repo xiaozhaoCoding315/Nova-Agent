@@ -20,6 +20,22 @@ class AuditAction:
     HOOK_BLOCKED = "hook_blocked"
     DEPLOY = "deploy"
     DEPLOY_STOP = "deploy_stop"
+    THESIS_PROJECT_CREATE = "thesis_project_create"
+    THESIS_PROJECT_DELETE = "thesis_project_delete"
+    THESIS_DOCUMENT_IMPORT = "thesis_document_import"
+    THESIS_SCAN = "thesis_scan"
+    THESIS_ISSUE_UPDATE = "thesis_issue_update"
+    THESIS_FIX_APPLY = "thesis_fix_apply"
+    THESIS_FIX_UNDO = "thesis_fix_undo"
+    THESIS_CITATION_AUDIT = "thesis_citation_audit"
+    THESIS_CITATION_METADATA = "thesis_citation_metadata"
+    THESIS_REFERENCE_PDF_IMPORT = "thesis_reference_pdf_import"
+    THESIS_REFERENCE_PDF_DELETE = "thesis_reference_pdf_delete"
+    THESIS_CITATION_EVIDENCE_LOCATE = "thesis_citation_evidence_locate"
+    THESIS_CITATION_EVIDENCE_UPDATE = "thesis_citation_evidence_update"
+    THESIS_DISCLOSURE_CREATE = "thesis_disclosure_create"
+    THESIS_DISCLOSURE_DELETE = "thesis_disclosure_delete"
+    THESIS_EXPORT = "thesis_export"
 
 # In-memory buffer for fast access
 _audit_buffer = []

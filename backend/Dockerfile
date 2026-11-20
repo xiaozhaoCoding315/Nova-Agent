@@ -35,6 +35,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
 
 COPY backend/ ./
+COPY thesis-templates/ /app/thesis-templates
 COPY --from=frontend-build /web/dist /app/frontend_dist
 
 RUN useradd -m -u 10001 nova \

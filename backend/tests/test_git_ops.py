@@ -92,9 +92,10 @@ def test_export_zip_excludes_git(tmp_path):
 
 def test_cli_help_smoke():
     cli = Path(__file__).resolve().parents[1] / "nova.py"
+    # 帮助文本含非 ASCII 字符；Windows 默认按 GBK 解码管道会失败。
     result = subprocess.run(
         [sys.executable, str(cli), "--help"],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
     )
     assert result.returncode == 0
     assert "Nova Agent headless CLI" in result.stdout

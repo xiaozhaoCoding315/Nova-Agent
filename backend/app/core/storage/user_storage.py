@@ -37,6 +37,11 @@ def uploads_root(user_id: int) -> Path:
     return user_root(user_id) / "uploads"
 
 
+def thesis_container(user_id: int, project_id: str) -> Path:
+    """Original DOCX files for one thesis project (never modified in place)."""
+    return user_root(user_id) / "thesis" / str(project_id)
+
+
 def sanitize_filename(filename: str) -> str:
     name = Path((filename or "file").replace("\\", "/")).name
     name = re.sub(r"[\x00-\x1f<>:\"|?*]", "_", name).strip().strip(".")

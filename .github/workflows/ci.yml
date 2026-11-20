@@ -37,6 +37,9 @@ jobs:
           NOVA_TEST_FAST: "1"
         run: cd backend && python -m pytest tests -q
 
+      - name: Validate thesis templates
+        run: cd backend && python -m scripts.validate_thesis_templates
+
       - name: Agent eval smoke (scripted, baseline gate)
         run: cd backend && python -m evals run --mode scripted --ci --baseline evals/baselines/scripted.json
 
