@@ -135,6 +135,43 @@ async def get_board(user_id: int, project_id: str) -> dict[str, Any]:
     }
 
 
+async def get_export_readiness(user_id: int, project_id: str) -> dict[str, Any]:
+    """Preflight for the final package: what is still unconfirmed.
+
+    This is advisory, not a hard gate.  ``get_board`` first so confirmations
+    whose content changed are marked stale in the same place the UI reads.
+    """
+    board = await get_board(user_id, project_id)
+    state = stages.StageState.from_dict(board["state"])
+    warnings = stages.export_warnings(state)
+    return {
+        "project_id": board["project_id"],
+        "ready": not warnings,
+        "stage": state.stage,
+        "readiness": state.readiness,
+        "warnings": warnings,
+    }
+
+
+async def record_draft(
+    user_id: int, project_id: str, content: str, note: str = "",
+) -> None:
+    """Append an AI-draft provenance event without changing stage state."""
+    state = await _load(user_id, project_id)
+    project_id = _valid_project_id(project_id)
+    event = stages.draft_event(
+        state,
+        stages.digest_text(content),
+        note or "AI 草稿，需作者核对",
+    )
+    await execute(
+        "INSERT INTO thesis_stage_events "
+        "(id, project_id, user_id, event_type, stage, from_stage, readiness, "
+        " content_sha, note) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        _event_params(user_id, project_id, event),
+    )
+
+
 async def set_readiness(user_id: int, project_id: str, value: str) -> dict[str, Any]:
     state = await _load(user_id, project_id)
     event = stages.set_readiness(state, value)
@@ -171,6 +208,6 @@ async def return_to(user_id: int, project_id: str, to_stage: str) -> dict[str, A
 
 
 __all__ = [
-    "advance", "confirm_stage", "get_board", "get_state", "return_to",
-    "set_content", "set_readiness",
+    "advance", "confirm_stage", "get_board", "get_export_readiness", "get_state",
+    "record_draft", "return_to", "set_content", "set_readiness",
 ]

@@ -271,6 +271,11 @@ def confirm(state: StageState, content_sha: str, note: str = "") -> StageEvent:
     return _event("confirmed", state, content_sha=sha, note=note[:500])
 
 
+def draft_event(state: StageState, content_sha: str, note: str = "AI 草稿，需作者核对") -> StageEvent:
+    """Record that a model produced stage text; it never accepts the stage."""
+    return _event("draft", state, content_sha=content_sha, note=note[:500])
+
+
 def mark_stale(state: StageState, current_hashes: dict[str, str]) -> list[StageEvent]:
     """Mark confirmations whose bound content changed.  Returns new events."""
     events: list[StageEvent] = []
@@ -325,6 +330,48 @@ def stage_summary(state: StageState) -> list[dict]:
     return items
 
 
+def export_warnings(state: StageState) -> list[dict]:
+    """List what an export would ship without author confirmation.
+
+    The package is never blocked here; the caller decides whether to ask the
+    author to confirm or to export with an explicit acknowledgement.  Warnings
+    are ordered by stage so the UI can show the earliest gap first.
+    """
+    warnings: list[dict] = []
+    current_index = STAGES.index(state.stage)
+    if state.stage != "final":
+        warnings.append({
+            "stage": state.stage,
+            "label": STAGE_LABELS[state.stage],
+            "kind": "not_final",
+            "message": f"当前还在「{STAGE_LABELS[state.stage]}」阶段，不是定稿阶段",
+        })
+    for index, stage in enumerate(STAGES[: current_index + 1]):
+        confirmation = state.confirmations.get(stage)
+        if confirmation is None:
+            warnings.append({
+                "stage": stage,
+                "label": STAGE_LABELS[stage],
+                "kind": "unconfirmed",
+                "message": f"{STAGE_LABELS[stage]}还没有作者确认",
+            })
+        elif confirmation.stale:
+            warnings.append({
+                "stage": stage,
+                "label": STAGE_LABELS[stage],
+                "kind": "stale",
+                "message": f"{STAGE_LABELS[stage]}的确认已失效，内容改过",
+            })
+        elif index == current_index and state.readiness not in ("accepted", "ready_for_review"):
+            warnings.append({
+                "stage": stage,
+                "label": STAGE_LABELS[stage],
+                "kind": "needs_review",
+                "message": f"{STAGE_LABELS[stage]}的内容还没有进入待审阅状态",
+            })
+    return warnings
+
+
 def prompt_block(state: StageState) -> str:
     """Small, bounded text injected into the thesis chat context."""
     label = STAGE_LABELS[state.stage]
@@ -349,7 +396,7 @@ def prompt_block(state: StageState) -> str:
 __all__ = [
     "ADVANCE_READY", "CONFIRMABLE_READY", "MAX_STAGE_CONTENT", "READINESS",
     "READINESS_LABELS", "STAGES", "STAGE_LABELS", "Confirmation", "StageError",
-    "StageEvent", "StageState", "advance", "confirm", "digest_text", "mark_stale",
-    "next_stage", "prompt_block", "return_to", "set_artifact", "set_content",
-    "set_readiness", "stage_summary",
+    "StageEvent", "StageState", "advance", "confirm", "digest_text", "draft_event",
+    "export_warnings", "mark_stale", "next_stage", "prompt_block", "return_to",
+    "set_artifact", "set_content", "set_readiness", "stage_summary",
 ]

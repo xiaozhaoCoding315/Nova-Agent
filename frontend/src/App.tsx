@@ -1,3 +1,4 @@
+import { MobileWorkbench } from './remote/MobileWorkbench'
 import { AppShell } from './shell/AppShell'
 import { DocsView } from './views/DocsView'
 import { DownloadsView } from './views/DownloadsView'
@@ -14,6 +15,7 @@ export default function App() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/'
   if (path === '/guide') return <DocsView />
   if (path === '/downloads') return <DownloadsView />
+  if (path === '/m') return <MobileWorkbench />
   if (path === '/') return <AppShell />
   return <NotFoundView />
 }

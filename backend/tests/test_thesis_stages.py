@@ -148,3 +148,50 @@ def test_prompt_includes_bounded_stage_note() -> None:
     text = stages.prompt_block(state)
     assert len(text) < 3000
     assert "不是指令" in text
+
+
+def test_export_warnings_name_unconfirmed_and_not_final() -> None:
+    state = stages.StageState()
+    warnings = stages.export_warnings(state)
+    assert [item["kind"] for item in warnings] == ["not_final", "unconfirmed"]
+    assert warnings[1]["stage"] == "topic"
+    assert "选题" in warnings[1]["message"]
+
+
+def test_export_is_ready_only_after_every_stage_is_confirmed() -> None:
+    state = stages.StageState()
+    for stage in stages.STAGES:
+        state.stage = stage
+        stages.set_content(state, f"{stages.STAGE_LABELS[stage]}说明")
+        stages.confirm(state, stages.digest_text(state.contents[stage]))
+    assert state.stage == "final"
+    assert stages.export_warnings(state) == []
+
+
+def test_export_warnings_mark_stale_confirmations() -> None:
+    state = stages.StageState()
+    stages.set_content(state, "选题说明")
+    stages.confirm(state, stages.digest_text(state.contents["topic"]))
+    stages.set_content(state, "选题说明（改）")
+    warnings = stages.export_warnings(state)
+    kinds = {item["kind"] for item in warnings}
+    assert "stale" in kinds
+    assert "unconfirmed" not in kinds
+
+
+def test_export_warnings_cover_every_unconfirmed_stage_up_to_current() -> None:
+    state = stages.StageState(stage="outline", readiness="gathering")
+    warnings = stages.export_warnings(state)
+    unconfirmed = [item["stage"] for item in warnings if item["kind"] == "unconfirmed"]
+    assert unconfirmed == ["topic", "sources", "outline"]
+
+
+def test_stage_draft_prompt_keeps_author_in_control() -> None:
+    from app.api.v1.thesis import STAGE_DRAFT_PROMPT, _clean_draft
+
+    assert "不编造" in STAGE_DRAFT_PROMPT
+    assert "待补充" in STAGE_DRAFT_PROMPT
+    assert "不写整篇论文" in STAGE_DRAFT_PROMPT
+    assert "不要声称已经核实" in STAGE_DRAFT_PROMPT
+    assert "一键" not in STAGE_DRAFT_PROMPT
+    assert _clean_draft("```markdown\n# 提纲\n\n- 要点\n```") == "# 提纲\n\n- 要点"

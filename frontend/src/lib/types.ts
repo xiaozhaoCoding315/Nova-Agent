@@ -558,6 +558,273 @@ export type VerifyResult = {
   report?: VerificationReport
 }
 
+export type EvidenceClaim = {
+  claim_id: string
+  statement: string
+  kind: string
+  status: 'confirmed' | 'unverified' | 'not_run' | 'unsupported' | 'failed'
+  commit: string
+  path: string
+  line: number | null
+  evidence_ids: string[]
+  notes: string[]
+}
+
+export type EvidenceArtifact = {
+  artifact_id: string
+  name: string
+  sha256: string
+  size: number
+  media_type: string
+  created_at: string
+}
+
+export type EvidenceEnvironment = {
+  mode: string
+  os: string
+  arch: string
+  isolation: string
+  network: string
+  image_digest: string
+  tool_versions: Record<string, string>
+  working_dir: string
+  notes: string[]
+}
+
+export type EvidencePack = {
+  schema_version: string
+  pack_id: string
+  task_id: string
+  repo_id: string
+  commit: string
+  created_at: string
+  claims: EvidenceClaim[]
+  artifacts: EvidenceArtifact[]
+  environment: EvidenceEnvironment
+  unproven: string[]
+  manifest_sha256: string
+}
+
+export type EvidencePackSummary = {
+  pack_id: string
+  task_id: string
+  repo_id: string
+  commit: string
+  created_at: string
+  claims: number
+  artifacts: number
+  unproven: number
+  manifest_sha256: string
+}
+
+export type EvidenceVerifyResult = {
+  pack_id: string
+  ok: boolean
+  problems: string[]
+}
+
+export type EnvironmentRow = {
+  dimension: string
+  local: unknown
+  container: unknown
+  result: 'same' | 'different' | 'unknown'
+  note: string
+}
+
+export type EnvironmentComparison = {
+  rows: EnvironmentRow[]
+  comparable: string[]
+  not_comparable: string[]
+  different: string[]
+  unknown: string[]
+  identical: boolean
+  note: string
+}
+
+export type GitHubConnectionStatus = {
+  connected: boolean
+  login: string
+  scopes: string
+  created_at?: string
+  updated_at?: string
+}
+
+export type GitHubRemote = {
+  host: string
+  owner: string
+  repo: string
+  full_name: string
+  branch: string
+}
+
+export type GitHubPullRequest = {
+  number: number
+  url: string
+  title: string
+  head: string
+  base: string
+  draft: boolean
+  state: string
+  owner?: string
+  repo?: string
+  created_at: string
+}
+
+export type GitHubCheck = {
+  name: string
+  status: string
+  conclusion: string
+  url: string
+  source: string
+}
+
+export type GitHubReview = {
+  id: number
+  user: string
+  state: string
+  body: string
+  submitted_at: string
+  url: string
+}
+
+export type GitHubComment = {
+  id: number
+  user: string
+  body: string
+  path: string
+  line: number | null
+  created_at: string
+  url: string
+}
+
+export type GitHubPullRequestStatus = {
+  number: number
+  url: string
+  title: string
+  state: string
+  draft: boolean
+  mergeable: boolean | null
+  mergeable_state: string
+  head: string
+  head_sha: string
+  base: string
+  updated_at: string
+  checks: GitHubCheck[]
+  reviews: GitHubReview[]
+  comments: GitHubComment[]
+  auto_merge: boolean
+  note: string
+}
+
+export type RemoteConfig = {
+  enabled: boolean
+  mode: 'direct' | 'relay'
+  pairing_ttl_seconds: number
+  workbench_path: string
+  commands: string[]
+  transport: string
+}
+
+export type RemotePairing = {
+  pair_id: string
+  status: 'pending' | 'claimed' | 'confirmed' | 'rejected' | 'expired'
+  created_at: string
+  expires_at: string
+  claimed_at: string
+  confirmed_at: string
+  device_id: string
+  device_name: string
+  sas: string
+}
+
+export type RemoteDevice = {
+  device_id: string
+  name: string
+  status: 'pending' | 'active' | 'revoked'
+  created_at: string
+  confirmed_at: string
+  revoked_at: string
+  last_seen_at: string
+  permissions: string[]
+  public_key: Record<string, string>
+}
+
+export type RemoteNotification = {
+  id: string
+  kind: string
+  status: string
+  summary: string
+  task_id: string
+  device_id: string
+  created_at: string
+  read: boolean
+}
+
+export type RemoteProgressEvent = {
+  event_id: string
+  task_id: string
+  session_id: string
+  kind: string
+  status: string
+  stage: string
+  percent: number | null
+  summary: string
+  created_at: string
+  metadata: Record<string, unknown>
+}
+
+export type RemoteApproval = {
+  approval_id: string
+  task_id: string
+  title: string
+  reason: string
+  risk: 'low' | 'medium' | 'high'
+  remote_decidable: boolean
+  action_hash: string
+  expires_at: string
+}
+
+export type RemoteCommandEnvelope = {
+  v: number
+  command_id: string
+  device_id: string
+  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide'
+  action_hash: string
+  args_ciphertext: string
+  approval_id: string
+  decision: string
+  issued_at: string
+  expires_at: string
+  nonce: string
+  signature: string
+}
+
+export type RemoteCommandResult = {
+  ok: boolean
+  device_status: string
+  decision: {
+    allowed: boolean
+    reason: string
+    risk: string
+    requires_local: boolean
+    status: string
+  }
+  server_time?: string
+  events?: RemoteProgressEvent[]
+  notifications?: RemoteNotification[]
+  approvals?: RemoteApproval[]
+  approval?: { approval_id: string; status: string; action_hash: string }
+  stopped_task_ids?: string[]
+  idempotent?: boolean
+  pairing?: { pair_id: string; sas: string; expires_at: string }
+}
+
+export type RemoteAudit = {
+  local: Record<string, unknown>[]
+  relay: Record<string, unknown>[]
+  note: string
+}
+
 export type ContractStatus = {
   configured: boolean
   source?: string | null
@@ -1176,6 +1443,14 @@ export type DocumentExportResult = {
   diagnostics: string[]
 }
 
+export type DocumentConvertResult = {
+  status: string
+  output_path?: string | null
+  fidelity_path?: string | null
+  fidelity: DocumentFidelity
+  diagnostics: string[]
+}
+
 export type DocumentDiagnostics = {
   workspace: Record<string, unknown>
   manuscripts: number
@@ -1206,6 +1481,78 @@ export type ThesisStageEvent = {
   content_sha: string
   note: string
   created_at: string
+}
+
+export type ResumeProfile = {
+  id: string
+  user_id: number
+  name: string
+  headline: string
+  contact: Record<string, string>
+  created_at: string
+  updated_at: string
+}
+
+export type ResumeFactStatus =
+  | 'self_reported' | 'evidence_linked' | 'needs_confirmation' | 'excluded'
+
+export type ResumeFact = {
+  id: string
+  profile_id: string
+  category: string
+  title: string
+  detail: string
+  status: ResumeFactStatus
+  evidence: string
+  metrics: string[]
+  created_at: string
+  updated_at: string
+}
+
+export type ResumeJobVersion = {
+  id: string
+  profile_id: string
+  title: string
+  company: string
+  jd_text: string
+  jd_sha256: string
+  fact_ids: string[]
+  template: string
+  notes: string
+  created_at: string
+  updated_at: string
+  markdown?: string
+}
+
+export type ResumeProfileDetail = {
+  profile: ResumeProfile
+  facts: ResumeFact[]
+  versions: ResumeJobVersion[]
+}
+
+export type ResumeQuestion = { key: string; question: string }
+
+export type ThesisStageDraft = {
+  stage: string
+  label: string
+  content: string
+  usage?: Record<string, unknown> | null
+  note: string
+}
+
+export type ThesisExportWarning = {
+  stage: string
+  label: string
+  kind: 'not_final' | 'unconfirmed' | 'stale' | 'needs_review'
+  message: string
+}
+
+export type ThesisExportReadiness = {
+  project_id: string
+  ready: boolean
+  stage: string
+  readiness: string
+  warnings: ThesisExportWarning[]
 }
 
 export type ThesisStages = {

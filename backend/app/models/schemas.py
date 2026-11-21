@@ -1318,6 +1318,22 @@ class DocumentDraftOut(BaseModel):
     usage: Optional[dict] = None
 
 
+class DocumentConvertIn(BaseModel):
+    source_path: str = Field(min_length=1, max_length=500)
+    target_format: Literal["docx", "pdf"] = "docx"
+    profile: Literal["report", "thesis", "resume"] = "report"
+    overwrite: bool = False
+    allow_lossy: bool = False
+
+
+class DocumentConvertOut(BaseModel):
+    status: str
+    output_path: Optional[str] = None
+    fidelity_path: Optional[str] = None
+    fidelity: dict = Field(default_factory=dict)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
 # ---------- Thesis stages (M3) ----------
 
 class ThesisStageContentIn(BaseModel):
@@ -1349,3 +1365,16 @@ class ThesisStagesOut(BaseModel):
     summary: list[dict] = Field(default_factory=list)
     current_content: str = ""
     events: list[dict] = Field(default_factory=list)
+
+
+class ThesisStageDraftIn(BaseModel):
+    requirements: str = Field(default="", max_length=4000)
+    word_count: Optional[int] = Field(default=None, ge=100, le=4000)
+
+
+class ThesisStageDraftOut(BaseModel):
+    stage: str
+    label: str
+    content: str
+    usage: Optional[dict] = None
+    note: str = "AI 草稿，需本人核对后保存和确认"

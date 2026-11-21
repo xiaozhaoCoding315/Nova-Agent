@@ -28,7 +28,8 @@ export function ExportPanel() {
         <p className="text-sm font-medium text-ink">定稿包</p>
         <p className="mt-1 text-xs leading-relaxed text-dim">
           一次打包修复后的文档、体检报告、引用清单、AI 使用声明和修改记录。
-          原文件始终保留，不会被覆盖。
+          原文件始终保留，不会被覆盖。导出前会检查七个阶段的作者确认，
+          未确认或已失效的内容会先列出来。
         </p>
         <ul className="mt-2 space-y-1 text-2xs leading-relaxed text-faint">
           {PACKAGE_ITEMS.map((item) => (

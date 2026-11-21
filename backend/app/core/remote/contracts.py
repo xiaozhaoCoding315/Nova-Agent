@@ -201,6 +201,8 @@ class CommandEnvelope:
     signature: str
     action_hash: str = ""
     args_ciphertext: str = ""
+    approval_id: str = ""
+    decision: str = ""        # approve | reject, only for approval.decide
     v: int = 1
 
     def ttl_seconds(self) -> float:
@@ -217,6 +219,8 @@ class CommandEnvelope:
             "type": self.type,
             "action_hash": self.action_hash,
             "args_ciphertext": self.args_ciphertext,
+            "approval_id": self.approval_id,
+            "decision": self.decision,
             "issued_at": self.issued_at,
             "expires_at": self.expires_at,
             "nonce": self.nonce,
@@ -236,6 +240,8 @@ class CommandEnvelope:
             signature=str(data.get("signature") or ""),
             action_hash=str(data.get("action_hash") or ""),
             args_ciphertext=str(data.get("args_ciphertext") or ""),
+            approval_id=str(data.get("approval_id") or ""),
+            decision=str(data.get("decision") or ""),
             v=int(data.get("v") or 1),
         )
 

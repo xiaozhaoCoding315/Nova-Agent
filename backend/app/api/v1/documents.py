@@ -18,7 +18,10 @@ from app.core.documents.store import (
 )
 from app.core.security.auth import get_current_user
 from app.core.security.limits import ensure_token_budget
+from app.core.documents.convert import ConversionError, convert_document
 from app.models.schemas import (
+    DocumentConvertIn,
+    DocumentConvertOut,
     DocumentContentOut,
     DocumentDiagnosticsOut,
     DocumentDraftIn,
@@ -313,6 +316,55 @@ async def draft_report(
     return DocumentDraftOut(
         path=result.path, sha256=result.sha256, content=content, usage=usage,
     )
+
+
+@router.post("/workspaces/{workspace_id}/convert", response_model=DocumentConvertOut)
+async def convert_workspace_file(
+    workspace_id: str,
+    body: DocumentConvertIn,
+    user: dict = Depends(get_current_user),
+):
+    """Convert a file inside one workspace into DOCX/PDF.
+
+    The source must already be inside the workspace.  Outputs go to
+    ``exports/`` and a fidelity sidecar is written next to each artifact.
+    """
+    try:
+        workspace = await _call(get_workspace, user["id"], workspace_id)
+    except ws.WorkspaceNotFound as exc:
+        raise _not_found(exc) from exc
+    except ws.WorkspaceError as exc:
+        raise _bad_request(exc) from exc
+    root = workspace.root.resolve()
+    source = (root / body.source_path).resolve()
+    try:
+        source.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="源文件必须位于工作区内") from exc
+    if not source.is_file():
+        raise HTTPException(status_code=404, detail="源文件不存在")
+    try:
+        result = await _call(
+            convert_document,
+            source,
+            body.target_format,
+            root / ws.EXPORT_DIR,
+            profile=body.profile,
+            overwrite=body.overwrite,
+            allow_lossy=body.allow_lossy,
+        )
+    except ConversionError as exc:
+        raise _bad_request(exc) from exc
+    data = result.to_dict()
+    for key in ("output_path", "fidelity_path"):
+        value = data.get(key)
+        if value:
+            try:
+                relative = Path(value).resolve().relative_to(root)
+                data[key] = relative.as_posix()
+            except ValueError:
+                data[key] = Path(value).name
+    return DocumentConvertOut(**data)
 
 
 @router.post("/workspaces/{workspace_id}/export", response_model=DocumentExportOut)

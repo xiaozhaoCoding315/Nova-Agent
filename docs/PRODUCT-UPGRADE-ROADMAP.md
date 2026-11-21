@@ -53,12 +53,12 @@ M2 起，四条工作流可以并行；如果只有一个人推进，建议顺�
 
 | 面 | 已有 | 缺口 |
 |---|---|---|
-| 开发 | Agent 循环、工具、权限/审批、Docker 沙箱、后台任务、轨迹、多仓库检索、单仓库影响分析、引用存在性校验、红绿与黄金样例 | 统一验证结果模型、隔离等级披露、GitHub PR/CI/评审闭环、主张级证据包、跨仓库影响、代码→文档断言链 |
-| 论文 | DOCX 解析/定点修复、规则引擎、引用 L1/L2/L3、AI 声明、定稿包导出、项目关联、论文对话 | 阶段状态机、主动澄清、文档创建引擎、本地目录工作区、多格式、简历 |
-| 远程 | 无 | 全部 |
-| 文案 | 宣传页与 `/guide` 已重写并部署 | 产品内提示词、论文对话、Builder 对话、错误/空状态仍有 AI 口吻；缺持续检查 |
+| 开发 | Agent 循环、工具、权限/审批、Docker 沙箱、后台任务、轨迹、多仓库检索、单仓库影响分析、引用存在性校验、红绿与黄金样例、验证事实、主张级证据包、环境差异表、GitHub draft PR/CI/评审闭环、文档工作区与格式转换 | 跨仓库影响、代码→文档断言链、自动合并/发布（明确不做） |
+| 论文 | DOCX 解析/定点修复、规则引擎、引用 L1/L2/L3、AI 声明、定稿包导出与导出前阻断、项目关联、论文对话、七阶段状态机与主动澄清、本地目录工作区、多格式导出、简历事实库/JD 版本 | 排版优化/转换（M5）、论文模板源的最终格式选择 |
+| 远程 | 一次性配对 + SAS、手机工作台 `/m`、签名指令、脱敏进度、幂等停止、完成通知、中低风险审批、设备撤销、双份审计 | 出站 WSS 中继连接器、微信/企微适配、系统推送、PWA 离线完善 |
+| 文案 | 宣传页与 `/guide` 已重写并部署；产品内首批清理；`npm run copy:check` 持续检查 | 现有提示词与空状态仍需逐页复核 |
 
-> 说明：本文只描述路线图，不表示上述缺口已经实现。当前分支 `feat/thesis-mode-m0` 上只有调研文档、本路线图和 README 文档链接为未提交改动，产品代码未因本轮调研改动。
+> 说明：§11 是当前唯一的状态事实源；未列入“已实现”的项目按未完成处理。当前分支 `feat/thesis-mode-m0` 上的这批改动尚未提交、未部署。
 
 ---
 
@@ -688,15 +688,18 @@ topic → sources → outline → research → drafting → revision → final
 | M1 文案基线 | 已实现首批 | `docs/COPY-GUIDELINES.md`、提示词与前端清理 |
 | M2 文档底座 | 已实现 | 工作区、原子写、冲突、版本、Pandoc DOCX、LibreOffice PDF 探测、保真报告；`tests/test_document_workspace.py`、`store.py`、`test_document_api.py` |
 | M2 报告从要求起草 | 已实现 | `POST /documents/workspaces/{id}/draft`；仅报告工作区，缺口写「待补充」 |
-| M2 GitHub PR/CI/评审闭环 | 未实现 | CAP-03 保留 |
-| M2 远程只读/停止/一次性绑定 | 未实现 | 只有 M1 契约，无连接器与手机工作台 |
+| M2 GitHub PR/CI/评审闭环 | 已实现（draft PR） | `app/core/github/service.py`、`api/v1/github.py`、`frontend/src/github/GitHubPanel.tsx`、`tests/test_github_api.py`；需 `create-draft-pr` 明确授权，只建 draft，代码中没有 merge 路径 |
+| M2 远程只读/停止/一次性绑定 | 已实现（直连 HTTPS） | 配对 + SAS + 设备签名 + 防重放 + 脱敏进度 + 幂等停止 + 完成通知；`app/core/remote/`、`api/v1/remote.py`、`frontend/src/remote/`、`tests/test_remote_api.py`；中继连接器未实现 |
 | M3 论文七阶段状态机 | 已实现后端 + 阶段页 | `app/core/thesis/stages.py`、`stage_service.py`、迁移 25、`frontend/src/thesis/StagePanel.tsx`、`tests/test_thesis_stages.py` |
-| M3 证据包/本地-容器可比 | 未实现 | CAP-04/CAP-07 保留 |
-| M3 论文多格式与导出前确认拦截 | 未实现 | 目前只有阶段确认与失效，不阻断导出 |
-| M4 简历 | 未实现 | 文档工作区已有 `resume` 类型占位，无事实库/JD/STAR |
-| M5 代码→文档、排版转换、独立移动端 | 未实现 | 保留 |
+| M3 主动澄清 1–3 问 / 暂不确定默认方案 | 已实现（提示词约束） | `app/core/thesis/stages.py` 阶段说明；`frontend/src/thesis/StagePanel.tsx` 输入提示 |
+| M3 证据包/本地-容器可比 | 已实现 | `app/core/evidence/`、`api/v1/evidence.py`、`frontend/src/evidence/EvidenceWorkspace.tsx`、`tests/test_evidence_pack.py`、`test_evidence_api.py`；未知环境不判为一致 |
+| M3 论文多格式与导出前确认拦截 | 已实现 | `api/v1/documents.py` `/convert`（report/thesis/resume profile）、`frontend/src/documents/DocumentWorkspace.tsx`；`api/v1/thesis.py` `export-readiness` + `allow_unconfirmed`，`frontend/src/stores/thesis.ts` 导出前确认 |
+| M3 远程中低风险审批 | 已实现 | 动作哈希绑定、300 秒过期、高风险仅本地；`app/core/remote/approvals.py`、`tests/test_remote_api.py` |
+| M4 简历 MVP | 已实现 | 事实库（数字无依据降级为待确认）、Profile、JD 快照、STAR 提问、一岗一版、Markdown/DOCX/PDF 导出；`app/core/resume/`、`api/v1/resume.py`、`frontend/src/resume/ResumeWorkspace.tsx`、`tests/test_resume.py`、`test_resume_api.py` |
+| M4 跨仓库影响、微信/企微适配 | 未实现 | 单仓库影响分析已存在；跨仓库与消息适配保留 |
+| M5 代码→文档断言链、排版优化/转换、独立移动端 | 未实现 | 保留；文档格式转换已在 M3 提供，不等于 M5 的排版优化 |
 
 ### 11.1 本轮验证结果
 
-- 后端全量测试与前端构建结果记录在 [M2-M3-REPORT.md](M2-M3-REPORT.md) §6。
+- 后端全量测试、前端构建、OpenAPI 契约与文案检查记录在 [M2-M3-REPORT.md](M2-M3-REPORT.md) §6 与 [ROADMAP-BATCH-2-REPORT.md](ROADMAP-BATCH-2-REPORT.md) §5。
 - 未部署、未提交；工作区文件仍在本分支未提交改动中。

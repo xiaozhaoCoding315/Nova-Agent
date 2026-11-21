@@ -46,6 +46,14 @@ async def _stop_generator(
         await generator.aclose()
 
 
+def _notify_remote(user_id: int, turn_id: str, status: str) -> None:
+    """Completion notification for bound phones; never affects the turn."""
+    with contextlib.suppress(Exception):
+        from app.core.remote.service import notify_turn_finished
+
+        notify_turn_finished(user_id, turn_id, status)
+
+
 async def execute_turn(turn_id: str) -> str:
     turn = await store.get_turn(turn_id)
     if not turn:
@@ -70,6 +78,7 @@ async def execute_turn(turn_id: str) -> str:
         logger.exception("turn_context_load_failed", turn_id=turn_id)
         with contextlib.suppress(Exception):
             await store.finish_turn(turn_id, "failed", error=detail)
+        _notify_remote(turn["user_id"], turn_id, "failed")
         return "failed"
     if not session or not message or not user:
         with contextlib.suppress(Exception):
@@ -110,6 +119,7 @@ async def execute_turn(turn_id: str) -> str:
                     pending = None
                     await _flush(coalescer.flush())
                     await store.finish_turn(turn_id, "canceled")
+                    _notify_remote(turn["user_id"], turn_id, "canceled")
                     return "canceled"
 
             if pending is None:
@@ -149,6 +159,7 @@ async def execute_turn(turn_id: str) -> str:
         await store.finish_turn(
             turn_id, "succeeded", assistant_message_id=assistant_message_id,
         )
+        _notify_remote(turn["user_id"], turn_id, "succeeded")
         return "succeeded"
     except asyncio.CancelledError:
         await _stop_generator(pending, generator)
@@ -158,11 +169,13 @@ async def execute_turn(turn_id: str) -> str:
         canceled = True
         with contextlib.suppress(Exception):
             canceled = await store.is_cancel_requested(turn_id)
+        final_status = "canceled" if canceled else "interrupted"
         await store.finish_turn(
             turn_id,
-            "canceled" if canceled else "interrupted",
+            final_status,
             error=None if canceled else "服务重启或关闭，任务已中断",
         )
+        _notify_remote(turn["user_id"], turn_id, final_status)
         raise
     except Exception as exc:
         detail = redact_text(f"{type(exc).__name__}: {exc}")[:2000]
@@ -177,6 +190,7 @@ async def execute_turn(turn_id: str) -> str:
             await _append("error", {"code": "turn_failed", "message": "任务执行失败"})
         with contextlib.suppress(Exception):
             await store.finish_turn(turn_id, "failed", error=detail)
+        _notify_remote(turn["user_id"], turn_id, "failed")
         return "failed"
     finally:
         with contextlib.suppress(BaseException):

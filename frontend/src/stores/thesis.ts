@@ -553,7 +553,24 @@ export const useThesis = create<ThesisState>((set, get) => ({
     if (!project) return
     set({ error: null, busy: true })
     try {
-      await api.thesis.exportPackage(project.id)
+      const readiness = await api.thesis.exportReadiness(project.id)
+      if (!readiness.ready) {
+        const lines = readiness.warnings
+          .slice(0, 6)
+          .map((item) => `· ${item.message}`)
+          .join('\n')
+        const proceed = window.confirm(
+          `导出前检查到以下未确认项：\n${lines}\n\n仍然导出？建议先回「阶段」页确认；` +
+          '已失效的确认不会因为导出而恢复。',
+        )
+        if (!proceed) {
+          set({ busy: false })
+          return
+        }
+        await api.thesis.exportPackage(project.id, true)
+      } else {
+        await api.thesis.exportPackage(project.id)
+      }
       set({ busy: false })
     } catch (err) {
       set({ busy: false, error: errorMessage(err, '导出定稿包失败') })

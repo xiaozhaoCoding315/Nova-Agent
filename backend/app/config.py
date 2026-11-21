@@ -246,6 +246,17 @@ class Settings(BaseSettings):
     frontend_dist: str = ""        # explicit frontend build path (set in Docker)
     downloads_dir: str = "data/downloads"   # 桌面客户端安装包目录，挂载到 /downloads
 
+    # ---------- GitHub delivery ----------
+    github_api_url: str = "https://api.github.com"
+
+    # ---------- Remote workbench ----------
+    remote_enabled: bool = True
+    remote_pairing_ttl_seconds: int = 300
+    # 受控中继地址；留空表示手机与本地服务直连（同一 HTTPS 站点）。
+    # 无论哪种模式，本地都不新开公网监听端口。
+    remote_relay_url: str = ""
+    remote_public_url: str = ""    # 生成配对链接用的外部地址，留空取请求地址
+
     @property
     def postgres_dsn(self) -> str:
         if self.postgres_dsn_override:

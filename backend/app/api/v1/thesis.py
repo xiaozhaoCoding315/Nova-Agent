@@ -1,6 +1,7 @@
 """Thesis-mode endpoints: projects, DOCX import, scans and reports."""
 from __future__ import annotations
 
+import asyncio
 from typing import NoReturn
 from urllib.parse import quote
 
@@ -11,10 +12,11 @@ from starlette.background import BackgroundTask
 from app.config import settings
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
-from app.core.security.limits import check_job_quota
+from app.core.security.limits import check_job_quota, ensure_token_budget
 from app.core.storage.user_storage import storage_limit_bytes
 from app.core.thesis import service, stage_service
 from app.core.thesis.rules.builtin import list_templates
+from app.core.thesis.stages import STAGE_LABELS
 from app.models.schemas import (
     OkOut,
     ThesisApplyOut,
@@ -40,6 +42,8 @@ from app.models.schemas import (
     ThesisStageAdvanceIn,
     ThesisStageConfirmIn,
     ThesisStageContentIn,
+    ThesisStageDraftIn,
+    ThesisStageDraftOut,
     ThesisStageReadinessIn,
     ThesisStageReturnIn,
     ThesisStagesOut,
@@ -47,6 +51,27 @@ from app.models.schemas import (
 )
 
 router = APIRouter()
+
+STAGE_DRAFT_PROMPT = """你在辅助作者推进学位论文的当前阶段。只输出这一阶段可以直接编辑的草稿，不写整篇论文。
+规则：
+1. 只处理当前阶段，不要提前写后续阶段的正文。
+2. 不编造文献、数据、实验结果、学校要求或导师意见；缺少的信息写成「待补充」。
+3. 不替作者下最终结论；需要作者决定的地方列出选项或问题。
+4. 用简洁的 Markdown，小标题和列表为主，避免套话和重复。
+5. 作者给了要求就以要求为准；没有要求就按阶段常规产出，并标出需要确认的点。
+6. 不要声称已经核实、已经通过或已经完成。"""
+
+
+def _clean_draft(text: str) -> str:
+    value = (text or "").strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        value = "\n".join(lines).strip()
+    return value
 
 
 def _raise_http(exc: Exception) -> NoReturn:
@@ -665,12 +690,38 @@ async def export_thesis_report(
     )
 
 
-@router.post("/thesis/projects/{project_id}/export")
-async def export_thesis_package(
+@router.get("/thesis/projects/{project_id}/export-readiness")
+async def get_thesis_export_readiness(
     project_id: str,
     user: dict = Depends(require_thesis_access),
 ):
+    try:
+        return await stage_service.get_export_readiness(user["id"], project_id)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/export")
+async def export_thesis_package(
+    project_id: str,
+    allow_unconfirmed: bool = Query(default=False),
+    user: dict = Depends(require_thesis_access),
+):
     check_job_quota(user, "thesis_export")
+    try:
+        readiness = await stage_service.get_export_readiness(user["id"], project_id)
+    except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
+        _raise_http(exc)
+    warnings = readiness.get("warnings") or []
+    if warnings and not allow_unconfirmed:
+        labels = "、".join(str(item.get("label") or "") for item in warnings[:4])
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"以下内容还没有作者确认：{labels}。确认后重新导出，或明确选择仍然导出。",
+                "warnings": warnings,
+            },
+        )
     try:
         result = await service.export_project(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
@@ -681,7 +732,12 @@ async def export_thesis_package(
     await log_audit(
         AuditAction.THESIS_EXPORT,
         user_id=str(user["id"]),
-        details={"project_id": project_id, "filename": filename},
+        details={
+            "project_id": project_id,
+            "filename": filename,
+            "unconfirmed_warnings": len(warnings),
+            "acknowledged": bool(warnings and allow_unconfirmed),
+        },
     )
     return FileResponse(
         path,
@@ -707,6 +763,96 @@ async def get_thesis_stages(
         return await stage_service.get_board(user["id"], project_id)
     except Exception as exc:  # noqa: BLE001
         _raise_http(exc)
+
+
+@router.post(
+    "/thesis/projects/{project_id}/stages/draft",
+    response_model=ThesisStageDraftOut,
+)
+async def draft_thesis_stage(
+    project_id: str,
+    body: ThesisStageDraftIn,
+    user: dict = Depends(require_thesis_access),
+):
+    """Draft the current stage note. The author must still save and confirm.
+
+    This is deliberately not an "export a thesis" endpoint: it produces one
+    stage's working text, keeps it out of the document until the author saves
+    it, and never marks the stage accepted.
+    """
+    await ensure_token_budget(user)
+    try:
+        board = await stage_service.get_board(user["id"], project_id)
+        project = await service.get_project(user["id"], project_id)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+    if project is None:
+        raise HTTPException(status_code=404, detail="论文项目不存在")
+
+    stage = str(board["state"].get("stage") or "topic")
+    label = STAGE_LABELS.get(stage, stage)
+    existing = str(board.get("current_content") or "").strip()
+    requirements = body.requirements.strip()
+    lines = [
+        f"论文题目：{project.get('title') or '待补充'}",
+    ]
+    if project.get("school"):
+        lines.append(f"学校：{project.get('school')}")
+    if project.get("degree"):
+        lines.append(f"学位：{project.get('degree')}")
+    lines.append(f"当前阶段：{label}（{stage}）")
+    lines.append(f"本阶段已有说明：{existing or '（空）'}")
+    if requirements:
+        lines.append(f"作者这一轮的要求：{requirements}")
+    if body.word_count:
+        lines.append(f"草稿长度：约 {body.word_count} 个中文字符。")
+    else:
+        lines.append("草稿长度：按阶段需要，不写整篇论文。")
+
+    from app.core.llm.factory import get_llm
+
+    try:
+        llm = await get_llm(user["id"], purpose="write")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"模型不可用：{str(exc)[:200]}") from exc
+
+    messages = [
+        {"role": "system", "content": STAGE_DRAFT_PROMPT},
+        {"role": "user", "content": "\n".join(lines)},
+    ]
+    parts: list[str] = []
+    usage: dict | None = None
+    try:
+        async with asyncio.timeout(settings.llm_timeout):
+            async for event in llm.astream_with_tools(messages, []):
+                if isinstance(event, str):
+                    parts.append(event)
+                elif event.get("type") == "content":
+                    parts.append(event.get("content") or "")
+                elif event.get("type") == "usage":
+                    value = event.get("usage")
+                    if isinstance(value, dict):
+                        usage = value
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"起草失败：{str(exc)[:200]}") from exc
+
+    content = _clean_draft("".join(parts))
+    if not content:
+        raise HTTPException(status_code=502, detail="模型没有返回内容，阶段说明未改动。")
+    try:
+        await stage_service.record_draft(user["id"], project_id, content)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail="草稿已生成，但无法记录 AI 来源，因此没有返回内容。请稍后重试。",
+        ) from exc
+    if usage:
+        from app.core.llm.usage import record_usage
+
+        await record_usage(user["id"], None, usage, source="thesis")
+    return ThesisStageDraftOut(
+        stage=stage, label=label, content=content, usage=usage,
+    )
 
 
 @router.post("/thesis/projects/{project_id}/stages/content", response_model=ThesisStagesOut)

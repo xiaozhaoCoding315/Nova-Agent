@@ -1,17 +1,25 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  ContractStatus, DebtReport, DebtSnapshot, Deployment, DocumentContent, DocumentDiagnostics,
-  DocumentExportResult, DocumentFile, DocumentVersion, DocumentWorkspace, DocumentWorkspaceInput,
-  DocumentWriteResult, DownloadsListing, EditRecord, Extensions,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, DocumentContent, DocumentConvertResult,
+  DocumentDiagnostics, DocumentExportResult, DocumentFile, DocumentVersion, DocumentWorkspace,
+  DocumentWorkspaceInput,
+  DocumentWriteResult, DownloadsListing, EditRecord, EnvironmentComparison, EvidencePack,
+  EvidencePackSummary, EvidenceVerifyResult, Extensions,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
   LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
-  Review, SelfQuota, Session, Task, TaskListItem, ThesisApplyResult, ThesisCitationAudit,
+  GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
+  RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
+  RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task, TaskListItem,
+  ThesisApplyResult, ThesisCitationAudit,
   ThesisCitationEvidence, ThesisDisclosure, ThesisDisclosureInput, ThesisDocument,
-  ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisFix, ThesisFixPreview, ThesisIssue,
+  ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisExportReadiness, ThesisFix,
+  ThesisFixPreview, ThesisIssue,
   ThesisProject, ThesisProjectDetail, ThesisProjectInput, ThesisReferencePdf, ThesisReport,
-  ThesisScanResult, ThesisStages, ThesisTemplate, TraceEvent, Turn, TurnSnapshot, Usage, User,
+  ResumeFact, ResumeJobVersion, ResumeProfile, ResumeProfileDetail, ResumeQuestion,
+  ThesisScanResult, ThesisStageDraft, ThesisStages, ThesisTemplate, TraceEvent, Turn,
+  TurnSnapshot, Usage, User,
   VerifyResult,
 } from './types'
 
@@ -91,13 +99,16 @@ async function downloadFile(path: string, options: RequestInit = {}): Promise<vo
   }
   if (!res.ok) {
     let detail: string | undefined
+    let data: unknown
     try {
       const body = await res.json()
+      data = body?.detail
       if (typeof body?.detail === 'string') detail = body.detail
+      else if (typeof body?.detail?.message === 'string') detail = body.detail.message
     } catch {
       /* 非 JSON 错误体 */
     }
-    throw friendlyHttpError(res.status, detail)
+    throw friendlyHttpError(res.status, detail, data)
   }
   const disposition = res.headers.get('Content-Disposition') ?? ''
   const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
@@ -476,6 +487,11 @@ export const api = {
       request<{ ok: boolean }>(`/thesis/disclosures/${disclosureId}`, { method: 'DELETE' }),
     stages: (projectId: string) =>
       request<ThesisStages>(`/thesis/projects/${projectId}/stages`),
+    draftStage: (projectId: string, input: { requirements?: string; word_count?: number }) =>
+      request<ThesisStageDraft>(
+        `/thesis/projects/${projectId}/stages/draft`,
+        json(input),
+      ),
     setStageContent: (projectId: string, content: string) =>
       request<ThesisStages>(`/thesis/projects/${projectId}/stages/content`, json({ content })),
     setStageReadiness: (projectId: string, readiness: string) =>
@@ -491,10 +507,116 @@ export const api = {
       request<ThesisStages>(`/thesis/projects/${projectId}/stages/return`, json({ to_stage: toStage })),
     report: (projectId: string) =>
       request<ThesisReport>(`/thesis/projects/${projectId}/report`),
+    exportReadiness: (projectId: string) =>
+      request<ThesisExportReadiness>(`/thesis/projects/${projectId}/export-readiness`),
     exportReport: (projectId: string, format: 'html' | 'docx') =>
       downloadFile(`/thesis/projects/${projectId}/report/export?format=${format}`),
-    exportPackage: (projectId: string) =>
-      downloadFile(`/thesis/projects/${projectId}/export`, { method: 'POST' }),
+    exportPackage: (projectId: string, allowUnconfirmed = false) =>
+      downloadFile(
+        `/thesis/projects/${projectId}/export${allowUnconfirmed ? '?allow_unconfirmed=true' : ''}`,
+        { method: 'POST' },
+      ),
+  },
+
+  github: {
+    status: () => request<GitHubConnectionStatus>('/github/status'),
+    connect: (token: string) =>
+      request<GitHubConnectionStatus>('/github/connect', json({ token })),
+    disconnect: () =>
+      request<GitHubConnectionStatus>('/github/disconnect', { method: 'POST' }),
+    remote: (repoId: string) =>
+      request<GitHubRemote>(`/github/repos/${repoId}/remote`),
+    pullRequests: (repoId: string) =>
+      request<{ pull_requests: GitHubPullRequest[] }>(`/github/repos/${repoId}/prs`),
+    createPullRequest: (repoId: string, input: {
+      title: string; body?: string; base?: string; authorization: string
+    }) => request<GitHubPullRequest>(`/github/repos/${repoId}/prs`, json(input)),
+    pullRequest: (repoId: string, number: number) =>
+      request<GitHubPullRequestStatus>(`/github/repos/${repoId}/prs/${number}`),
+  },
+
+  remote: {
+    config: () => request<RemoteConfig>('/remote/config'),
+    createPairing: (ttlSeconds?: number) =>
+      request<{
+        pairing: RemotePairing; token: string; link: string;
+        expires_at: string; ttl_seconds: number; note: string
+      }>('/remote/pairings', json(ttlSeconds ? { ttl_seconds: ttlSeconds } : {})),
+    pairing: (pairId: string) =>
+      request<{ pairing: RemotePairing; device: RemoteDevice | null }>(
+        `/remote/pairings/${pairId}`,
+      ),
+    claim: (input: {
+      pair_id: string; token: string; device_name: string;
+      public_key: Record<string, string>; encryption_public_key?: Record<string, string>
+    }) => request<{
+      pair_id: string; device_id: string; device_name: string; sas: string;
+      status: string; expires_at: string; permissions: string[]
+    }>('/remote/pair/claim', json(input)),
+    confirm: (pairId: string, sas: string) =>
+      request<{ ok: boolean; device: RemoteDevice }>(
+        `/remote/pairings/${pairId}/confirm`, json({ sas }),
+      ),
+    reject: (pairId: string) =>
+      request<{ ok: boolean; pair_id: string; status: string }>(
+        `/remote/pairings/${pairId}/reject`, { method: 'POST' },
+      ),
+    command: (envelope: RemoteCommandEnvelope) =>
+      request<RemoteCommandResult>('/remote/commands', json(envelope)),
+    devices: () => request<{ devices: RemoteDevice[] }>('/remote/devices'),
+    revoke: (deviceId: string) =>
+      request<{ ok: boolean; device: RemoteDevice }>(
+        `/remote/devices/${deviceId}/revoke`, { method: 'POST' },
+      ),
+    notifications: (unreadOnly = false) =>
+      request<{ notifications: RemoteNotification[]; unread: number }>(
+        `/remote/notifications${unreadOnly ? '?unread_only=true' : ''}`,
+      ),
+    readNotifications: (ids: string[] = []) =>
+      request<{ ok: boolean; changed: number }>(
+        '/remote/notifications/read', json({ ids }),
+      ),
+    audit: () => request<RemoteAudit>('/remote/audit'),
+  },
+
+  evidence: {
+    packs: () => request<{ packs: EvidencePackSummary[] }>('/evidence/packs'),
+    pack: (packId: string) => request<EvidencePack>(`/evidence/packs/${packId}`),
+    build: (repoId: string, input: {
+      claims?: Record<string, unknown>[]; artifact_paths?: string[];
+      environment?: Record<string, unknown> | null; task_id?: string
+    } = {}) => request<EvidencePack>(`/evidence/repos/${repoId}/packs`, json(input)),
+    verify: (packId: string) =>
+      request<EvidenceVerifyResult>(`/evidence/packs/${packId}/verify`, { method: 'POST' }),
+    compare: (local: Record<string, unknown>, container: Record<string, unknown>) =>
+      request<EnvironmentComparison>('/evidence/compare', json({ local, container })),
+  },
+
+  resume: {
+    questions: (audience: 'student' | 'tech') =>
+      request<{ audience: string; questions: ResumeQuestion[] }>(
+        `/resume/questions?audience=${audience}`,
+      ),
+    profiles: () => request<{ profiles: ResumeProfile[] }>('/resume/profiles'),
+    createProfile: (input: { name: string; headline?: string; contact?: Record<string, string> }) =>
+      request<ResumeProfile>('/resume/profiles', json(input)),
+    profile: (id: string) => request<ResumeProfileDetail>(`/resume/profiles/${id}`),
+    addFact: (profileId: string, input: {
+      category: string; title: string; detail?: string; status?: string;
+      evidence?: string; metrics?: string[]
+    }) => request<ResumeFact>(`/resume/profiles/${profileId}/facts`, json(input)),
+    updateFact: (profileId: string, factId: string, patch: Record<string, unknown>) =>
+      request<ResumeFact>(`/resume/profiles/${profileId}/facts/${factId}`, {
+        method: 'PATCH', ...json(patch),
+      }),
+    createVersion: (profileId: string, input: {
+      title: string; company?: string; jd_text?: string; fact_ids: string[];
+      template?: string; notes?: string
+    }) => request<ResumeJobVersion>(`/resume/profiles/${profileId}/versions`, json(input)),
+    version: (id: string) => request<ResumeJobVersion>(`/resume/versions/${id}`),
+    downloadMarkdown: (id: string) => downloadFile(`/resume/versions/${id}/markdown`),
+    exportVersion: (id: string, format: 'docx' | 'pdf') =>
+      downloadFile(`/resume/versions/${id}/export?format=${format}`, { method: 'POST' }),
   },
 
   documents: {
@@ -528,6 +650,10 @@ export const api = {
       ),
     export: (id: string, input: { path: string; format: 'docx' | 'pdf' }) =>
       request<DocumentExportResult>(`/documents/workspaces/${id}/export`, json(input)),
+    convert: (id: string, input: {
+      source_path: string; target_format: 'docx' | 'pdf'; profile: 'report' | 'thesis' | 'resume';
+      overwrite?: boolean; allow_lossy?: boolean
+    }) => request<DocumentConvertResult>(`/documents/workspaces/${id}/convert`, json(input)),
     downloadExport: (id: string, path: string) =>
       downloadFile(`/documents/workspaces/${id}/download?path=${encodeURIComponent(path)}`),
     diagnostics: (id: string) =>

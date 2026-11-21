@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  Activity, BookOpen, Check, ChevronDown, Command, Copy, Cpu, FileText, FolderTree, GitBranch,
-  MonitorDown, PanelLeft, PanelRight, Plus, ShieldCheck,
+  Activity, BookOpen, Briefcase, Check, ChevronDown, Command, Copy, Cpu, FileText,
+  FolderTree, GitBranch, MonitorDown, PanelLeft, PanelRight, Plus, ShieldCheck, Smartphone,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ProductModeSwitch } from '../components/ProductModeSwitch'
@@ -39,6 +39,10 @@ export function ChatHeader({
   onOpenSettings,
   onOpenWorkspace,
   onOpenDocuments,
+  onOpenResume,
+  onOpenEvidence,
+  onOpenRemote,
+  remoteUnread,
   healthState,
   health,
   usage,
@@ -53,6 +57,10 @@ export function ChatHeader({
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
   onOpenDocuments: () => void
+  onOpenResume: () => void
+  onOpenEvidence: () => void
+  onOpenRemote: () => void
+  remoteUnread: number
   healthState: 'ok' | 'warn' | 'err'
   health: Health | null
   usage: Usage | null
@@ -187,6 +195,38 @@ export function ChatHeader({
       >
         <FileText size={12} />
         <span className="hidden sm:inline">文档</span>
+      </button>
+
+      <button
+        onClick={onOpenResume}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="简历工作台：事实库、岗位版本与导出"
+      >
+        <Briefcase size={12} />
+        <span className="hidden sm:inline">简历</span>
+      </button>
+
+      <button
+        onClick={onOpenEvidence}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="证据包：验证事实、工件哈希与环境对比"
+      >
+        <ShieldCheck size={12} />
+        <span className="hidden sm:inline">证据</span>
+      </button>
+
+      <button
+        onClick={onOpenRemote}
+        className="relative flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="遥控：配对手机，查看进度与完成通知"
+      >
+        <Smartphone size={12} />
+        <span className="hidden sm:inline">遥控</span>
+        {remoteUnread > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 font-mono text-[9px] text-base">
+            {remoteUnread > 9 ? '9+' : remoteUnread}
+          </span>
+        )}
       </button>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">

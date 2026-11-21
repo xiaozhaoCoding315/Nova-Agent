@@ -1364,6 +1364,97 @@
         "title": "DocumentContentOut",
         "type": "object"
       },
+      "DocumentConvertIn": {
+        "properties": {
+          "allow_lossy": {
+            "default": false,
+            "title": "Allow Lossy",
+            "type": "boolean"
+          },
+          "overwrite": {
+            "default": false,
+            "title": "Overwrite",
+            "type": "boolean"
+          },
+          "profile": {
+            "default": "report",
+            "enum": [
+              "report",
+              "thesis",
+              "resume"
+            ],
+            "title": "Profile",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "target_format": {
+            "default": "docx",
+            "enum": [
+              "docx",
+              "pdf"
+            ],
+            "title": "Target Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_path"
+        ],
+        "title": "DocumentConvertIn",
+        "type": "object"
+      },
+      "DocumentConvertOut": {
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "fidelity": {
+            "additionalProperties": true,
+            "title": "Fidelity",
+            "type": "object"
+          },
+          "fidelity_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fidelity Path"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Path"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DocumentConvertOut",
+        "type": "object"
+      },
       "DocumentDiagnosticsOut": {
         "properties": {
           "manuscripts": {
@@ -1882,6 +1973,39 @@
         "title": "DownloadsOut",
         "type": "object"
       },
+      "DraftPullRequestIn": {
+        "properties": {
+          "authorization": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Authorization",
+            "type": "string"
+          },
+          "base": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Base",
+            "type": "string"
+          },
+          "body": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Body",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "DraftPullRequestIn",
+        "type": "object"
+      },
       "EditApproveOut": {
         "properties": {
           "applied": {
@@ -2121,6 +2245,63 @@
         "title": "EmailResetRequest",
         "type": "object"
       },
+      "EvidenceBuildIn": {
+        "properties": {
+          "artifact_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Artifact Paths",
+            "type": "array"
+          },
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Claims",
+            "type": "array"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "task_id": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "title": "EvidenceBuildIn",
+        "type": "object"
+      },
+      "EvidenceCompareIn": {
+        "properties": {
+          "container": {
+            "additionalProperties": true,
+            "title": "Container",
+            "type": "object"
+          },
+          "local": {
+            "additionalProperties": true,
+            "title": "Local",
+            "type": "object"
+          }
+        },
+        "title": "EvidenceCompareIn",
+        "type": "object"
+      },
       "ExtensionServerOut": {
         "properties": {
           "name": {
@@ -2199,6 +2380,135 @@
           "skills_enabled"
         ],
         "title": "ExtensionsOut",
+        "type": "object"
+      },
+      "FactIn": {
+        "properties": {
+          "category": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "status": {
+            "default": "self_reported",
+            "maxLength": 30,
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "title"
+        ],
+        "title": "FactIn",
+        "type": "object"
+      },
+      "FactPatch": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "FactPatch",
         "type": "object"
       },
       "FileContentOut": {
@@ -2409,6 +2719,21 @@
           }
         },
         "title": "GitDiffOut",
+        "type": "object"
+      },
+      "GitHubConnectIn": {
+        "properties": {
+          "token": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "GitHubConnectIn",
         "type": "object"
       },
       "GitRollbackOut": {
@@ -2970,6 +3295,59 @@
           "status"
         ],
         "title": "JobOut",
+        "type": "object"
+      },
+      "JobVersionIn": {
+        "properties": {
+          "company": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Company",
+            "type": "string"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "jd_text": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Jd Text",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "template": {
+            "default": "classic",
+            "enum": [
+              "classic",
+              "modern",
+              "compact"
+            ],
+            "title": "Template",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "fact_ids"
+        ],
+        "title": "JobVersionIn",
         "type": "object"
       },
       "LlmCredentialOut": {
@@ -4110,6 +4488,20 @@
         "title": "ModeOut",
         "type": "object"
       },
+      "NotificationsReadIn": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "title": "NotificationsReadIn",
+        "type": "object"
+      },
       "OkOut": {
         "properties": {
           "ok": {
@@ -4119,6 +4511,80 @@
           }
         },
         "title": "OkOut",
+        "type": "object"
+      },
+      "PairingClaimIn": {
+        "properties": {
+          "device_name": {
+            "default": "手机",
+            "maxLength": 60,
+            "title": "Device Name",
+            "type": "string"
+          },
+          "encryption_public_key": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryption Public Key"
+          },
+          "pair_id": {
+            "maxLength": 80,
+            "minLength": 4,
+            "title": "Pair Id",
+            "type": "string"
+          },
+          "public_key": {
+            "additionalProperties": true,
+            "title": "Public Key",
+            "type": "object"
+          },
+          "token": {
+            "maxLength": 200,
+            "minLength": 20,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pair_id",
+          "token",
+          "public_key"
+        ],
+        "title": "PairingClaimIn",
+        "type": "object"
+      },
+      "PairingConfirmIn": {
+        "properties": {
+          "sas": {
+            "maxLength": 20,
+            "minLength": 4,
+            "title": "Sas",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sas"
+        ],
+        "title": "PairingConfirmIn",
+        "type": "object"
+      },
+      "PairingCreateIn": {
+        "properties": {
+          "ttl_seconds": {
+            "default": 300,
+            "maximum": 900.0,
+            "minimum": 60.0,
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "PairingCreateIn",
         "type": "object"
       },
       "PasswordChangeRequest": {
@@ -4170,6 +4636,34 @@
           "new_password"
         ],
         "title": "PasswordResetRequest",
+        "type": "object"
+      },
+      "ProfileIn": {
+        "properties": {
+          "contact": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Contact",
+            "type": "object"
+          },
+          "headline": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Headline",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProfileIn",
         "type": "object"
       },
       "ProfileUpdateRequest": {
@@ -6682,6 +7176,71 @@
         "title": "ThesisStageContentIn",
         "type": "object"
       },
+      "ThesisStageDraftIn": {
+        "properties": {
+          "requirements": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Requirements",
+            "type": "string"
+          },
+          "word_count": {
+            "anyOf": [
+              {
+                "maximum": 4000.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Count"
+          }
+        },
+        "title": "ThesisStageDraftIn",
+        "type": "object"
+      },
+      "ThesisStageDraftOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "default": "AI 草稿，需本人核对后保存和确认",
+            "title": "Note",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "required": [
+          "stage",
+          "label",
+          "content"
+        ],
+        "title": "ThesisStageDraftOut",
+        "type": "object"
+      },
       "ThesisStageReadinessIn": {
         "properties": {
           "readiness": {
@@ -9081,6 +9640,59 @@
         ]
       }
     },
+    "/api/v1/documents/workspaces/{workspace_id}/convert": {
+      "post": {
+        "description": "Convert a file inside one workspace into DOCX/PDF.\n\nThe source must already be inside the workspace.  Outputs go to\n``exports/`` and a fidelity sidecar is written next to each artifact.",
+        "operationId": "convert_workspace_file_api_v1_documents_workspaces__workspace_id__convert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentConvertIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentConvertOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Convert Workspace File",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/documents/workspaces/{workspace_id}/diagnostics": {
       "get": {
         "operationId": "diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get",
@@ -9668,6 +10280,201 @@
         ]
       }
     },
+    "/api/v1/evidence/compare": {
+      "post": {
+        "operationId": "compare_evidence_environments_api_v1_evidence_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCompareIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Evidence Environments",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/packs": {
+      "get": {
+        "operationId": "list_evidence_packs_api_v1_evidence_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Evidence Packs",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/packs/{pack_id}": {
+      "get": {
+        "operationId": "get_evidence_pack_api_v1_evidence_packs__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Pack",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/packs/{pack_id}/verify": {
+      "post": {
+        "operationId": "verify_evidence_pack_api_v1_evidence_packs__pack_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Evidence Pack",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/repos/{repo_id}/packs": {
+      "post": {
+        "operationId": "build_evidence_pack_api_v1_evidence_repos__repo_id__packs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/EvidenceBuildIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Evidence Pack",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/api/v1/extensions": {
       "get": {
         "operationId": "list_extensions_api_v1_extensions_get",
@@ -9872,6 +10679,260 @@
         "summary": "Download File",
         "tags": [
           "files"
+        ]
+      }
+    },
+    "/api/v1/github/connect": {
+      "post": {
+        "operationId": "github_connect_api_v1_github_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubConnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Connect",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/github/disconnect": {
+      "post": {
+        "operationId": "github_disconnect_api_v1_github_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Github Disconnect",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/github/repos/{repo_id}/prs": {
+      "get": {
+        "operationId": "github_pull_requests_api_v1_github_repos__repo_id__prs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Pull Requests",
+        "tags": [
+          "github"
+        ]
+      },
+      "post": {
+        "operationId": "github_create_pull_request_api_v1_github_repos__repo_id__prs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPullRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Create Pull Request",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/github/repos/{repo_id}/prs/{number}": {
+      "get": {
+        "operationId": "github_pull_request_status_api_v1_github_repos__repo_id__prs__number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Pull Request Status",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/github/repos/{repo_id}/remote": {
+      "get": {
+        "operationId": "github_remote_api_v1_github_repos__repo_id__remote_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo_id",
+            "required": true,
+            "schema": {
+              "title": "Repo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Remote",
+        "tags": [
+          "github"
+        ]
+      }
+    },
+    "/api/v1/github/status": {
+      "get": {
+        "operationId": "github_status_api_v1_github_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Github Status",
+        "tags": [
+          "github"
         ]
       }
     },
@@ -10316,6 +11377,477 @@
         "summary": "Delete Fact",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/api/v1/remote/audit": {
+      "get": {
+        "operationId": "remote_audit_api_v1_remote_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remote Audit",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/commands": {
+      "post": {
+        "description": "Verify and run one signed command from a bound device.",
+        "operationId": "run_command_api_v1_remote_commands_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Command",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/config": {
+      "get": {
+        "operationId": "remote_config_api_v1_remote_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Remote Config",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/devices": {
+      "get": {
+        "operationId": "list_devices_api_v1_remote_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/devices/{device_id}/revoke": {
+      "post": {
+        "operationId": "revoke_device_api_v1_remote_devices__device_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Device",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/notifications": {
+      "get": {
+        "operationId": "list_notifications_api_v1_remote_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "unread_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unread Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notifications",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/notifications/read": {
+      "post": {
+        "operationId": "read_notifications_api_v1_remote_notifications_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsReadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Notifications",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/pair/claim": {
+      "post": {
+        "description": "Public endpoint used by the phone; the one-time token is the proof.",
+        "operationId": "claim_pairing_api_v1_remote_pair_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingClaimIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Pairing",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/pairings": {
+      "post": {
+        "operationId": "create_pairing_api_v1_remote_pairings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PairingCreateIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Pairing",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/pairings/{pair_id}": {
+      "get": {
+        "operationId": "get_pairing_api_v1_remote_pairings__pair_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pairing",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/pairings/{pair_id}/confirm": {
+      "post": {
+        "operationId": "confirm_pairing_api_v1_remote_pairings__pair_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Pairing",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/pairings/{pair_id}/reject": {
+      "post": {
+        "operationId": "reject_pairing_api_v1_remote_pairings__pair_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "title": "Pair Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Pairing",
+        "tags": [
+          "remote"
         ]
       }
     },
@@ -11904,6 +13436,511 @@
         "summary": "Verify Repo",
         "tags": [
           "builder"
+        ]
+      }
+    },
+    "/api/v1/resume/profiles": {
+      "get": {
+        "operationId": "list_profiles_api_v1_resume_profiles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Profiles",
+        "tags": [
+          "resume"
+        ]
+      },
+      "post": {
+        "operationId": "create_profile_api_v1_resume_profiles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Profile",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/profiles/{profile_id}": {
+      "get": {
+        "operationId": "get_profile_api_v1_resume_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Profile",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/profiles/{profile_id}/facts": {
+      "get": {
+        "operationId": "list_facts_api_v1_resume_profiles__profile_id__facts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Facts",
+        "tags": [
+          "resume"
+        ]
+      },
+      "post": {
+        "operationId": "add_fact_api_v1_resume_profiles__profile_id__facts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Fact",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/profiles/{profile_id}/facts/{fact_id}": {
+      "patch": {
+        "operationId": "update_fact_api_v1_resume_profiles__profile_id__facts__fact_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Fact",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/profiles/{profile_id}/versions": {
+      "get": {
+        "operationId": "list_versions_api_v1_resume_profiles__profile_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "resume"
+        ]
+      },
+      "post": {
+        "operationId": "create_version_api_v1_resume_profiles__profile_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Version",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/questions": {
+      "get": {
+        "operationId": "resume_questions_api_v1_resume_questions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "audience",
+            "required": false,
+            "schema": {
+              "default": "student",
+              "pattern": "^(student|tech)$",
+              "title": "Audience",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Questions",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/versions/{version_id}": {
+      "get": {
+        "operationId": "get_version_api_v1_resume_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/versions/{version_id}/export": {
+      "post": {
+        "description": "Convert the rendered Markdown to DOCX/PDF.\n\nMissing external tools return 409 with the tool diagnostics; the API never\ninvents a PDF or silently uploads the document to a remote converter.",
+        "operationId": "export_version_api_v1_resume_versions__version_id__export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "docx",
+              "pattern": "^(docx|pdf)$",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Version",
+        "tags": [
+          "resume"
+        ]
+      }
+    },
+    "/api/v1/resume/versions/{version_id}/markdown": {
+      "get": {
+        "operationId": "download_version_markdown_api_v1_resume_versions__version_id__markdown_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Version Markdown",
+        "tags": [
+          "resume"
         ]
       }
     },
@@ -13539,6 +15576,16 @@
               "title": "Project Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "allow_unconfirmed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Allow Unconfirmed",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -13562,6 +15609,46 @@
           }
         },
         "summary": "Export Thesis Package",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/export-readiness": {
+      "get": {
+        "operationId": "get_thesis_export_readiness_api_v1_thesis_projects__project_id__export_readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thesis Export Readiness",
         "tags": [
           "thesis"
         ]
@@ -14111,6 +16198,59 @@
           }
         },
         "summary": "Set Thesis Stage Content",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/draft": {
+      "post": {
+        "description": "Draft the current stage note. The author must still save and confirm.\n\nThis is deliberately not an \"export a thesis\" endpoint: it produces one\nstage's working text, keeps it out of the document until the author saves\nit, and never marks the stage accepted.",
+        "operationId": "draft_thesis_stage_api_v1_thesis_projects__project_id__stages_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStageDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Thesis Stage",
         "tags": [
           "thesis"
         ]

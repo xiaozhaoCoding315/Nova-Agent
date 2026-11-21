@@ -55,6 +55,9 @@ jobs:
       - name: Contract drift check
         run: cd frontend && npm run contract:check
 
+      - name: Copy check
+        run: cd frontend && npm run copy:check
+
   security:
     # Advisory for now: it reports known vulnerabilities without blocking PRs
     # until the current findings are triaged. Promote to blocking afterwards.

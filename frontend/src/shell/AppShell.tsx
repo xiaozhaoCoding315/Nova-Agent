@@ -28,6 +28,18 @@ const ThesisWorkspaceView = lazy(() =>
 const DocumentWorkspace = lazy(() =>
   import('../documents/DocumentWorkspace').then((m) => ({ default: m.DocumentWorkspace })),
 )
+const ResumeWorkspace = lazy(() =>
+  import('../resume/ResumeWorkspace').then((m) => ({ default: m.ResumeWorkspace })),
+)
+const EvidenceWorkspace = lazy(() =>
+  import('../evidence/EvidenceWorkspace').then((m) => ({ default: m.EvidenceWorkspace })),
+)
+const RemotePanel = lazy(() =>
+  import('../remote/RemotePanel').then((m) => ({ default: m.RemotePanel })),
+)
+const GitHubPanel = lazy(() =>
+  import('../github/GitHubPanel').then((m) => ({ default: m.GitHubPanel })),
+)
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsDialog = lazy(() =>
   import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
@@ -103,6 +115,11 @@ export function AppShell() {
   const contextRail = useRailWidth({ key: 'context', initial: 320, min: 260, max: 560 })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
+  const [resumeOpen, setResumeOpen] = useState(false)
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const [remoteOpen, setRemoteOpen] = useState(false)
+  const [githubOpen, setGithubOpen] = useState(false)
+  const [remoteUnread, setRemoteUnread] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined)
   const [drawer, setDrawer] = useState<{ repoId?: string; path?: string; tab?: WorkspaceTab } | null>(null)
@@ -140,6 +157,25 @@ export function AppShell() {
     void loadLlm()
     void refreshRepos()
   }, [user, loadSessions, loadLlm, refreshRepos])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const data = await api.remote.notifications(true)
+        if (!cancelled) setRemoteUnread(data.unread)
+      } catch {
+        /* 远程工作台关闭时静默 */
+      }
+    }
+    void poll()
+    const timer = setInterval(poll, 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [user])
 
   useEffect(() => {
     if (!historyRepoId || reposLoading) return
@@ -319,6 +355,24 @@ export function AppShell() {
           run: () => setDocumentsOpen(true),
         },
         {
+          id: 'resume',
+          label: '简历工作台',
+          hint: '事实库与岗位版本',
+          run: () => setResumeOpen(true),
+        },
+        {
+          id: 'remote',
+          label: '遥控 / 手机工作台',
+          hint: '配对手机、看进度、收通知',
+          run: () => setRemoteOpen(true),
+        },
+        {
+          id: 'github',
+          label: 'GitHub 交付',
+          hint: 'draft PR、CI 与评审意见',
+          run: () => setGithubOpen(true),
+        },
+        {
           id: 'llm-settings',
           label: '模型与 API Key',
           hint: '论文模式可选',
@@ -329,6 +383,10 @@ export function AppShell() {
     const items: PaletteAction[] = [
       { id: 'new-chat', label: '新建对话', hint: 'Ctrl N', run: startNewChat },
       { id: 'documents', label: '文档工作区', hint: 'Markdown、版本与导出', run: () => setDocumentsOpen(true) },
+      { id: 'resume', label: '简历工作台', hint: '事实库与岗位版本', run: () => setResumeOpen(true) },
+      { id: 'evidence', label: '证据包', hint: '验证事实、工件与未证实项', run: () => setEvidenceOpen(true) },
+      { id: 'remote', label: '遥控 / 手机工作台', hint: '配对手机、看进度、收通知', run: () => setRemoteOpen(true) },
+      { id: 'github', label: 'GitHub 交付', hint: 'draft PR、CI 与评审意见', run: () => setGithubOpen(true) },
       { id: 'open-workspace', label: '打开工作区', hint: '浏览代码', run: () => openWorkspace(currentRepoId) },
       {
         id: 'llm-settings',
@@ -405,6 +463,10 @@ export function AppShell() {
             onOpenSettings={() => openSettings('model')}
             onOpenWorkspace={openWorkspace}
             onOpenDocuments={() => setDocumentsOpen(true)}
+            onOpenResume={() => setResumeOpen(true)}
+            onOpenEvidence={() => setEvidenceOpen(true)}
+            onOpenRemote={() => setRemoteOpen(true)}
+            remoteUnread={remoteUnread}
             healthState={healthState}
             health={health}
             usage={usage}
@@ -500,6 +562,34 @@ export function AppShell() {
       {documentsOpen && (
         <Suspense fallback={<DialogFallback />}>
           <DocumentWorkspace open={documentsOpen} onClose={() => setDocumentsOpen(false)} />
+        </Suspense>
+      )}
+
+      {resumeOpen && (
+        <Suspense fallback={<DialogFallback />}>
+          <ResumeWorkspace open={resumeOpen} onClose={() => setResumeOpen(false)} />
+        </Suspense>
+      )}
+
+      {evidenceOpen && (
+        <Suspense fallback={<DialogFallback />}>
+          <EvidenceWorkspace open={evidenceOpen} onClose={() => setEvidenceOpen(false)} />
+        </Suspense>
+      )}
+
+      {remoteOpen && (
+        <Suspense fallback={<DialogFallback />}>
+          <RemotePanel
+            open={remoteOpen}
+            onClose={() => setRemoteOpen(false)}
+            onUnreadChange={setRemoteUnread}
+          />
+        </Suspense>
+      )}
+
+      {githubOpen && (
+        <Suspense fallback={<DialogFallback />}>
+          <GitHubPanel open={githubOpen} onClose={() => setGithubOpen(false)} />
         </Suspense>
       )}
 

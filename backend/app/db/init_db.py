@@ -1241,6 +1241,42 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_thesis_stage_events_user "
         "ON thesis_stage_events (user_id, created_at DESC)",
     ]),
+    # 26: GitHub delivery (M2).  The token is encrypted with the same helper
+    # as provider keys; pull-request rows exist only for PRs Nova created, so
+    # the review loop always has a local, auditable record of the authorization.
+    (26, [
+        """
+        CREATE TABLE IF NOT EXISTS user_github_connections (
+            user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            login VARCHAR(80) NOT NULL DEFAULT '',
+            token_enc TEXT NOT NULL,
+            scopes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS github_pull_requests (
+            id UUID PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            repo_id UUID REFERENCES repos(id) ON DELETE CASCADE,
+            owner VARCHAR(120) NOT NULL DEFAULT '',
+            repo VARCHAR(120) NOT NULL DEFAULT '',
+            number INT NOT NULL,
+            url TEXT NOT NULL DEFAULT '',
+            title VARCHAR(300) NOT NULL DEFAULT '',
+            head VARCHAR(200) NOT NULL DEFAULT '',
+            base VARCHAR(200) NOT NULL DEFAULT '',
+            draft BOOLEAN NOT NULL DEFAULT TRUE,
+            state VARCHAR(20) NOT NULL DEFAULT 'open',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (repo_id, number)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_github_prs_user "
+        "ON github_pull_requests (user_id, created_at DESC)",
+    ]),
 ]
 
 

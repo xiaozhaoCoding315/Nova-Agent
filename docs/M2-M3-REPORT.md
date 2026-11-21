@@ -3,7 +3,8 @@
 > 日期：2026-11-21  
 > 分支：`feat/thesis-mode-m0`  
 > 对应路线图：[PRODUCT-UPGRADE-ROADMAP.md](PRODUCT-UPGRADE-ROADMAP.md) 的 M2 文档部分与 M3 论文阶段  
-> 性质：阶段交付说明。未完成项在 §5 明确列出，不表示路线图已经全部完成。
+> 性质：阶段交付说明。未完成项在 §5 明确列出，不表示路线图已经全部完成。  
+> **后续更新（2026-11-21）**：本报告 §5 中的 GitHub、远程、证据包、导出阻断与简历项已由 [ROADMAP-BATCH-2-REPORT.md](ROADMAP-BATCH-2-REPORT.md) 推进；仍以路线图 §11 的当前状态表为准。
 
 ---
 

@@ -807,6 +807,21 @@ async def run_chat(
                     future = approvals.register(
                         session["id"], tool_id, user["id"]
                     )
+                    try:
+                        from app.core.remote.approvals import register as register_remote_approval
+
+                        register_remote_approval(
+                            user_id=user["id"],
+                            session_id=session["id"],
+                            task_id=turn_id,
+                            tool_call_id=tool_id,
+                            tool_name=name,
+                            args=approval.get("args") or {},
+                            reason=approval.get("reason") or "",
+                        )
+                    except Exception:
+                        # Remote approval is optional; the local prompt still works.
+                        pass
                     await trace_record(session["id"], turn_id, "tool_approval", {
                         "id": tool_id, "name": name,
                         "reason": approval.get("reason"),

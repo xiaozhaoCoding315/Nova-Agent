@@ -1,14 +1,14 @@
 import clsx from 'clsx'
 import {
-  AlertTriangle, CheckCircle2, Download, FileDown, FileText, History, Plus, RefreshCw,
-  Save, X,
+  AlertTriangle, ArrowRightLeft, CheckCircle2, Download, FileDown, FileText, History, Plus,
+  RefreshCw, Save, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Modal, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type {
-  DocumentContent, DocumentDiagnostics, DocumentExportResult, DocumentFile,
-  DocumentVersion, DocumentWorkspace as Workspace,
+  DocumentContent, DocumentConvertResult, DocumentDiagnostics, DocumentExportResult,
+  DocumentFile, DocumentVersion, DocumentWorkspace as Workspace,
 } from '../lib/types'
 import { useMode } from '../stores/mode'
 
@@ -48,6 +48,11 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
   const [content, setContent] = useState('')
   const [versions, setVersions] = useState<DocumentVersion[]>([])
   const [exportResult, setExportResult] = useState<DocumentExportResult | null>(null)
+  const [convertSource, setConvertSource] = useState('')
+  const [convertTarget, setConvertTarget] = useState<'docx' | 'pdf'>('docx')
+  const [convertProfile, setConvertProfile] = useState<Workspace['kind']>('report')
+  const [convertResult, setConvertResult] = useState<DocumentConvertResult | null>(null)
+  const [converting, setConverting] = useState(false)
   const [diagnostics, setDiagnostics] = useState<DocumentDiagnostics | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -110,6 +115,8 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
     setLoading(true)
     setError('')
     setExportResult(null)
+    setConvertResult(null)
+    setConvertSource(path)
     try {
       const [next, versionData] = await Promise.all([
         api.documents.content(activeId, path),
@@ -282,6 +289,26 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
       setError(messageOf(err, '导出失败'))
     } finally {
       setExporting('')
+    }
+  }
+
+  const convertDocument = async () => {
+    if (!activeId || !convertSource.trim()) return
+    setConverting(true)
+    setError('')
+    setConvertResult(null)
+    try {
+      const result = await api.documents.convert(activeId, {
+        source_path: convertSource.trim(),
+        target_format: convertTarget,
+        profile: convertProfile,
+        allow_lossy: false,
+      })
+      setConvertResult(result)
+    } catch (err) {
+      setError(messageOf(err, '转换失败'))
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -534,6 +561,91 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
                   <p key={item} className="mt-1 text-2xs leading-relaxed text-dim">{item}</p>
                 ))}
                 {fidelity?.notes?.map((item) => (
+                  <p key={item} className="mt-1 text-2xs leading-relaxed text-faint">{item}</p>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <p className="flex items-center gap-1.5 text-xs font-medium text-ink"><ArrowRightLeft size={13} /> 格式转换</p>
+            <p className="mt-1 text-2xs leading-relaxed text-faint">
+              把工作区里的 Markdown 或 DOCX 转成 DOCX/PDF，输出同样写到 exports/。
+              PDF 是终态，不能反向转回可编辑文档。
+            </p>
+            <div className="mt-1.5 space-y-1.5">
+              <label className="block text-2xs text-dim">
+                源文件
+                <input
+                  value={convertSource}
+                  onChange={(event) => setConvertSource(event.target.value)}
+                  placeholder="manuscripts/chapter-1.md"
+                  className="mt-0.5 w-full rounded-sm border border-edge bg-base px-2 py-1 font-mono text-2xs text-ink outline-none placeholder:text-faint focus:border-accent"
+                />
+              </label>
+              <div className="flex gap-1.5">
+                <label className="min-w-0 flex-1 text-2xs text-dim">
+                  目标格式
+                  <select
+                    value={convertTarget}
+                    onChange={(event) => setConvertTarget(event.target.value as 'docx' | 'pdf')}
+                    className="mt-0.5 w-full rounded-sm border border-edge bg-base px-1.5 py-1 text-2xs text-dim outline-none focus:border-accent"
+                  >
+                    <option value="docx">DOCX</option>
+                    <option value="pdf">PDF</option>
+                  </select>
+                </label>
+                <label className="min-w-0 flex-1 text-2xs text-dim">
+                  版式
+                  <select
+                    value={convertProfile}
+                    onChange={(event) => setConvertProfile(event.target.value as Workspace['kind'])}
+                    className="mt-0.5 w-full rounded-sm border border-edge bg-base px-1.5 py-1 text-2xs text-dim outline-none focus:border-accent"
+                  >
+                    <option value="report">报告</option>
+                    <option value="thesis">论文</option>
+                    <option value="resume">简历</option>
+                  </select>
+                </label>
+              </div>
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={() => void convertDocument()}
+                disabled={!activeId || !convertSource.trim() || converting}
+              >
+                {converting ? <Spinner /> : <ArrowRightLeft size={12} />} 开始转换
+              </Button>
+            </div>
+            {convertResult && (
+              <div className="mt-1.5 rounded-sm border border-edge bg-panel/40 px-2 py-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={convertResult.status === 'done' ? 'ok' : convertResult.status === 'failed' ? 'err' : 'warn'}>
+                    {convertResult.status === 'done' ? '已生成' : convertResult.status === 'failed' ? '失败' : '不支持'}
+                  </Badge>
+                  {convertResult.fidelity?.status && (
+                    <Badge tone={convertResult.fidelity.status === 'exact' ? 'ok' : 'warn'}>
+                      保真：{STATUS_LABEL[convertResult.fidelity.status] ?? convertResult.fidelity.status}
+                    </Badge>
+                  )}
+                </div>
+                {convertResult.output_path && (
+                  <button
+                    onClick={() => activeId && convertResult.output_path && void api.documents.downloadExport(activeId, convertResult.output_path)}
+                    className="mt-2 flex items-center gap-1 text-xs text-accent underline underline-offset-2"
+                  >
+                    <Download size={12} /> {convertResult.output_path.split('/').pop()}
+                  </button>
+                )}
+                {convertResult.fidelity?.unsupported?.length > 0 && (
+                  <p className="mt-1.5 text-2xs leading-relaxed text-warn">
+                    不支持：{convertResult.fidelity.unsupported.join('、')}
+                  </p>
+                )}
+                {convertResult.diagnostics.map((item) => (
+                  <p key={item} className="mt-1 text-2xs leading-relaxed text-dim">{item}</p>
+                ))}
+                {convertResult.fidelity?.notes?.map((item) => (
                   <p key={item} className="mt-1 text-2xs leading-relaxed text-faint">{item}</p>
                 ))}
               </div>

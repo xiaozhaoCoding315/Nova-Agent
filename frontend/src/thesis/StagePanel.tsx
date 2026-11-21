@@ -1,5 +1,7 @@
 import clsx from 'clsx'
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, ShieldCheck } from 'lucide-react'
+import {
+  ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, FileText, ShieldCheck,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
@@ -21,6 +23,7 @@ const EVENT_LABEL: Record<string, string> = {
   returned: '返回上一阶段',
   stale: '确认失效',
   artifact: '更新产物',
+  draft: 'AI 阶段草稿',
 }
 
 function messageOf(error: unknown, fallback: string): string {
@@ -43,6 +46,11 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [draftOpen, setDraftOpen] = useState(false)
+  const [requirements, setRequirements] = useState('')
+  const [wordCount, setWordCount] = useState('')
+  const [drafting, setDrafting] = useState(false)
+  const [draftNote, setDraftNote] = useState('')
 
   const current = useMemo(
     () => board?.summary.find((item) => item.position === 'current') ?? null,
@@ -58,6 +66,7 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
     setBoard(next)
     setContent(next.current_content)
     setDirty(false)
+    setDraftNote('')
   }
 
   const load = async () => {
@@ -96,6 +105,27 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
       setError(messageOf(err, '保存阶段说明失败'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const generateDraft = async () => {
+    setDrafting(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.thesis.draftStage(project.id, {
+        requirements: requirements.trim(),
+        word_count: wordCount.trim() ? Number(wordCount) : undefined,
+      })
+      setContent(result.content)
+      setDirty(true)
+      setDraftNote(result.note)
+      setDraftOpen(false)
+      setNotice('草稿已放进编辑框，还没有保存；核对后再保存和确认。')
+    } catch (err) {
+      setError(messageOf(err, '生成阶段草稿失败'))
+    } finally {
+      setDrafting(false)
     }
   }
 
@@ -190,6 +220,7 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
                 {confirmation.stale ? '确认已失效' : '内容已确认'}
               </Badge>
             )}
+            {draftNote && <Badge tone="warn">AI 草稿 · 未保存</Badge>}
           </div>
           <p className="mt-1 text-2xs leading-relaxed text-faint">
             这一阶段只写你愿意负责的内容。你可以先给要求，让写作对话用 1-3 个问题把方向问清楚；
@@ -208,10 +239,44 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
             placeholder="例：选题方向、研究对象、数据来源、提纲或本章要点。写不清楚时可以先写「暂不确定」。"
             className="mt-3 w-full resize-y rounded-md border border-edge bg-base px-2.5 py-2 text-sm leading-relaxed text-ink outline-none focus:border-accent"
           />
+          {draftOpen && (
+            <div className="mt-2 space-y-2 rounded-md border border-edge bg-base/50 p-2.5">
+              <textarea
+                value={requirements}
+                onChange={(event) => setRequirements(event.target.value)}
+                rows={2}
+                maxLength={4000}
+                placeholder="可选：这一阶段想解决什么、已有材料、导师要求。没想好可以留空。"
+                className="w-full resize-y rounded-sm border border-edge bg-base px-2 py-1.5 text-xs leading-relaxed text-ink outline-none focus:border-accent"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1 text-2xs text-faint">
+                  字数
+                  <input
+                    value={wordCount}
+                    onChange={(event) => setWordCount(event.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="可选"
+                    className="w-16 rounded-sm border border-edge bg-base px-1.5 py-1 text-2xs text-dim outline-none focus:border-accent"
+                  />
+                </label>
+                <span className="mr-auto text-2xs text-faint">
+                  只生成当前阶段，不写整篇；缺的信息会写成「待补充」。
+                </span>
+                <Button size="sm" variant="primary" onClick={() => void generateDraft()} disabled={drafting}>
+                  {drafting ? <Spinner /> : <FileText size={12} />} 生成草稿
+                </Button>
+                <Button size="sm" onClick={() => setDraftOpen(false)} disabled={drafting}>取消</Button>
+              </div>
+            </div>
+          )}
+
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className="mr-auto text-2xs text-faint">
               {content.length}/8000 字{dirty ? ' · 有未保存修改' : ''}
             </span>
+            <Button size="sm" onClick={() => setDraftOpen((value) => !value)} disabled={busy || drafting}>
+              <FileText size={12} /> 起草这一阶段
+            </Button>
             <Button size="sm" onClick={() => void save()} disabled={!dirty || busy}>
               {busy ? <Spinner /> : null} 保存阶段说明
             </Button>

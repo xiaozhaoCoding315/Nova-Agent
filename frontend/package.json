@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "contract:generate": "openapi-typescript ../contracts/openapi.json -o src/lib/api-schema.d.ts",
-    "contract:check": "node scripts/contract-check.mjs"
+    "contract:check": "node scripts/contract-check.mjs",
+    "copy:check": "node scripts/check-copy.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -17,6 +18,7 @@
     "highlight.js": "^11.10.0",
     "jszip": "^3.10.2",
     "lucide-react": "^0.453.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
