@@ -32,6 +32,7 @@ async def test_list_sessions_filters_by_project(monkeypatch):
         "s1", "登录需求", None, None, 3, "ask",
         ["11111111-1111-1111-1111-111111111111"], "qwen3.8-max",
         "11111111-1111-1111-1111-111111111111", {"model": "glm-4.6"},
+        "dev", None,
     )])
     monkeypatch.setattr(session_mod, "query", query)
 
@@ -43,8 +44,33 @@ async def test_list_sessions_filters_by_project(monkeypatch):
     assert "session_repos" in sql
     assert params[0] == 7
     assert params[1] == "11111111-1111-1111-1111-111111111111"
+    assert params[2] == "dev"
     assert result[0]["primary_repo_id"] == "11111111-1111-1111-1111-111111111111"
     assert result[0]["repo_ids"] == ["11111111-1111-1111-1111-111111111111"]
+    assert result[0]["product_mode"] == "dev"
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_scopes_thesis_history(monkeypatch):
+    query = AsyncMock(return_value=[(
+        "s2", "写第三章", None, None, 1, "ask", [], None, None, {},
+        "thesis", "22222222-2222-2222-2222-222222222222",
+    )])
+    monkeypatch.setattr(session_mod, "query", query)
+
+    result = await session_mod.list_sessions(
+        7,
+        product_mode="thesis",
+        thesis_project_id="22222222-2222-2222-2222-222222222222",
+    )
+
+    sql, params = query.await_args.args
+    assert "s.product_mode = %s" in sql
+    assert "s.thesis_project_id = %s" in sql
+    assert params[:3] == (
+        7, "thesis", "22222222-2222-2222-2222-222222222222",
+    )
+    assert result[0]["thesis_project_id"] == "22222222-2222-2222-2222-222222222222"
 
 
 @pytest.mark.asyncio

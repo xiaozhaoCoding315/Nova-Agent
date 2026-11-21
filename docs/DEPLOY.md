@@ -204,11 +204,36 @@ scp desktop/out/Nova-Agent-Setup-2.0.0.exe server:~/nova-agent/data/downloads/
 
 ## 四、日常运维
 
+### 用已发布镜像升级（不在 ECS 上构建）
+
+CI 每次推送都会构建并发布四个镜像（`<repo>-app` / `-sandbox` / `-builder` / `-node`，
+标签为 commit sha，默认分支额外有 `latest`）。2G 内存的 ECS 上跑
+`docker compose up -d --build` 容易在 npm/pip 阶段被 OOM kill；镜像已发布时优先
+拉取而不是本机构建：
+
+```bash
+# .env（把 <owner>/<repo> 换成你的 GHCR 路径）
+NOVA_APP_IMAGE=ghcr.io/<owner>/<repo>-app:latest
+NOVA_SANDBOX_IMAGE=ghcr.io/<owner>/<repo>-sandbox:latest
+NOVA_BUILDER_IMAGE=ghcr.io/<owner>/<repo>-builder:latest
+NOVA_NODE_IMAGE=ghcr.io/<owner>/<repo>-node:latest
+
+docker compose pull
+docker compose up -d --no-build
+```
+
+四个变量都有本地默认值，不设置时仍是原来的本机构建行为。数据库迁移在 app 启动时
+自动执行（`AUTO_INIT_DB=true`）；`GET /api/v1/status/health` 的 `schema` 组件显示
+`ok` 才代表迁移已到最新版本。仓库根的 `.dockerignore` 会把 `data/`、`node_modules`、
+桌面端和测试排除出构建上下文，避免每次向 2G ECS 上传整个仓库。
+
 ```bash
 docker compose logs -f app        # 看日志
 docker compose ps                 # 服务状态
-# 升级版本
+# 升级版本（服务端有构建资源时）
 git pull && docker compose up -d --build
+# 小内存服务器：先拉 CI 镜像再启动（见上一节）
+git pull && docker compose pull && docker compose up -d --no-build
 # 备份（PostgreSQL + Qdrant snapshot/体积包 + repos 卷，保留 14 天）
 sudo BACKUP_DIR=/opt/nova-backups ./deploy/backup.sh
 # 恢复（会 drop 数据库并覆盖 repos/qdrant 卷，需输入 RESTORE 确认）

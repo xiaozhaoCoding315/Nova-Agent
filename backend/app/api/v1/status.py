@@ -44,6 +44,24 @@ async def _check_qdrant() -> str:
         return f"failed: {exc}"
 
 
+async def _check_schema() -> str:
+    """Compare the recorded migration version with the code's latest one."""
+    try:
+        from app.db import query
+        from app.db.init_db import LATEST_SCHEMA_VERSION
+
+        rows = await asyncio.wait_for(
+            query("SELECT COALESCE(max(version), 0) FROM schema_migrations"),
+            timeout=CHECK_TIMEOUT,
+        )
+        current = int(rows[0][0] or 0) if rows else 0
+        if current >= LATEST_SCHEMA_VERSION:
+            return "ok"
+        return f"pending: {current}/{LATEST_SCHEMA_VERSION}"
+    except Exception as exc:  # noqa: BLE001 - health reporting must not raise
+        return f"failed: {exc}"
+
+
 def _check_llm() -> str:
     if settings.llm_configured:
         return f"ok: {','.join(settings.llm_priority_list)}"
@@ -128,6 +146,7 @@ async def health():
         sandbox = await _check_sandbox()
         components = {
             "postgres": postgres,
+            "schema": await _check_schema(),
             "qdrant": "disabled: local mode",
             "llm": llm,
             "model": server_default_model() or settings.zhipu_model,
@@ -148,6 +167,7 @@ async def health():
     sandbox = await _check_sandbox()
     components = {
         "postgres": postgres,
+        "schema": await _check_schema(),
         "qdrant": qdrant,
         "llm": _check_llm(),
         "model": server_default_model() or settings.zhipu_model,

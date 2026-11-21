@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     admin, auth, builder, chat, contracts, deploys, downloads, extensions, files, git_ops,
     jobs, memory, local_exec, local_setup, repos, settings_llm, settings_quota,
-    status, tasks,
+    status, tasks, thesis,
 )
 
 api_router = APIRouter()
@@ -25,4 +25,5 @@ api_router.include_router(repos.router, tags=["repos"])
 api_router.include_router(settings_llm.router, tags=["settings"])
 api_router.include_router(settings_quota.router, tags=["settings"])
 api_router.include_router(tasks.router, tags=["tasks"])
+api_router.include_router(thesis.router, tags=["thesis"])
 api_router.include_router(status.router, tags=["status"])

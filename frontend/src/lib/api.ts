@@ -5,8 +5,11 @@ import type {
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
   LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
-  Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Turn, TurnSnapshot, Usage, User,
-  VerifyResult,
+  Review, SelfQuota, Session, Task, TaskListItem, ThesisApplyResult, ThesisCitationAudit,
+  ThesisCitationEvidence, ThesisDisclosure, ThesisDisclosureInput, ThesisDocument,
+  ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisFix, ThesisFixPreview, ThesisIssue,
+  ThesisProject, ThesisProjectDetail, ThesisProjectInput, ThesisReferencePdf, ThesisReport,
+  ThesisScanResult, ThesisTemplate, TraceEvent, Turn, TurnSnapshot, Usage, User, VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
@@ -68,6 +71,41 @@ function json(body: unknown): RequestInit {
   }
 }
 
+/** Fetch a file with the session cookie and hand it to the browser. */
+async function downloadFile(path: string, options: RequestInit = {}): Promise<void> {
+  let res: globalThis.Response
+  try {
+    res = await fetch(`/api/v1${path}`, { credentials: 'include', ...options })
+  } catch {
+    throw new ApiError(0, '网络连接失败，请检查服务是否可用')
+  }
+  if (!res.ok) {
+    let detail: string | undefined
+    try {
+      const body = await res.json()
+      if (typeof body?.detail === 'string') detail = body.detail
+    } catch {
+      /* 非 JSON 错误体 */
+    }
+    throw friendlyHttpError(res.status, detail)
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  const plainMatch = /filename="?([^";]+)"?/i.exec(disposition)
+  const filename = utf8Match
+    ? decodeURIComponent(utf8Match[1])
+    : plainMatch?.[1] ?? 'download'
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export const api = {
   authConfig: () => request<AuthConfig>('/auth/config'),
   login: (username: string, password: string) => request<User>('/auth/login', json({ username, password })),
@@ -126,9 +164,22 @@ export const api = {
   },
 
   sessions: {
-    list: (repoId?: string) =>
-      request<Session[]>(`/chat/sessions${repoId ? `?repo_id=${encodeURIComponent(repoId)}` : ''}`),
-    create: (repoIds: string[] = []) => request<Session>('/chat/sessions', json({ repo_ids: repoIds })),
+    list: (repoId?: string, scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string }) => {
+      const params = new URLSearchParams()
+      if (repoId) params.set('repo_id', repoId)
+      if (scope?.productMode) params.set('product_mode', scope.productMode)
+      if (scope?.thesisProjectId) params.set('thesis_project_id', scope.thesisProjectId)
+      const suffix = params.toString()
+      return request<Session[]>(`/chat/sessions${suffix ? `?${suffix}` : ''}`)
+    },
+    create: (
+      repoIds: string[] = [],
+      scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string },
+    ) => request<Session>('/chat/sessions', json({
+      repo_ids: repoIds,
+      product_mode: scope?.productMode ?? 'dev',
+      thesis_project_id: scope?.thesisProjectId ?? null,
+    })),
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),
@@ -327,6 +378,98 @@ export const api = {
     diff: (id: string) => request<{ diff: string }>(`/repos/${id}/git/diff`),
     rollback: (id: string, commit: string) =>
       request<GitInfo & { reindex_started: boolean }>(`/repos/${id}/git/rollback`, json({ commit })),
+  },
+
+  thesis: {
+    templates: () => request<ThesisTemplate[]>('/thesis/templates'),
+    projects: () => request<ThesisProject[]>('/thesis/projects'),
+    project: (id: string) => request<ThesisProjectDetail>(`/thesis/projects/${id}`),
+    createProject: (input: ThesisProjectInput) =>
+      request<ThesisProject>('/thesis/projects', json(input)),
+    updateProject: (id: string, patch: Partial<ThesisProjectInput>) =>
+      request<ThesisProject>(`/thesis/projects/${id}`, { ...json(patch), method: 'PATCH' }),
+    removeProject: (id: string) =>
+      request<{ ok: boolean }>(`/thesis/projects/${id}`, { method: 'DELETE' }),
+    documents: (projectId: string) =>
+      request<ThesisDocument[]>(`/thesis/projects/${projectId}/documents`),
+    uploadDocument: (projectId: string, file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<ThesisDocument>(`/thesis/projects/${projectId}/documents`, {
+        method: 'POST',
+        body: form,
+      })
+    },
+    document: (documentId: string) =>
+      request<ThesisDocumentDetail>(`/thesis/documents/${documentId}`),
+    scan: (projectId: string, templateId?: string) => {
+      const suffix = templateId ? `?template_id=${encodeURIComponent(templateId)}` : ''
+      return request<ThesisScanResult>(`/thesis/projects/${projectId}/scan${suffix}`, {
+        method: 'POST',
+      })
+    },
+    issues: (projectId: string, status = 'open') =>
+      request<ThesisIssue[]>(
+        `/thesis/projects/${projectId}/issues?status=${encodeURIComponent(status)}`,
+      ),
+    updateIssue: (issueId: string, status: 'open' | 'ignored') =>
+      request<ThesisIssue>(`/thesis/issues/${issueId}`, {
+        ...json({ status }),
+        method: 'PATCH',
+      }),
+    previewFix: (issueId: string) =>
+      request<ThesisFixPreview>(`/thesis/issues/${issueId}/preview`, { method: 'POST' }),
+    applyFix: (issueId: string) =>
+      request<ThesisApplyResult>(`/thesis/issues/${issueId}/apply`, { method: 'POST' }),
+    undoFix: (issueId: string) =>
+      request<ThesisApplyResult>(`/thesis/issues/${issueId}/undo`, { method: 'POST' }),
+    fixes: (projectId: string) =>
+      request<ThesisFix[]>(`/thesis/projects/${projectId}/fixes`),
+    citations: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations`),
+    auditCitations: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations/audit`, {
+        method: 'POST',
+      }),
+    verifyMetadata: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations/metadata`, {
+        method: 'POST',
+      }),
+    referencePdfs: (projectId: string) =>
+      request<ThesisReferencePdf[]>(`/thesis/projects/${projectId}/reference-pdfs`),
+    uploadReferencePdf: (projectId: string, file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<ThesisReferencePdf>(`/thesis/projects/${projectId}/reference-pdfs`, {
+        method: 'POST',
+        body: form,
+      })
+    },
+    deleteReferencePdf: (pdfId: string) =>
+      request<{ ok: boolean }>(`/thesis/reference-pdfs/${pdfId}`, { method: 'DELETE' }),
+    citationEvidence: (projectId: string) =>
+      request<ThesisCitationEvidence[]>(`/thesis/projects/${projectId}/citations/evidence`),
+    locateEvidence: (projectId: string) =>
+      request<ThesisEvidenceLocateResult>(`/thesis/projects/${projectId}/citations/locate`, {
+        method: 'POST',
+      }),
+    updateEvidence: (evidenceId: string, support: string, note?: string) =>
+      request<ThesisCitationEvidence>(`/thesis/citations/evidence/${evidenceId}`, {
+        ...json({ support, note }),
+        method: 'PATCH',
+      }),
+    disclosures: (projectId: string) =>
+      request<ThesisDisclosure[]>(`/thesis/projects/${projectId}/disclosures`),
+    createDisclosure: (projectId: string, input: ThesisDisclosureInput) =>
+      request<ThesisDisclosure>(`/thesis/projects/${projectId}/disclosures`, json(input)),
+    deleteDisclosure: (disclosureId: string) =>
+      request<{ ok: boolean }>(`/thesis/disclosures/${disclosureId}`, { method: 'DELETE' }),
+    report: (projectId: string) =>
+      request<ThesisReport>(`/thesis/projects/${projectId}/report`),
+    exportReport: (projectId: string, format: 'html' | 'docx') =>
+      downloadFile(`/thesis/projects/${projectId}/report/export?format=${format}`),
+    exportPackage: (projectId: string) =>
+      downloadFile(`/thesis/projects/${projectId}/export`, { method: 'POST' }),
   },
 
   trajectory: (sessionId: string) =>

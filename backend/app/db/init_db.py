@@ -912,7 +912,314 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         )
         """,
     ]),
+    (20, [
+        """
+        CREATE TABLE IF NOT EXISTS thesis_projects (
+            id UUID PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title VARCHAR(200) NOT NULL,
+            school VARCHAR(120) NOT NULL DEFAULT '',
+            degree VARCHAR(24) NOT NULL DEFAULT 'undergraduate',
+            template_id VARCHAR(80) NOT NULL DEFAULT 'generic-undergraduate-v1',
+            status VARCHAR(24) NOT NULL DEFAULT 'draft',
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_projects_user "
+        "ON thesis_projects (user_id, updated_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_documents (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            storage_path TEXT NOT NULL,
+            sha256 VARCHAR(64) NOT NULL,
+            size BIGINT NOT NULL DEFAULT 0,
+            mime VARCHAR(120) NOT NULL DEFAULT
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            status VARCHAR(24) NOT NULL DEFAULT 'uploaded',
+            parse_error TEXT,
+            document_model JSONB,
+            stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_documents_project "
+        "ON thesis_documents (project_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_documents_user "
+        "ON thesis_documents (user_id, created_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_issues (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            document_id UUID NOT NULL REFERENCES thesis_documents(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            rule_id VARCHAR(80) NOT NULL,
+            category VARCHAR(40) NOT NULL,
+            severity VARCHAR(16) NOT NULL DEFAULT 'warn',
+            title VARCHAR(240) NOT NULL,
+            detail TEXT NOT NULL DEFAULT '',
+            location JSONB NOT NULL DEFAULT '{}'::jsonb,
+            evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status VARCHAR(16) NOT NULL DEFAULT 'open',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_issues_project "
+        "ON thesis_issues (project_id, status, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_issues_document "
+        "ON thesis_issues (document_id)",
+    ]),
+    (21, [
+        "ALTER TABLE thesis_documents "
+        "ADD COLUMN IF NOT EXISTS working_path TEXT",
+        "ALTER TABLE thesis_documents "
+        "ADD COLUMN IF NOT EXISTS working_sha256 VARCHAR(64)",
+        "ALTER TABLE thesis_documents "
+        "ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS fix_type VARCHAR(40)",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS fix_payload JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS source VARCHAR(300) NOT NULL DEFAULT ''",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS template_version VARCHAR(40) NOT NULL DEFAULT ''",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS confidence VARCHAR(16) NOT NULL DEFAULT 'high'",
+        "ALTER TABLE thesis_issues "
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_fixes (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            document_id UUID NOT NULL REFERENCES thesis_documents(id) ON DELETE CASCADE,
+            issue_id UUID REFERENCES thesis_issues(id) ON DELETE SET NULL,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            rule_id VARCHAR(80) NOT NULL,
+            fix_type VARCHAR(40) NOT NULL,
+            before JSONB NOT NULL DEFAULT '{}'::jsonb,
+            after JSONB NOT NULL DEFAULT '{}'::jsonb,
+            backup_path TEXT NOT NULL DEFAULT '',
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            undone_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_document "
+        "ON thesis_fixes (document_id, applied_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_project "
+        "ON thesis_fixes (project_id, applied_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_citations (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            document_id UUID NOT NULL REFERENCES thesis_documents(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind VARCHAR(16) NOT NULL,
+            raw VARCHAR(500) NOT NULL DEFAULT '',
+            normalized JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status VARCHAR(32) NOT NULL DEFAULT 'unverified',
+            confidence VARCHAR(16) NOT NULL DEFAULT 'medium',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citations_project "
+        "ON thesis_citations (project_id, kind)",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_disclosures (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tool VARCHAR(120) NOT NULL DEFAULT '',
+            tool_version VARCHAR(40) NOT NULL DEFAULT '',
+            purpose TEXT NOT NULL DEFAULT '',
+            stage VARCHAR(80) NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            output TEXT NOT NULL DEFAULT '',
+            modified BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_disclosures_project "
+        "ON thesis_disclosures (project_id, created_at DESC)",
+    ]),
+    (22, [
+        "ALTER TABLE thesis_citations "
+        "ADD COLUMN IF NOT EXISTS doi TEXT",
+        "ALTER TABLE thesis_citations "
+        "ADD COLUMN IF NOT EXISTS metadata_status VARCHAR(24) NOT NULL DEFAULT ''",
+        "ALTER TABLE thesis_citations "
+        "ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ALTER TABLE thesis_citations "
+        "ADD COLUMN IF NOT EXISTS metadata_fetched_at TIMESTAMPTZ",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_metadata_cache (
+            doi TEXT PRIMARY KEY,
+            status VARCHAR(24) NOT NULL DEFAULT 'ok',
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS thesis_reference_pdfs (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            filename VARCHAR(200) NOT NULL,
+            sha256 VARCHAR(64) NOT NULL,
+            size BIGINT NOT NULL DEFAULT 0,
+            page_count INT NOT NULL DEFAULT 0,
+            storage_path TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_reference_pdfs_project "
+        "ON thesis_reference_pdfs (project_id, created_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_citation_evidence (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            document_id UUID REFERENCES thesis_documents(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            reference_index INT,
+            reference_raw VARCHAR(500) NOT NULL DEFAULT '',
+            pdf_id UUID REFERENCES thesis_reference_pdfs(id) ON DELETE CASCADE,
+            page INT,
+            quote TEXT NOT NULL DEFAULT '',
+            score DOUBLE PRECISION NOT NULL DEFAULT 0,
+            method VARCHAR(16) NOT NULL DEFAULT '',
+            support VARCHAR(24) NOT NULL DEFAULT 'needs_review',
+            note TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_project "
+        "ON thesis_citation_evidence (project_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_reference "
+        "ON thesis_citation_evidence (project_id, reference_index)",
+    ]),
+    # 23: thesis chat sessions and the optional engineering project they sit on.
+    (23, [
+        "ALTER TABLE sessions "
+        "ADD COLUMN IF NOT EXISTS product_mode VARCHAR(16) NOT NULL DEFAULT 'dev'",
+        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS thesis_project_id UUID",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_product "
+        "ON sessions (user_id, product_mode, updated_at DESC)",
+        "ALTER TABLE thesis_projects ADD COLUMN IF NOT EXISTS source_repo_id UUID",
+        "ALTER TABLE thesis_projects "
+        "ADD COLUMN IF NOT EXISTS source_notes TEXT NOT NULL DEFAULT ''",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'sessions_thesis_project_fk'
+            ) THEN
+                ALTER TABLE sessions ADD CONSTRAINT sessions_thesis_project_fk
+                    FOREIGN KEY (thesis_project_id)
+                    REFERENCES thesis_projects(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_projects_source_repo_fk'
+            ) THEN
+                ALTER TABLE thesis_projects ADD CONSTRAINT thesis_projects_source_repo_fk
+                    FOREIGN KEY (source_repo_id)
+                    REFERENCES repos(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+        """,
+    ]),
+    # 24: thesis FK indexes, constraint checks and orphaned thesis sessions.
+    (24, [
+        "CREATE INDEX IF NOT EXISTS idx_sessions_thesis_project "
+        "ON sessions (thesis_project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_projects_source_repo "
+        "ON thesis_projects (source_repo_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_issues_user "
+        "ON thesis_issues (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_issue "
+        "ON thesis_fixes (issue_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_fixes_user "
+        "ON thesis_fixes (user_id, applied_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citations_document "
+        "ON thesis_citations (document_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citations_user "
+        "ON thesis_citations (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_disclosures_user "
+        "ON thesis_disclosures (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_reference_pdfs_user "
+        "ON thesis_reference_pdfs (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_pdf "
+        "ON thesis_citation_evidence (pdf_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_citation_evidence_document "
+        "ON thesis_citation_evidence (document_id)",
+        # A project's chat must not outlive the project as a thesis session
+        # without a project; reset those rows so they cannot open broken chats.
+        "UPDATE sessions SET product_mode = 'dev', thesis_project_id = NULL "
+        "WHERE product_mode = 'thesis' AND thesis_project_id IS NULL",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'sessions_product_mode_check'
+            ) THEN
+                ALTER TABLE sessions ADD CONSTRAINT sessions_product_mode_check
+                    CHECK (product_mode IN ('dev', 'thesis')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_documents_status_check'
+            ) THEN
+                ALTER TABLE thesis_documents ADD CONSTRAINT thesis_documents_status_check
+                    CHECK (status IN ('uploaded', 'parsed', 'failed')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_issues_severity_check'
+            ) THEN
+                ALTER TABLE thesis_issues ADD CONSTRAINT thesis_issues_severity_check
+                    CHECK (severity IN ('info', 'warn', 'blocker')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'thesis_issues_status_check'
+            ) THEN
+                ALTER TABLE thesis_issues ADD CONSTRAINT thesis_issues_status_check
+                    CHECK (status IN ('open', 'ignored', 'fixed')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+    ]),
 ]
+
+
+LATEST_SCHEMA_VERSION = _MIGRATIONS[-1][0] if _MIGRATIONS else 0
 
 
 def _target_dbname() -> str:

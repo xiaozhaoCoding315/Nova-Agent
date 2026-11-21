@@ -42,6 +42,7 @@ from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import facts as facts_mod
 from app.core.memory import session as session_mod
 from app.core.memory.context import build_system_prompt
+from app.core.product_modes import FILE_MUTATING_TOOLS as _FILE_MUTATING_TOOLS
 from app.core.rag.retriever import retrieve
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import ensure_token_budget
@@ -50,6 +51,7 @@ from app.core.trace import record as trace_record
 from app.core.tools import ToolContext, get_registry
 
 logger = structlog.get_logger()
+
 
 def _sse(event: str, **data) -> dict:
     return {"event": event, "data": data}
@@ -192,6 +194,27 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    thesis_project_id = session.get("thesis_project_id")
+    thesis_degraded: str | None = None
+    if thesis_project_id:
+        try:
+            from app.core.thesis.chat_context import build_thesis_context_result
+            thesis_result = await build_thesis_context_result(
+                user["id"], thesis_project_id
+            )
+            if thesis_result.text:
+                system_content += f"\n\n{thesis_result.text}"
+                prompt_sections["thesis"] = thesis_result.text
+            if thesis_result.degraded:
+                thesis_degraded = thesis_result.degraded
+                logger.warning(
+                    "thesis_context_degraded",
+                    project_id=thesis_project_id,
+                    reason=thesis_result.degraded,
+                )
+        except Exception as exc:  # noqa: BLE001 - context must not break the turn
+            thesis_degraded = "论文上下文注入失败，本轮未带上项目/文献信息。"
+            logger.warning("thesis_context_inject_failed", error=str(exc))
     vision_attachments = [
         item for item in (attachments or []) if is_vision_image(item)
     ]
@@ -266,6 +289,7 @@ async def run_chat(
         "identity": "系统提示", "summary": "会话摘要", "repos": "仓库说明",
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
+        "thesis": "论文上下文",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)
@@ -293,6 +317,19 @@ async def run_chat(
             "notice", kind="image_skipped",
             message=f"{len(image_warnings)} 张图片读取失败，已忽略，本轮按其余内容继续。",
         )
+    if thesis_degraded:
+        yield _sse(
+            "notice", kind="thesis_context_degraded",
+            message=thesis_degraded,
+        )
+
+    protected_roots: tuple[str, ...] = ()
+    if thesis_project_id:
+        try:
+            from app.core.storage.user_storage import thesis_container
+            protected_roots = (str(thesis_container(user["id"], thesis_project_id)),)
+        except Exception as exc:  # noqa: BLE001 - path guard must not break the turn
+            logger.warning("thesis_protected_root_failed", error=str(exc))
 
     ctx = ToolContext(
         user=user,
@@ -304,11 +341,30 @@ async def run_chat(
         turn_id=turn_id,
         model=session.get("model"),
         llm_overrides=session_overrides,
+        product_mode=session.get("product_mode") or "dev",
+        thesis_project_id=thesis_project_id,
+        protected_roots=protected_roots,
     )
+
+    # Defence in depth behind the policy path check: snapshot DOCX/PDF
+    # artifacts before the first mutating call and restore them if a tool
+    # reached them through an obfuscated path.
+    thesis_file_guard = None
+    if thesis_project_id and settings.thesis_protect_files:
+        try:
+            from app.core.thesis.file_guard import ThesisFileGuard
+            from app.core.thesis.service import list_artifact_paths
+
+            thesis_file_guard = ThesisFileGuard(
+                await list_artifact_paths(user["id"], thesis_project_id)
+            )
+        except Exception as exc:  # noqa: BLE001 - the guard must not break the turn
+            logger.warning("thesis_file_guard_init_failed", error=str(exc))
     local_available = False if settings.is_local else await local_agent_online(user["id"])
     specs = registry.specs(
         permission_mode=ctx.permission_mode,
         local_available=local_available,
+        product_mode=ctx.product_mode,
     )
     holder: dict = {"message_id": 0, "evidence": None, "report": None}
 
@@ -385,12 +441,17 @@ async def run_chat(
             user_id=str(user["id"]),
             details={
                 "session_id": session["id"],
+                "product_mode": session.get("product_mode") or "dev",
+                "thesis_project_id": session.get("thesis_project_id"),
                 "tools": tools_used,
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 "rounds": rounds,
             },
         )
-        if final_text:
+        # Long-term facts are shared across dev sessions.  Do not extract from
+        # thesis turns until facts have their own product-mode scope, otherwise
+        # thesis text can be recalled in a dev conversation.
+        if final_text and (session.get("product_mode") or "dev") != "thesis":
             asyncio.create_task(
                 facts_mod.extract_facts_from_turn(user["id"], user_message, final_text)
             )
@@ -707,6 +768,15 @@ async def run_chat(
                         except BaseException:  # noqa: BLE001
                             pass
 
+            if thesis_file_guard is not None and any(
+                name in _FILE_MUTATING_TOOLS for _, name, _ in parsed
+            ):
+                try:
+                    await thesis_file_guard.snapshot()
+                except Exception as exc:  # noqa: BLE001 - guard must not break the turn
+                    logger.warning("thesis_file_guard_snapshot_failed", error=str(exc))
+                    thesis_file_guard = None
+
             if (
                 len(parsed) > 1
                 and all(_parallel_safe(name) for _, name, _ in parsed)
@@ -777,6 +847,18 @@ async def run_chat(
                     await trace_record(session["id"], turn_id, "tool_approval_result", {
                         "id": tool_id, "approved": bool(approved),
                     })
+
+                if thesis_file_guard is not None and name in _FILE_MUTATING_TOOLS:
+                    restored = await thesis_file_guard.verify_and_restore()
+                    if restored:
+                        errors.append("论文原始文件被工具修改，已自动还原")
+                        yield _sse(
+                            "notice", kind="thesis_file_restored",
+                            message=(
+                                f"{len(restored)} 个论文文件被工具改动，已自动还原为"
+                                "原始版本。请改用论文面板的修复功能。"
+                            ),
+                        )
 
                 tools_used.append(name)
                 if name == "run_code" and result["ok"] and (result.get("output") or {}).get("exit_code") == 0:
@@ -894,6 +976,9 @@ async def run_chat(
             else:
                 asyncio.create_task(_persist_turn())
         raise
+    finally:
+        if thesis_file_guard is not None:
+            await thesis_file_guard.cleanup()
 
     # 4) persistence on the normal path (message_id is needed for the done event)
     if "".join(content_parts).strip() or tools_used:

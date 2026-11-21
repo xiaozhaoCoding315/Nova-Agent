@@ -10,6 +10,7 @@ import { useAuth } from '../stores/auth'
 import { useChat } from '../stores/chat'
 import { useLlm } from '../stores/llm'
 import { useMode } from '../stores/mode'
+import { useProduct } from '../stores/product'
 import { useRepos } from '../stores/repos'
 import { useRun } from '../stores/run'
 import type { WorkspaceTab } from '../views/WorkspaceView'
@@ -17,9 +18,13 @@ import { ChatHeader } from './ChatHeader'
 import { ContextRail } from './ContextRail'
 import { ProjectRail } from './ProjectRail'
 import { RailResizer, useRailWidth } from './RailResizer'
+import { ThesisHeader } from './ThesisHeader'
 import { WorkspaceDrawer } from './WorkspaceDrawer'
 
 const Workbench = lazy(() => import('./Workbench').then((m) => ({ default: m.Workbench })))
+const ThesisWorkspaceView = lazy(() =>
+  import('../views/ThesisWorkspaceView').then((m) => ({ default: m.ThesisWorkspaceView })),
+)
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsDialog = lazy(() =>
   import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
@@ -69,6 +74,8 @@ export function AppShell() {
   const {
     mode, setup, load: loadMode, loadSetup, markConfigured,
   } = useMode()
+  const productMode = useProduct((state) => state.mode)
+  const thesisMode = productMode === 'thesis'
 
   const [setupOpen, setSetupOpen] = useState(false)
   const setupPrompted = useRef(false)
@@ -173,6 +180,24 @@ export function AppShell() {
     query.addEventListener('change', onChange)
     return () => query.removeEventListener('change', onChange)
   }, [])
+
+  // 论文模式是独立工作区：关闭只在开发模式有意义的覆盖层，避免切回来时残留。
+  useEffect(() => {
+    if (!thesisMode) return
+    setRailOpen(false)
+    setContextRailOpen(false)
+    setDrawer(null)
+    setLocalAgentOpen(false)
+    setPaletteOpen(false)
+  }, [thesisMode])
+
+  // 两个产品面的对话历史分开加载；切回开发模式时重新取开发会话。
+  // 进入论文模式时项目作用域由 ThesisChatPanel 设置；这里传 null 表示沿用，
+  // 不会把面板刚设好的 thesis_project_id 覆盖掉。
+  useEffect(() => {
+    useChat.getState().setScope(thesisMode ? 'thesis' : 'dev', null)
+    if (!thesisMode) void useChat.getState().loadSessions()
+  }, [thesisMode])
 
   /** 打开设置弹层；默认从「模型与密钥」开始，ModelPicker 的「管理密钥」也走这里。 */
   const openSettings = (section?: SettingsSection) => {
@@ -281,6 +306,16 @@ export function AppShell() {
   }, [paletteOpen, setupOpen, drawer, settingsOpen, railOpen, contextRailOpen])
 
   const actions = useMemo<PaletteAction[]>(() => {
+    if (thesisMode) {
+      return [
+        {
+          id: 'llm-settings',
+          label: '模型与 API Key',
+          hint: '论文模式可选',
+          run: () => openSettings('model'),
+        },
+      ]
+    }
     const items: PaletteAction[] = [
       { id: 'new-chat', label: '新建对话', hint: 'Ctrl N', run: startNewChat },
       { id: 'open-workspace', label: '打开工作区', hint: '浏览代码', run: () => openWorkspace(currentRepoId) },
@@ -304,7 +339,7 @@ export function AppShell() {
     }
     return items
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionMode, setPermissionMode, logout, llmSettings?.source, mode?.local, currentRepoId])
+  }, [permissionMode, setPermissionMode, logout, llmSettings?.source, mode?.local, currentRepoId, thesisMode])
 
   if (!checked) {
     return <BootLine />
@@ -320,38 +355,51 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-base text-ink">
-      <ProjectRail
-        open={railOpen}
-        onClose={() => setRailOpen(false)}
-        onOpenSettings={() => openSettings()}
-        onShowChat={() => setSettingsOpen(false)}
-        width={projectRail.width}
-      />
-      <RailResizer
-        side="right"
-        width={projectRail.width}
-        min={208}
-        max={420}
-        onChange={projectRail.update}
-        onReset={projectRail.reset}
-        label="调整项目栏宽度"
-        className="hidden md:block"
-      />
+      {!thesisMode && (
+        <>
+          <ProjectRail
+            open={railOpen}
+            onClose={() => setRailOpen(false)}
+            onOpenSettings={() => openSettings()}
+            onShowChat={() => setSettingsOpen(false)}
+            width={projectRail.width}
+          />
+          <RailResizer
+            side="right"
+            width={projectRail.width}
+            min={208}
+            max={420}
+            onChange={projectRail.update}
+            onReset={projectRail.reset}
+            label="调整项目栏宽度"
+            className="hidden md:block"
+          />
+        </>
+      )}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <ChatHeader
-          onOpenRail={() => setRailOpen(true)}
-          onToggleContextRail={toggleContextRail}
-          onNewChat={startNewChat}
-          onOpenPalette={() => setPaletteOpen(true)}
-          onOpenSettings={() => openSettings('model')}
-          onOpenWorkspace={openWorkspace}
-          healthState={healthState}
-          health={health}
-          usage={usage}
-          localOpen={localAgentOpen}
-          onLocalOpenChange={setLocalAgentOpen}
-        />
+        {thesisMode ? (
+          <ThesisHeader
+            onOpenSettings={() => openSettings('model')}
+            healthState={healthState}
+            health={health}
+            usage={usage}
+          />
+        ) : (
+          <ChatHeader
+            onOpenRail={() => setRailOpen(true)}
+            onToggleContextRail={toggleContextRail}
+            onNewChat={startNewChat}
+            onOpenPalette={() => setPaletteOpen(true)}
+            onOpenSettings={() => openSettings('model')}
+            onOpenWorkspace={openWorkspace}
+            healthState={healthState}
+            health={health}
+            usage={usage}
+            localOpen={localAgentOpen}
+            onLocalOpenChange={setLocalAgentOpen}
+          />
+        )}
 
         {!mode?.local && user.is_guest && !guestBannerHidden && (
           <div className="flex shrink-0 items-center gap-2 border-b border-accent/20 bg-accentSoft/25 px-3 py-1.5 text-sm text-ink">
@@ -378,18 +426,22 @@ export function AppShell() {
 
         <div className="min-h-0 flex-1">
           <Suspense fallback={<ViewFallback />}>
-            <Workbench
-              onOpenSettings={() => openSettings('model')}
-              onOpenWorkspace={openWorkspace}
-              onOpenRun={openRun}
-              onOpenLocalAgent={() => setLocalAgentOpen(true)}
-            />
+            {thesisMode ? (
+              <ThesisWorkspaceView onOpenSettings={() => openSettings('model')} />
+            ) : (
+              <Workbench
+                onOpenSettings={() => openSettings('model')}
+                onOpenWorkspace={openWorkspace}
+                onOpenRun={openRun}
+                onOpenLocalAgent={() => setLocalAgentOpen(true)}
+              />
+            )}
           </Suspense>
         </div>
       </main>
 
       {/* 把手放在右栏左侧：桌面端它占据 0 宽，视觉线正好压住右栏的左边框。 */}
-      {contextRailActive && (
+      {!thesisMode && contextRailActive && (
         <RailResizer
           side="left"
           width={contextRail.width}
@@ -401,17 +453,19 @@ export function AppShell() {
           className="hidden lg:block"
         />
       )}
-      <ContextRail
-        open={contextRailOpen}
-        collapsed={contextRailCollapsed}
-        active={contextRailActive}
-        repoId={currentRepoId}
-        onClose={() => setContextRailOpen(false)}
-        onToggle={toggleContextRail}
-        onOpenFile={(path, repoId) => openWorkspace(repoId, path)}
-        onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
-        width={contextRail.width}
-      />
+      {!thesisMode && (
+        <ContextRail
+          open={contextRailOpen}
+          collapsed={contextRailCollapsed}
+          active={contextRailActive}
+          repoId={currentRepoId}
+          onClose={() => setContextRailOpen(false)}
+          onToggle={toggleContextRail}
+          onOpenFile={(path, repoId) => openWorkspace(repoId, path)}
+          onOpenWorkspace={(options) => openWorkspace(options.repoId, options.path, options.tab)}
+          width={contextRail.width}
+        />
+      )}
 
       {settingsOpen && (
         <Suspense fallback={<DialogFallback />}>

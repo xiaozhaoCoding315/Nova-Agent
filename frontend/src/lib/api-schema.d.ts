@@ -1768,6 +1768,437 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/thesis/citations/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Thesis Citation Evidence */
+        patch: operations["update_thesis_citation_evidence_api_v1_thesis_citations_evidence__evidence_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/disclosures/{disclosure_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Thesis Disclosure */
+        delete: operations["delete_thesis_disclosure_api_v1_thesis_disclosures__disclosure_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Document */
+        get: operations["get_thesis_document_api_v1_thesis_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Thesis Issue */
+        patch: operations["update_thesis_issue_api_v1_thesis_issues__issue_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Thesis Fix */
+        post: operations["apply_thesis_fix_api_v1_thesis_issues__issue_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Thesis Fix */
+        post: operations["preview_thesis_fix_api_v1_thesis_issues__issue_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Thesis Fix */
+        post: operations["undo_thesis_fix_api_v1_thesis_issues__issue_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Projects */
+        get: operations["get_thesis_projects_api_v1_thesis_projects_get"];
+        put?: never;
+        /** Create Thesis Project */
+        post: operations["create_thesis_project_api_v1_thesis_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Project */
+        get: operations["get_thesis_project_api_v1_thesis_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Thesis Project */
+        delete: operations["delete_thesis_project_api_v1_thesis_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Thesis Project */
+        patch: operations["update_thesis_project_api_v1_thesis_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Citations */
+        get: operations["get_thesis_citations_api_v1_thesis_projects__project_id__citations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Audit Thesis Citations */
+        post: operations["audit_thesis_citations_api_v1_thesis_projects__project_id__citations_audit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Citation Evidence */
+        get: operations["get_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/locate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Locate Thesis Citation Evidence */
+        post: operations["locate_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_locate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Thesis Citation Metadata */
+        post: operations["verify_thesis_citation_metadata_api_v1_thesis_projects__project_id__citations_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/disclosures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Disclosures */
+        get: operations["get_thesis_disclosures_api_v1_thesis_projects__project_id__disclosures_get"];
+        put?: never;
+        /** Create Thesis Disclosure */
+        post: operations["create_thesis_disclosure_api_v1_thesis_projects__project_id__disclosures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Documents */
+        get: operations["get_thesis_documents_api_v1_thesis_projects__project_id__documents_get"];
+        put?: never;
+        /** Upload Thesis Document */
+        post: operations["upload_thesis_document_api_v1_thesis_projects__project_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Thesis Package */
+        post: operations["export_thesis_package_api_v1_thesis_projects__project_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/fixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Fixes */
+        get: operations["get_thesis_fixes_api_v1_thesis_projects__project_id__fixes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Issues */
+        get: operations["get_thesis_issues_api_v1_thesis_projects__project_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/reference-pdfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Reference Pdfs */
+        get: operations["get_thesis_reference_pdfs_api_v1_thesis_projects__project_id__reference_pdfs_get"];
+        put?: never;
+        /** Upload Thesis Reference Pdf */
+        post: operations["upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Report */
+        get: operations["get_thesis_report_api_v1_thesis_projects__project_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/report/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Thesis Report */
+        get: operations["export_thesis_report_api_v1_thesis_projects__project_id__report_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Thesis Project */
+        post: operations["scan_thesis_project_api_v1_thesis_projects__project_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/reference-pdfs/{pdf_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Thesis Reference Pdf */
+        delete: operations["delete_thesis_reference_pdf_api_v1_thesis_reference_pdfs__pdf_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Templates */
+        get: operations["get_thesis_templates_api_v1_thesis_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1921,6 +2352,22 @@ export interface components {
         };
         /** Body_upload_repo_api_v1_repos_upload_post */
         Body_upload_repo_api_v1_repos_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post */
+        Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post */
+        Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post: {
             /**
              * File
              * Format: binary
@@ -2154,10 +2601,18 @@ export interface components {
             model?: string | null;
             /** Permission Mode */
             permission_mode?: ("readonly" | "ask" | "auto" | "full") | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[] | null;
             /** Session Id */
             session_id?: string | null;
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** ContractStatusOut */
         ContractStatusOut: {
@@ -3434,8 +3889,16 @@ export interface components {
         /** SessionCreateRequest */
         SessionCreateRequest: {
             llm_overrides?: components["schemas"]["LlmOverrides"] | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** SessionOut */
         SessionOut: {
@@ -3461,8 +3924,16 @@ export interface components {
             permission_mode: string;
             /** Primary Repo Id */
             primary_repo_id?: string | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
             /** Title */
             title: string;
             /** Updated At */
@@ -3605,6 +4076,770 @@ export interface components {
             updated_at?: string | null;
             /** User Id */
             user_id: number;
+        };
+        /** ThesisApplyOut */
+        ThesisApplyOut: {
+            document: components["schemas"]["ThesisDocumentOut"];
+            fix: components["schemas"]["ThesisFixOut"];
+            issue: components["schemas"]["ThesisIssueOut"];
+            remaining_counts?: components["schemas"]["ThesisIssueCountsOut"];
+        };
+        /** ThesisCitationAuditOut */
+        ThesisCitationAuditOut: {
+            /** Citations */
+            citations?: components["schemas"]["ThesisCitationOut"][];
+            /**
+             * Document Id
+             * @default
+             */
+            document_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** In Text */
+            in_text?: {
+                [key: string]: unknown;
+            }[];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Reference Section Found
+             * @default false
+             */
+            reference_section_found: boolean;
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ThesisCitationEvidenceOut */
+        ThesisCitationEvidenceOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Method
+             * @default
+             */
+            method: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Pdf Filename
+             * @default
+             */
+            pdf_filename: string;
+            /** Pdf Id */
+            pdf_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /** Reference Index */
+            reference_index?: number | null;
+            /**
+             * Reference Raw
+             * @default
+             */
+            reference_raw: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /**
+             * Support
+             * @default needs_review
+             */
+            support: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisCitationEvidenceUpdate */
+        ThesisCitationEvidenceUpdate: {
+            /** Note */
+            note?: string | null;
+            /**
+             * Support
+             * @enum {string}
+             */
+            support: "needs_review" | "supported" | "partial" | "unsupported";
+        };
+        /** ThesisCitationOut */
+        ThesisCitationOut: {
+            /**
+             * Confidence
+             * @default medium
+             */
+            confidence: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Document Id */
+            document_id: string;
+            /**
+             * Doi
+             * @default
+             */
+            doi: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Metadata Fetched At */
+            metadata_fetched_at?: string | null;
+            /**
+             * Metadata Status
+             * @default
+             */
+            metadata_status: string;
+            /** Normalized */
+            normalized?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string;
+            /**
+             * Raw
+             * @default
+             */
+            raw: string;
+            /**
+             * Status
+             * @default unverified
+             */
+            status: string;
+        };
+        /** ThesisDisclosureCreate */
+        ThesisDisclosureCreate: {
+            /**
+             * Modified
+             * @default true
+             */
+            modified: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /**
+             * Tool
+             * @default
+             */
+            tool: string;
+            /**
+             * Tool Version
+             * @default
+             */
+            tool_version: string;
+        };
+        /** ThesisDisclosureOut */
+        ThesisDisclosureOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Modified
+             * @default true
+             */
+            modified: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /**
+             * Tool
+             * @default
+             */
+            tool: string;
+            /**
+             * Tool Version
+             * @default
+             */
+            tool_version: string;
+        };
+        /** ThesisDocumentDetailOut */
+        ThesisDocumentDetailOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Has Working Copy
+             * @default false
+             */
+            has_working_copy: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Mime
+             * @default application/vnd.openxmlformats-officedocument.wordprocessingml.document
+             */
+            mime: string;
+            /** Outline */
+            outline?: components["schemas"]["ThesisOutlineNode"][];
+            /** Parse Error */
+            parse_error?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @default parsed
+             */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** ThesisDocumentOut */
+        ThesisDocumentOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Has Working Copy
+             * @default false
+             */
+            has_working_copy: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Mime
+             * @default application/vnd.openxmlformats-officedocument.wordprocessingml.document
+             */
+            mime: string;
+            /** Parse Error */
+            parse_error?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @default parsed
+             */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /** ThesisEvidenceLocateOut */
+        ThesisEvidenceLocateOut: {
+            /**
+             * Document Id
+             * @default
+             */
+            document_id: string;
+            /** Evidence */
+            evidence?: components["schemas"]["ThesisCitationEvidenceOut"][];
+            /**
+             * Located At
+             * Format: date-time
+             */
+            located_at: string;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /** Pdfs */
+            pdfs?: components["schemas"]["ThesisReferencePdfOut"][];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Total References
+             * @default 0
+             */
+            total_references: number;
+        };
+        /** ThesisFixOut */
+        ThesisFixOut: {
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            };
+            /** Applied At */
+            applied_at?: string | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            };
+            /** Document Id */
+            document_id: string;
+            /**
+             * Fix Type
+             * @default
+             */
+            fix_type: string;
+            /** Id */
+            id: string;
+            /** Issue Id */
+            issue_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Rule Id
+             * @default
+             */
+            rule_id: string;
+            /** Undone At */
+            undone_at?: string | null;
+        };
+        /** ThesisFixPreviewOut */
+        ThesisFixPreviewOut: {
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            };
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            };
+            /** Fix Type */
+            fix_type: string;
+            /** Issue Id */
+            issue_id: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Verification */
+            verification?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ThesisIssueCountsOut */
+        ThesisIssueCountsOut: {
+            /**
+             * Blocker
+             * @default 0
+             */
+            blocker: number;
+            /**
+             * Info
+             * @default 0
+             */
+            info: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Warn
+             * @default 0
+             */
+            warn: number;
+        };
+        /** ThesisIssueOut */
+        ThesisIssueOut: {
+            /** Category */
+            category: string;
+            /**
+             * Confidence
+             * @default high
+             */
+            confidence: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Document Id */
+            document_id: string;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Fix Available
+             * @default false
+             */
+            fix_available: boolean;
+            /** Fix Type */
+            fix_type?: string | null;
+            /** Id */
+            id: string;
+            /** Location */
+            location?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string;
+            /** Rule Id */
+            rule_id: string;
+            /** Severity */
+            severity: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Status
+             * @default open
+             */
+            status: string;
+            /**
+             * Template Version
+             * @default
+             */
+            template_version: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisIssueUpdate */
+        ThesisIssueUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "ignored";
+        };
+        /** ThesisOutlineNode */
+        ThesisOutlineNode: {
+            /**
+             * Block Index
+             * @default 0
+             */
+            block_index: number;
+            /** Level */
+            level: number;
+            /**
+             * Style
+             * @default
+             */
+            style: string;
+            /** Text */
+            text: string;
+        };
+        /** ThesisProjectCreate */
+        ThesisProjectCreate: {
+            /**
+             * Degree
+             * @default undergraduate
+             * @enum {string}
+             */
+            degree: "undergraduate" | "master" | "doctor";
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ThesisProjectDetailOut */
+        ThesisProjectDetailOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /** Documents */
+            documents?: components["schemas"]["ThesisDocumentOut"][];
+            /** Id */
+            id: string;
+            /**
+             * Open Issue Count
+             * @default 0
+             */
+            open_issue_count: number;
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisProjectOut */
+        ThesisProjectOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /** Id */
+            id: string;
+            /**
+             * Open Issue Count
+             * @default 0
+             */
+            open_issue_count: number;
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisProjectUpdate */
+        ThesisProjectUpdate: {
+            /** Degree */
+            degree?: ("undergraduate" | "master" | "doctor") | null;
+            /** School */
+            school?: string | null;
+            /** Source Notes */
+            source_notes?: string | null;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ThesisReferencePdfOut */
+        ThesisReferencePdfOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+        };
+        /** ThesisReportOut */
+        ThesisReportOut: {
+            /** By Category */
+            by_category?: {
+                [key: string]: number;
+            };
+            counts?: components["schemas"]["ThesisIssueCountsOut"];
+            document?: components["schemas"]["ThesisDocumentOut"] | null;
+            /** Fixes */
+            fixes?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Issues */
+            issues?: components["schemas"]["ThesisIssueOut"][];
+            project: components["schemas"]["ThesisProjectOut"];
+            template: components["schemas"]["ThesisTemplateOut"];
+        };
+        /** ThesisScanOut */
+        ThesisScanOut: {
+            counts?: components["schemas"]["ThesisIssueCountsOut"];
+            /** Document Id */
+            document_id: string;
+            /** Issues */
+            issues?: components["schemas"]["ThesisIssueOut"][];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /** Template Id */
+            template_id: string;
+        };
+        /** ThesisTemplateOut */
+        ThesisTemplateOut: {
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /**
+             * Is Sample
+             * @default false
+             */
+            is_sample: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
         };
         /** ToolMetricOut */
         ToolMetricOut: {
@@ -4464,6 +5699,8 @@ export interface operations {
         parameters: {
             query?: {
                 repo_id?: string | null;
+                product_mode?: "dev" | "thesis";
+                thesis_project_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -7274,6 +8511,977 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_citation_evidence_api_v1_thesis_citations_evidence__evidence_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisCitationEvidenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationEvidenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_disclosure_api_v1_thesis_disclosures__disclosure_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                disclosure_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_document_api_v1_thesis_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_issue_api_v1_thesis_issues__issue_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisIssueUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisIssueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_thesis_fix_api_v1_thesis_issues__issue_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisApplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_thesis_fix_api_v1_thesis_issues__issue_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisFixPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_thesis_fix_api_v1_thesis_issues__issue_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisApplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_projects_api_v1_thesis_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"][];
+                };
+            };
+        };
+    };
+    create_thesis_project_api_v1_thesis_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_project_api_v1_thesis_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_project_api_v1_thesis_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_project_api_v1_thesis_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_citations_api_v1_thesis_projects__project_id__citations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_thesis_citations_api_v1_thesis_projects__project_id__citations_audit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationEvidenceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    locate_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_locate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisEvidenceLocateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_thesis_citation_metadata_api_v1_thesis_projects__project_id__citations_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_disclosures_api_v1_thesis_projects__project_id__disclosures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDisclosureOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_thesis_disclosure_api_v1_thesis_projects__project_id__disclosures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisDisclosureCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDisclosureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_documents_api_v1_thesis_projects__project_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_thesis_document_api_v1_thesis_projects__project_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_package_api_v1_thesis_projects__project_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_fixes_api_v1_thesis_projects__project_id__fixes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisFixOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_issues_api_v1_thesis_projects__project_id__issues_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisIssueOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_reference_pdfs_api_v1_thesis_projects__project_id__reference_pdfs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReferencePdfOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReferencePdfOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_report_api_v1_thesis_projects__project_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_report_api_v1_thesis_projects__project_id__report_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_thesis_project_api_v1_thesis_projects__project_id__scan_post: {
+        parameters: {
+            query?: {
+                template_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisScanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_reference_pdf_api_v1_thesis_reference_pdfs__pdf_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pdf_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_templates_api_v1_thesis_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisTemplateOut"][];
                 };
             };
         };

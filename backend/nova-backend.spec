@@ -51,8 +51,23 @@ for grammar in (
 # jieba loads dict.txt at runtime from its package directory.
 _collect("jieba")
 
+# python-docx ships templates and part classes imported indirectly; lxml's
+# binary wheels carry their own compiled extension next to the package.
+_collect("docx")
+
 # uvicorn resolves loops/protocols/lifespan modules by name at startup.
 hiddenimports.extend(collect_submodules("uvicorn"))
+
+# Thesis templates are plain JSON files loaded at runtime; ship them next to
+# the bundled backend so the desktop build exposes the same template list.
+thesis_templates = ROOT / "thesis-templates"
+if thesis_templates.is_dir():
+    datas.append((str(thesis_templates), "thesis-templates"))
+else:
+    print(
+        "warning: thesis-templates/ is missing; only the generic template will load",
+        file=sys.stderr,
+    )
 
 frontend_dist = ROOT / "frontend" / "dist"
 if frontend_dist.is_dir():

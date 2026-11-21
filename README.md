@@ -2,6 +2,9 @@
 
 一个**可自托管**的开发者 AI 工作台。不止于聊天：它会给结论附证据、算清改动影响面、在沙箱里复现 bug 并交付经过红-绿验证的补丁。
 
+> **论文模式（M0–M3 已落地）**：同一个 Nova，顶栏可切换到面向本科/研究生的毕业论文工作台。导入 DOCX，看清格式、结构与引用问题，逐条预览后决定是否修复；关联工程仓库或本机文件夹后，右侧 AI 写作助手可以读代码、梳理项目、起草章节草稿。不代写整篇论文、不降重、不做 AIGC 检测、不伪造引用，模型用你自己的。
+> 5 分钟上手见 [thesis-quickstart.md](docs/thesis-quickstart.md)，模板作者指南见 [thesis-template-guide.md](docs/thesis-template-guide.md)，设计见 [THESIS-MODE-DESIGN.md](docs/THESIS-MODE-DESIGN.md)，开发计划见 [THESIS-MODE-ROADMAP.md](docs/THESIS-MODE-ROADMAP.md)，合成样例见 [thesis-samples/](thesis-samples/)。
+
 ## 差异化能力
 
 | 能力 | 说明 |
@@ -42,6 +45,30 @@
 左侧项目与会话，中间按轮次展开的对话与工具卡，右侧文件/引用/影响/变更。`/fix` 在对话内启动红-绿任务，运行面板展示步骤与 Gate；工作区从项目头或右栏以抽屉打开。模型、推理强度、上下文窗口与温度按会话切换，刷新后保留。
 
 设置只通过弹层进入；权限模式、轨迹与本机执行器入口都在对话顶栏。本地模式在左栏底部常驻显示「无容器隔离」。
+
+## 论文模式（毕业论文体检）
+
+顶栏切换「开发 / 论文」，原有开发模式不受影响。论文项目以 DOCX 为唯一事实源：本机解析、本机检查、本机修复；原文件只读，修复写入 `working.docx` 并保留版本备份，所有修改可撤销。没有 API Key 也能完成格式体检与引用 L1。
+
+右侧「AI 写作助手」常驻可用，复用开发模式的 Agent 工具、权限模式与本机执行器：关联项目后可读代码、检索实现、在授权范围内修改本地文件，并起草带 `文件路径:行号` 依据的章节草稿。论文对话按项目独立保存（`product_mode='thesis'`），不会出现在开发模式的会话列表里；切换模式不会串历史。
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| DOCX 解析与文档模型 | 可用 | 节、页边距、页面大小、标题层级、页眉页脚、页码域、参考文献与字数 |
+| 格式体检与证据卡 | 可用 | 每条问题含规则、位置、当前值、建议值、模板来源/版本、置信度 |
+| 安全修复 | 可用 | 页面大小、页边距、标题样式；预览 → 应用 → 撤销，修复后重解析并校验段落数/字数 |
+| 引用 L1（不联网） | 可用 | 数字编号 `[n]` 与作者-年份；缺条目、重复、编号不连续、首次出现顺序 |
+| 引用 L2（可选联网） | 可用（仅 DOI） | 只把 DOI 发往 Crossref，结果缓存 30 天；不发送论文正文 |
+| 引用 L3（全文证据） | 实验 | 用户自带 PDF，定位候选页码与原文；支持度由人工确认，不做自动判定 |
+| AI 使用声明 | 可用 | 本地登记工具/环节/用途/修改情况，导出声明 DOCX |
+| 定稿包 | 可用 | 修复版 DOCX + 体检报告 DOCX/HTML + 引用清单 CSV + AI 声明 + 修改记录 |
+| 项目关联与 AI 写作 | 可用 | 关联已有仓库或本机文件夹（与开发模式同一执行器/权限）；读代码、起草章节、标注 `文件路径:行号`；论文对话独立历史 |
+| 理工毕设复现 | 未包含 | 路线图中的后续阶段，需要环境锁定与沙箱产物收集 |
+
+- 上手：[docs/thesis-quickstart.md](docs/thesis-quickstart.md)
+- 模板：`thesis-templates/<slug>/template.json` + `SOURCE.md`；作者指南见 [docs/thesis-template-guide.md](docs/thesis-template-guide.md)。仓库内置的 3 个模板是**虚构演示校**，不是任何学校的官方规定；可用 `NOVA_THESIS_TEMPLATES=/path/to/templates` 指向外部模板目录。
+- 样例：`thesis-samples/` 全部为合成文本，可用 `python thesis-samples/generate_samples.py` 重新生成。
+- 边界：不代写整篇论文、不降重、不做 AIGC/查重检测、不伪造引用、不抓取知网/维普/万方；AI 生成的正文一律标注「AI 草稿，需本人核对与改写」，参考文献只能使用已导入条目；报告是本地检查结果，不是学校出具的合规证明。
 
 ## 多用户与数据隔离
 
@@ -505,12 +532,13 @@ Node 依赖需先通过 `install_deps kind=node` 安装到仓库依赖卷；full
 
 ```bash
 cd backend && python -m pytest tests/ -q
+cd backend && python -m scripts.validate_thesis_templates
 cd frontend && npm run build
 cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 多厂商目录/多凭据加密/掩码/服务端回退开关、会话级模型覆盖、用户文件存储/配额/附件工具、幂等键与删除清理隔离
+- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 多厂商目录/多凭据加密/掩码/服务端回退开关、会话级模型覆盖、用户文件存储/配额/附件工具、幂等键与删除清理隔离、论文 DOCX 解析/规则/引用 L1/L2/L3/修复/报告/模板校验
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -543,6 +571,8 @@ cd frontend && npm run contract:check
 `contracts/openapi.json` 是提交到仓库的契约快照；`frontend/src/lib/api-schema.d.ts` 由 `openapi-typescript` 生成。修改后端响应模型后必须重新导出/生成，否则 `contract:check` 退出码 1。
 
 ## 安全说明
+
+安全问题请按 [SECURITY.md](SECURITY.md) 私密报告，不要公开贴出利用细节、密钥或真实论文。
 
 - 工具执行前经过能力策略：`readonly` 硬拦截写/执行；拒绝 `.env`、私钥、凭据文件；拒绝绝对路径与穿越；危险命令和 `git push` 在策略层直接 deny
 - 可选 pre-hook/post-hook：Hook 由运维配置，不来自模型；pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；Hook 缺失或超时按失败处理（fail closed）
@@ -595,4 +625,4 @@ cd frontend && npm run contract:check
 
 ## License
 
-个人项目，供学习与演示使用。
+本项目采用 [Apache License 2.0](LICENSE)。版权与归属见 [NOTICE](NOTICE)。

@@ -37,6 +37,11 @@ def uploads_root(user_id: int) -> Path:
     return user_root(user_id) / "uploads"
 
 
+def thesis_container(user_id: int, project_id: str) -> Path:
+    """Original DOCX files for one thesis project (never modified in place)."""
+    return user_root(user_id) / "thesis" / str(project_id)
+
+
 def sanitize_filename(filename: str) -> str:
     name = Path((filename or "file").replace("\\", "/")).name
     name = re.sub(r"[\x00-\x1f<>:\"|?*]", "_", name).strip().strip(".")
@@ -149,9 +154,18 @@ async def delete_file(file_id: str, user_id: int) -> bool:
 
 
 async def used_bytes(user_id: int) -> int:
+    """Total bytes the user occupies, including thesis documents and PDFs.
+
+    Thesis uploads previously bypassed the storage quota entirely; counting
+    them here keeps the account-level ledger honest for every upload path.
+    """
     rows = await query(
-        "SELECT COALESCE(SUM(size), 0) FROM user_files WHERE user_id = %s",
-        (user_id,),
+        "SELECT COALESCE(SUM(size), 0) FROM ("
+        "  SELECT size FROM user_files WHERE user_id = %s"
+        "  UNION ALL SELECT size FROM thesis_documents WHERE user_id = %s"
+        "  UNION ALL SELECT size FROM thesis_reference_pdfs WHERE user_id = %s"
+        ") AS stored",
+        (user_id, user_id, user_id),
     )
     return int(rows[0][0]) if rows else 0
 
