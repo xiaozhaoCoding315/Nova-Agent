@@ -25,6 +25,9 @@ const Workbench = lazy(() => import('./Workbench').then((m) => ({ default: m.Wor
 const ThesisWorkspaceView = lazy(() =>
   import('../views/ThesisWorkspaceView').then((m) => ({ default: m.ThesisWorkspaceView })),
 )
+const DocumentWorkspace = lazy(() =>
+  import('../documents/DocumentWorkspace').then((m) => ({ default: m.DocumentWorkspace })),
+)
 const LoginView = lazy(() => import('../views/LoginView').then((m) => ({ default: m.LoginView })))
 const SettingsDialog = lazy(() =>
   import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
@@ -99,6 +102,7 @@ export function AppShell() {
   const projectRail = useRailWidth({ key: 'project', initial: 264, min: 208, max: 420 })
   const contextRail = useRailWidth({ key: 'context', initial: 320, min: 260, max: 560 })
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined)
   const [drawer, setDrawer] = useState<{ repoId?: string; path?: string; tab?: WorkspaceTab } | null>(null)
@@ -309,6 +313,12 @@ export function AppShell() {
     if (thesisMode) {
       return [
         {
+          id: 'documents',
+          label: '文档工作区',
+          hint: 'Markdown、版本与导出',
+          run: () => setDocumentsOpen(true),
+        },
+        {
           id: 'llm-settings',
           label: '模型与 API Key',
           hint: '论文模式可选',
@@ -318,6 +328,7 @@ export function AppShell() {
     }
     const items: PaletteAction[] = [
       { id: 'new-chat', label: '新建对话', hint: 'Ctrl N', run: startNewChat },
+      { id: 'documents', label: '文档工作区', hint: 'Markdown、版本与导出', run: () => setDocumentsOpen(true) },
       { id: 'open-workspace', label: '打开工作区', hint: '浏览代码', run: () => openWorkspace(currentRepoId) },
       {
         id: 'llm-settings',
@@ -393,6 +404,7 @@ export function AppShell() {
             onOpenPalette={() => setPaletteOpen(true)}
             onOpenSettings={() => openSettings('model')}
             onOpenWorkspace={openWorkspace}
+            onOpenDocuments={() => setDocumentsOpen(true)}
             healthState={healthState}
             health={health}
             usage={usage}
@@ -484,6 +496,12 @@ export function AppShell() {
         tab={drawer?.tab}
         onClose={() => setDrawer(null)}
       />
+
+      {documentsOpen && (
+        <Suspense fallback={<DialogFallback />}>
+          <DocumentWorkspace open={documentsOpen} onClose={() => setDocumentsOpen(false)} />
+        </Suspense>
+      )}
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={actions} />
 

@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  Activity, BookOpen, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown,
-  PanelLeft, PanelRight, Plus, ShieldCheck,
+  Activity, BookOpen, Check, ChevronDown, Command, Copy, Cpu, FileText, FolderTree, GitBranch,
+  MonitorDown, PanelLeft, PanelRight, Plus, ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ProductModeSwitch } from '../components/ProductModeSwitch'
@@ -38,6 +38,7 @@ export function ChatHeader({
   onOpenPalette,
   onOpenSettings,
   onOpenWorkspace,
+  onOpenDocuments,
   healthState,
   health,
   usage,
@@ -51,6 +52,7 @@ export function ChatHeader({
   onOpenPalette: () => void
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
+  onOpenDocuments: () => void
   healthState: 'ok' | 'warn' | 'err'
   health: Health | null
   usage: Usage | null
@@ -177,6 +179,15 @@ export function ChatHeader({
       </button>
 
       <ProductModeSwitch compact />
+
+      <button
+        onClick={onOpenDocuments}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="文档工作区：Markdown 正文、版本与导出"
+      >
+        <FileText size={12} />
+        <span className="hidden sm:inline">文档</span>
+      </button>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="max-w-[180px] truncate text-sm text-ink" title={currentRepo?.name ?? '全部项目'}>

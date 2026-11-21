@@ -3,7 +3,7 @@
 一个**可自托管**的开发者 AI 工作台。不止于聊天：它会给结论附证据、算清改动影响面、在沙箱里复现 bug 并交付经过红-绿验证的补丁。
 
 > **论文模式（M0–M3 已落地）**：同一个 Nova，顶栏可切换到面向本科/研究生的毕业论文工作台。导入 DOCX，看清格式、结构与引用问题，逐条预览后决定是否修复；关联工程仓库或本机文件夹后，右侧 AI 写作助手可以读代码、梳理项目、起草章节草稿。不代写整篇论文、不降重、不做 AIGC 检测、不伪造引用，模型用你自己的。
-> 5 分钟上手见 [thesis-quickstart.md](docs/thesis-quickstart.md)，模板作者指南见 [thesis-template-guide.md](docs/thesis-template-guide.md)，设计见 [THESIS-MODE-DESIGN.md](docs/THESIS-MODE-DESIGN.md)，开发计划见 [THESIS-MODE-ROADMAP.md](docs/THESIS-MODE-ROADMAP.md)，合成样例见 [thesis-samples/](thesis-samples/)。
+> 5 分钟上手见 [thesis-quickstart.md](docs/thesis-quickstart.md)，模板作者指南见 [thesis-template-guide.md](docs/thesis-template-guide.md)，设计见 [THESIS-MODE-DESIGN.md](docs/THESIS-MODE-DESIGN.md)，开发计划见 [THESIS-MODE-ROADMAP.md](docs/THESIS-MODE-ROADMAP.md)，整体产品升级路线见 [PRODUCT-UPGRADE-ROADMAP.md](docs/PRODUCT-UPGRADE-ROADMAP.md)，合成样例见 [thesis-samples/](thesis-samples/)。
 
 ## 差异化能力
 

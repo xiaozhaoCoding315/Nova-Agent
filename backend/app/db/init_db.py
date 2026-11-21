@@ -1216,6 +1216,31 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         END $$;
         """,
     ]),
+    # 25: thesis stage machine (M3).  Stage state is one JSON document per
+    # project; events are append-only so a confirmation can always be traced
+    # back to the transition that produced it.
+    (25, [
+        "ALTER TABLE thesis_projects "
+        "ADD COLUMN IF NOT EXISTS stage_state JSONB NOT NULL DEFAULT '{}'::jsonb",
+        """
+        CREATE TABLE IF NOT EXISTS thesis_stage_events (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES thesis_projects(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            event_type VARCHAR(24) NOT NULL,
+            stage VARCHAR(24) NOT NULL,
+            from_stage VARCHAR(24) NOT NULL DEFAULT '',
+            readiness VARCHAR(24) NOT NULL DEFAULT '',
+            content_sha VARCHAR(64) NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_thesis_stage_events_project "
+        "ON thesis_stage_events (project_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_thesis_stage_events_user "
+        "ON thesis_stage_events (user_id, created_at DESC)",
+    ]),
 ]
 
 

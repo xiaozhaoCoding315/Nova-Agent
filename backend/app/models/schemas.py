@@ -634,6 +634,7 @@ class VerifyStepOut(BaseModel):
     stdout: str = ""
     stderr: str = ""
     duration_ms: int = 0
+    reason: str = ""
 
 
 class VerifyResultOut(BaseModel):
@@ -648,6 +649,9 @@ class VerifyResultOut(BaseModel):
     image: str = ""
     at: Optional[str] = None
     elapsed_ms: Optional[int] = None
+    # CAP-01/CAP-02: stable facts alongside the legacy fields.  Kept as a dict
+    # so older stored last_check payloads remain valid.
+    report: Optional[dict] = None
 
 
 class VerifyActionOut(BaseModel):
@@ -1207,3 +1211,141 @@ class ThesisDisclosureOut(BaseModel):
     output: str = ""
     modified: bool = True
     created_at: Optional[datetime] = None
+
+# ---------- Document workspaces ----------
+
+class DocumentWorkspaceIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    kind: Literal["report", "thesis", "resume"] = "report"
+    root: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DocumentWorkspaceOut(BaseModel):
+    id: str
+    title: str
+    kind: str
+    created_at: str = ""
+    root: Optional[str] = None
+
+
+class DocumentWorkspaceListOut(BaseModel):
+    workspaces: list[DocumentWorkspaceOut] = Field(default_factory=list)
+
+
+class DocumentFileOut(BaseModel):
+    path: str
+    size: int = 0
+    sha256: str = ""
+    updated_at: str = ""
+
+
+class DocumentFileListOut(BaseModel):
+    files: list[DocumentFileOut] = Field(default_factory=list)
+
+
+class DocumentContentOut(BaseModel):
+    path: str
+    content: str
+    sha256: str
+    size: int = 0
+    last_known_sha: Optional[str] = None
+
+
+class DocumentWriteIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    content: str
+    base_sha: Optional[str] = Field(default=None, max_length=64)
+    force: bool = False
+
+
+class DocumentVersionOut(BaseModel):
+    version_id: str
+    path: str
+    sha256: str = ""
+    size: int = 0
+    created_at: str = ""
+
+
+class DocumentWriteOut(BaseModel):
+    path: str
+    sha256: str
+    created: bool = False
+    version: Optional[DocumentVersionOut] = None
+
+
+class DocumentVersionListOut(BaseModel):
+    versions: list[DocumentVersionOut] = Field(default_factory=list)
+
+
+class DocumentRestoreIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    base_sha: Optional[str] = Field(default=None, max_length=64)
+
+
+class DocumentExportIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    format: Literal["docx", "pdf"] = "docx"
+
+
+class DocumentExportOut(BaseModel):
+    status: str
+    format: str
+    path: Optional[str] = None
+    filename: Optional[str] = None
+    fidelity: dict = Field(default_factory=dict)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+class DocumentDiagnosticsOut(BaseModel):
+    workspace: dict = Field(default_factory=dict)
+    manuscripts: int = 0
+    unreadable: list[str] = Field(default_factory=list)
+    unsupported: dict = Field(default_factory=dict)
+    tools: dict = Field(default_factory=dict)
+    schema_version: str = ""
+
+
+class DocumentDraftIn(BaseModel):
+    requirements: str = Field(min_length=2, max_length=8000)
+    path: str = Field(default="manuscripts/report.md", min_length=1, max_length=500)
+    word_count: Optional[int] = Field(default=None, ge=300, le=20000)
+
+
+class DocumentDraftOut(BaseModel):
+    path: str
+    sha256: str
+    content: str
+    usage: Optional[dict] = None
+
+
+# ---------- Thesis stages (M3) ----------
+
+class ThesisStageContentIn(BaseModel):
+    content: str = Field(default="", max_length=8000)
+
+
+class ThesisStageReadinessIn(BaseModel):
+    readiness: Literal[
+        "not_started", "gathering", "needs_user", "ready_for_review",
+        "accepted", "needs_changes",
+    ]
+
+
+class ThesisStageAdvanceIn(BaseModel):
+    to_stage: Optional[str] = Field(default=None, max_length=24)
+
+
+class ThesisStageReturnIn(BaseModel):
+    to_stage: str = Field(min_length=1, max_length=24)
+
+
+class ThesisStageConfirmIn(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
+class ThesisStagesOut(BaseModel):
+    project_id: str
+    state: dict = Field(default_factory=dict)
+    summary: list[dict] = Field(default_factory=list)
+    current_content: str = ""
+    events: list[dict] = Field(default_factory=list)

@@ -548,6 +548,188 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspaces */
+        get: operations["get_workspaces_api_v1_documents_workspaces_get"];
+        put?: never;
+        /** Create Workspace */
+        post: operations["create_workspace_api_v1_documents_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get One Workspace */
+        get: operations["get_one_workspace_api_v1_documents_workspaces__workspace_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Workspace */
+        delete: operations["delete_workspace_api_v1_documents_workspaces__workspace_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Content */
+        get: operations["read_content_api_v1_documents_workspaces__workspace_id__content_get"];
+        /** Write Content */
+        put: operations["write_content_api_v1_documents_workspaces__workspace_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diagnostics */
+        get: operations["diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Export
+         * @description Download an export artifact.  Only files under ``exports/`` are served.
+         */
+        get: operations["download_export_api_v1_documents_workspaces__workspace_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Report
+         * @description Draft an ordinary report from requirements into a new Markdown file.
+         *
+         *     Thesis and resume workspaces are deliberately excluded: a thesis needs the
+         *     staged, author-confirmed flow (M3), and a resume may only reorganize facts.
+         */
+        post: operations["draft_report_api_v1_documents_workspaces__workspace_id__draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export */
+        post: operations["export_api_v1_documents_workspaces__workspace_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Files */
+        get: operations["list_files_api_v1_documents_workspaces__workspace_id__files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Versions */
+        get: operations["get_versions_api_v1_documents_workspaces__workspace_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/versions/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore */
+        post: operations["restore_api_v1_documents_workspaces__workspace_id__versions__version_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downloads": {
         parameters: {
             query?: never;
@@ -2165,6 +2347,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/thesis/projects/{project_id}/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Stages */
+        get: operations["get_thesis_stages_api_v1_thesis_projects__project_id__stages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance Thesis Stage */
+        post: operations["advance_thesis_stage_api_v1_thesis_projects__project_id__stages_advance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Thesis Stage */
+        post: operations["confirm_thesis_stage_api_v1_thesis_projects__project_id__stages_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Thesis Stage Content */
+        post: operations["set_thesis_stage_content_api_v1_thesis_projects__project_id__stages_content_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Thesis Stage Readiness */
+        post: operations["set_thesis_stage_readiness_api_v1_thesis_projects__project_id__stages_readiness_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return Thesis Stage */
+        post: operations["return_thesis_stage_api_v1_thesis_projects__project_id__stages_return_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/thesis/reference-pdfs/{pdf_id}": {
         parameters: {
             query?: never;
@@ -2705,6 +2989,222 @@ export interface components {
             url?: string | null;
             /** User Id */
             user_id: number;
+        };
+        /** DocumentContentOut */
+        DocumentContentOut: {
+            /** Content */
+            content: string;
+            /** Last Known Sha */
+            last_known_sha?: string | null;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+        };
+        /** DocumentDiagnosticsOut */
+        DocumentDiagnosticsOut: {
+            /**
+             * Manuscripts
+             * @default 0
+             */
+            manuscripts: number;
+            /**
+             * Schema Version
+             * @default
+             */
+            schema_version: string;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            };
+            /** Unreadable */
+            unreadable?: string[];
+            /** Unsupported */
+            unsupported?: {
+                [key: string]: unknown;
+            };
+            /** Workspace */
+            workspace?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DocumentDraftIn */
+        DocumentDraftIn: {
+            /**
+             * Path
+             * @default manuscripts/report.md
+             */
+            path: string;
+            /** Requirements */
+            requirements: string;
+            /** Word Count */
+            word_count?: number | null;
+        };
+        /** DocumentDraftOut */
+        DocumentDraftOut: {
+            /** Content */
+            content: string;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** DocumentExportIn */
+        DocumentExportIn: {
+            /**
+             * Format
+             * @default docx
+             * @enum {string}
+             */
+            format: "docx" | "pdf";
+            /** Path */
+            path: string;
+        };
+        /** DocumentExportOut */
+        DocumentExportOut: {
+            /** Diagnostics */
+            diagnostics?: string[];
+            /** Fidelity */
+            fidelity?: {
+                [key: string]: unknown;
+            };
+            /** Filename */
+            filename?: string | null;
+            /** Format */
+            format: string;
+            /** Path */
+            path?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** DocumentFileListOut */
+        DocumentFileListOut: {
+            /** Files */
+            files?: components["schemas"]["DocumentFileOut"][];
+        };
+        /** DocumentFileOut */
+        DocumentFileOut: {
+            /** Path */
+            path: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /** DocumentRestoreIn */
+        DocumentRestoreIn: {
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Path */
+            path: string;
+        };
+        /** DocumentVersionListOut */
+        DocumentVersionListOut: {
+            /** Versions */
+            versions?: components["schemas"]["DocumentVersionOut"][];
+        };
+        /** DocumentVersionOut */
+        DocumentVersionOut: {
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Path */
+            path: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Version Id */
+            version_id: string;
+        };
+        /** DocumentWorkspaceIn */
+        DocumentWorkspaceIn: {
+            /**
+             * Kind
+             * @default report
+             * @enum {string}
+             */
+            kind: "report" | "thesis" | "resume";
+            /** Root */
+            root?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DocumentWorkspaceListOut */
+        DocumentWorkspaceListOut: {
+            /** Workspaces */
+            workspaces?: components["schemas"]["DocumentWorkspaceOut"][];
+        };
+        /** DocumentWorkspaceOut */
+        DocumentWorkspaceOut: {
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Root */
+            root?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DocumentWriteIn */
+        DocumentWriteIn: {
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Content */
+            content: string;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /** Path */
+            path: string;
+        };
+        /** DocumentWriteOut */
+        DocumentWriteOut: {
+            /**
+             * Created
+             * @default false
+             */
+            created: boolean;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            version?: components["schemas"]["DocumentVersionOut"] | null;
         };
         /**
          * DownloadFileOut
@@ -4809,6 +5309,62 @@ export interface components {
             /** Template Id */
             template_id: string;
         };
+        /** ThesisStageAdvanceIn */
+        ThesisStageAdvanceIn: {
+            /** To Stage */
+            to_stage?: string | null;
+        };
+        /** ThesisStageConfirmIn */
+        ThesisStageConfirmIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** ThesisStageContentIn */
+        ThesisStageContentIn: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** ThesisStageReadinessIn */
+        ThesisStageReadinessIn: {
+            /**
+             * Readiness
+             * @enum {string}
+             */
+            readiness: "not_started" | "gathering" | "needs_user" | "ready_for_review" | "accepted" | "needs_changes";
+        };
+        /** ThesisStageReturnIn */
+        ThesisStageReturnIn: {
+            /** To Stage */
+            to_stage: string;
+        };
+        /** ThesisStagesOut */
+        ThesisStagesOut: {
+            /**
+             * Current Content
+             * @default
+             */
+            current_content: string;
+            /** Events */
+            events?: {
+                [key: string]: unknown;
+            }[];
+            /** Project Id */
+            project_id: string;
+            /** State */
+            state?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ThesisTemplateOut */
         ThesisTemplateOut: {
             /**
@@ -5009,6 +5565,10 @@ export interface components {
             image: string;
             /** Notes */
             notes?: string[];
+            /** Report */
+            report?: {
+                [key: string]: unknown;
+            } | null;
             /** Stack */
             stack?: string | null;
             /**
@@ -5048,6 +5608,11 @@ export interface components {
             exit_code: number;
             /** Name */
             name: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /**
              * Required
              * @default true
@@ -6162,6 +6727,423 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspaces_api_v1_documents_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceListOut"];
+                };
+            };
+        };
+    };
+    create_workspace_api_v1_documents_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentWorkspaceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_workspace_api_v1_documents_workspaces__workspace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workspace_api_v1_documents_workspaces__workspace_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_content_api_v1_documents_workspaces__workspace_id__content_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentContentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_content_api_v1_documents_workspaces__workspace_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentWriteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWriteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDiagnosticsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_documents_workspaces__workspace_id__download_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_report_api_v1_documents_workspaces__workspace_id__draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_v1_documents_workspaces__workspace_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentExportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_files_api_v1_documents_workspaces__workspace_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFileListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_versions_api_v1_documents_workspaces__workspace_id__versions_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_api_v1_documents_workspaces__workspace_id__versions__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentRestoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWriteOut"];
                 };
             };
             /** @description Validation Error */
@@ -9422,6 +10404,212 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThesisScanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_stages_api_v1_thesis_projects__project_id__stages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_thesis_stage_api_v1_thesis_projects__project_id__stages_advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageAdvanceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_thesis_stage_api_v1_thesis_projects__project_id__stages_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_thesis_stage_content_api_v1_thesis_projects__project_id__stages_content_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageContentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_thesis_stage_readiness_api_v1_thesis_projects__project_id__stages_readiness_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageReadinessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    return_thesis_stage_api_v1_thesis_projects__project_id__stages_return_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageReturnIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
                 };
             };
             /** @description Validation Error */

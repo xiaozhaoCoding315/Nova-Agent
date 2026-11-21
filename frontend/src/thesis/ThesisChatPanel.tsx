@@ -115,7 +115,7 @@ export function ThesisChatPanel({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <ShieldCheck size={14} className="shrink-0 text-accent" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-ink">AI 写作助手</p>
+            <p className="truncate text-sm font-medium text-ink">写作对话</p>
             <p className="truncate font-mono text-2xs text-faint">
               {project.source_repo_id ? '已关联工程项目 · 可读写本地文件' : '未关联项目 · 只基于论文与引用'}
             </p>
@@ -318,7 +318,7 @@ export function ThesisChatPanel({
               }
             }}
             rows={3}
-            placeholder="让 AI 理解项目、搭提纲、写章节草稿…（Enter 发送，Shift+Enter 换行）"
+            placeholder="读项目、搭提纲、写章节草稿…（Enter 发送，Shift+Enter 换行）"
             className="w-full resize-none bg-transparent px-2.5 py-2 text-xs leading-relaxed text-ink outline-none placeholder:text-faint"
           />
           <div className="flex items-center justify-between px-2 pb-2">

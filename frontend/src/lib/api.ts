@@ -1,6 +1,8 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  ContractStatus, DebtReport, DebtSnapshot, Deployment, DownloadsListing, EditRecord, Extensions,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, DocumentContent, DocumentDiagnostics,
+  DocumentExportResult, DocumentFile, DocumentVersion, DocumentWorkspace, DocumentWorkspaceInput,
+  DocumentWriteResult, DownloadsListing, EditRecord, Extensions,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
@@ -9,14 +11,17 @@ import type {
   ThesisCitationEvidence, ThesisDisclosure, ThesisDisclosureInput, ThesisDocument,
   ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisFix, ThesisFixPreview, ThesisIssue,
   ThesisProject, ThesisProjectDetail, ThesisProjectInput, ThesisReferencePdf, ThesisReport,
-  ThesisScanResult, ThesisTemplate, TraceEvent, Turn, TurnSnapshot, Usage, User, VerifyResult,
+  ThesisScanResult, ThesisStages, ThesisTemplate, TraceEvent, Turn, TurnSnapshot, Usage, User,
+  VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  data?: unknown
+  constructor(status: number, message: string, data?: unknown) {
     super(message)
     this.status = status
+    this.data = data
   }
 }
 
@@ -36,10 +41,10 @@ const FRIENDLY_HTTP: Record<number, string> = {
   504: '服务响应超时，请稍后重试',
 }
 
-export function friendlyHttpError(status: number, detail?: string): ApiError {
+export function friendlyHttpError(status: number, detail?: string, data?: unknown): ApiError {
   const text = detail?.trim()
-  if (text) return new ApiError(status, text)
-  return new ApiError(status, FRIENDLY_HTTP[status] ?? `请求失败（${status}），请稍后重试`)
+  if (text) return new ApiError(status, text, data)
+  return new ApiError(status, FRIENDLY_HTTP[status] ?? `请求失败（${status}），请稍后重试`, data)
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -51,13 +56,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     let detail: string | undefined
+    let data: unknown
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') detail = body.detail
+      else if (body?.detail && typeof body.detail === 'object') {
+        data = body.detail
+        if (typeof body.detail.message === 'string') detail = body.detail.message
+      }
     } catch {
       /* 非 JSON 错误体（如网关 HTML 页），用状态码兜底文案 */
     }
-    throw friendlyHttpError(res.status, detail)
+    throw friendlyHttpError(res.status, detail, data)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -464,12 +474,68 @@ export const api = {
       request<ThesisDisclosure>(`/thesis/projects/${projectId}/disclosures`, json(input)),
     deleteDisclosure: (disclosureId: string) =>
       request<{ ok: boolean }>(`/thesis/disclosures/${disclosureId}`, { method: 'DELETE' }),
+    stages: (projectId: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages`),
+    setStageContent: (projectId: string, content: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/content`, json({ content })),
+    setStageReadiness: (projectId: string, readiness: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/readiness`, json({ readiness })),
+    confirmStage: (projectId: string, note = '') =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/confirm`, json({ note })),
+    advanceStage: (projectId: string, toStage?: string) =>
+      request<ThesisStages>(
+        `/thesis/projects/${projectId}/stages/advance`,
+        json({ to_stage: toStage ?? null }),
+      ),
+    returnStage: (projectId: string, toStage: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/return`, json({ to_stage: toStage })),
     report: (projectId: string) =>
       request<ThesisReport>(`/thesis/projects/${projectId}/report`),
     exportReport: (projectId: string, format: 'html' | 'docx') =>
       downloadFile(`/thesis/projects/${projectId}/report/export?format=${format}`),
     exportPackage: (projectId: string) =>
       downloadFile(`/thesis/projects/${projectId}/export`, { method: 'POST' }),
+  },
+
+  documents: {
+    workspaces: () => request<{ workspaces: DocumentWorkspace[] }>('/documents/workspaces'),
+    createWorkspace: (input: DocumentWorkspaceInput) =>
+      request<DocumentWorkspace>('/documents/workspaces', json(input)),
+    workspace: (id: string) => request<DocumentWorkspace>(`/documents/workspaces/${id}`),
+    removeWorkspace: (id: string) =>
+      request<{ ok: boolean }>(`/documents/workspaces/${id}`, { method: 'DELETE' }),
+    files: (id: string) =>
+      request<{ files: DocumentFile[] }>(`/documents/workspaces/${id}/files`),
+    content: (id: string, path: string) =>
+      request<DocumentContent>(
+        `/documents/workspaces/${id}/content?path=${encodeURIComponent(path)}`,
+      ),
+    saveContent: (
+      id: string,
+      input: { path: string; content: string; base_sha?: string | null; force?: boolean },
+    ) => request<DocumentWriteResult>(`/documents/workspaces/${id}/content`, {
+      ...json(input),
+      method: 'PUT',
+    }),
+    versions: (id: string, path: string) =>
+      request<{ versions: DocumentVersion[] }>(
+        `/documents/workspaces/${id}/versions?path=${encodeURIComponent(path)}`,
+      ),
+    restore: (id: string, versionId: string, input: { path: string; base_sha?: string | null }) =>
+      request<DocumentWriteResult>(
+        `/documents/workspaces/${id}/versions/${versionId}/restore`,
+        json(input),
+      ),
+    export: (id: string, input: { path: string; format: 'docx' | 'pdf' }) =>
+      request<DocumentExportResult>(`/documents/workspaces/${id}/export`, json(input)),
+    downloadExport: (id: string, path: string) =>
+      downloadFile(`/documents/workspaces/${id}/download?path=${encodeURIComponent(path)}`),
+    diagnostics: (id: string) =>
+      request<DocumentDiagnostics>(`/documents/workspaces/${id}/diagnostics`),
+    draft: (id: string, input: { requirements: string; path?: string; word_count?: number }) =>
+      request<{ path: string; sha256: string; content: string; usage?: Record<string, unknown> }>(
+        `/documents/workspaces/${id}/draft`, json(input),
+      ),
   },
 
   trajectory: (sessionId: string) =>

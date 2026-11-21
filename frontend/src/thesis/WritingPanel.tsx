@@ -203,7 +203,7 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
           <p className="text-sm font-medium text-ink">写作快捷指令</p>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-dim">
-          点击后填入右侧 AI 写作助手；它会先读项目再回答。生成的正文是草稿，需要你核对、改写并记入 AI 使用声明。
+          点击后填入右侧写作对话；它会先读项目再回答。生成的正文是草稿，需要你核对、改写并记入 AI 使用声明。
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {WRITING_PROMPTS.map((item) => (

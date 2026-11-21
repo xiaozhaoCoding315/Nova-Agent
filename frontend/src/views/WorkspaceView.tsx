@@ -30,6 +30,47 @@ type Tab = WorkspaceTab
 /** 收进「更多」菜单的低频页签（分析类能力仍在对话里作为工具自动使用）。 */
 const MORE_LABEL = { brain: '项目地图', impact: '影响分析', debt: '技术债', contract: '契约对齐', deploy: '预览部署' }
 
+const VERIFY_LABEL: Record<string, string> = {
+  passed: '通过',
+  failed: '失败',
+  not_run: '未运行',
+  skipped: '跳过',
+  unsupported: '不支持',
+}
+
+function verifyStatusOf(result: VerifyResult): string {
+  return result.report?.status ?? result.status
+}
+
+function verifyTone(status: string): string {
+  if (status === 'passed') return 'text-ok'
+  if (status === 'failed') return 'text-err'
+  return 'text-dim'
+}
+
+function verifyDot(status: string): string {
+  if (status === 'passed') return 'bg-ok'
+  if (status === 'failed') return 'bg-err'
+  if (status === 'not_run') return 'bg-warn'
+  return 'bg-dim'
+}
+
+function verifyEnvironmentLabel(result: VerifyResult): string {
+  const env = result.report?.environment
+  if (!env) return result.image || '—'
+  if (env.isolation === 'container') return '容器隔离'
+  if (env.isolation === 'none') return '无容器隔离'
+  return '隔离未知'
+}
+
+function verifyWorkspaceLabel(result: VerifyResult): string {
+  const workspace = result.report?.workspace
+  if (!workspace) return ''
+  const commit = workspace.commit ? workspace.commit.slice(0, 7) : '未提交'
+  const dirty = workspace.dirty ? ' · 有未提交改动' : ''
+  return `${commit}${dirty}`
+}
+
 function RepoCard({
   repo,
   active,
@@ -143,6 +184,7 @@ export function WorkspaceView({
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [verifyJobId, setVerifyJobId] = useState<string | null>(null)
   const [verifyJob, setVerifyJob] = useState<Job | null>(null)
+  const verifyStatus = verifyResult ? verifyStatusOf(verifyResult) : ''
 
   // 本地模式不提供预览部署；模式异步加载完成后清掉可能残留的页签。
   useEffect(() => {
@@ -632,17 +674,10 @@ export function WorkspaceView({
                     </span>
                   )}
                   {verifyResult && !verifyBusy && (
-                    <span
-                      className={clsx(
-                        'flex items-center gap-1 text-xs',
-                        verifyResult.status === 'passed' && 'text-ok',
-                        verifyResult.status === 'failed' && 'text-err',
-                        verifyResult.status === 'unsupported' && 'text-dim',
-                      )}
-                    >
-                      {verifyResult.status === 'passed' ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
-                      验证{verifyResult.status === 'passed' ? '通过' : verifyResult.status === 'unsupported' ? '不支持' : '失败'}
-                      <span className="text-dim">exit {verifyResult.exit_code}</span>
+                    <span className={clsx('flex items-center gap-1 text-xs', verifyTone(verifyStatus))}>
+                      {verifyStatus === 'passed' ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                      验证{VERIFY_LABEL[verifyStatus] ?? verifyStatus}
+                      <span className="text-dim">exit {verifyResult.report?.exit_code ?? verifyResult.exit_code}</span>
                     </span>
                   )}
                   {verifyBusy && (
@@ -660,48 +695,47 @@ export function WorkspaceView({
               <div
                 className={clsx(
                   'shrink-0 border-b px-3 py-1.5 text-sm',
-                  verifyResult?.status === 'passed' ? 'border-ok/30 bg-ok/5' : 'border-err/30 bg-err/5',
+                  verifyStatus === 'passed' && 'border-ok/30 bg-ok/5',
+                  verifyStatus === 'failed' && 'border-err/30 bg-err/5',
+                  (verifyStatus === 'not_run' || verifyStatus === 'skipped') && 'border-warn/30 bg-warn/5',
+                  verifyStatus === 'unsupported' && 'border-edge bg-panel/40',
                 )}
               >
                 {verifyError ? (
                   <span className="text-err">{verifyError}</span>
                 ) : (
                   <button className="w-full text-left" onClick={() => setVerifyOpen(!verifyOpen)}>
-                    <span
-                      className={clsx(
-                        verifyResult?.status === 'passed' && 'text-ok',
-                        verifyResult?.status === 'failed' && 'text-err',
-                        verifyResult?.status === 'unsupported' && 'text-dim',
-                      )}
-                    >
-                      验证 {verifyResult?.status === 'passed' ? '通过' : verifyResult?.status === 'unsupported' ? '不支持' : '失败'}
+                    <span className={verifyTone(verifyStatus)}>
+                      验证 {VERIFY_LABEL[verifyStatus] ?? verifyStatus}
                     </span>
                     <span className="ml-2 text-dim">
                       {verifyResult?.stack ? `${verifyResult.stack} · ` : ''}
-                      exit {verifyResult?.exit_code} · {verifyResult?.image || '—'} ·{' '}
+                      exit {verifyResult?.report?.exit_code ?? verifyResult?.exit_code} ·{' '}
+                      {verifyResult ? verifyEnvironmentLabel(verifyResult) : '—'}
+                      {verifyResult ? ` · ${verifyWorkspaceLabel(verifyResult)}` : ''} ·{' '}
                       {verifyResult?.at ? new Date(verifyResult.at).toLocaleString() : ''}（点击{verifyOpen ? '收起' : '查看细节'}）
                     </span>
                   </button>
                 )}
                 {verifyOpen && verifyResult && (
                   <div className="mt-1.5 space-y-1">
-                    {verifyResult.steps?.map((step) => (
-                      <div key={step.name} className="flex items-center gap-2 text-xs">
-                        <span
-                          className={clsx(
-                            'h-1.5 w-1.5 rounded-full',
-                            step.status === 'passed' && 'bg-ok',
-                            step.status === 'failed' && 'bg-err',
-                            step.status === 'skipped' && 'bg-dim',
-                          )}
-                        />
+                    {(verifyResult.report?.steps ?? verifyResult.steps ?? []).map((step) => (
+                      <div key={step.name} className="flex items-center gap-2 text-xs" title={step.reason || ''}>
+                        <span className={clsx('h-1.5 w-1.5 rounded-full', verifyDot(step.status))} />
                         <span className="w-28 shrink-0 text-dim">{step.name}</span>
                         <code className="min-w-0 flex-1 truncate text-dim">{step.command}</code>
+                        <span className="w-20 shrink-0 truncate text-dim">{VERIFY_LABEL[step.status] ?? step.status}</span>
                         <span className={step.status === 'failed' ? 'text-err' : 'text-dim'}>
                           exit {step.exit_code}
                         </span>
                       </div>
                     ))}
+                    {verifyResult.report?.environment ? (
+                      <p className="text-xs text-dim">
+                        执行环境：{verifyEnvironmentLabel(verifyResult)} · 网络 {verifyResult.report.environment.network} ·
+                        工作目录 {verifyResult.report.environment.workdir_scope}
+                      </p>
+                    ) : null}
                     {verifyResult.notes?.length ? (
                       <p className="text-xs text-dim">{verifyResult.notes.join('；')}</p>
                     ) : null}

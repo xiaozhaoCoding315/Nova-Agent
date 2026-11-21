@@ -1325,6 +1325,502 @@
         "title": "DeploymentOut",
         "type": "object"
       },
+      "DocumentContentOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "last_known_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Known Sha"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "content",
+          "sha256"
+        ],
+        "title": "DocumentContentOut",
+        "type": "object"
+      },
+      "DocumentDiagnosticsOut": {
+        "properties": {
+          "manuscripts": {
+            "default": 0,
+            "title": "Manuscripts",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": "",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "tools": {
+            "additionalProperties": true,
+            "title": "Tools",
+            "type": "object"
+          },
+          "unreadable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unreadable",
+            "type": "array"
+          },
+          "unsupported": {
+            "additionalProperties": true,
+            "title": "Unsupported",
+            "type": "object"
+          },
+          "workspace": {
+            "additionalProperties": true,
+            "title": "Workspace",
+            "type": "object"
+          }
+        },
+        "title": "DocumentDiagnosticsOut",
+        "type": "object"
+      },
+      "DocumentDraftIn": {
+        "properties": {
+          "path": {
+            "default": "manuscripts/report.md",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "requirements": {
+            "maxLength": 8000,
+            "minLength": 2,
+            "title": "Requirements",
+            "type": "string"
+          },
+          "word_count": {
+            "anyOf": [
+              {
+                "maximum": 20000.0,
+                "minimum": 300.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Count"
+          }
+        },
+        "required": [
+          "requirements"
+        ],
+        "title": "DocumentDraftIn",
+        "type": "object"
+      },
+      "DocumentDraftOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "content"
+        ],
+        "title": "DocumentDraftOut",
+        "type": "object"
+      },
+      "DocumentExportIn": {
+        "properties": {
+          "format": {
+            "default": "docx",
+            "enum": [
+              "docx",
+              "pdf"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "DocumentExportIn",
+        "type": "object"
+      },
+      "DocumentExportOut": {
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "fidelity": {
+            "additionalProperties": true,
+            "title": "Fidelity",
+            "type": "object"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "format"
+        ],
+        "title": "DocumentExportOut",
+        "type": "object"
+      },
+      "DocumentFileListOut": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "title": "DocumentFileListOut",
+        "type": "object"
+      },
+      "DocumentFileOut": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "default": "",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "DocumentFileOut",
+        "type": "object"
+      },
+      "DocumentRestoreIn": {
+        "properties": {
+          "base_sha": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "DocumentRestoreIn",
+        "type": "object"
+      },
+      "DocumentVersionListOut": {
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "title": "DocumentVersionListOut",
+        "type": "object"
+      },
+      "DocumentVersionOut": {
+        "properties": {
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "default": "",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "path"
+        ],
+        "title": "DocumentVersionOut",
+        "type": "object"
+      },
+      "DocumentWorkspaceIn": {
+        "properties": {
+          "kind": {
+            "default": "report",
+            "enum": [
+              "report",
+              "thesis",
+              "resume"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "DocumentWorkspaceIn",
+        "type": "object"
+      },
+      "DocumentWorkspaceListOut": {
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentWorkspaceOut"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "title": "DocumentWorkspaceListOut",
+        "type": "object"
+      },
+      "DocumentWorkspaceOut": {
+        "properties": {
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "title": "DocumentWorkspaceOut",
+        "type": "object"
+      },
+      "DocumentWriteIn": {
+        "properties": {
+          "base_sha": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "DocumentWriteIn",
+        "type": "object"
+      },
+      "DocumentWriteOut": {
+        "properties": {
+          "created": {
+            "default": false,
+            "title": "Created",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentVersionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "title": "DocumentWriteOut",
+        "type": "object"
+      },
       "DownloadFileOut": {
         "description": "DOWNLOADS_DIR 里的一个安装包；`url` 是可直接下载的相对路径。",
         "properties": {
@@ -6144,6 +6640,123 @@
         "title": "ThesisScanOut",
         "type": "object"
       },
+      "ThesisStageAdvanceIn": {
+        "properties": {
+          "to_stage": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Stage"
+          }
+        },
+        "title": "ThesisStageAdvanceIn",
+        "type": "object"
+      },
+      "ThesisStageConfirmIn": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ThesisStageConfirmIn",
+        "type": "object"
+      },
+      "ThesisStageContentIn": {
+        "properties": {
+          "content": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "title": "ThesisStageContentIn",
+        "type": "object"
+      },
+      "ThesisStageReadinessIn": {
+        "properties": {
+          "readiness": {
+            "enum": [
+              "not_started",
+              "gathering",
+              "needs_user",
+              "ready_for_review",
+              "accepted",
+              "needs_changes"
+            ],
+            "title": "Readiness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "readiness"
+        ],
+        "title": "ThesisStageReadinessIn",
+        "type": "object"
+      },
+      "ThesisStageReturnIn": {
+        "properties": {
+          "to_stage": {
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "To Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_stage"
+        ],
+        "title": "ThesisStageReturnIn",
+        "type": "object"
+      },
+      "ThesisStagesOut": {
+        "properties": {
+          "current_content": {
+            "default": "",
+            "title": "Current Content",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          },
+          "summary": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "ThesisStagesOut",
+        "type": "object"
+      },
       "ThesisTemplateOut": {
         "properties": {
           "degree": {
@@ -6598,6 +7211,18 @@
             "title": "Notes",
             "type": "array"
           },
+          "report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report"
+          },
           "stack": {
             "anyOf": [
               {
@@ -6654,6 +7279,11 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
             "type": "string"
           },
           "required": {
@@ -8203,6 +8833,606 @@
         "summary": "Teardown Deploy",
         "tags": [
           "deploys"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces": {
+      "get": {
+        "operationId": "get_workspaces_api_v1_documents_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentWorkspaceListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Workspaces",
+        "tags": [
+          "documents"
+        ]
+      },
+      "post": {
+        "operationId": "create_workspace_api_v1_documents_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentWorkspaceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentWorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}": {
+      "delete": {
+        "operationId": "delete_workspace_api_v1_documents_workspaces__workspace_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workspace",
+        "tags": [
+          "documents"
+        ]
+      },
+      "get": {
+        "operationId": "get_one_workspace_api_v1_documents_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentWorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get One Workspace",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/content": {
+      "get": {
+        "operationId": "read_content_api_v1_documents_workspaces__workspace_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentContentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Content",
+        "tags": [
+          "documents"
+        ]
+      },
+      "put": {
+        "operationId": "write_content_api_v1_documents_workspaces__workspace_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentWriteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Content",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/diagnostics": {
+      "get": {
+        "operationId": "diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDiagnosticsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagnostics",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/download": {
+      "get": {
+        "description": "Download an export artifact.  Only files under ``exports/`` are served.",
+        "operationId": "download_export_api_v1_documents_workspaces__workspace_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/draft": {
+      "post": {
+        "description": "Draft an ordinary report from requirements into a new Markdown file.\n\nThesis and resume workspaces are deliberately excluded: a thesis needs the\nstaged, author-confirmed flow (M3), and a resume may only reorganize facts.",
+        "operationId": "draft_report_api_v1_documents_workspaces__workspace_id__draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Report",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/export": {
+      "post": {
+        "operationId": "export_api_v1_documents_workspaces__workspace_id__export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/files": {
+      "get": {
+        "operationId": "list_files_api_v1_documents_workspaces__workspace_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFileListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/versions": {
+      "get": {
+        "operationId": "get_versions_api_v1_documents_workspaces__workspace_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Versions",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/workspaces/{workspace_id}/versions/{version_id}/restore": {
+      "post": {
+        "operationId": "restore_api_v1_documents_workspaces__workspace_id__versions__version_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentRestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -12683,6 +13913,308 @@
           }
         },
         "summary": "Scan Thesis Project",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages": {
+      "get": {
+        "operationId": "get_thesis_stages_api_v1_thesis_projects__project_id__stages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thesis Stages",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/advance": {
+      "post": {
+        "operationId": "advance_thesis_stage_api_v1_thesis_projects__project_id__stages_advance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageAdvanceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Advance Thesis Stage",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/confirm": {
+      "post": {
+        "operationId": "confirm_thesis_stage_api_v1_thesis_projects__project_id__stages_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Thesis Stage",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/content": {
+      "post": {
+        "operationId": "set_thesis_stage_content_api_v1_thesis_projects__project_id__stages_content_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageContentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Thesis Stage Content",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/readiness": {
+      "post": {
+        "operationId": "set_thesis_stage_readiness_api_v1_thesis_projects__project_id__stages_readiness_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageReadinessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Thesis Stage Readiness",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/stages/return": {
+      "post": {
+        "operationId": "return_thesis_stage_api_v1_thesis_projects__project_id__stages_return_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisStageReturnIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThesisStagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Return Thesis Stage",
         "tags": [
           "thesis"
         ]

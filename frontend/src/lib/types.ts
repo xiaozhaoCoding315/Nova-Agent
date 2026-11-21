@@ -500,12 +500,47 @@ export type VerifyStep = {
   name: string
   command: string
   required: boolean
-  status: 'passed' | 'failed' | 'skipped'
+  status: 'passed' | 'failed' | 'not_run' | 'skipped' | 'unsupported'
   exit_code: number
   timed_out?: boolean
   stdout: string
   stderr: string
   duration_ms: number
+  reason?: string
+}
+
+export type VerificationEnvironment = {
+  mode: 'container' | 'host' | 'unknown'
+  isolation: 'container' | 'none' | 'unknown'
+  network: 'disabled' | 'enabled' | 'host' | 'unknown'
+  workdir_scope: 'repo_snapshot' | 'host_repo' | 'unknown'
+  env_scrubbed: boolean
+  image: string
+  notes: string[]
+}
+
+export type VerificationWorkspace = {
+  commit: string
+  branch: string
+  dirty: boolean | null
+  workspace_digest: string
+  diff_digest: string
+  source: 'git' | 'snapshot'
+}
+
+export type VerificationReport = {
+  schema_version: string
+  status: 'passed' | 'failed' | 'not_run' | 'skipped' | 'unsupported'
+  stack: string
+  environment: VerificationEnvironment
+  workspace: VerificationWorkspace
+  steps: VerifyStep[]
+  notes: string[]
+  started_at: string
+  finished_at: string
+  elapsed_ms: number
+  command: string
+  exit_code: number
 }
 
 export type VerifyResult = {
@@ -520,6 +555,7 @@ export type VerifyResult = {
   command: string
   image: string
   at: string
+  report?: VerificationReport
 }
 
 export type ContractStatus = {
@@ -1072,4 +1108,117 @@ export type ThesisProjectInput = {
   template_id?: string
   source_repo_id?: string | null
   source_notes?: string
+}
+export type DocumentWorkspace = {
+  id: string
+  title: string
+  kind: 'report' | 'thesis' | 'resume'
+  created_at: string
+  root?: string | null
+}
+
+export type DocumentWorkspaceInput = {
+  title: string
+  kind?: 'report' | 'thesis' | 'resume'
+  root?: string | null
+}
+
+export type DocumentFile = {
+  path: string
+  size: number
+  sha256: string
+  updated_at: string
+}
+
+export type DocumentContent = {
+  path: string
+  content: string
+  sha256: string
+  size: number
+  last_known_sha?: string | null
+}
+
+export type DocumentVersion = {
+  version_id: string
+  path: string
+  sha256: string
+  size: number
+  created_at: string
+}
+
+export type DocumentWriteResult = {
+  path: string
+  sha256: string
+  created: boolean
+  version?: DocumentVersion | null
+}
+
+export type DocumentFidelity = {
+  source_format: string
+  target_format: string
+  status: 'exact' | 'partial' | 'lossy'
+  preserved: string[]
+  modified: string[]
+  dropped: string[]
+  unsupported: string[]
+  notes: string[]
+  renderer: string
+  renderer_version: string
+  template_version?: string | null
+}
+
+export type DocumentExportResult = {
+  status: 'done' | 'failed' | 'unsupported'
+  format: 'docx' | 'pdf'
+  path?: string | null
+  filename?: string | null
+  fidelity: Partial<DocumentFidelity>
+  diagnostics: string[]
+}
+
+export type DocumentDiagnostics = {
+  workspace: Record<string, unknown>
+  manuscripts: number
+  unreadable: string[]
+  unsupported: Record<string, number>
+  tools: { pandoc: boolean; libreoffice: boolean }
+  schema_version: string
+}
+
+export type ThesisStageSummary = {
+  stage: string
+  label: string
+  position: 'current' | 'done' | 'upcoming'
+  readiness: string
+  readiness_label: string
+  confirmed: boolean
+  stale: boolean
+  confirmed_at: string
+  artifact: string
+}
+
+export type ThesisStageEvent = {
+  id: string
+  type: string
+  stage: string
+  from_stage: string
+  readiness: string
+  content_sha: string
+  note: string
+  created_at: string
+}
+
+export type ThesisStages = {
+  project_id: string
+  state: {
+    stage: string
+    readiness: string
+    confirmations: Record<string, { sha256: string; confirmed_at: string; stale: boolean }>
+    artifacts: Record<string, string>
+    contents: Record<string, string>
+    updated_at: string
+  }
+  summary: ThesisStageSummary[]
+  current_content: string
+  events: ThesisStageEvent[]
 }

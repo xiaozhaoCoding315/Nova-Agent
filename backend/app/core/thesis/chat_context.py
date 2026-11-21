@@ -17,7 +17,8 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.core.thesis import service
+from app.core.thesis import service, stage_service
+from app.core.thesis import stages as stage_machine
 from app.db import query
 
 logger = structlog.get_logger()
@@ -30,7 +31,7 @@ UNTRUSTED_START = "<<<UNTRUSTED_DOCUMENT_DATA>>>"
 UNTRUSTED_END = "<<<END_UNTRUSTED_DOCUMENT_DATA>>>"
 
 WRITING_RULES = """## 论文模式写作约定（必须遵守）
-- 你是论文写作与工程理解助手，不是代写工具：可以帮用户梳理项目、生成提纲、起草章节草稿、解释代码与数据流，但整篇论文必须由用户本人核对、修改并署名。
+- 你负责论文写作与工程理解的辅助工作，不是代写工具：可以帮用户梳理项目、生成提纲、起草章节草稿、解释代码与数据流，但整篇论文必须由用户本人核对、修改并署名。
 - 技术事实只能来自当前关联仓库的代码/文档，或用户在本轮提供的材料。引用实现时写清 `文件路径:行号`；不确定就写「待核实」，不要猜测。
 - 参考文献只能使用下面列出的条目，沿用论文里的编号（如 `[3]`）。绝不编造文献、DOI、数据或实验结果；需要新文献时提醒用户自己补充。
 - 生成任何正文时明确标注「AI 草稿，需本人核对与改写」，并提醒用户把本次 AI 参与记入「AI 使用声明」。
@@ -90,6 +91,15 @@ async def _repo_line(user_id: int, repo_id: str | None) -> str:
     # Do not inject the host's absolute path: tools already receive repo_id and
     # the path only increases prompt-injection surface / information leakage.
     return f"- 关联工程项目：{_clean_untrusted(name, 120)}（repo_id: {repo_id}，来源: {source}）"
+
+
+async def _stage_lines(user_id: int, project_id: str) -> list[str]:
+    try:
+        state = await stage_service.get_state(user_id, project_id)
+    except Exception as exc:  # noqa: BLE001 - stage context is best-effort
+        logger.warning("thesis_stage_context_failed", project_id=project_id, error=str(exc))
+        return ["- 阶段状态暂不可用；本轮按通用写作边界回答，不要声称阶段已完成。"]
+    return stage_machine.prompt_block(state).splitlines()
 
 
 async def _document_lines(user_id: int, project_id: str) -> list[str]:
@@ -192,6 +202,7 @@ async def build_thesis_context_result(user_id: int, project_id: str) -> ThesisCo
             f"{'，示例模板' if template.get('is_sample') else ''}）",
             f"- 项目说明：{_clean_untrusted(project.get('source_notes') or '未填写', 1200)}",
         ]
+        data_lines.extend(await _stage_lines(user_id, project_id))
         repo_line = await _repo_line(user_id, project.get("source_repo_id"))
         if repo_line:
             data_lines.append(repo_line)

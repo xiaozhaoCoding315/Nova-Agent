@@ -152,7 +152,7 @@ async def test_design_chat_endpoint_streams_and_records(monkeypatch):
     class FakeLLM:
         async def astream_with_tools(self, messages, tools, **kwargs):
             assert messages[0]["role"] == "system"
-            assert "项目设计搭档" in messages[0]["content"]
+            assert "项目设计对话" in messages[0]["content"]
             assert messages[-1]["content"] == "做个博客"
             yield {"type": "content", "content": "给谁用？"}
             yield {"type": "usage", "usage": {"prompt_tokens": 1, "completion_tokens": 2}}

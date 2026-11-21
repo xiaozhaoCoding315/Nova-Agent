@@ -63,7 +63,7 @@ export function RefPanel({ refs }: { refs: RetrievalHit[] }) {
       <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
         {refs.length === 0 && (
           <p className="text-sm leading-relaxed text-dim">
-            回答涉及代码时，检索到的「文件:行号」会显示在这里，可一键复制引用。
+            回答涉及代码时，检索到的「文件:行号」会显示在这里，可直接复制引用。
           </p>
         )}
         {refs.map((hit, i) => (

@@ -16,6 +16,15 @@ from app.core.exec.service import run_staged_host
 from app.core.sandbox.runtime import deps_volume_name, execute as sandbox_execute, sandbox_status
 from app.core.tools.run_code import _collect_repo_files_with_stats
 from app.core.verify.profiles import detect_profile
+from app.core.verify.results import (
+    StepFact,
+    build_report,
+    container_environment,
+    describe_workspace,
+    host_environment,
+    step_reason,
+    unsupported_environment,
+)
 
 logger = structlog.get_logger()
 
@@ -78,6 +87,7 @@ async def run_verification(
         platform=sys.platform if settings.use_host_executor else "posix",
     )
     now = datetime.now(timezone.utc).isoformat()
+    workspace = await describe_workspace(repo, files, overrides)
 
     if not profile.steps:
         notes = (
@@ -87,6 +97,25 @@ async def run_verification(
         notes += _copy_note(copy_stats)
         if profile.unsupported_reason:
             notes.append(profile.unsupported_reason)
+        elapsed = int((time.perf_counter() - started) * 1000)
+        report = build_report(
+            stack=profile.stack,
+            steps=[StepFact(
+                name="验证配置",
+                command="",
+                required=True,
+                status="unsupported",
+                exit_code=-1,
+                timed_out=False,
+                duration_ms=0,
+                reason=profile.unsupported_reason or "没有可用的验证步骤",
+            )],
+            environment=unsupported_environment(notes=notes),
+            workspace=workspace,
+            notes=notes,
+            started_at=now,
+            elapsed_ms=elapsed,
+        )
         return {
             "status": "unsupported",
             "stack": profile.stack,
@@ -98,7 +127,8 @@ async def run_verification(
             "command": "",
             "image": "",
             "at": now,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "elapsed_ms": elapsed,
+            "report": report,
         }
 
     if settings.use_host_executor:
@@ -109,10 +139,30 @@ async def run_verification(
                 repo_id=str(repo["id"]), stack=profile.stack,
                 permission_mode=permission_mode,
             )
+            notes = _local_notes(profile) + _copy_note(copy_stats) + [denial]
+            elapsed = int((time.perf_counter() - started) * 1000)
+            report = build_report(
+                stack=profile.stack,
+                steps=[StepFact(
+                    name="本地执行权限",
+                    command="",
+                    required=True,
+                    status="not_run",
+                    exit_code=-1,
+                    timed_out=False,
+                    duration_ms=0,
+                    reason=denial,
+                )],
+                environment=host_environment(notes=[denial]),
+                workspace=workspace,
+                notes=notes,
+                started_at=now,
+                elapsed_ms=elapsed,
+            )
             return {
                 "status": "failed",
                 "stack": profile.stack,
-                "notes": _local_notes(profile) + _copy_note(copy_stats) + [denial],
+                "notes": notes,
                 "steps": [],
                 "exit_code": -1,
                 "stdout": "",
@@ -120,30 +170,54 @@ async def run_verification(
                 "command": "",
                 "image": "host",
                 "at": now,
-                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                "elapsed_ms": elapsed,
+                "report": report,
             }
         # Node 步骤按平台生成命令（cmd.exe / sh），本地也会真的执行；
         # 机器上没装 node 时，必需步骤会以「命令不存在」失败并给出 stderr。
         return await _run_verification_host(
             repo, files, profile, started, now, copy_stats,
+            workspace=workspace,
             job_id=job_id, user_id=user.get("id"),
         )
 
     status = await sandbox_status()
     needs_builder = any(step.image != "node" for step in profile.steps)
     if needs_builder and not status["available"]:
+        reason = f"沙箱不可用：{status['reason']}"
+        notes = _base_notes(profile, copy_stats)
+        elapsed = int((time.perf_counter() - started) * 1000)
+        report = build_report(
+            stack=profile.stack,
+            steps=[StepFact(
+                name="沙箱可用性",
+                command="",
+                required=True,
+                status="unsupported",
+                exit_code=-1,
+                timed_out=False,
+                duration_ms=0,
+                reason=reason,
+            )],
+            environment=unsupported_environment(notes=notes + [reason]),
+            workspace=workspace,
+            notes=notes,
+            started_at=now,
+            elapsed_ms=elapsed,
+        )
         return {
             "status": "failed",
             "stack": profile.stack,
-            "notes": _base_notes(profile, copy_stats),
+            "notes": notes,
             "steps": [],
             "exit_code": -1,
             "stdout": "",
-            "stderr": f"沙箱不可用：{status['reason']}",
+            "stderr": reason,
             "command": "",
             "image": "",
             "at": now,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "elapsed_ms": elapsed,
+            "report": report,
         }
 
     allow_network = settings.sandbox_allow_network and user.get("role") == "admin"
@@ -209,6 +283,13 @@ async def run_verification(
             else:
                 step_status = "failed"
 
+        reason = step_reason(
+            status=step_status,
+            exit_code=exit_code,
+            timed_out=timed_out,
+        )
+        if step.image == "node" and not status.get("node_available"):
+            reason = f"node 镜像未就绪：请构建 {settings.sandbox_node_image}"
         steps.append({
             "name": step.name,
             "command": step.command,
@@ -219,6 +300,7 @@ async def run_verification(
             "stdout": _tail(result.get("stdout"), 4000),
             "stderr": _tail(result.get("stderr"), 1500),
             "duration_ms": int((time.perf_counter() - step_started) * 1000),
+            "reason": reason,
         })
 
         if step_status == "failed" and not step.required:
@@ -226,6 +308,19 @@ async def run_verification(
         if step_status == "failed" and step.required:
             if index < len(profile.steps) - 1:
                 notes.append(f"「{step.name}」失败，后续检查已跳过")
+            for remaining in profile.steps[index + 1:]:
+                steps.append({
+                    "name": remaining.name,
+                    "command": remaining.command,
+                    "required": remaining.required,
+                    "status": "not_run",
+                    "exit_code": -1,
+                    "timed_out": False,
+                    "stdout": "",
+                    "stderr": "",
+                    "duration_ms": 0,
+                    "reason": f"前序必需步骤「{step.name}」失败，未运行",
+                })
             stopped_early = True
             break
 
@@ -248,6 +343,24 @@ async def run_verification(
     resolved_image = "mixed" if len(images_used) > 1 else (
         next(iter(images_used)) if images_used else ""
     )
+    elapsed = int((time.perf_counter() - started) * 1000)
+    command = " → ".join(step.command for step in profile.steps)
+    exit_code_value = first_failure["exit_code"] if first_failure else 0
+    report = build_report(
+        stack=profile.stack,
+        steps=steps,
+        environment=container_environment(
+            network="enabled" if allow_network else "disabled",
+            image=resolved_image,
+            notes=notes,
+        ),
+        workspace=workspace,
+        notes=notes,
+        started_at=now,
+        elapsed_ms=elapsed,
+        command=command,
+        exit_code=exit_code_value,
+    )
 
     logger.info(
         "verification_done",
@@ -259,13 +372,14 @@ async def run_verification(
         "stack": profile.stack,
         "notes": notes,
         "steps": steps,
-        "exit_code": first_failure["exit_code"] if first_failure else 0,
+        "exit_code": exit_code_value,
         "stdout": stdout[-6000:],
         "stderr": stderr[-3000:],
-        "command": " → ".join(step.command for step in profile.steps),
+        "command": command,
         "image": resolved_image,
         "at": now,
-        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "elapsed_ms": elapsed,
+        "report": report,
     }
 
 
@@ -293,6 +407,7 @@ async def _run_verification_host(
     now: str,
     copy_stats: dict,
     *,
+    workspace,
     job_id: str | None = None,
     user_id=None,
 ) -> dict:
@@ -331,6 +446,11 @@ async def _run_verification_host(
             "stdout": _tail(result.get("stdout"), 4000),
             "stderr": _tail(result.get("stderr"), 1500),
             "duration_ms": int((time.perf_counter() - step_started) * 1000),
+            "reason": step_reason(
+                status=step_status,
+                exit_code=exit_code,
+                timed_out=timed_out,
+            ),
         })
         if result.get("kill_failed"):
             notes.append(f"「{step.name}」超时后未能完全结束其进程，请手动检查残留进程")
@@ -339,6 +459,19 @@ async def _run_verification_host(
         if step_status == "failed" and step.required:
             if index < len(profile.steps) - 1:
                 notes.append(f"「{step.name}」失败，后续检查已跳过")
+            for remaining in profile.steps[index + 1:]:
+                steps.append({
+                    "name": remaining.name,
+                    "command": remaining.command,
+                    "required": remaining.required,
+                    "status": "not_run",
+                    "exit_code": -1,
+                    "timed_out": False,
+                    "stdout": "",
+                    "stderr": "",
+                    "duration_ms": 0,
+                    "reason": f"前序必需步骤「{step.name}」失败，未运行",
+                })
             stopped_early = True
             break
 
@@ -353,6 +486,20 @@ async def _run_verification_host(
     )
     stdout = "\n\n".join(f"$ {s['command']}\n{s['stdout']}" for s in steps if s["stdout"])
     stderr = "\n\n".join(f"$ {s['command']}\n{s['stderr']}" for s in steps if s["stderr"])
+    elapsed = int((time.perf_counter() - started) * 1000)
+    command = " → ".join(step.command for step in profile.steps)
+    exit_code_value = first_failure["exit_code"] if first_failure else 0
+    report = build_report(
+        stack=profile.stack,
+        steps=steps,
+        environment=host_environment(notes=notes),
+        workspace=workspace,
+        notes=notes,
+        started_at=now,
+        elapsed_ms=elapsed,
+        command=command,
+        exit_code=exit_code_value,
+    )
     logger.info(
         "verification_done", repo_id=str(repo["id"]), stack=profile.stack,
         status=overall, steps=len(steps), executor="host",
@@ -362,11 +509,12 @@ async def _run_verification_host(
         "stack": profile.stack,
         "notes": notes,
         "steps": steps,
-        "exit_code": first_failure["exit_code"] if first_failure else 0,
+        "exit_code": exit_code_value,
         "stdout": stdout[-6000:],
         "stderr": stderr[-3000:],
-        "command": " → ".join(step.command for step in profile.steps),
+        "command": command,
         "image": "host",
         "at": now,
-        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "elapsed_ms": elapsed,
+        "report": report,
     }

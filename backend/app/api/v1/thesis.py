@@ -13,7 +13,7 @@ from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota
 from app.core.storage.user_storage import storage_limit_bytes
-from app.core.thesis import service
+from app.core.thesis import service, stage_service
 from app.core.thesis.rules.builtin import list_templates
 from app.models.schemas import (
     OkOut,
@@ -37,6 +37,12 @@ from app.models.schemas import (
     ThesisReferencePdfOut,
     ThesisReportOut,
     ThesisScanOut,
+    ThesisStageAdvanceIn,
+    ThesisStageConfirmIn,
+    ThesisStageContentIn,
+    ThesisStageReadinessIn,
+    ThesisStageReturnIn,
+    ThesisStagesOut,
     ThesisTemplateOut,
 )
 
@@ -684,3 +690,80 @@ async def export_thesis_package(
         # The zip is a one-shot download; remove it once the response is sent.
         background=BackgroundTask(lambda: path.unlink(missing_ok=True)),
     )
+
+
+# ---------- Stage machine (M3) ----------
+#
+# The stage board is small on purpose: it records where the author is, what
+# they wrote for that stage, and whether they confirmed exactly that content.
+# It does not draft or accept anything on the author's behalf.
+
+@router.get("/thesis/projects/{project_id}/stages", response_model=ThesisStagesOut)
+async def get_thesis_stages(
+    project_id: str,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.get_board(user["id"], project_id)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/stages/content", response_model=ThesisStagesOut)
+async def set_thesis_stage_content(
+    project_id: str,
+    body: ThesisStageContentIn,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.set_content(user["id"], project_id, body.content)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/stages/readiness", response_model=ThesisStagesOut)
+async def set_thesis_stage_readiness(
+    project_id: str,
+    body: ThesisStageReadinessIn,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.set_readiness(user["id"], project_id, body.readiness)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/stages/confirm", response_model=ThesisStagesOut)
+async def confirm_thesis_stage(
+    project_id: str,
+    body: ThesisStageConfirmIn,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.confirm_stage(user["id"], project_id, body.note)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/stages/advance", response_model=ThesisStagesOut)
+async def advance_thesis_stage(
+    project_id: str,
+    body: ThesisStageAdvanceIn,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.advance(user["id"], project_id, body.to_stage)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)
+
+
+@router.post("/thesis/projects/{project_id}/stages/return", response_model=ThesisStagesOut)
+async def return_thesis_stage(
+    project_id: str,
+    body: ThesisStageReturnIn,
+    user: dict = Depends(require_thesis_access),
+):
+    try:
+        return await stage_service.return_to(user["id"], project_id, body.to_stage)
+    except Exception as exc:  # noqa: BLE001
+        _raise_http(exc)

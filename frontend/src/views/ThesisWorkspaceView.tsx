@@ -11,6 +11,7 @@ import { useThesis } from '../stores/thesis'
 import { CitationPanel } from '../thesis/CitationPanel'
 import { DisclosurePanel } from '../thesis/DisclosurePanel'
 import { ExportPanel } from '../thesis/ExportPanel'
+import { StagePanel } from '../thesis/StagePanel'
 import { ThesisChatPanel } from '../thesis/ThesisChatPanel'
 import { WritingPanel } from '../thesis/WritingPanel'
 
@@ -26,10 +27,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   citation: '引用',
 }
 
-type TabKey = 'issues' | 'writing' | 'citations' | 'disclosure' | 'export'
+type TabKey = 'issues' | 'stages' | 'writing' | 'citations' | 'disclosure' | 'export'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'issues', label: '问题' },
+  { key: 'stages', label: '阶段' },
   { key: 'writing', label: '写作' },
   { key: 'citations', label: '引用' },
   { key: 'disclosure', label: 'AI 使用声明' },
@@ -910,6 +912,9 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
             </div>
             )}
 
+            {tab === 'stages' && (
+              <StagePanel project={current} />
+            )}
             {tab === 'writing' && (
               <WritingPanel project={current} />
             )}
@@ -957,16 +962,16 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
             ref={mobileChatRef}
             role="dialog"
             aria-modal="true"
-            aria-label="AI 写作助手"
+            aria-label="写作对话"
             className="flex h-full w-[min(400px,94vw)] flex-col border-l border-edge bg-panel"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-edge px-3 py-2">
-              <span className="font-mono text-2xs uppercase tracking-wide text-faint">AI 写作</span>
+              <span className="font-mono text-2xs uppercase tracking-wide text-faint">写作对话</span>
               <button
                 onClick={() => setChatOpen(false)}
                 className="rounded-sm p-1 text-dim hover:text-ink"
-                aria-label="关闭 AI 写作面板"
+                aria-label="关闭写作对话面板"
               >
                 <X size={14} />
               </button>
