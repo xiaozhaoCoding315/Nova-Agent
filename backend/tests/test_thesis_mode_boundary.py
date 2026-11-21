@@ -6,7 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
+from fastapi.routing import APIRoute
 
+from app.api.v1 import thesis as thesis_api
 from app.core.security import policy
 from app.core.thesis import service
 from app.core.thesis.file_guard import ThesisFileGuard
@@ -96,6 +99,31 @@ def test_thesis_tools_are_hidden_from_dev_sessions():
         "thesis_outline", "thesis_read_section", "thesis_search_text",
         "thesis_issues", "thesis_reference_lookup",
     }
+
+
+def test_every_thesis_route_requires_thesis_access_gate():
+    routes = [
+        route for route in thesis_api.router.routes
+        if isinstance(route, APIRoute) and route.path.startswith("/thesis")
+    ]
+    assert routes
+    for route in routes:
+        dependencies = {dep.call for dep in route.dependant.dependencies}
+        assert thesis_api.require_thesis_access in dependencies, route.path
+
+
+def test_guest_is_refused_by_default(monkeypatch):
+    monkeypatch.setattr(thesis_api.settings, "thesis_guest_enabled", False)
+    with pytest.raises(HTTPException) as excinfo:
+        thesis_api.require_thesis_access({"id": "u", "is_guest": True})
+    assert excinfo.value.status_code == 403
+
+
+def test_server_switch_closes_thesis_mode(monkeypatch):
+    monkeypatch.setattr(thesis_api.settings, "thesis_server_enabled", False)
+    with pytest.raises(HTTPException) as excinfo:
+        thesis_api.require_thesis_access({"id": "u", "is_guest": False})
+    assert excinfo.value.status_code == 403
 
 
 def test_strict_template_lookup_rejects_unknown_ids():

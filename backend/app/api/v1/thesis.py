@@ -68,12 +68,12 @@ def require_thesis_access(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.get("/thesis/templates", response_model=list[ThesisTemplateOut])
-async def get_thesis_templates(user: dict = Depends(get_current_user)):
+async def get_thesis_templates(user: dict = Depends(require_thesis_access)):
     return list_templates()
 
 
 @router.get("/thesis/projects", response_model=list[ThesisProjectOut])
-async def get_thesis_projects(user: dict = Depends(get_current_user)):
+async def get_thesis_projects(user: dict = Depends(require_thesis_access)):
     return await service.list_projects(user["id"])
 
 
