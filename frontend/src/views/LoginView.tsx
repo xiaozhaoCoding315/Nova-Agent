@@ -266,7 +266,7 @@ export function LoginView() {
         <nav className="ml-6 hidden items-center gap-5 text-xs text-dim md:flex" aria-label="页面导航">
           <a className="transition-colors hover:text-ink" href="#modes">两种模式</a>
           <a className="transition-colors hover:text-ink" href="#capabilities">能力</a>
-          <a className="transition-colors hover:text-ink" href="/docs">使用文档</a>
+          <a className="transition-colors hover:text-ink" href="/guide">使用文档</a>
           <a className="transition-colors hover:text-ink" href="#download">下载</a>
         </nav>
 
@@ -286,7 +286,7 @@ export function LoginView() {
             </button>
           )}
           <a
-            href="/docs"
+            href="/guide"
             className="rounded-md px-2 py-1.5 text-sm text-dim transition-colors hover:text-ink"
           >
             文档
@@ -347,7 +347,7 @@ export function LoginView() {
               <span aria-hidden="true">·</span>
               <span>无遥测</span>
               <a
-                href="/docs"
+                href="/guide"
                 className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
               >
                 使用文档
@@ -462,7 +462,7 @@ export function LoginView() {
                 cp .env.docker.example .env && docker compose up -d --build
               </code>
               <a
-                href="/docs"
+                href="/guide"
                 className="mt-2 block text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
               >
                 阅读使用文档
@@ -492,7 +492,7 @@ export function LoginView() {
           <span className="font-mono">v{health?.version ?? '2.2.1'}</span>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
-          <a href="/docs" className="transition-colors hover:text-ink">使用文档</a>
+          <a href="/guide" className="transition-colors hover:text-ink">使用文档</a>
           <span className="ml-auto hidden items-center gap-2 font-mono uppercase tracking-[0.16em] md:flex">
             <IcpNotice className="normal-case tracking-normal text-dim hover:text-ink" />
             Nova Agent / evidence-first

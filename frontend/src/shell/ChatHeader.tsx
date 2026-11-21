@@ -296,7 +296,7 @@ export function ChatHeader({
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <a
-          href="/docs"
+          href="/guide"
           target="_blank"
           rel="noreferrer"
           className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"

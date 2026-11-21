@@ -53,7 +53,7 @@ export function ModeSplit() {
             ))}
           </ul>
           <a
-            href="/docs#dev"
+            href="/guide#dev"
             className="mt-6 inline-flex items-center gap-1.5 text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
           >
             开发模式使用文档
@@ -80,7 +80,7 @@ export function ModeSplit() {
             ))}
           </ul>
           <a
-            href="/docs#thesis"
+            href="/guide#thesis"
             className="mt-6 inline-flex items-center gap-1.5 text-xs text-warn underline decoration-warn/40 underline-offset-4 hover:decoration-warn"
           >
             论文模式使用文档
@@ -128,7 +128,7 @@ export function CapabilityLedger() {
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <a href="/docs" className="text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
+        <a href="/guide" className="text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
           查看完整功能与操作步骤
         </a>
         <span className="text-2xs text-faint">包含权限模式、引用核对、部署与常见问题。</span>

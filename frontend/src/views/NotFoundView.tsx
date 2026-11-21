@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, Compass, FolderSearch, Terminal } from 'lucide-rea
 /** 命中的最近似路径（只按前缀猜，不做全文检索）。 */
 const SUGGESTIONS = [
   { path: '/', label: '工作台' },
-  { path: '/docs', label: '使用文档' },
+  { path: '/guide', label: '使用文档' },
   { path: '/downloads', label: '下载桌面客户端' },
 ]
 
@@ -57,7 +57,7 @@ export function NotFoundView() {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base/60 text-dim group-hover:text-accent">
                 {item.path === '/' ? (
                   <Terminal size={13} />
-                ) : item.path === '/docs' ? (
+                ) : item.path === '/guide' ? (
                   <BookOpen size={13} />
                 ) : (
                   <FolderSearch size={13} />

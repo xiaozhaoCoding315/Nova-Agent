@@ -132,7 +132,7 @@ export function DownloadsView() {
         </a>
         <div className="ml-auto flex items-center gap-1">
           <a
-            href="/docs"
+            href="/guide"
             className="rounded-md px-2.5 py-1.5 text-sm text-dim transition-colors hover:text-ink"
           >
             使用文档

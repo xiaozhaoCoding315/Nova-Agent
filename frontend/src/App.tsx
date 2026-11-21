@@ -12,7 +12,7 @@ import { NotFoundView } from './views/NotFoundView'
  */
 export default function App() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/'
-  if (path === '/docs') return <DocsView />
+  if (path === '/guide') return <DocsView />
   if (path === '/downloads') return <DownloadsView />
   if (path === '/') return <AppShell />
   return <NotFoundView />

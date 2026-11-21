@@ -141,7 +141,7 @@ function Chapter({ children }: { children: ReactNode }) {
 export function DocsView() {
   const active = useActiveChapter()
 
-  // 从宣传页的 /docs#thesis 这类深链进入时，React 渲染完成前浏览器
+  // 从宣传页的 /guide#thesis 这类深链进入时，React 渲染完成前浏览器
   // 可能找不到锚点；渲染后再补一次滚动，保证直接落到对应章节。
   useEffect(() => {
     document.title = '使用文档 · Nova Agent'
@@ -584,7 +584,7 @@ BACKUP_DIR=/opt/nova-backups ./deploy/restore.sh`}</Code>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
           <span aria-hidden="true">·</span>
-          <a href="/docs" className="transition-colors hover:text-ink">使用文档</a>
+          <a href="/guide" className="transition-colors hover:text-ink">使用文档</a>
           <span className="ml-auto flex items-center gap-1.5 font-mono uppercase tracking-[0.16em]">
             <FileText size={11} />
             Nova Agent / docs
