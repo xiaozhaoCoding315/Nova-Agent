@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  Activity, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown, PanelLeft,
-  PanelRight, Plus, ShieldCheck,
+  Activity, BookOpen, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown,
+  PanelLeft, PanelRight, Plus, ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ProductModeSwitch } from '../components/ProductModeSwitch'
@@ -295,6 +295,16 @@ export function ChatHeader({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <a
+          href="/docs"
+          target="_blank"
+          rel="noreferrer"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+          title="使用文档（新标签页）"
+          aria-label="在新标签页打开使用文档"
+        >
+          <BookOpen size={13} />
+        </a>
         <button
           onClick={() => setTrajectoryOpen(true)}
           disabled={!sessionId}

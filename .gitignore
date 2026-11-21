@@ -38,6 +38,9 @@ backend/local-data/
 # Operator-local MCP server config
 backend/mcp_servers.json
 
+# Playwright MCP scratch output
+.playwright-mcp/
+
 # Desktop installer artifacts served at /downloads
 data/
 
