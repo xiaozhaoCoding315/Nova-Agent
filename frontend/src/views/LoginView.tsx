@@ -6,7 +6,8 @@ import { AuthPanel, type AuthMode } from '../components/AuthPanel'
 import { IcpNotice } from '../components/IcpNotice'
 import { ModePreview } from '../landing/ModePreview'
 import {
-  CapabilityLedger, ModeSplit, ThesisWorkflow, TrustSection,
+  CapabilityLedger, DeliveryWorkflows, ModeSplit, RemoteControl,
+  ThesisWorkflow, TrustSection,
 } from '../landing/sections'
 import { StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
@@ -29,6 +30,11 @@ const PROOFS = [
     label: '人工批准',
     value: '+12 −3 · 待批准',
     text: '补丁先展示 diff，由你批准后才写入项目。',
+  },
+  {
+    label: '手机指令',
+    value: '待确认 · 1 条',
+    text: '手机发来的自然语言先进入队列，电脑确认后才作为普通消息执行。',
   },
 ]
 
@@ -266,7 +272,8 @@ export function LoginView() {
         <nav className="ml-6 hidden items-center gap-5 text-xs text-dim md:flex" aria-label="页面导航">
           <a className="transition-colors hover:text-ink" href="#modes">两种模式</a>
           <a className="transition-colors hover:text-ink" href="#capabilities">能力</a>
-          <a className="transition-colors hover:text-ink" href="/guide">使用文档</a>
+          <a className="transition-colors hover:text-ink" href="#delivery">交付</a>
+          <a className="transition-colors hover:text-ink" href="#remote">手机遥控</a>
           <a className="transition-colors hover:text-ink" href="#download">下载</a>
         </nav>
 
@@ -317,8 +324,9 @@ export function LoginView() {
             </h1>
 
             <p className="mt-5 max-w-lg text-md leading-7 text-dim">
-              Nova Agent 是可自托管的工程 Agent。开发模式里读代码、跑测试、核对引用；
-              论文模式里按模板体检 DOCX、核对参考文献，并起草带代码依据的章节草稿。
+              Nova Agent 是可自托管的工程 Agent。读代码、跑测试、核对引用，
+              从选题推进论文阶段稿，也能整理文档、简历与证据包；
+              手机发指令，电脑做决定。
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -341,9 +349,11 @@ export function LoginView() {
             </div>
 
             <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs leading-5 text-faint">
-              <span>Windows 安装包</span>
+              <span>Windows 安装包 v{health?.version ?? '2.2.2'}</span>
               <span aria-hidden="true">·</span>
               <span>本机运行或连接服务器</span>
+              <span aria-hidden="true">·</span>
+              <span>手机遥控</span>
               <span aria-hidden="true">·</span>
               <span>无遥测</span>
               <a
@@ -362,7 +372,7 @@ export function LoginView() {
         </section>
 
         <section id="proof" className="border-y border-edge/60" aria-label="证据链">
-          <div className="grid divide-y divide-edge/60 md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="grid divide-y divide-edge/60 md:grid-cols-4 md:divide-x md:divide-y-0">
             {PROOFS.map((proof) => (
               <div key={proof.label} className="py-6 md:px-6 md:first:pl-0 md:last:pr-0">
                 <p className="font-mono text-2xs tracking-[0.08em] text-faint">{proof.label}</p>
@@ -374,6 +384,8 @@ export function LoginView() {
         </section>
 
         <ModeSplit />
+
+        <DeliveryWorkflows />
 
         <CapabilityLedger />
 
@@ -404,6 +416,8 @@ export function LoginView() {
         </section>
 
         <ThesisWorkflow />
+
+        <RemoteControl />
 
         <TrustSection />
 

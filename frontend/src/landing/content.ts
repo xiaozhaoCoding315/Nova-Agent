@@ -56,16 +56,38 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     ],
   },
   {
-    title: '论文工作台',
-    note: '以 DOCX 为唯一事实源：先体检，再决定改什么，原文件始终只读。',
+    title: '文档与交付',
+    note: '报告、简历与证据包共用项目、模型和文件权限。',
     rows: [
       {
-        name: 'DOCX 体检',
-        detail: '节、页面大小、页边距、标题层级、页眉页脚与页码域；每条问题带规则来源与置信度。',
+        name: '文档工作区',
+        detail: 'Markdown 主控源、版本历史与 base_sha 冲突检测；有损格式转换必须显式开启。',
       },
       {
-        name: '安全修复',
-        detail: '页面、页边距与标题样式可预览后应用，写入 working.docx 并保留版本备份，随时撤销。',
+        name: '简历工作台',
+        detail: '事实库可编辑、可排除；三种模板产生真实排版差异，岗位版本在生成时快照。',
+      },
+      {
+        name: '证据包',
+        detail: '自定义 claims、environment 与 artifact_paths，人工备注和工具版本可回填后导出。',
+      },
+    ],
+  },
+  {
+    title: '论文工作台',
+    note: '阶段稿优先，学校 DOCX 模板按需导入。',
+    rows: [
+      {
+        name: '0 → 1 阶段推进',
+        detail: '题目、要求、提纲、章节与修改逐段确认；没有学校模板也能开始。',
+      },
+      {
+        name: '阶段稿直出',
+        detail: 'MD / DOCX / PDF 直接导出并按格式排版；随时回退重写，不依赖导入 DOCX。',
+      },
+      {
+        name: 'DOCX 体检（可选）',
+        detail: '导入学校模板后检查节、页面、页边距、标题层级、页眉页脚与页码域；原文件只读。',
       },
       {
         name: '引用核对 L1 / L2 / L3',
@@ -82,6 +104,28 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     ],
   },
   {
+    title: '手机遥控',
+    note: '手机只发指令，电脑做决定。',
+    rows: [
+      {
+        name: '一次性配对',
+        detail: '电脑生成二维码或链接，手机核对 6 位验证串；服务端只保存设备公钥。',
+      },
+      {
+        name: '签名指令队列',
+        detail: '自然语言指令带设备签名，45 秒有效、nonce 防重放；最多 5 条待确认、24 小时过期。',
+      },
+      {
+        name: '桌面确认后执行',
+        detail: '手机指令先进入待确认队列，电脑点确认后才作为普通消息进入当前对话，手机没有第二条执行路径。',
+      },
+      {
+        name: '进度、通知与本地审批',
+        detail: '手机查看脱敏进度、停止运行、接收完成通知；高风险操作仍然只在电脑上审批，设备可随时撤销。',
+      },
+    ],
+  },
+  {
     title: '模型与部署',
     note: '自带 Key，数据留在你的环境；本地与服务器共用同一套工具和审批。',
     rows: [
@@ -90,8 +134,8 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
         detail: '多家凭据并存、密钥加密存储、接口只回掩码；会话级切换厂商、模型、推理强度与上下文窗口。',
       },
       {
-        name: '本地或服务器',
-        detail: '桌面客户端可在本机运行（自带后端与数据库），也可以连接你的 Nova 服务器。',
+        name: '桌面 2.2.2',
+        detail: 'Windows 安装包覆盖升级并保留本机数据；可本机运行或连接已有服务器；macOS / Linux 构建中。',
       },
       {
         name: '多用户与游客',
@@ -113,32 +157,95 @@ export const DEV_POINTS = [
 ]
 
 export const THESIS_POINTS = [
-  '导入 DOCX，按模板检查格式、结构与引用',
-  '逐条预览修复，应用后可撤销，原文件不动',
-  '引用只使用已导入条目；L2 只发送 DOI',
-  '关联项目后起草章节，正文标注代码依据',
+  '说清题目、学校要求与已有材料，再开始写',
+  '提纲、章节、修改分阶段推进，每步由你确认',
+  '阶段稿直接导出 MD / DOCX / PDF，可回退重写',
+  '需要模板合规时导入 DOCX 体检；引用只用已导入条目',
 ]
 
 export const THESIS_STEPS = [
   {
     no: '01',
-    title: '导入论文',
-    text: '选择模板并上传 DOCX。解析在本机或你的服务器完成，原文件只读。',
+    title: '说清题目与要求',
+    text: '在对话里确认题目、学校要求与已有材料；没有模板 DOCX 也能开始。',
   },
   {
     no: '02',
-    title: '体检与定位',
-    text: '格式、结构与引用问题按严重度列出；每条都能回到具体段落或引用条目。',
+    title: '分阶段写作',
+    text: '提纲、章节与修改逐段推进，每阶段由你确认；AI 正文明确标注草稿。',
   },
   {
     no: '03',
-    title: '预览再修复',
-    text: '页面、页边距、标题样式先看改动；应用写入工作副本，保留版本备份与撤销。',
+    title: '导出阶段稿',
+    text: '按格式排版后直接导出 MD / DOCX / PDF；不满意可回退重写。',
   },
   {
     no: '04',
-    title: '交付定稿包',
-    text: '修复版 DOCX、体检报告、引用清单、AI 使用声明与修改记录一起导出。',
+    title: '可选：模板体检与定稿包',
+    text: '导入学校 DOCX 检查格式与引用，修复写入工作副本；定稿包含报告、引用清单与 AI 使用声明。',
+  },
+]
+
+export type DeliveryCard = {
+  kicker: string
+  title: string
+  text: string
+  points: string[]
+  href: string
+}
+
+export const DELIVERY_CARDS: DeliveryCard[] = [
+  {
+    kicker: '写清楚',
+    title: '文档工作区',
+    text: '报告、说明与草稿共用一份 Markdown 主控源；版本、冲突与格式转换都摆在界面上。',
+    points: [
+      '版本历史与 base_sha 冲突检测',
+      '有损转换必须显式确认',
+      '普通文档可整篇起草，要求口语化、低重复',
+    ],
+    href: '/guide#documents',
+  },
+  {
+    kicker: '投出去',
+    title: '简历工作台',
+    text: '先把经历与数字录进事实库，再按岗位生成版本；模板只改排版，不改事实。',
+    points: [
+      '事实可编辑、可排除',
+      '经典 / 现代 / 紧凑三种排版',
+      '岗位版本生成时快照，无证据数字需确认',
+    ],
+    href: '/guide#documents',
+  },
+  {
+    kicker: '可复查',
+    title: '证据包',
+    text: '把结论、运行环境、工具版本与产物路径打成一份可复查的 JSON。',
+    points: [
+      '自定义 claims、environment 与 artifact_paths',
+      '人工备注与工具版本可回填',
+      '导出字段与后端校验一致',
+    ],
+    href: '/guide#documents',
+  },
+]
+
+export const REMOTE_POINTS = [
+  {
+    title: '一次性配对',
+    text: '电脑生成二维码或链接，手机核对 6 位验证串；服务端只保存公钥。',
+  },
+  {
+    title: '签名指令',
+    text: '每条指令都带设备签名，45 秒有效、nonce 防重放；队列最多 5 条待确认。',
+  },
+  {
+    title: '桌面确认',
+    text: '自然语言先进入待确认队列，电脑点确认后才作为普通消息执行。',
+  },
+  {
+    title: '高风险留在本地',
+    text: '停止运行与完成通知在手机上；高风险审批只在电脑上做，设备可随时撤销。',
   },
 ]
 
@@ -153,6 +260,6 @@ export const TRUST = [
   },
   {
     title: '边界写在产品里',
-    text: '不代写整篇论文、不降重、不做 AIGC 检测、不伪造引用；AI 正文一律标注草稿。',
+    text: '不代写整篇论文、不降重、不做 AIGC 检测、不伪造引用；AI 正文标注草稿，手机指令必须桌面确认。',
   },
 ]

@@ -1,6 +1,9 @@
-import { ArrowUpRight, Check, FileText, Terminal } from 'lucide-react'
 import {
-  CAPABILITY_GROUPS, DEV_POINTS, THESIS_POINTS, THESIS_STEPS, TRUST,
+  ArrowUpRight, Bell, Check, FileText, Package, Smartphone, Terminal, User,
+} from 'lucide-react'
+import {
+  CAPABILITY_GROUPS, DELIVERY_CARDS, DEV_POINTS, REMOTE_POINTS,
+  THESIS_POINTS, THESIS_STEPS, TRUST,
 } from './content'
 
 function SectionHeading({
@@ -66,10 +69,11 @@ export function ModeSplit() {
             <FileText size={13} />
             论文模式
           </div>
-          <h3 className="mt-3 text-xl font-semibold text-ink">先把论文看清楚，再决定改什么</h3>
+          <h3 className="mt-3 text-xl font-semibold text-ink">从选题到定稿，每一步都留下记录</h3>
           <p className="mt-2 max-w-md text-sm leading-6 text-dim">
-            以 DOCX 为唯一事实源，按模板检查格式、结构与引用。原文件只读，
-            修复写入工作副本并保留版本备份；AI 只起草草稿，正文需要你核对。
+            从题目、要求到提纲与章节，按阶段推进；阶段稿可直接导出 MD / DOCX / PDF。
+            需要模板合规时再导入学校 DOCX 体检，原文件只读，修复写入工作副本。
+            AI 只起草草稿，正文需要你核对。
           </p>
           <ul className="mt-5 space-y-2 text-xs leading-5 text-dim">
             {THESIS_POINTS.map((point) => (
@@ -155,6 +159,161 @@ export function ThesisWorkflow() {
           </li>
         ))}
       </ol>
+    </section>
+  )
+}
+
+const DELIVERY_ICONS = [FileText, User, Package]
+
+export function DeliveryWorkflows() {
+  return (
+    <section id="delivery" className="border-t border-edge/60 py-16 md:py-20">
+      <SectionHeading title="不止代码。" aside="文档 / 简历 / 证据">
+        <p className="text-sm leading-6 text-dim">
+          报告、简历与交付证据共用同一个项目、模型与文件权限；
+          每份产物都能回到它的来源，而不是散落在另一个聊天窗口里。
+        </p>
+      </SectionHeading>
+
+      <div className="mt-9 grid gap-4 md:grid-cols-3">
+        {DELIVERY_CARDS.map((card, index) => {
+          const Icon = DELIVERY_ICONS[index] ?? FileText
+          return (
+            <div
+              key={card.title}
+              className="flex min-w-0 flex-col rounded-lg border border-edge bg-panel/45 p-5"
+            >
+              <div className="flex items-center gap-2 font-mono text-2xs uppercase tracking-[0.16em] text-faint">
+                <Icon size={13} className="text-accent" />
+                {card.kicker}
+              </div>
+              <h3 className="mt-3 text-lg font-semibold text-ink">{card.title}</h3>
+              <p className="mt-1.5 text-sm leading-6 text-dim">{card.text}</p>
+              <ul className="mt-4 space-y-2 text-xs leading-5 text-dim">
+                {card.points.map((point) => (
+                  <li key={point} className="flex gap-2">
+                    <span className="text-accent" aria-hidden="true">─</span>
+                    <span className="min-w-0">{point}</span>
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={card.href}
+                className="mt-auto inline-flex items-center gap-1.5 pt-5 text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+              >
+                使用文档
+                <ArrowUpRight size={12} />
+              </a>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function PhoneMock() {
+  return (
+    <div className="overflow-hidden rounded-[20px] border border-edge bg-panel shadow-pop">
+      <div className="flex items-center justify-between border-b border-edge/80 px-3 py-2.5">
+        <span className="flex items-center gap-1.5 font-mono text-2xs text-dim">
+          <Smartphone size={11} />
+          nova / m
+        </span>
+        <span className="flex items-center gap-1.5 font-mono text-2xs text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
+          运行中
+        </span>
+      </div>
+
+      <div className="space-y-2 px-3 py-3">
+        <div className="ml-auto max-w-[92%] rounded-lg rounded-br-sm bg-accentSoft px-2.5 py-2 text-xs leading-5 text-ink">
+          把导出失败的日志整理一下，修完跑测试
+        </div>
+        <p className="text-right font-mono text-2xs text-faint">已签名 · 待电脑确认</p>
+
+        <div className="rounded-md border border-edge bg-base/60 p-2.5">
+          <div className="flex items-center justify-between font-mono text-2xs">
+            <span className="text-faint">当前任务</span>
+            <span className="text-accent">3 个工具调用</span>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-ink/90">修复导出目录并发清理</p>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-edge">
+            <div className="h-full w-2/3 rounded-full bg-accent" />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-sm border border-edge px-1.5 py-0.5 font-mono text-2xs text-dim">
+            停止运行
+          </span>
+          <span className="rounded-sm border border-edge px-1.5 py-0.5 font-mono text-2xs text-dim">
+            完成通知
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DesktopConfirmMock() {
+  return (
+    <div className="rounded-lg border border-warn/30 bg-panel p-3 shadow-pop">
+      <div className="flex items-center gap-1.5 font-mono text-2xs text-warn">
+        <Bell size={11} />
+        手机发来的指令
+      </div>
+      <p className="mt-2 text-xs leading-5 text-ink/90">
+        把导出失败的日志整理一下，修完跑测试
+      </p>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        <span className="rounded-sm bg-accent px-2 py-1 text-2xs font-medium text-graphite">
+          确认并发送
+        </span>
+        <span className="rounded-sm border border-edge px-2 py-1 text-2xs text-dim">
+          拒绝
+        </span>
+      </div>
+      <p className="mt-2 border-t border-edge/60 pt-2 font-mono text-2xs leading-5 text-faint">
+        确认后才进入当前对话
+        <br />
+        高风险操作仍需本地审批
+      </p>
+    </div>
+  )
+}
+
+export function RemoteControl() {
+  return (
+    <section id="remote" className="border-t border-edge/60 py-16 md:py-20">
+      <SectionHeading title="手机发指令，电脑做决定。" aside="遥控 / 移动工作台">
+        <p className="text-sm leading-6 text-dim">
+          电脑上生成一次性配对链接，手机扫码并核对 6 位验证串。手机发来的自然语言
+          先进入待确认队列，电脑点确认后才作为普通消息进入当前对话；
+          高风险操作始终留在电脑上。
+        </p>
+      </SectionHeading>
+
+      <div className="mt-9 grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center lg:gap-14">
+        <ul className="space-y-4">
+          {REMOTE_POINTS.map((point) => (
+            <li key={point.title} className="border-l border-edge pl-4">
+              <h3 className="text-sm font-medium text-ink">{point.title}</h3>
+              <p className="mt-1 text-xs leading-5 text-dim">{point.text}</p>
+            </li>
+          ))}
+        </ul>
+
+        <div className="min-w-0">
+          <div className="mx-auto grid max-w-lg gap-3 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:items-center">
+            <PhoneMock />
+            <DesktopConfirmMock />
+          </div>
+          <p className="mt-3 text-center font-mono text-2xs text-faint">
+            界面示意 · 指令原文保留在桌面待确认队列
+          </p>
+        </div>
+      </div>
     </section>
   )
 }
