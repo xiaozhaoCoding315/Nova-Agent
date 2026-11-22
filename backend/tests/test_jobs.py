@@ -20,6 +20,7 @@ def test_builtin_handlers_include_summary_and_index():
     assert runner.has("builder_plan")
     assert runner.has("builder_files")
     assert runner.has("session_summary")
+    assert runner.has("facts_extract")
     assert runner.has("verify")
 
 
@@ -56,6 +57,113 @@ async def test_enqueue_chat_turn_returns_none_when_runner_stopped():
     from app.core.jobs import service as jobs_service
 
     assert await jobs_service.enqueue_chat_turn("t-1", "s-1", 7) is None
+
+
+@pytest.mark.asyncio
+async def test_enqueue_facts_extract_is_durable_and_idempotent(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core.jobs import service as jobs_service
+
+    fake_runner = SimpleNamespace(
+        running=True, enqueue=AsyncMock(return_value="job-1"),
+    )
+    monkeypatch.setattr(jobs_service, "runner", fake_runner)
+
+    job_id = await jobs_service.enqueue_facts_extract(
+        "s1", 7, 11, 12, "thesis", "p1",
+    )
+
+    assert job_id == "job-1"
+    assert fake_runner.enqueue.await_args.kwargs["idempotency_key"] == (
+        "facts_extract:12"
+    )
+    assert fake_runner.enqueue.await_args.kwargs["max_attempts"] == 3
+
+
+@pytest.mark.asyncio
+async def test_enqueue_session_summary_keys_on_latest_message(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core.jobs import service as jobs_service
+
+    fake_runner = SimpleNamespace(
+        running=True, enqueue=AsyncMock(return_value="job-2"),
+    )
+    monkeypatch.setattr(jobs_service, "runner", fake_runner)
+    monkeypatch.setattr(
+        jobs_service, "query", AsyncMock(return_value=[(42,)])
+    )
+
+    assert await jobs_service.enqueue_session_summary("s1", 7) == "job-2"
+    assert fake_runner.enqueue.await_args.kwargs["idempotency_key"] == (
+        "session_summary:s1:42"
+    )
+
+
+@pytest.mark.asyncio
+async def test_facts_extract_handler_reads_messages_and_scope(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core.jobs import handlers
+    from app.core.memory import facts as facts_mod
+    from app.core.memory import session as session_mod
+
+    monkeypatch.setattr(
+        session_mod, "get_session", AsyncMock(return_value={"id": "s1"})
+    )
+    monkeypatch.setattr(
+        session_mod, "get_message",
+        AsyncMock(side_effect=[
+            {"id": 11, "role": "user", "content": "我在写论文"},
+            {"id": 12, "role": "assistant", "content": "好的"},
+        ]),
+    )
+    extract = AsyncMock(return_value=2)
+    monkeypatch.setattr(facts_mod, "extract_facts_from_turn", extract)
+    ctx = SimpleNamespace(
+        payload={
+            "session_id": "s1", "user_id": 7,
+            "user_message_id": 11, "assistant_message_id": 12,
+            "scope_type": "thesis", "scope_id": "p1",
+        },
+        check_cancel=AsyncMock(),
+        update=AsyncMock(),
+    )
+
+    result = await handlers._facts_extract(ctx)
+
+    assert result["facts_added"] == 2
+    kwargs = extract.await_args.kwargs
+    assert kwargs["scope_type"] == "thesis"
+    assert kwargs["scope_id"] == "p1"
+    assert kwargs["source_session_id"] == "s1"
+    assert kwargs["source_message_id"] == 12
+    assert kwargs["raise_on_error"] is True
+
+
+@pytest.mark.asyncio
+async def test_failed_job_requeues_with_exponential_backoff(monkeypatch):
+    from app.core.jobs.models import Job
+
+    runner = JobRunner()
+
+    async def handler(_ctx):
+        raise RuntimeError("utility model down")
+
+    execute = AsyncMock(return_value=[])
+    monkeypatch.setattr(runner_module, "execute", execute)
+    job = Job(
+        id="job-1", user_id=3, kind="facts_extract", payload={},
+        attempts=1, max_attempts=3,
+    )
+
+    await runner._run(job, handler)  # noqa: SLF001
+
+    sql, params = execute.await_args.args
+    assert "available_at = now() + make_interval" in sql
+    assert "POWER(2, attempts)" in sql
+    assert params[1] == "job-1"
 
 
 @pytest.mark.asyncio

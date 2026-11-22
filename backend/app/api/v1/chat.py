@@ -26,7 +26,7 @@ from app.core.trace import list_events, record as trace_record
 from app.core.turns import events as turn_events
 from app.core.turns import service as turn_service
 from app.core.turns import store as turn_store
-from app.db import execute
+from app.db import execute, query
 from app.models.schemas import (
     ActiveTurnOut,
     ChatRequest,
@@ -206,6 +206,31 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
     return await session_mod.get_messages(session_id, user_id=user["id"])
+
+
+@router.get("/chat/sessions/{session_id}/compactions")
+async def get_session_compactions(
+    session_id: str, user: dict = Depends(get_current_user)
+):
+    """Auditable in-turn compaction records for one owned session."""
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    rows = await query(
+        "SELECT id, turn_id::text, summary, message_count, tokens_before, "
+        "tokens_after, created_at FROM compaction_records "
+        "WHERE session_id = %s ORDER BY id DESC LIMIT 50",
+        (session_id,),
+    )
+    return [
+        {
+            "id": r[0], "turn_id": r[1], "summary": r[2],
+            "message_count": int(r[3] or 0),
+            "tokens_before": int(r[4] or 0), "tokens_after": int(r[5] or 0),
+            "created_at": r[6],
+        }
+        for r in rows
+    ]
 
 
 @router.patch("/chat/sessions/{session_id}", response_model=SessionOut)

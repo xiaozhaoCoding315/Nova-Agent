@@ -33,7 +33,10 @@ def _patch_common(monkeypatch, llm):
 
     monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
-    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=loop_mod.session_mod.HistoryBundle([], 0, "", 0, 0)),
+    )
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
@@ -852,8 +855,8 @@ async def test_current_turn_images_become_image_blocks(monkeypatch):
     assert last["content"][1]["image_url"]["url"].startswith(
         "data:image/png;base64,"
     )
-    loop_mod.session_mod.recent_messages.assert_awaited_once()
-    assert loop_mod.session_mod.recent_messages.await_args.kwargs["before_id"] == 5
+    loop_mod.session_mod.build_history.assert_awaited_once()
+    assert loop_mod.session_mod.build_history.await_args.kwargs["before_id"] == 5
 
 
 @pytest.mark.asyncio

@@ -346,10 +346,26 @@ export const api = {
   },
 
   memory: {
-    get: () => request<Memory>('/memory'),
+    get: (scope?: { type: string; id?: string }) => {
+      const params = new URLSearchParams()
+      if (scope?.type) {
+        params.set('scope_type', scope.type)
+        params.set('scope_id', scope.id ?? '')
+      }
+      const query = params.toString()
+      return request<Memory>(`/memory${query ? `?${query}` : ''}`)
+    },
     removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
-    removeDaily: (day: string) =>
-      request<{ ok: boolean }>(`/memory/daily/${encodeURIComponent(day)}`, { method: 'DELETE' }),
+    removeDaily: (day: string, scopeType = 'dev', scopeId = '') => {
+      const params = new URLSearchParams({
+        scope_type: scopeType,
+        scope_id: scopeId,
+      })
+      return request<{ ok: boolean }>(
+        `/memory/daily/${encodeURIComponent(day)}?${params.toString()}`,
+        { method: 'DELETE' },
+      )
+    },
   },
 
   deploys: {

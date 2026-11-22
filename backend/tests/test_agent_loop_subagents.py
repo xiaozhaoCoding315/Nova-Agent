@@ -100,7 +100,10 @@ async def test_parent_loop_emits_subagent_events_and_persists(monkeypatch):
     monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
     monkeypatch.setattr(loop_mod, "get_registry", lambda: registry)
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
-    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=loop_mod.session_mod.HistoryBundle([], 0, "", 0, 0)),
+    )
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
@@ -154,7 +157,10 @@ async def test_malformed_subagent_payload_degrades_without_raising(monkeypatch):
     monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
     monkeypatch.setattr(loop_mod, "get_registry", lambda: registry)
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
-    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=loop_mod.session_mod.HistoryBundle([], 0, "", 0, 0)),
+    )
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
@@ -219,7 +225,10 @@ async def test_parent_loop_redacts_subagent_payloads(monkeypatch):
     monkeypatch.setattr(loop_mod, "get_llm", _get_llm)
     monkeypatch.setattr(loop_mod, "get_registry", lambda: registry)
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
-    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=loop_mod.session_mod.HistoryBundle([], 0, "", 0, 0)),
+    )
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))

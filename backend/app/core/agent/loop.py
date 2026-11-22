@@ -14,7 +14,7 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core.agent.context_governor import compact_messages
+from app.core.agent.context_governor import compact_messages, needs_compaction
 from app.core.agent.context_meter import (
     estimate_message_content,
     estimate_messages,
@@ -39,7 +39,9 @@ from app.core.llm.factory import (
 )
 from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
+from app.core.memory import compaction as compaction_mod
 from app.core.memory import facts as facts_mod
+from app.core.memory import scope as memory_scope
 from app.core.memory import session as session_mod
 from app.core.memory.context import build_system_prompt
 from app.core.product_modes import FILE_MUTATING_TOOLS as _FILE_MUTATING_TOOLS
@@ -51,6 +53,28 @@ from app.core.trace import record as trace_record
 from app.core.tools import ToolContext, get_registry
 
 logger = structlog.get_logger()
+
+# Keep strong references so best-effort memory work is not garbage-collected
+# mid-flight, and surface its failures instead of losing them silently.
+_MEMORY_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_memory_task(coro, *, label: str) -> None:
+    task = asyncio.create_task(coro)
+    _MEMORY_TASKS.add(task)
+
+    def _done(finished: asyncio.Task) -> None:
+        _MEMORY_TASKS.discard(finished)
+        if finished.cancelled():
+            return
+        try:
+            finished.result()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "background_memory_task_failed", task=label, error=str(exc)
+            )
+
+    task.add_done_callback(_done)
 
 
 def _sse(event: str, **data) -> dict:
@@ -165,15 +189,30 @@ async def run_chat(
     )
 
     # 2) context assembly
+    context_window = (
+        session_overrides.get("context_window")
+        or resolve_context_window(user["id"])
+    )
     fact_list: list[str] = []
     try:
-        fact_list = await facts_mod.get_relevant_facts(user["id"], user_message)
+        fact_scopes = memory_scope.readable_scopes(session, repo_ids)
+        fact_list = await facts_mod.get_relevant_facts(
+            user["id"], user_message, scopes=fact_scopes,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
-    history = await session_mod.recent_messages(
-        session["id"], after_id=int(session.get("summary_upto_id") or 0),
-        user_id=user["id"], before_id=user_message_id,
+    history_budget = max(
+        session_mod.HISTORY_MIN_BUDGET, int(context_window * 0.5)
     )
+    history_bundle = await session_mod.build_history(
+        session["id"], user["id"], budget_tokens=history_budget,
+        before_id=user_message_id,
+    )
+    history = history_bundle.messages
+    if history_bundle.summary or history_bundle.upto_id:
+        # The summary may have just been extended to make room for history.
+        session["summary"] = history_bundle.summary
+        session["summary_upto_id"] = history_bundle.upto_id
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
         try:
@@ -194,6 +233,20 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    if not (session.get("summary") or "").strip():
+        # A long previous turn may have been compacted before the rolling
+        # session summary caught up.  Re-inject its persisted summary so the
+        # next turn does not start blind.
+        try:
+            prior_compaction = await compaction_mod.latest_compaction(
+                session["id"], user["id"],
+            )
+            if prior_compaction:
+                block = "\n\n## 上一轮上下文压缩摘要\n" + prior_compaction
+                system_content += block
+                prompt_sections["compaction"] = block
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("prior_compaction_inject_failed", error=str(exc))
     thesis_project_id = session.get("thesis_project_id")
     thesis_degraded: str | None = None
     if thesis_project_id:
@@ -281,15 +334,11 @@ async def run_chat(
     )
 
     # 上下文计量：分段估算本次提示的构成，供前端展示「用了多少、用在哪里」。
-    context_window = (
-        session_overrides.get("context_window")
-        or resolve_context_window(user["id"])
-    )
     section_labels = {
         "identity": "系统提示", "summary": "会话摘要", "repos": "仓库说明",
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
-        "thesis": "论文上下文",
+        "thesis": "论文上下文", "compaction": "压缩摘要",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)
@@ -310,7 +359,28 @@ async def run_chat(
         "total": context_total,
         "estimate": True,
     }
+    if history_bundle.summarized:
+        context_info["history_summarized"] = history_bundle.summarized
+    if history_bundle.omitted:
+        context_info["history_omitted"] = history_bundle.omitted
     yield _sse("context", **context_info)
+
+    if history_bundle.omitted:
+        detail = f"另有 {history_bundle.omitted} 条较早消息未载入"
+        if history_bundle.summary:
+            detail += "（更早内容已压缩为摘要）"
+        yield _sse(
+            "notice", kind="history_compacted",
+            message=f"会话历史较长，本轮保留最近 {len(history)} 条消息；{detail}。",
+        )
+    elif history_bundle.summarized:
+        yield _sse(
+            "notice", kind="history_compacted",
+            message=(
+                f"较早的 {history_bundle.summarized} 条消息已压缩为摘要，"
+                "最近对话保持原文。"
+            ),
+        )
 
     if image_warnings:
         yield _sse(
@@ -448,13 +518,31 @@ async def run_chat(
                 "rounds": rounds,
             },
         )
-        # Long-term facts are shared across dev sessions.  Do not extract from
-        # thesis turns until facts have their own product-mode scope, otherwise
-        # thesis text can be recalled in a dev conversation.
-        if final_text and (session.get("product_mode") or "dev") != "thesis":
-            asyncio.create_task(
-                facts_mod.extract_facts_from_turn(user["id"], user_message, final_text)
-            )
+        # Facts are extracted into the turn's own product scope.  Dev and
+        # thesis conversations never share an automatically learned bucket.
+        extract_scope = memory_scope.extraction_scope(session, repo_ids)
+        if final_text and extract_scope is not None:
+            queued: str | None = None
+            if user_message_id:
+                try:
+                    from app.core.jobs.service import enqueue_facts_extract
+
+                    queued = await enqueue_facts_extract(
+                        session["id"], user["id"], user_message_id, message_id,
+                        extract_scope.type, extract_scope.id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("facts_extract_enqueue_failed", error=str(exc))
+            if not queued:
+                _spawn_memory_task(
+                    facts_mod.extract_facts_from_turn(
+                        user["id"], user_message, final_text,
+                        scope_type=extract_scope.type, scope_id=extract_scope.id,
+                        source_session_id=session["id"],
+                        source_message_id=message_id,
+                    ),
+                    label="facts_extract",
+                )
         try:
             from app.core.jobs.service import enqueue_session_summary, is_running
             from app.core.memory.summary import SUMMARY_BATCH
@@ -477,6 +565,9 @@ async def run_chat(
     )
     image_retry_available = bool(vision_images)
     vision_notice_sent = False
+    compaction_summary = ""
+    compaction_attempted = False
+    compaction_recorded = False
     try:
         # 3) tool-calling rounds — 长任务模式：段触顶注入继续指令而不是终止，
         #    瞬时失败自动重试（对齐主流 Agent 的 driver 续跑模式）
@@ -540,20 +631,59 @@ async def run_chat(
                     # Respect the user's configured window (BYOK), not just the
                     # server default used for the UI estimate.
                     round_window = resolve_context_window(user["id"], llm)
+                    if not compaction_attempted and needs_compaction(
+                        messages, round_window
+                    ):
+                        # Summarize before the governor mutates old content:
+                        # otherwise the decisions in those messages are gone.
+                        compaction_attempted = True
+                        try:
+                            compaction_summary = (
+                                await compaction_mod.summarize_for_compaction(
+                                    user["id"], session["id"],
+                                    messages[1:], turn_id=turn_id,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "compaction_summary_failed", error=str(exc)
+                            )
                     compaction = compact_messages(messages, round_window)
                     if compaction.applied:
                         compactions = int(context_info.get("compactions") or 0) + 1
                         context_info["compactions"] = compactions
                         context_info["last_compaction_saved"] = compaction.saved
                         context_info["messages_total"] = compaction.after
+                        if compaction_summary and not compaction_recorded:
+                            compaction_recorded = True
+                            record_id = await compaction_mod.record_compaction(
+                                session["id"], compaction_summary,
+                                turn_id=turn_id,
+                                message_count=compaction.compacted,
+                                tokens_before=compaction.before,
+                                tokens_after=compaction.after,
+                            )
+                            if record_id is not None:
+                                context_info["compaction_id"] = record_id
+                                messages[0]["content"] = (
+                                    messages[0]["content"]
+                                    + "\n\n## 本轮较早内容压缩摘要\n"
+                                    + compaction_summary
+                                )
                         await trace_record(session["id"], turn_id, "context_compacted", {
                             "before": compaction.before, "after": compaction.after,
                             "saved": compaction.saved, "messages": compaction.compacted,
+                            "summarized": bool(compaction_summary),
                         })
                         if compactions == 1:
+                            detail = (
+                                "较早内容已压缩为摘要"
+                                if compaction_summary
+                                else "已自动压缩较早的工具输出"
+                            )
                             yield _sse(
                                 "notice", kind="context_compacted",
-                                message="对话上下文较长，已自动压缩较早的工具输出以继续任务。",
+                                message=f"对话上下文较长，{detail}以继续任务。",
                             )
                     async with asyncio.timeout(settings.llm_timeout):
                         async for event in llm.astream_with_tools(messages, specs):

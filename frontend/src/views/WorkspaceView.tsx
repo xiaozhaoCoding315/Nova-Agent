@@ -106,10 +106,17 @@ function RepoCard({
         {repo.source}
       </p>
       {repo.status === 'ready' && repo.stats && (
-        <p className="mt-1.5 text-sm text-dim">
-          {repo.stats.files ?? 0} 文件 · {repo.stats.chunks ?? 0} 分块 · {repo.stats.symbols ?? 0} 符号
-          {repo.stats.embedded ? ` · ${repo.stats.embedded} 向量` : ''}
-        </p>
+        <>
+          <p className="mt-1.5 text-sm text-dim">
+            {repo.stats.files ?? 0} 文件 · {repo.stats.chunks ?? 0} 分块 · {repo.stats.symbols ?? 0} 符号
+            {repo.stats.embedded ? ` · ${repo.stats.embedded} 向量` : ''}
+          </p>
+          {repo.stats.embed_truncated ? (
+            <p className="mt-1 text-xs text-warn">
+              语义索引为部分构建：{repo.stats.embed_truncated} 个分块仅支持关键词检索
+            </p>
+          ) : null}
+        </>
       )}
       {repo.status === 'failed' && repo.error && (
         <p className="mt-1.5 line-clamp-3 text-sm text-err" title={repo.error}>

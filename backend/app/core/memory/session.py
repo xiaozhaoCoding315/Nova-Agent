@@ -1,17 +1,105 @@
 """Session + message persistence (short-term memory, survives refresh)."""
 import json
 import uuid
+from dataclasses import dataclass
 
 import structlog
 
+from app.core.agent.context_meter import estimate_message_content
 from app.db import execute, query, transaction
 
 logger = structlog.get_logger()
 
 DEFAULT_TITLE = "新对话"
 TITLE_MAX = 30
-HISTORY_LIMIT = 12          # messages injected into the prompt
-ARCHIVE_THRESHOLD = 30      # summarize once a session grows beyond this
+HISTORY_LIMIT = 12          # default cap for callers that only need a tail
+HISTORY_MIN_BUDGET = 2_000
+MAX_SUMMARY_PASSES = 4
+
+
+@dataclass(frozen=True)
+class HistoryBundle:
+    """History selected for one prompt, plus what was summarized or omitted."""
+
+    messages: list[dict]
+    omitted: int
+    summary: str
+    upto_id: int
+    summarized: int
+
+
+def _message_tokens(message: dict) -> int:
+    return estimate_message_content(message.get("content")) + 8
+
+
+def select_history(
+    messages: list[dict], budget_tokens: int
+) -> tuple[list[dict], int]:
+    """Keep the newest messages that fit a token budget, in chronological order.
+
+    At least the newest message is kept even when it alone exceeds the budget:
+    dropping the user's current instruction would be worse than an oversized
+    prompt, and the in-turn governor can still shrink it.
+    """
+    budget = max(0, int(budget_tokens))
+    selected: list[dict] = []
+    used = 0
+    for message in reversed(messages):
+        cost = _message_tokens(message)
+        if selected and used + cost > budget:
+            break
+        selected.append(message)
+        used += cost
+    selected.reverse()
+    return selected, len(messages) - len(selected)
+
+
+async def build_history(
+    session_id: str,
+    user_id: int,
+    budget_tokens: int = HISTORY_MIN_BUDGET,
+    before_id: int | None = None,
+) -> HistoryBundle:
+    """Assemble prompt history without silently dropping unsummarized turns.
+
+    Older messages are compressed into the rolling session summary *before*
+    any token-budget truncation.  If compression fails, the newest messages are
+    still kept and the omitted count is returned so the caller can tell the
+    user instead of pretending the history is complete.
+    """
+    state = await summary_state(session_id, user_id)
+    if state is None:
+        return HistoryBundle([], 0, "", 0, 0)
+    summary, upto_id = state
+    summarized = 0
+
+    def _visible(rows: list[dict]) -> list[dict]:
+        if before_id is None:
+            return rows
+        return [row for row in rows if int(row["id"]) < int(before_id)]
+
+    rows = _visible(await messages_after(session_id, upto_id, user_id=user_id))
+    budget = max(0, int(budget_tokens))
+    while (
+        sum(_message_tokens(row) for row in rows) > budget
+        and len(rows) > 1
+        and summarized < MAX_SUMMARY_PASSES
+    ):
+        # Imported lazily: summary imports this module.
+        from app.core.memory.summary import maybe_summarize
+
+        folded = await maybe_summarize(session_id, user_id, force=True)
+        if folded <= 0:
+            break
+        summarized += folded
+        state = await summary_state(session_id, user_id)
+        if state is None:
+            break
+        summary, upto_id = state
+        rows = _visible(await messages_after(session_id, upto_id, user_id=user_id))
+
+    selected, omitted = select_history(rows, budget)
+    return HistoryBundle(selected, omitted, summary or "", int(upto_id or 0), summarized)
 
 
 async def create_session(

@@ -1277,6 +1277,54 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_github_prs_user "
         "ON github_pull_requests (user_id, created_at DESC)",
     ]),
+    # 27: memory isolation + recoverable compaction.  Facts and daily
+    # summaries carry an explicit scope so dev, thesis-project and repo
+    # memories cannot leak into each other.  Existing rows become global.
+    (27, [
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS scope_type VARCHAR(24) NOT NULL DEFAULT 'global'",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS scope_id VARCHAR(64) NOT NULL DEFAULT ''",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS source_session_id UUID "
+        "REFERENCES sessions(id) ON DELETE SET NULL",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS source_message_id BIGINT",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS confidence REAL DEFAULT 1.0",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS last_decayed_at DATE NOT NULL DEFAULT CURRENT_DATE",
+        # Before scopes existed, thesis extraction was disabled, so every old
+        # fact came from dev conversations.  Keep them out of thesis recall.
+        "UPDATE facts SET scope_type = 'dev' WHERE scope_type = 'global' AND scope_id = ''",
+        "DROP INDEX IF EXISTS idx_facts_user_hash",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_scope_hash "
+        "ON facts (user_id, scope_type, scope_id, hash)",
+        "CREATE INDEX IF NOT EXISTS idx_facts_scope "
+        "ON facts (user_id, scope_type, scope_id, importance DESC)",
+        "ALTER TABLE memory_daily ADD COLUMN IF NOT EXISTS scope_type "
+        "VARCHAR(24) NOT NULL DEFAULT 'dev'",
+        "ALTER TABLE memory_daily ADD COLUMN IF NOT EXISTS scope_id "
+        "VARCHAR(64) NOT NULL DEFAULT ''",
+        # The old primary key (user_id, day) would reject a second scope on the
+        # same day; replace it with a scope-aware unique index.
+        "ALTER TABLE memory_daily DROP CONSTRAINT IF EXISTS memory_daily_pkey",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_daily_scope "
+        "ON memory_daily (user_id, scope_type, scope_id, day)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_daily_user_scope "
+        "ON memory_daily (user_id, scope_type, scope_id, day DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS compaction_records (
+            id BIGSERIAL PRIMARY KEY,
+            session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            turn_id UUID,
+            summary TEXT NOT NULL,
+            message_count INT NOT NULL DEFAULT 0,
+            tokens_before INT NOT NULL DEFAULT 0,
+            tokens_after INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_compaction_session "
+        "ON compaction_records (session_id, created_at DESC)",
+        # Retryable jobs become claimable only after their backoff expires.
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS available_at "
+        "TIMESTAMPTZ NOT NULL DEFAULT now()",
+    ]),
 ]
 
 

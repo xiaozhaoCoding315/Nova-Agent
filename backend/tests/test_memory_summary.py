@@ -89,3 +89,85 @@ async def test_set_summary_records_upto_id(monkeypatch):
     sql, params = execute.await_args.args
     assert "summary_upto_id" in sql
     assert params == ("摘要", 99, "s1")
+
+
+def test_select_history_keeps_all_messages_within_budget():
+    rows = _messages(1, 19)
+
+    selected, omitted = session_mod.select_history(rows, budget_tokens=50_000)
+
+    assert [row["id"] for row in selected] == list(range(1, 20))
+    assert omitted == 0
+
+
+def test_select_history_keeps_newest_and_reports_omitted():
+    rows = _messages(1, 40)
+
+    selected, omitted = session_mod.select_history(rows, budget_tokens=12)
+
+    assert selected[-1]["id"] == 40
+    assert omitted == 40 - len(selected)
+    assert omitted > 0
+    assert [row["id"] for row in selected] == sorted(
+        row["id"] for row in selected
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_history_summarizes_before_dropping(monkeypatch):
+    rows = [
+        {"id": i, "role": "user" if i % 2 else "assistant", "content": "x" * 100}
+        for i in range(1, 31)
+    ]
+    state = {"summary": "", "upto": 0}
+
+    async def summary_state(_session_id, _user_id):
+        return (state["summary"], state["upto"])
+
+    async def messages_after(_session_id, after_id=0, user_id=None):
+        return [row for row in rows if row["id"] > after_id]
+
+    async def fake_summarize(_session_id, _user_id, ctx=None, force=False):
+        assert force is True
+        state["summary"] = "早前摘要"
+        state["upto"] = 20
+        return 20
+
+    monkeypatch.setattr(session_mod, "summary_state", summary_state)
+    monkeypatch.setattr(session_mod, "messages_after", messages_after)
+    monkeypatch.setattr(summary_mod, "maybe_summarize", fake_summarize)
+
+    bundle = await session_mod.build_history("s1", 1, budget_tokens=500)
+
+    assert bundle.summarized == 20
+    assert bundle.summary == "早前摘要"
+    assert bundle.upto_id == 20
+    assert bundle.omitted == 0
+    assert [row["id"] for row in bundle.messages] == list(range(21, 31))
+
+
+@pytest.mark.asyncio
+async def test_build_history_keeps_newest_when_summary_fails(monkeypatch):
+    rows = [
+        {"id": i, "role": "user" if i % 2 else "assistant", "content": "x" * 100}
+        for i in range(1, 31)
+    ]
+
+    monkeypatch.setattr(
+        session_mod, "summary_state", AsyncMock(return_value=("", 0))
+    )
+    monkeypatch.setattr(
+        session_mod, "messages_after", AsyncMock(return_value=rows)
+    )
+    monkeypatch.setattr(
+        summary_mod, "maybe_summarize", AsyncMock(return_value=0)
+    )
+
+    bundle = await session_mod.build_history("s1", 1, budget_tokens=200)
+
+    assert bundle.summarized == 0
+    assert bundle.omitted > 0
+    assert bundle.messages[-1]["id"] == 30
+    assert [row["id"] for row in bundle.messages] == sorted(
+        row["id"] for row in bundle.messages
+    )

@@ -358,6 +358,26 @@ export interface paths {
         patch: operations["update_session_api_v1_chat_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/chat/sessions/{session_id}/compactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Compactions
+         * @description Auditable in-turn compaction records for one owned session.
+         */
+        get: operations["get_session_compactions_api_v1_chat_sessions__session_id__compactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/sessions/{session_id}/messages": {
         parameters: {
             query?: never;
@@ -4903,6 +4923,16 @@ export interface components {
              * @default 0
              */
             message_count: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default dev
+             */
+            scope_type: string;
             /** Summary */
             summary: string;
             /** Updated At */
@@ -4910,6 +4940,11 @@ export interface components {
         };
         /** MemoryFactOut */
         MemoryFactOut: {
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
             /** Content */
             content: string;
             /** Created At */
@@ -4925,6 +4960,18 @@ export interface components {
             last_used_at?: string | null;
             /** Promoted At */
             promoted_at?: string | null;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Source Session Id */
+            source_session_id?: string | null;
             /**
              * Ttl Days
              * @default 90
@@ -7333,6 +7380,37 @@ export interface operations {
             };
         };
     };
+    get_session_compactions_api_v1_chat_sessions__session_id__compactions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_session_messages_api_v1_chat_sessions__session_id__messages_get: {
         parameters: {
             query?: never;
@@ -9065,7 +9143,10 @@ export interface operations {
     };
     get_memory_api_v1_memory_get: {
         parameters: {
-            query?: never;
+            query?: {
+                scope_type?: string | null;
+                scope_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9081,11 +9162,23 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     delete_daily_api_v1_memory_daily__day__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                scope_type?: string;
+                scope_id?: string;
+            };
             header?: never;
             path: {
                 day: string;

@@ -245,19 +245,23 @@ zip 上传 / git clone --depth 1（公开仓库，超时 120s，大小上限 100
 
 - 稠密：Qdrant `code_chunks`（repo 过滤），top 10
 - 关键词：PG `tsv @@ plainto_tsquery`（jieba 分词后），ILIKE 兜底中文边界，top 10
-- RRF（k=10）融合 → top 5 注入上下文；单路故障降级为单路结果，全失败返回空
+- RRF（k=10）融合 → 按调用方 `top_k` 返回（聊天为 8），注入时再受片段 token 预算约束；单路故障降级为单路结果，全失败返回空
+- 索引 embedding 有 `index_embed_max_chunks` 上限；超出部分仍可关键词检索，`repos.stats.embed_truncated` 记录未向量化数量，UI 不再把部分索引显示成完整 ready
 - 引用一律携带 `path / line_start / line_end`，前端可点击
 
 ---
 
-## 8. 记忆设计（两层）
+## 8. 记忆设计（四层，2026-11-22 P0 后）
 
 | 层 | 位置 | 生命周期 |
 |---|---|---|
-| 会话记忆 | `sessions` + `messages` | 持久；超 20 条自动 LLM 摘要进 `sessions.summary`，最近 10 条原文保留（v1 直接删消息的 bug 修复） |
-| 长期记忆 | `facts` | 对话中异步抽取用户偏好/事实；MD5 + embedding 去重（0.92）；重要性衰减：命中 +0.1、7 天未用 −0.01、TTL 到期清理（小时级清理循环接上衰减，v1 定义了但没调用） |
+| 会话记忆 | `sessions` + `messages` | 持久；按 token 预算装配历史，超预算时先强制摘要、再保留最近原文；摘要失败会在 SSE 明确提示省略数量，不再静默固定截 12 条 |
+| 会话摘要 | `sessions.summary` + `summary_upto_id` | 每 20 条后台滚动摘要；临近预算时同步强制摘要，最多多轮折叠 |
+| 日摘要 | `memory_daily` | 按 `scope_type/scope_id` 每天一份；dev 与每个论文项目分开聚合 |
+| 长期事实 | `facts` + `fact_days` | 按 global/dev/thesis/repo 作用域隔离；MD5 + embedding 去重（0.92），语义重复会强化已有事实并记录出现日；检索只更新 `last_used_at`，不再每次 +0.1 重要性；TTL 从最后一次使用起算，衰减按天幂等执行；达到上限时淘汰同作用域最低价值事实 |
+| 回合内压缩 | `compaction_records` | 超预算时先让 utility 模型生成结构化摘要并持久化，再压缩旧工具输出；摘要注入本轮 system prompt，下一轮摘要未跟上时可重新注入 |
 
-图谱记忆（Neo4j）、DAG 运行时记忆随子系统一并退场。
+图谱记忆（Neo4j）、DAG 运行时记忆随子系统一并退场。作用域规则：会话只能读取 `global + 当前产品作用域 + 已选仓库`；thesis 不读 dev/repo，dev 不读 thesis。实现细节与测试见 §39。
 
 ---
 
@@ -855,6 +859,7 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - **压缩层**：会话滚动摘要（每 20 条）+ 日摘要（`memory_daily`，每天一份，≤40 行）。
 - **长期层**：`facts` 保存偏好/事实，`fact_days` 记录事实出现的日期；同一事实在 ≥2 个不同日期出现后自动晋升（`promoted_at`），重要性 +0.3。
 - 事实召回从“仅按重要性”改为“语义相关度 0.7 + 重要性 0.3”混合排序；Embedding 不可用时回退为重要性排序。
+- **P0 修正（2026-11-22）**：候选集不再先按重要性截 80；检索不再给重要性 +0.1；语义重复会强化旧事实；500 上限改为淘汰；TTL 从最后一次使用起算；日摘要与 facts 增加作用域。详见 §39。
 - 维护循环每小时执行：事实衰减/TTL、事实晋升、昨日日摘要（不足 8 条消息跳过；已有摘要不重复生成）。
 - 新增 `GET /memory`、`DELETE /memory/facts/{id}`、`DELETE /memory/daily/{day}`；设置页可查看/删除事实与日摘要。
 
@@ -1176,3 +1181,47 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 - 注册/消息限流为进程内滑动窗口，单实例；多副本需迁移到 PG/Redis。
 - 存储配额只统计用户上传文件，不计仓库索引副本。
 - 2C2G 不适合多人同时跑 Docker 验证；公开互联网还需反代限流/验证码。
+
+---
+
+## 39. v6.1 增量：P0 记忆架构修复（2026-11-22）
+
+依据 [`docs/MEMORY-ARCHITECTURE-REVIEW.md`](MEMORY-ARCHITECTURE-REVIEW.md) 的 P0 清单，迁移版本 27。
+
+### 39.1 作用域（P0-B）
+- `facts` 新增 `scope_type/scope_id/source_session_id/source_message_id/confidence`；唯一键改为 `(user_id, scope_type, scope_id, hash)`。
+- `memory_daily` 新增 `scope_type/scope_id`，主键语义改为 `(user_id, scope_type, scope_id, day)`。
+- 读取：global + 当前产品作用域 + 已选仓库；thesis 只读 global + 当前论文项目，dev 不读 thesis。
+- 写入：thesis 写 `thesis:<project_id>`；单仓库 dev 写 `repo:<repo_id>`；多仓库/无仓库 dev 写 `dev`。旧的 facts 因此前禁用 thesis 抽取，迁移为 `dev`，避免进入论文召回。
+- API 支持 `GET /memory?scope_type=&scope_id=`；设置页记忆区增加作用域过滤与标签，删除日摘要时带作用域。
+
+### 39.2 历史装配（P0-A）
+- 新 `session.build_history()`：按 token 预算从新到旧选择，预算默认窗口的 50%。
+- 超预算时先 `maybe_summarize(force=True)` 多轮折叠，再选择原文；摘要失败时保留最新消息，并通过 `history_omitted` 与 SSE `history_compacted` 明确提示省略数量。
+- 不再固定只取 12 条；19 条短会话不会丢消息。
+
+### 39.3 可恢复压缩（P0-C）
+- 新 `memory/compaction.py`：超预算时先让 utility 模型生成结构化摘要，再执行原有工具输出压缩。
+- 摘要写入 `compaction_records`，本轮注入 system prompt；下一轮滚动摘要未跟上时可重新注入。
+- 新增 `GET /chat/sessions/{id}/compactions` 供审计；`context_info` 暴露 `compactions/compaction_id/last_compaction_saved`。
+
+### 39.4 持久任务（P0-D）
+- 新增 `facts_extract` Job：payload 只带消息 id 与作用域，幂等键 `facts_extract:<assistant_message_id>`，最多 3 次。
+- 摘要任务同样 3 次尝试，并按最新消息 id 幂等；失败抛错触发重试，不再记录成功空操作。
+- 失败重排增加指数退避（`available_at`，5s × 2^attempts，封顶 300s）；任务列表/重试接口即失败可见入口。
+- JobRunner 不可用时回退为带强引用与错误回调的内存任务，不再裸 `create_task`。
+
+### 39.5 生命周期与检索（P0-E）
+- TTL 从 `GREATEST(created_at, last_used_at)` 起算；衰减按天幂等执行，避免小时级清理把 90 天寿命压成约 11 天。
+- 检索只更新 `last_used_at/last_decayed_at`，不再每次给重要性 +0.1。
+- 语义重复命中会强化已有事实并记录 `fact_days`；达到每作用域 500 条时淘汰最低价值事实。
+- 候选集从“按重要性前 80”改为作用域内最多 1000 条按新近度/重要性候选，再做语义排序。
+
+### 39.6 RAG 契约（P0-F）
+- `retrieve(top_k=...)` 不再硬编码 `min(5, top_k)`。
+- 索引 embedding 超过 `index_embed_max_chunks` 时写入 `stats.embed_truncated/embed_candidates/embed_limit`，并记录警告；关键词检索仍覆盖全部 chunk。
+
+### 39.7 验证与边界
+- 新增/更新单测：`test_memory_summary.py`、`test_memory_scope.py`、`test_memory_compaction.py`、`test_facts.py`、`test_memory_daily.py`、`test_jobs.py`、`test_retriever.py`、`test_local_retrieval.py`。
+- 全量回归（2026-11-22）：后端 `pytest` 1423 passed / 12 skipped；`ruff check app tests evals` 通过；`evals` 的 scripted smoke 通过；前端 `npm run build`、`npm run contract:check` 通过。
+- 尚未做：facts 的 pgvector 候选召回（当前用 JSONB + 新近度上限）、自动学习的 global 偏好（目前 global 仅保留给显式写入）、日摘要的仓库级细分（dev 日摘要按产品模式聚合）。这些属于 P1。

@@ -4201,6 +4201,16 @@
             "title": "Message Count",
             "type": "integer"
           },
+          "scope_id": {
+            "default": "",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "default": "dev",
+            "title": "Scope Type",
+            "type": "string"
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -4227,6 +4237,11 @@
       },
       "MemoryFactOut": {
         "properties": {
+          "confidence": {
+            "default": 1.0,
+            "title": "Confidence",
+            "type": "number"
+          },
           "content": {
             "title": "Content",
             "type": "string"
@@ -4275,6 +4290,27 @@
               }
             ],
             "title": "Promoted At"
+          },
+          "scope_id": {
+            "default": "",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "default": "global",
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "source_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Session Id"
           },
           "ttl_days": {
             "default": 90,
@@ -8901,6 +8937,47 @@
         ]
       }
     },
+    "/api/v1/chat/sessions/{session_id}/compactions": {
+      "get": {
+        "description": "Auditable in-turn compaction records for one owned session.",
+        "operationId": "get_session_compactions_api_v1_chat_sessions__session_id__compactions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Compactions",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/v1/chat/sessions/{session_id}/messages": {
       "get": {
         "operationId": "get_session_messages_api_v1_chat_sessions__session_id__messages_get",
@@ -11295,6 +11372,40 @@
     "/api/v1/memory": {
       "get": {
         "operationId": "get_memory_api_v1_memory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11305,6 +11416,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Memory",
@@ -11323,6 +11444,26 @@
             "required": true,
             "schema": {
               "title": "Day",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_type",
+            "required": false,
+            "schema": {
+              "default": "dev",
+              "title": "Scope Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope Id",
               "type": "string"
             }
           }

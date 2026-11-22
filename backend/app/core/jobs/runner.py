@@ -210,7 +210,8 @@ class JobRunner:
         rows = await execute(
             "UPDATE jobs SET cancel_requested = TRUE, "
             "status = CASE WHEN status = 'queued' THEN 'canceled' ELSE status END, "
-            "finished_at = CASE WHEN status = 'queued' THEN now() ELSE finished_at END "
+            "finished_at = CASE WHEN status = 'queued' THEN now() ELSE finished_at END, "
+            "available_at = CASE WHEN status = 'queued' THEN now() ELSE available_at END "
             f"WHERE id = %s AND status IN ('queued', 'running'){owner_sql} "
             "RETURNING status, kind, payload",
             params,
@@ -250,7 +251,7 @@ class JobRunner:
         rows = await execute(
             "UPDATE jobs SET status = 'queued', attempts = 0, progress = 0, step = NULL, "
             "result = NULL, error = NULL, cancel_requested = FALSE, started_at = NULL, "
-            "finished_at = NULL, heartbeat_at = NULL "
+            "finished_at = NULL, heartbeat_at = NULL, available_at = now() "
             f"WHERE id = %s AND status IN ('failed', 'canceled'){owner_sql} "
             "RETURNING id",
             params,
@@ -353,7 +354,7 @@ class JobRunner:
             WHERE id = (
                 SELECT id FROM jobs
                 WHERE status = 'queued' AND cancel_requested = FALSE
-                  AND kind = ANY(%s)
+                  AND kind = ANY(%s) AND available_at <= now()
                 ORDER BY created_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -421,7 +422,10 @@ class JobRunner:
             if job.attempts < job.max_attempts:
                 await execute(
                     "UPDATE jobs SET status = 'queued', started_at = NULL, "
-                    "heartbeat_at = NULL, error = %s WHERE id = %s",
+                    "heartbeat_at = NULL, error = %s, "
+                    "available_at = now() + make_interval(secs => "
+                    "  LEAST(300, 5 * POWER(2, attempts))) "
+                    "WHERE id = %s",
                     (detail, job.id),
                 )
             else:

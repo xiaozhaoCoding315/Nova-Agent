@@ -474,7 +474,16 @@ export type Repo = {
   kind?: 'import' | 'builder'
   origin?: 'upload' | 'git' | 'local'
   error?: string | null
-  stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number; dependencies?: number }
+  stats?: {
+    files?: number
+    chunks?: number
+    symbols?: number
+    embedded?: number
+    dependencies?: number
+    embed_candidates?: number
+    embed_limit?: number
+    embed_truncated?: number
+  }
   created_at?: string
   smoke?: { ok: boolean; status: string; note?: string; elapsed_ms?: number } | null
 }
@@ -1042,6 +1051,8 @@ export type LlmTestResult = {
   message: string
 }
 
+export type MemoryScopeType = 'global' | 'dev' | 'thesis' | 'repo'
+
 export type MemoryFact = {
   id: number
   content: string
@@ -1050,6 +1061,10 @@ export type MemoryFact = {
   promoted_at?: string | null
   last_used_at?: string | null
   created_at?: string | null
+  scope_type: MemoryScopeType
+  scope_id: string
+  source_session_id?: string | null
+  confidence: number
 }
 
 export type MemoryDaily = {
@@ -1058,6 +1073,8 @@ export type MemoryDaily = {
   message_count: number
   created_at?: string | null
   updated_at?: string | null
+  scope_type: MemoryScopeType
+  scope_id: string
 }
 
 export type Memory = {

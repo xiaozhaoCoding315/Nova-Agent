@@ -32,6 +32,20 @@ class CompactionResult:
         return max(0, self.before - self.after)
 
 
+def compaction_limit(window: int, budget_ratio: float = BUDGET_RATIO) -> int:
+    return max(int(window * budget_ratio), 4_000)
+
+
+def needs_compaction(
+    messages: list[dict], window: int, budget_ratio: float = BUDGET_RATIO
+) -> bool:
+    """Whether the next LLM call would exceed the compaction budget."""
+    return (
+        len(messages) > 2
+        and estimate_messages(messages) > compaction_limit(window, budget_ratio)
+    )
+
+
 def compact_messages(
     messages: list[dict],
     window: int,
@@ -39,7 +53,7 @@ def compact_messages(
     keep_recent: int = KEEP_RECENT_MESSAGES,
 ) -> CompactionResult:
     """Shrink old tool results in place when the prompt exceeds the budget."""
-    limit = max(int(window * budget_ratio), 4_000)
+    limit = compaction_limit(window, budget_ratio)
     before = estimate_messages(messages)
     if before <= limit or len(messages) <= 2:
         return CompactionResult(False, before, before, 0, limit)

@@ -681,6 +681,10 @@ class MemoryFactOut(BaseModel):
     promoted_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    scope_type: str = "global"
+    scope_id: str = ""
+    source_session_id: Optional[str] = None
+    confidence: float = 1.0
 
 
 class MemoryDailyOut(BaseModel):
@@ -689,6 +693,8 @@ class MemoryDailyOut(BaseModel):
     message_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    scope_type: str = "dev"
+    scope_id: str = ""
 
 
 class MemoryOut(BaseModel):

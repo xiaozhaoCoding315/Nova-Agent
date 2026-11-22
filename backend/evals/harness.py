@@ -22,6 +22,7 @@ from app.core.indexing import symbols as symbols_mod
 from app.core.jobs import service as jobs_service
 from app.core.llm import factory as llm_factory_mod
 from app.core.llm import usage as usage_mod
+from app.core.memory import compaction as compaction_mod
 from app.core.memory import facts as facts_mod
 from app.core.memory import session as session_mod
 from app.core.rag import retriever as retriever_mod
@@ -281,10 +282,27 @@ class InProcessHarness:
             session_mod, "recent_messages",
             AsyncMock(return_value=copy.deepcopy(self.history)),
         )
+        self._patch(
+            session_mod, "build_history",
+            AsyncMock(return_value=session_mod.HistoryBundle(
+                messages=copy.deepcopy(self.history),
+                omitted=0,
+                summary="",
+                upto_id=0,
+                summarized=0,
+            )),
+        )
         self._patch(session_mod, "add_message", AsyncMock(return_value=1))
         self._patch(session_mod, "count_messages_since", AsyncMock(return_value=0))
         self._patch(facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
         self._patch(facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+        self._patch(
+            compaction_mod, "latest_compaction", AsyncMock(return_value="")
+        )
+        self._patch(
+            compaction_mod, "summarize_for_compaction", AsyncMock(return_value="")
+        )
+        self._patch(compaction_mod, "record_compaction", AsyncMock(return_value=None))
         self._patch(loop_mod, "log_audit", fake_log_audit)
         self._patch(loop_mod, "trace_record", fake_trace_record)
         self._patch(loop_mod, "_record_usage", AsyncMock())
