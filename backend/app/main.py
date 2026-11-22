@@ -15,7 +15,7 @@ from app.core.logging_setup import setup_logging
 
 logger = structlog.get_logger()
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 _CLEANUP_INTERVAL_S = 3600
 
 

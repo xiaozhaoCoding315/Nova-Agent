@@ -16,7 +16,13 @@ const PERMISSIONS: { value: PermissionMode; label: string; hint: string }[] = [
   { value: 'full', label: '完全', hint: '不逐条确认（谨慎使用）' },
 ]
 
-const QUICK_PROMPTS = [
+const QUICK_PROMPTS_STAGE = [
+  '我的论文题目还没定下来。请先用 1-3 个问题帮我收窄方向，再给出 3 个可选选题。',
+  '请按「选题、来源、提纲、研究、初稿、修改、定稿」七个阶段，列一份我需要准备的材料清单。',
+  '请先不要写正文，用 1-3 个问题确认我的研究对象、方法和已有数据，再给我一版提纲。',
+]
+
+const QUICK_PROMPTS_REPO = [
   '先读一遍关联工程项目的结构和关键文件，用一段话说明这个项目做了什么、技术栈和主要模块。',
   '根据项目实现给出论文提纲（到二级标题），每章标注对应的项目模块或证据。',
   '检查论文与项目是否一致：哪些实现没写进论文，哪些论文描述在代码里找不到依据。',
@@ -61,6 +67,9 @@ export function ThesisChatPanel({
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const repoIds = project.source_repo_id ? [project.source_repo_id] : []
+  const quickPrompts = project.source_repo_id
+    ? [...QUICK_PROMPTS_REPO, QUICK_PROMPTS_STAGE[2]]
+    : QUICK_PROMPTS_STAGE
 
   // 每个论文项目有自己的对话范围；scope 变化会清空内存态，历史按项目从
   // 服务端取。这里不能 newSession()：面板重挂载（移动端抽屉开关）会把
@@ -173,11 +182,14 @@ export function ThesisChatPanel({
         {messages.length === 0 && !streaming && (
           <div className="rounded-md border border-dashed border-edge bg-base/40 px-3 py-4">
             <p className="text-xs leading-relaxed text-dim">
-              先读项目，再动笔。AI 会引用仓库里的文件与行号，只用你已导入的参考文献；
+              {project.source_repo_id
+                ? '先读项目，再动笔。AI 会引用仓库里的文件与行号，只用你已导入的参考文献；'
+                : '从选题开始，一次只推进一个阶段。AI 会先用 1-3 个问题确认方向，'
+                  + '不会一次写完整篇；'}
               生成的正文是草稿，需要你核对、改写并记入 AI 使用声明。
             </p>
             <div className="mt-2 flex flex-col items-stretch gap-1.5">
-              {QUICK_PROMPTS.map((prompt) => (
+              {quickPrompts.map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => setInput(prompt)}

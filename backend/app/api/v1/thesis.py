@@ -2,19 +2,23 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
+from pathlib import Path
 from typing import NoReturn
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from starlette.background import BackgroundTask
 
 from app.config import settings
+from app.core.documents.convert import ConversionError, convert_document
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_job_quota, ensure_token_budget
-from app.core.storage.user_storage import storage_limit_bytes
-from app.core.thesis import service, stage_service
+from app.core.storage.user_storage import sanitize_filename, storage_limit_bytes
+from app.core.thesis import service, stage_service, stages
 from app.core.thesis.rules.builtin import list_templates
 from app.core.thesis.stages import STAGE_LABELS
 from app.models.schemas import (
@@ -57,7 +61,7 @@ STAGE_DRAFT_PROMPT = """你在辅助作者推进学位论文的当前阶段。�
 1. 只处理当前阶段，不要提前写后续阶段的正文。
 2. 不编造文献、数据、实验结果、学校要求或导师意见；缺少的信息写成「待补充」。
 3. 不替作者下最终结论；需要作者决定的地方列出选项或问题。
-4. 用简洁的 Markdown，小标题和列表为主，避免套话和重复。
+4. 用简洁的 Markdown，小标题和列表为主；句子平实、像人说话，避免套话、重复和模板化排比。
 5. 作者给了要求就以要求为准；没有要求就按阶段常规产出，并标出需要确认的点。
 6. 不要声称已经核实、已经通过或已经完成。"""
 
@@ -745,6 +749,102 @@ async def export_thesis_package(
         media_type="application/zip",
         # The zip is a one-shot download; remove it once the response is sent.
         background=BackgroundTask(lambda: path.unlink(missing_ok=True)),
+    )
+
+
+@router.get("/thesis/projects/{project_id}/manuscript")
+async def export_thesis_manuscript(
+    project_id: str,
+    fmt: str = Query(default="docx", alias="format", pattern="^(md|docx|pdf)$"),
+    allow_unconfirmed: bool = Query(default=False),
+    user: dict = Depends(require_thesis_access),
+):
+    """Export the author's stage contents as Markdown, DOCX or PDF.
+
+    This is the 0-to-1 path: it does not need an imported DOCX.  Empty stages
+    are omitted; unconfirmed or stale stages require an explicit acknowledgement.
+    """
+    check_job_quota(user, "thesis_export")
+    try:
+        board = await stage_service.get_board(user["id"], project_id)
+        project = await service.get_project(user["id"], project_id)
+    except Exception as exc:  # noqa: BLE001 - map service errors to HTTP
+        _raise_http(exc)
+    if project is None:
+        raise HTTPException(status_code=404, detail="论文项目不存在")
+    state = stages.StageState.from_dict(board["state"])
+    if not any(value.strip() for value in state.contents.values()):
+        raise HTTPException(
+            status_code=409,
+            detail="还没有可导出的阶段内容；请先在「阶段」页填写并确认。",
+        )
+    warnings = stages.export_warnings(state)
+    if warnings and not allow_unconfirmed:
+        labels = "、".join(str(item.get("label") or "") for item in warnings[:4])
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"以下内容还没有作者确认：{labels}。确认后重新导出，或明确选择仍然导出。",
+                "warnings": warnings,
+            },
+        )
+    markdown = stages.render_manuscript(state, str(project.get("title") or ""))
+    base = sanitize_filename(str(project.get("title") or "论文")) or "论文"
+    filename = f"{base}_阶段稿.{fmt}"
+    if fmt == "md":
+        return PlainTextResponse(
+            markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
+            },
+        )
+
+    workdir = Path(tempfile.mkdtemp(prefix="nova-thesis-manuscript-"))
+    source = workdir / "manuscript.md"
+    source.write_text(markdown, encoding="utf-8")
+    try:
+        result = await asyncio.to_thread(
+            convert_document,
+            source,
+            fmt,
+            workdir / "out",
+            profile="thesis",
+            overwrite=True,
+        )
+    except ConversionError as exc:
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result.status != "done" or not result.output_path:
+        diagnostics = "；".join(result.diagnostics[:3])
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "导出工具不可用，文件没有生成。" + diagnostics,
+                "diagnostics": result.diagnostics,
+                "fidelity": result.fidelity,
+            },
+        )
+    await log_audit(
+        AuditAction.THESIS_EXPORT,
+        user_id=str(user["id"]),
+        details={
+            "project_id": project_id,
+            "filename": filename,
+            "kind": "stage_manuscript",
+            "unconfirmed_warnings": len(warnings),
+            "acknowledged": bool(warnings and allow_unconfirmed),
+        },
+    )
+    return FileResponse(
+        result.output_path,
+        filename=filename,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            if fmt == "docx" else "application/pdf"
+        ),
+        background=BackgroundTask(lambda: shutil.rmtree(workdir, ignore_errors=True)),
     )
 
 

@@ -384,7 +384,7 @@ def create_job_version(user_id: int, profile_id: str, *, title: str,
         versions = _load_versions(root)
         while version.id in versions:
             version.id = uuid.uuid4().hex
-        markdown = _render_markdown(profile, selected)
+        markdown = _render_markdown(profile, selected, version.template)
         markdown_path = _version_markdown_path(root, version.id)
         _atomic_write(markdown_path, markdown.encode("utf-8"))
         versions[version.id] = version
@@ -429,10 +429,12 @@ def get_job_version(user_id: int, version_id: str) -> JobVersion:
 
 
 def render_job_version(user_id: int, version_id: str) -> str:
-    """Render a version from its selected facts and refresh the Markdown file.
+    """Return the Markdown snapshot captured when the version was created.
 
-    Rendering refuses a fact that has since been excluded or downgraded, so a
-    stale selection cannot silently reappear in a resume.
+    A job version is a snapshot: editing, excluding or downgrading a fact
+    later must not change a resume the author already reviewed.  Versions
+    created before snapshots were stored are rendered once from their selected
+    facts and saved, so every later read stays stable.
     """
     root = resume_root(user_id)
     vid = _ensure_id(version_id, label="简历版本")
@@ -440,6 +442,9 @@ def render_job_version(user_id: int, version_id: str) -> str:
         version = _load_versions(root).get(vid)
         if version is None:
             raise ResumeNotFound("简历版本不存在")
+        markdown_path = _version_markdown_path(root, vid)
+        if markdown_path.is_file():
+            return markdown_path.read_text(encoding="utf-8")
         profile = _load_profiles(root).get(version.profile_id)
         if profile is None:
             raise ResumeNotFound("简历档案不存在")
@@ -451,8 +456,8 @@ def render_job_version(user_id: int, version_id: str) -> str:
                 raise ResumeNotFound("事实不存在")
             ensure_fact_includable(fact)
             selected.append(fact)
-        markdown = _render_markdown(profile, selected)
-        _atomic_write(_version_markdown_path(root, vid), markdown.encode("utf-8"))
+        markdown = _render_markdown(profile, selected, version.template)
+        _atomic_write(markdown_path, markdown.encode("utf-8"))
     return markdown
 
 
@@ -470,12 +475,19 @@ def _contact_line(contact: dict[str, str]) -> str:
     return " | ".join(parts)
 
 
-def _render_markdown(profile: Profile, facts: list[Fact]) -> str:
-    """Render only profile fields and selected facts; never add new content."""
+def _render_markdown(
+    profile: Profile, facts: list[Fact], template: str = DEFAULT_TEMPLATE,
+) -> str:
+    """Render only profile fields and selected facts; never add new content.
+
+    ``template`` changes heading depth and whether metrics/evidence sit on
+    nested lines or stay inline.  It never adds, rewrites or reorders facts.
+    """
+    template = template if template in TEMPLATES else DEFAULT_TEMPLATE
     lines: list[str] = [f"# {profile.name}", ""]
     headline = _single_line(profile.headline, 200)
     if headline:
-        lines.extend([headline, ""])
+        lines.extend([f"**{headline}**" if template == "modern" else headline, ""])
     contact = _contact_line(profile.contact)
     if contact:
         lines.extend([contact, ""])
@@ -484,10 +496,21 @@ def _render_markdown(profile: Profile, facts: list[Fact]) -> str:
     grouped: dict[str, list[Fact]] = {}
     for fact in facts:
         grouped.setdefault(fact.category, []).append(fact)
+    heading = "###" if template in ("modern", "compact") else "##"
     for category, items in grouped.items():
-        lines.extend([f"## {category}", ""])
+        lines.extend([f"{heading} {category}", ""])
         for fact in items:
             detail = _single_line(fact.detail, 4000)
+            if template == "compact":
+                extras: list[str] = []
+                if fact.metrics:
+                    extras.append("指标：" + "；".join(fact.metrics))
+                if fact.evidence:
+                    extras.append("依据：" + _single_line(fact.evidence, 1000))
+                suffix = f"（{'；'.join(extras)}）" if extras else ""
+                line = f"- **{fact.title}**" + (f"：{detail}" if detail else "")
+                lines.append(line + suffix)
+                continue
             if detail:
                 lines.append(f"- **{fact.title}**：{detail}")
             else:

@@ -784,15 +784,26 @@ export type RemoteApproval = {
   expires_at: string
 }
 
+export type RemoteInstruction = {
+  instruction_id: string
+  device_id: string
+  text: string
+  status: 'pending' | 'sent' | 'rejected' | 'expired'
+  created_at: string
+  expires_at: string
+  resolved_at: string
+}
+
 export type RemoteCommandEnvelope = {
   v: number
   command_id: string
   device_id: string
-  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide'
+  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide' | 'chat.instruct'
   action_hash: string
   args_ciphertext: string
   approval_id: string
   decision: string
+  instruction: string
   issued_at: string
   expires_at: string
   nonce: string
@@ -813,6 +824,9 @@ export type RemoteCommandResult = {
   events?: RemoteProgressEvent[]
   notifications?: RemoteNotification[]
   approvals?: RemoteApproval[]
+  instructions?: RemoteInstruction[]
+  instruction?: RemoteInstruction
+  queued?: boolean
   approval?: { approval_id: string; status: string; action_hash: string }
   stopped_task_ids?: string[]
   idempotent?: boolean
@@ -1552,6 +1566,8 @@ export type ThesisExportReadiness = {
   ready: boolean
   stage: string
   readiness: string
+  document_available: boolean
+  manuscript_available: boolean
   warnings: ThesisExportWarning[]
 }
 

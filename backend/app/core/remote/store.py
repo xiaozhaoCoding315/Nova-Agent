@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.core.remote.contracts import utc_now
+from app.core.remote.contracts import MAX_INSTRUCTION_CHARS, parse_timestamp, utc_now
 from app.core.remote.identity import (
     IdentityError,
     compute_sas,
@@ -38,6 +38,11 @@ PAIRING_TTL_SECONDS = 300
 DEVICE_PERMISSIONS = ["status", "stop", "approve"]
 _MAX_AUDIT_LINES = 500
 _MAX_NOTIFICATIONS = 200
+_MAX_INSTRUCTIONS = 100
+_MAX_PENDING_INSTRUCTIONS = 5
+_INSTRUCTION_TTL_HOURS = 24
+_MAX_RELAY_AUDIT_LINES = 1000
+_MAX_RELAY_AUDIT_BYTES = 2 * 1024 * 1024
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,80}$")
 
 _lock = threading.RLock()
@@ -518,6 +523,138 @@ def mark_notifications_read(
     return changed
 
 
+def _instructions_path(user_id: int | str) -> Path:
+    return _root() / "users" / _user_segment(user_id) / "instructions.json"
+
+
+def _clean_instruction(text: Any) -> str:
+    """Normalize phone input and drop control characters before storing."""
+    value = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    value = "".join(
+        ch for ch in value
+        if ch in ("\n", "\t") or ord(ch) >= 32
+    )
+    return value.strip()
+
+
+def _prune_instructions(items: list[dict[str, Any]]) -> bool:
+    """Mark pending instructions past their TTL as expired; return if changed."""
+    now = utc_now()
+    changed = False
+    for item in items:
+        if item.get("status") != "pending":
+            continue
+        try:
+            expired = parse_timestamp(str(item.get("expires_at") or "")) <= now
+        except ValueError:
+            expired = True
+        if expired:
+            item["status"] = "expired"
+            item["resolved_at"] = now.isoformat()
+            changed = True
+    return changed
+
+
+def add_instruction(
+    user_id: int | str, *, device_id: str, text: Any,
+) -> dict[str, Any]:
+    """Queue one phone instruction for local confirmation (never executed here)."""
+    cleaned = _clean_instruction(text)
+    if not cleaned:
+        raise RemoteError("指令不能为空")
+    if len(cleaned) > MAX_INSTRUCTION_CHARS:
+        raise RemoteError(f"指令过长，最多 {MAX_INSTRUCTION_CHARS} 个字符")
+    safe_device = _safe_id(device_id, "设备 ID")
+    path = _instructions_path(user_id)
+    now = utc_now()
+    item = {
+        "instruction_id": f"ins_{secrets.token_hex(8)}",
+        "device_id": safe_device,
+        "text": cleaned,
+        "status": "pending",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=_INSTRUCTION_TTL_HOURS)).isoformat(),
+        "resolved_at": "",
+    }
+    with _lock:
+        payload = _read_json(path) or {}
+        items = payload.get("items") if isinstance(payload, dict) else []
+        items = [entry for entry in (items or []) if isinstance(entry, dict)]
+        _prune_instructions(items)
+        pending = sum(1 for entry in items if entry.get("status") == "pending")
+        if pending >= _MAX_PENDING_INSTRUCTIONS:
+            _write_json(path, {"items": items})
+            raise RemoteError("等待电脑确认的指令太多，请先在电脑上处理")
+        items = [item] + items
+        _write_json(path, {"items": items[:_MAX_INSTRUCTIONS]})
+    return item
+
+
+def list_instructions(
+    user_id: int | str, *, status: str | None = None, limit: int = 20,
+) -> list[dict[str, Any]]:
+    path = _instructions_path(user_id)
+    with _lock:
+        payload = _read_json(path) or {}
+        items = payload.get("items") if isinstance(payload, dict) else []
+        items = [entry for entry in (items or []) if isinstance(entry, dict)]
+        # Prune and persist under the same lock as add/resolve, otherwise a
+        # concurrent poll could write back a stale snapshot and erase a new
+        # instruction (or resurrect one that was just resolved).
+        if _prune_instructions(items):
+            _write_json(path, {"items": items[:_MAX_INSTRUCTIONS]})
+    if status:
+        items = [entry for entry in items if entry.get("status") == status]
+    return items[: max(1, min(int(limit), 100))]
+
+
+def resolve_instruction(
+    user_id: int | str, instruction_id: str, status: str,
+) -> dict[str, Any]:
+    """Mark one instruction as sent into the chat or rejected by the desktop."""
+    if status not in ("sent", "rejected"):
+        raise RemoteError("指令只能标记为 sent 或 rejected")
+    safe = _safe_id(instruction_id, "指令 ID")
+    path = _instructions_path(user_id)
+    with _lock:
+        payload = _read_json(path) or {}
+        items = payload.get("items") if isinstance(payload, dict) else []
+        items = [entry for entry in (items or []) if isinstance(entry, dict)]
+        _prune_instructions(items)
+        target = next(
+            (entry for entry in items if entry.get("instruction_id") == safe), None,
+        )
+        if target is None:
+            _write_json(path, {"items": items[:_MAX_INSTRUCTIONS]})
+            raise RemoteError("这条指令不存在")
+        if target.get("status") != "pending":
+            _write_json(path, {"items": items[:_MAX_INSTRUCTIONS]})
+            raise RemoteError("这条指令已经处理过了")
+        target["status"] = status
+        target["resolved_at"] = utc_now().isoformat()
+        _write_json(path, {"items": items[:_MAX_INSTRUCTIONS]})
+    return target
+
+
+def mark_notifications_for_task(user_id: int | str, task_id: str) -> int:
+    """Mark the instruction notification read once the desktop handles it."""
+    owner = _user_segment(user_id)
+    path = _root() / "users" / owner / "notifications.json"
+    changed = 0
+    with _lock:
+        payload = _read_json(path) or {}
+        items = payload.get("items") if isinstance(payload, dict) else []
+        for entry in items or []:
+            if not isinstance(entry, dict) or entry.get("read"):
+                continue
+            if str(entry.get("task_id") or "") != task_id:
+                continue
+            entry["read"] = True
+            changed += 1
+        _write_json(path, {"items": items or []})
+    return changed
+
+
 def _approvals_path(user_id: int | str) -> Path:
     return _root() / "users" / _user_segment(user_id) / "approvals.json"
 
@@ -644,6 +781,12 @@ def _relay_audit(event: dict[str, Any]) -> None:
         with _lock:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+            if path.stat().st_size > _MAX_RELAY_AUDIT_BYTES:
+                lines = path.read_text(encoding="utf-8").splitlines()
+                path.write_text(
+                    "\n".join(lines[-_MAX_RELAY_AUDIT_LINES:]) + "\n",
+                    encoding="utf-8",
+                )
     except OSError:
         return
 
@@ -653,20 +796,30 @@ def relay_audit(event: dict[str, Any]) -> None:
 
 
 def list_relay_audit(*, limit: int = 100) -> list[dict[str, Any]]:
+    """Read only the tail of the relay audit; the file can grow large."""
     path = _root() / "relay-audit.jsonl"
     if not path.is_file():
         return []
     items: list[dict[str, Any]] = []
     try:
-        for line in path.read_text(encoding="utf-8").splitlines()[-max(1, min(limit, 500)):]:
-            try:
-                value = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(value, dict):
-                items.append(value)
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            start = max(0, size - 512 * 1024)
+            handle.seek(start)
+            data = handle.read()
     except OSError:
         return []
+    lines = data.decode("utf-8", "replace").splitlines()
+    if start > 0 and lines:
+        lines = lines[1:]  # drop a possibly truncated first line
+    for line in lines[-max(1, min(limit, 500)):]:
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            items.append(value)
     return list(reversed(items))
 
 

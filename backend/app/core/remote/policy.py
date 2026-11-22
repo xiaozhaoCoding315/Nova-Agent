@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from app.core.remote.contracts import (
+    MAX_INSTRUCTION_CHARS,
     ApprovalRequest,
     CommandDecision,
     CommandEnvelope,
@@ -28,6 +29,8 @@ INTENT_RISK: dict[str, RiskLevel] = {
     "approval.decide": "medium",
     "run.resume": "medium",
     "answer.select": "medium",
+    # Queued for the desktop to review; never executed straight from the phone.
+    "chat.instruct": "medium",
 }
 
 INTENT_PERMISSION: dict[str, str] = {
@@ -35,6 +38,9 @@ INTENT_PERMISSION: dict[str, str] = {
     "run.stop": "stop",
     "approval.list": "approve",
     "approval.decide": "approve",
+    # "approve" keeps already-bound phones working; the desktop still confirms
+    # every instruction before it becomes a normal chat message.
+    "chat.instruct": "approve",
     "run.resume": "resume",
     "answer.select": "answer",
 }
@@ -166,6 +172,12 @@ def validate_command(
                 requires_local=approval.risk == "high",
             )
         risk = approval.risk
+    elif envelope.type == "chat.instruct":
+        text = (envelope.instruction or "").strip()
+        if not text:
+            return _deny("指令不能为空")
+        if len(text) > MAX_INSTRUCTION_CHARS:
+            return _deny(f"指令过长，最多 {MAX_INSTRUCTION_CHARS} 个字符")
     elif envelope.type == "run.resume" and not allow_resume:
         return _deny(
             "run.resume is disabled by local policy",

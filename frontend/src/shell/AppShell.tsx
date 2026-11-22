@@ -361,6 +361,12 @@ export function AppShell() {
           run: () => setResumeOpen(true),
         },
         {
+          id: 'evidence',
+          label: '证据包',
+          hint: '把验证结果整理成可核对的主张与工件',
+          run: () => setEvidenceOpen(true),
+        },
+        {
           id: 'remote',
           label: '遥控 / 手机工作台',
           hint: '配对手机、看进度、收通知',
@@ -450,6 +456,11 @@ export function AppShell() {
         {thesisMode ? (
           <ThesisHeader
             onOpenSettings={() => openSettings('model')}
+            onOpenDocuments={() => setDocumentsOpen(true)}
+            onOpenResume={() => setResumeOpen(true)}
+            onOpenRemote={() => setRemoteOpen(true)}
+            onOpenGithub={() => setGithubOpen(true)}
+            remoteUnread={remoteUnread}
             healthState={healthState}
             health={health}
             usage={usage}

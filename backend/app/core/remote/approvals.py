@@ -6,7 +6,6 @@ tools are listed but never remotely decidable.
 """
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 from datetime import timedelta
@@ -18,7 +17,19 @@ from app.core.remote.contracts import utc_now
 from app.core.remote.redact import redact_text
 from app.core.security.risk import RiskLevel, grade_risk
 
-_HIGH_TOOLS = {"local_exec", "local_write", "local_write_file"}
+# These tools can execute code/commands on the user's machine, install
+# packages, run host diagnostics or send content to the network.  A phone may
+# list them, but only the desktop can approve them.
+_HIGH_TOOLS = {
+    "run_command",
+    "run_code",
+    "local_run_command",
+    "local_write_file",
+    "install_deps",
+    "diagnostics",
+    "fetch_url",
+    "web_search",
+}
 _APPROVAL_TTL_SECONDS = 300
 
 
@@ -31,15 +42,23 @@ def action_hash(tool_name: str, args: dict[str, Any]) -> str:
 
 
 def classify_risk(tool_name: str, args: dict[str, Any]) -> str:
-    if tool_name in _HIGH_TOOLS:
+    """Grade a pending tool call for remote approval.
+
+    Anything that can execute code, install packages, run host diagnostics or
+    send data to the network is high risk.  Unknown MCP tools and grading
+    failures fail closed to high rather than becoming remotely approvable.
+    """
+    if tool_name in _HIGH_TOOLS or tool_name.startswith("mcp__"):
         return "high"
-    with contextlib.suppress(Exception):
+    try:
         payload = json.dumps(args, ensure_ascii=False, default=str)
         level, _ = grade_risk(payload)
-        if level == RiskLevel.BLOCK:
-            return "high"
-        if level == RiskLevel.WARN:
-            return "medium"
+    except Exception:
+        return "high"
+    if level == RiskLevel.BLOCK:
+        return "high"
+    if level == RiskLevel.WARN:
+        return "medium"
     return "medium"
 
 
@@ -121,6 +140,26 @@ def decide(
     }
 
 
+def record_local_decision(user_id: int, approval_id: str, approved: bool) -> None:
+    """Keep the phone's approval list in sync with a desktop decision."""
+    try:
+        record = store.get_approval(user_id, approval_id)
+        if not record or record.get("status") != "pending":
+            return
+        status = "approved" if approved else "rejected"
+        store.set_approval_status(user_id, approval_id, status)
+        store.record_audit(user_id, {
+            "action": "approval.local_decide",
+            "approval_id": approval_id,
+            "task_id": record.get("task_id", ""),
+            "decision": status,
+            "risk": record.get("risk", "medium"),
+        })
+    except Exception:
+        # A remote bookkeeping failure must never affect the local decision.
+        return
+
+
 def public_list(user_id: int) -> list[dict[str, Any]]:
     items = []
     for record in store.list_pending_approvals(user_id):
@@ -137,4 +176,7 @@ def public_list(user_id: int) -> list[dict[str, Any]]:
     return items
 
 
-__all__ = ["action_hash", "classify_risk", "decide", "public_list", "register"]
+__all__ = [
+    "action_hash", "classify_risk", "decide", "public_list", "record_local_decision",
+    "register",
+]

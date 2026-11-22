@@ -14,6 +14,7 @@ from app.core.thesis.report.builder import (
     citations_csv,
     render_report_html,
     write_export_package,
+    write_stage_package,
 )
 from app.core.thesis.rules.builtin import get_template
 from app.core.thesis.rules.engine import run_rules
@@ -156,3 +157,18 @@ def test_export_package_contains_expected_files_and_stays_safe() -> None:
         assert "修改记录.json" in names
         assert "提交说明.md" in names
         assert any(name.endswith("_修复版.docx") for name in names)
+
+
+def test_stage_packages_created_in_the_same_second_do_not_collide(tmp_path: Path) -> None:
+    kwargs = {
+        "stage_docx": None,
+        "stage_markdown": "# 测试论文\n",
+        "disclosure_docx": b"docx",
+        "stage_summary": [],
+        "warnings": [],
+        "project": {"title": "测试论文"},
+    }
+    first = write_stage_package(tmp_path, "测试论文", **kwargs)
+    second = write_stage_package(tmp_path, "测试论文", **kwargs)
+    assert first != second
+    assert first.is_file() and second.is_file()

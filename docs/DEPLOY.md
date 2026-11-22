@@ -85,7 +85,26 @@ curl http://127.0.0.1:8000/api/v1/status/health
 
 ### 3. 解析 + HTTPS
 
-备案通过后：
+备案通过后，先跑仓库自带的预检（只读，不改任何东西）：
+
+```bash
+bash deploy/enable-https.sh
+```
+
+它检查 DNS、ICP 拦截、80/443 占用、Caddyfile 与 compose 配置，以及 .env 里的
+`APP_BIND` / `TRUSTED_PROXIES` / `CORS_ORIGINS` / `COOKIE_SECURE` 是否配套。
+全部 `[ok]` 后再执行：
+
+```bash
+bash deploy/enable-https.sh --apply
+```
+
+`--apply` 会备份 `.env`、自动修好上述四项、重建 app 并启动 `https` profile；
+启动后最多等 120 秒做 HTTPS 健康检查，失败会自动回滚 `.env` 并恢复直连，
+不会把站点留在「证书没签下来、8000 又已关闭」的状态。80 被博客占用时它会
+停下来提示，不会替你改别的项目的 compose。
+
+等价的手工步骤：
 
 ```bash
 # 控制台「云解析 DNS」：两条 A 记录都指向本机

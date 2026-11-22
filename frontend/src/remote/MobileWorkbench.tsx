@@ -1,10 +1,13 @@
 import clsx from 'clsx'
 import {
-  AlertTriangle, Bell, Check, Link2, RefreshCw, ShieldCheck, Smartphone, Square, WifiOff,
+  AlertTriangle, Bell, Check, Link2, MessageSquare, RefreshCw, Send, ShieldCheck,
+  Smartphone, Square, WifiOff,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
-import type { RemoteApproval, RemoteNotification, RemoteProgressEvent } from '../lib/types'
+import type {
+  RemoteApproval, RemoteInstruction, RemoteNotification, RemoteProgressEvent,
+} from '../lib/types'
 import {
   clearStoredDevice, createDeviceKeys, cryptoAvailable, loadStoredDevice, pairingParams,
   removePairingHash, saveStoredDevice, signCommand, type StoredDevice,
@@ -28,6 +31,14 @@ const KIND_LABEL: Record<string, string> = {
   failed: '失败',
   device: '设备',
   status: '状态',
+  instruction: '指令',
+}
+
+const INSTRUCTION_LABEL: Record<string, string> = {
+  pending: '等待电脑确认',
+  sent: '已发送到对话',
+  rejected: '电脑已拒绝',
+  expired: '已过期',
 }
 
 function messageOf(error: unknown, fallback: string): string {
@@ -52,6 +63,8 @@ export function MobileWorkbench() {
   const [sas, setSas] = useState('')
   const [events, setEvents] = useState<RemoteProgressEvent[]>([])
   const [approvals, setApprovals] = useState<RemoteApproval[]>([])
+  const [instructions, setInstructions] = useState<RemoteInstruction[]>([])
+  const [instruction, setInstruction] = useState('')
   const [notifications, setNotifications] = useState<RemoteNotification[]>([])
   const [lastUpdated, setLastUpdated] = useState('')
   const [notice, setNotice] = useState('')
@@ -83,6 +96,7 @@ export function MobileWorkbench() {
       setDevice(target)
       setEvents(result.events ?? [])
       setApprovals(result.approvals ?? [])
+      setInstructions(result.instructions ?? [])
       setNotifications(result.notifications ?? [])
       setLastUpdated(new Date().toLocaleTimeString())
       setError('')
@@ -185,6 +199,32 @@ export function MobileWorkbench() {
     }
   }
 
+  const sendInstruction = async () => {
+    if (!device) return
+    const text = instruction.trim()
+    if (!text) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.remote.command(
+        await signCommand(device, 'chat.instruct', { instruction: text }),
+      )
+      if (!result.ok) {
+        setError(result.decision.reason || '指令没有通过本地策略')
+        return
+      }
+      setInstructions(result.instructions ?? [])
+      setInstruction('')
+      setNotice('指令已排队；在电脑上确认后才会进入对话')
+      await refresh(device)
+    } catch (err) {
+      setError(messageOf(err, '指令发送失败，请稍后重试'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const decide = async (approval: RemoteApproval, approve: boolean) => {
     if (!device) return
     const verb = approve ? '同意' : '拒绝'
@@ -226,7 +266,9 @@ export function MobileWorkbench() {
     setDevice(null)
     setEvents([])
     setApprovals([])
+    setInstructions([])
     setNotifications([])
+    setInstruction('')
     setPhase('pair')
     setNotice('已从手机移除。电脑上仍可在「遥控」里撤销这台设备。')
   }
@@ -321,7 +363,8 @@ export function MobileWorkbench() {
 
           <p className="mt-4 flex items-start gap-1.5 text-2xs leading-relaxed text-faint">
             <ShieldCheck size={12} className="mt-0.5 shrink-0" />
-            手机只能看到脱敏进度、执行停止和接收完成通知；高风险操作仍需在电脑上确认。
+            手机只能看到脱敏进度、执行停止、发送需要电脑确认的指令和接收完成通知；
+            高风险操作仍需在电脑上确认。
           </p>
         </div>
       </div>
@@ -448,6 +491,62 @@ export function MobileWorkbench() {
         <section>
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-xs font-medium text-dim">
+              <MessageSquare size={13} /> 给电脑发指令
+            </p>
+            <span className="font-mono text-2xs text-faint">需电脑确认</span>
+          </div>
+          <div className="mt-2 rounded-md border border-edge bg-panel/40 p-3">
+            <textarea
+              value={instruction}
+              onChange={(event) => setInstruction(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="例：把刚才那章的引用缺口列出来，先不要改正文。"
+              className="w-full resize-y rounded-sm border border-edge bg-base px-2.5 py-2 text-sm leading-relaxed text-ink outline-none focus:border-accent"
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-2xs leading-relaxed text-faint">
+                先排队；电脑上确认后才作为普通消息进入对话。不会在手机上直接执行。
+              </span>
+              <button
+                onClick={() => void sendInstruction()}
+                disabled={busy || !instruction.trim()}
+                className="flex shrink-0 items-center gap-1 rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-base disabled:opacity-50"
+              >
+                {busy ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
+                发送
+              </button>
+            </div>
+          </div>
+          {instructions.length > 0 && (
+            <ul className="mt-2 space-y-1.5">
+              {instructions.slice(0, 5).map((item) => (
+                <li key={item.instruction_id} className="rounded-sm border border-edge bg-panel/30 px-2.5 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={clsx(
+                        'rounded-sm px-1.5 py-0.5 font-mono text-2xs',
+                        item.status === 'pending'
+                          ? 'bg-accentSoft/40 text-accent'
+                          : 'bg-raised text-dim',
+                      )}
+                    >
+                      {INSTRUCTION_LABEL[item.status] ?? item.status}
+                    </span>
+                    <span className="font-mono text-2xs text-faint">{timeOf(item.created_at)}</span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dim">
+                    {item.text.length > 160 ? `${item.text.slice(0, 160)}…` : item.text}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-dim">
               <ShieldCheck size={13} /> 待审批
             </p>
             {approvals.length > 0 && (
@@ -547,8 +646,8 @@ export function MobileWorkbench() {
 
         <p className="flex items-start gap-1.5 pt-2 text-2xs leading-relaxed text-faint">
           <ShieldCheck size={12} className="mt-0.5 shrink-0" />
-          这里只有任务 ID、脱敏摘要和阶段；中低风险审批可以处理，高风险操作必须回电脑确认。
-          源码、路径、密钥与完整日志留在电脑上。
+          这里只有任务 ID、脱敏摘要和阶段；指令先排队、由电脑确认后才进入对话。
+          中低风险审批可以处理，高风险操作必须回电脑确认。源码、路径、密钥与完整日志留在电脑上。
         </p>
 
         <button

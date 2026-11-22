@@ -284,6 +284,7 @@ async def handle_command(payload: dict[str, Any]) -> dict[str, Any]:
             "events": await build_progress(device.user_id),
             "notifications": store.list_notifications(device.user_id, limit=20),
             "approvals": remote_approvals.public_list(device.user_id),
+            "instructions": store.list_instructions(device.user_id, limit=10),
         }
 
     if envelope.type == "approval.list":
@@ -327,6 +328,33 @@ async def handle_command(payload: dict[str, Any]) -> dict[str, Any]:
             "decision": decision.to_dict(),
             "stopped_task_ids": stopped,
             "idempotent": len(stopped) == 0,
+        }
+
+    if envelope.type == "chat.instruct":
+        try:
+            item = store.add_instruction(
+                device.user_id,
+                device_id=device.device_id,
+                text=envelope.instruction,
+            )
+        except store.RemoteError as exc:
+            denied = _deny(str(exc), risk="medium")
+            _audit(device, envelope, denied)
+            return {"ok": False, "device_status": "active", "decision": denied.to_dict()}
+        store.add_notification(device.user_id, {
+            "kind": "instruction",
+            "status": "pending",
+            "summary": "手机发来一条指令，等待你在电脑上确认",
+            "task_id": item["instruction_id"],
+            "device_id": device.device_id,
+        })
+        return {
+            "ok": True,
+            "device_status": "active",
+            "decision": decision.to_dict(),
+            "queued": True,
+            "instruction": item,
+            "instructions": store.list_instructions(device.user_id, limit=10),
         }
 
     denied = _deny(

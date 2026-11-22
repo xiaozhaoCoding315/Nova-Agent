@@ -118,12 +118,15 @@ def test_numeric_metric_without_evidence_needs_confirmation(user_root: Path):
     assert verified.status == "self_reported"
     version = create_job_version(1, profile.id, title="后端工程师", fact_ids=[verified.id])
     assert version.fact_ids == [verified.id]
+    snapshot = render_job_version(1, version.id)
 
-    # Removing the evidence downgrades the fact and blocks re-rendering.
+    # Removing the evidence downgrades the fact and blocks a *new* version,
+    # while the resume already reviewed keeps its snapshot.
     downgraded = update_fact(1, profile.id, verified.id, evidence="")
     assert downgraded.status == "needs_confirmation"
+    assert render_job_version(1, version.id) == snapshot
     with pytest.raises(ResumeError):
-        render_job_version(1, version.id)
+        create_job_version(1, profile.id, title="重做版本", fact_ids=[verified.id])
 
     # A non-numeric metric does not require an evidence note.
     qualitative = _fact(
@@ -166,6 +169,36 @@ def test_job_version_snapshots_jd_hash_and_selected_facts(user_root: Path):
     stored = json.loads((resume_root(1) / "versions.json").read_text(encoding="utf-8"))
     assert stored["versions"][version.id]["jd_sha256"] == version.jd_sha256
     assert stored["versions"][version.id]["fact_ids"] == [second.id, first.id]
+
+
+def test_templates_change_layout_without_rewriting_facts(user_root: Path):
+    profile = _profile()
+    fact = _fact(
+        1, profile.id, title="搭建对账平台", category="项目",
+        detail="负责日终对账。", status="evidence_linked",
+        evidence="评审记录", metrics=["覆盖 12 个渠道"],
+    )
+    versions = {
+        name: create_job_version(
+            1, profile.id, title=name, fact_ids=[fact.id], template=name,
+        )
+        for name in ("classic", "modern", "compact")
+    }
+    classic = render_job_version(1, versions["classic"].id)
+    modern = render_job_version(1, versions["modern"].id)
+    compact = render_job_version(1, versions["compact"].id)
+
+    assert "\n## 项目\n" in classic
+    assert "\n### 项目\n" in modern
+    assert "\n### 项目\n" in compact
+    # Nested metrics in classic/long form; inline in compact.
+    assert "\n  - 指标：覆盖 12 个渠道" in classic
+    assert "指标：覆盖 12 个渠道" in compact
+    assert "\n  - 指标" not in compact
+    for text in (classic, modern, compact):
+        assert fact.title in text
+        assert "未编造指标、日期或公司信息" in text
+        assert "未选择" not in text
 
 
 def test_rendered_markdown_contains_only_selected_facts(user_root: Path):
@@ -341,14 +374,15 @@ def test_job_version_cross_user_isolation(user_root: Path):
         add_fact(2, profile.id, category="项目", title="越权事实")
 
 
-def test_render_refuses_a_fact_excluded_after_version_created(user_root: Path):
+def test_job_version_keeps_its_snapshot_after_fact_changes(user_root: Path):
     profile = _profile()
-    fact = _fact(1, profile.id, title="后来被排除的事实")
+    fact = _fact(1, profile.id, title="最初写下的事实")
     version = create_job_version(1, profile.id, title="后端工程师",
                                  fact_ids=[fact.id])
-    assert fact.title in render_job_version(1, version.id)
+    original = render_job_version(1, version.id)
+    assert "最初写下的事实" in original
 
-    update_fact(1, profile.id, fact.id, status="excluded")
-    with pytest.raises(ResumeError) as error:
-        render_job_version(1, version.id)
-    assert "已排除" in str(error.value)
+    update_fact(1, profile.id, fact.id, title="后来改写的事实",
+                status="excluded")
+    assert render_job_version(1, version.id) == original
+    assert "后来改写的事实" not in render_job_version(1, version.id)

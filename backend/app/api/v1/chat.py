@@ -495,6 +495,9 @@ async def approve_tool(
     from app.core import approvals
     if not approvals.resolve(session_id, tool_call_id, user["id"], True):
         raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    from app.core.remote import approvals as remote_approvals
+
+    remote_approvals.record_local_decision(user["id"], tool_call_id, True)
     return {"ok": True, "approved": True}
 
 
@@ -510,6 +513,9 @@ async def reject_tool(
     from app.core import approvals
     if not approvals.resolve(session_id, tool_call_id, user["id"], False):
         raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    from app.core.remote import approvals as remote_approvals
+
+    remote_approvals.record_local_decision(user["id"], tool_call_id, False)
     return {"ok": True, "approved": False}
 
 

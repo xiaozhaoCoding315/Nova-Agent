@@ -454,7 +454,7 @@ def write_export_package(
 ) -> Path:
     safe_base = sanitize_filename(base_name).removesuffix(".docx") or "论文"
     export_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     package_root = export_dir / f"{safe_base}_定稿包_{stamp}"
     package_root.mkdir(parents=True, exist_ok=False)
 
@@ -492,6 +492,70 @@ def write_export_package(
     (package_root / "提交说明.md").write_text("\n".join(readme_lines), encoding="utf-8")
 
     zip_path = export_dir / f"{safe_base}_定稿包_{stamp}.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(package_root.iterdir()):
+            archive.write(path, arcname=path.name)
+    return zip_path
+
+
+def write_stage_package(
+    export_dir: Path,
+    base_name: str,
+    *,
+    stage_docx: bytes | None,
+    stage_markdown: str,
+    disclosure_docx: bytes,
+    stage_summary: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+    project: dict[str, Any],
+) -> Path:
+    """Package a thesis built from stage contents instead of an imported DOCX.
+
+    The package always contains the Markdown source so the author can edit it
+    elsewhere even when Pandoc/LibreOffice is unavailable.  A DOCX is included
+    only when the conversion actually succeeded; a missing converter never
+    produces an empty or fake Word file.
+    """
+    safe_base = sanitize_filename(base_name).removesuffix(".docx") or "论文"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    package_root = export_dir / f"{safe_base}_阶段稿包_{stamp}"
+    package_root.mkdir(parents=True, exist_ok=False)
+
+    (package_root / f"{safe_base}_阶段稿.md").write_text(stage_markdown, encoding="utf-8")
+    if stage_docx:
+        (package_root / f"{safe_base}_阶段稿.docx").write_bytes(stage_docx)
+    (package_root / "AI使用声明.docx").write_bytes(disclosure_docx)
+    (package_root / "阶段确认.json").write_text(
+        json.dumps(
+            {"stages": stage_summary, "warnings": warnings},
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
+    readme_lines = [
+        f"# {project.get('title') or '论文'} · 阶段稿包",
+        "",
+        "- 内容来源：作者在各阶段填写的文字，按阶段顺序整理。",
+        "- AI 使用声明需要在 Word 中补全姓名、学号并签名。",
+        "- 这是阶段稿包，不是学校模板排版的最终论文；提交前请自行核对格式与内容。",
+        "",
+        "## 文件",
+        "",
+        "- `_阶段稿.docx`：由 Markdown 转换；转换工具不可用时只保留 Markdown。",
+        "- `_阶段稿.md`：可继续编辑的源文件。",
+        "- `阶段确认.json`：每个阶段的作者确认状态与导出时看到的警告。",
+        "",
+        "## 局限",
+        "",
+        *[f"- {item}" for item in LIMITATIONS],
+        "",
+    ]
+    (package_root / "提交说明.md").write_text("\n".join(readme_lines), encoding="utf-8")
+
+    zip_path = export_dir / f"{safe_base}_阶段稿包_{stamp}.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(package_root.iterdir()):
             archive.write(path, arcname=path.name)

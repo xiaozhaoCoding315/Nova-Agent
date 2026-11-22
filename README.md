@@ -70,6 +70,18 @@
 - 样例：`thesis-samples/` 全部为合成文本，可用 `python thesis-samples/generate_samples.py` 重新生成。
 - 边界：不代写整篇论文、不降重、不做 AIGC/查重检测、不伪造引用、不抓取知网/维普/万方；AI 生成的正文一律标注「AI 草稿，需本人核对与改写」，参考文献只能使用已导入条目；报告是本地检查结果，不是学校出具的合规证明。
 
+## 文档、简历、证据与遥控
+
+| 工作台 | 能做什么 | 边界 |
+|---|---|---|
+| 文档工作区 | Markdown 主控源、原子保存、版本回溯与 `sha256` 冲突检测；Pandoc/LibreOffice 导出 DOCX/PDF，并写保真报告 | 不核实事实；有损转换默认拒绝，需要你显式允许 |
+| 简历工作台 | 事实库、按岗位生成版本、逐条编辑事实；经典/现代/紧凑模板只改排版，不增删事实；导出 DOCX/PDF | 不编造经历、指标或技能 |
+| 证据包 | 把结论、命令输出、测试结果与环境信息打成可复核 ZIP；支持自定义 claims / environment / artifact_paths | 产物路径必须在仓库内 |
+| 遥控 / 手机工作台 | 一次性配对 + SAS；手机看脱敏进度、收完成通知、停止任务、处理中低风险审批；可发送自然语言指令，但必须先在电脑上确认 | 高风险操作只在电脑确认；不新开公网端口；手机绑定需要 HTTPS |
+| 论文阶段稿 | 七个阶段的作者确认、就绪度与失效检测；没有 DOCX 也能导出阶段稿 MD/DOCX/PDF，定稿包自动回退阶段稿 | 只整理你填写并确认过的内容，不生成未写段落 |
+
+桌面客户端的下载（仓库导出、文档/论文导出）会弹出系统保存对话框，由你选择本地目录。服务端模式则由浏览器下载目录决定。
+
 ## 多用户与数据隔离
 
 - **账号**：`REGISTRATION_MODE=open|invite|closed` 控制自助注册；登录后所有 API 都按 `user_id` 过滤；消息/轨迹读取在 SQL 层也强制 owner（JOIN sessions），RAG 检索在 Qdrant 与 PG 两路都带 `user_id` 过滤（纵深防御）。
@@ -252,7 +264,7 @@ python scripts\build_desktop.py        # 前端构建 + PyInstaller 后端 + NSI
 `http://<服务器>:8000/downloads` 下载：
 
 ```bash
-python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.2.exe
+python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.2.2.exe
 ```
 
 也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。

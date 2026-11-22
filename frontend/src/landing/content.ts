@@ -77,7 +77,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
       },
       {
         name: 'AI 使用声明与定稿包',
-        detail: '登记工具、环节、用途与修改情况；定稿包包含修复版 DOCX、报告、引用清单与声明。',
+        detail: '登记工具、环节、用途与修改情况；导入 DOCX 后，定稿包含修复版、报告、引用清单与声明；只写阶段稿时打包阶段稿与声明。',
       },
     ],
   },

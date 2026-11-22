@@ -127,12 +127,13 @@ function randomHex(bytes: number): string {
 
 export async function signCommand(
   device: StoredDevice,
-  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide',
+  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide' | 'chat.instruct',
   options: {
     ttlSeconds?: number
     approvalId?: string
     actionHash?: string
     decision?: 'approve' | 'reject'
+    instruction?: string
   } = {},
 ): Promise<RemoteCommandEnvelope> {
   const now = Date.now()
@@ -145,6 +146,7 @@ export async function signCommand(
     args_ciphertext: '',
     approval_id: options.approvalId ?? '',
     decision: options.decision ?? '',
+    instruction: options.instruction ?? '',
     issued_at: new Date(now).toISOString(),
     expires_at: new Date(now + (options.ttlSeconds ?? 45) * 1000).toISOString(),
     nonce: randomHex(12),

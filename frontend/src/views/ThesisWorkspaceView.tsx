@@ -30,8 +30,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 type TabKey = 'issues' | 'stages' | 'writing' | 'citations' | 'disclosure' | 'export'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'issues', label: '问题' },
   { key: 'stages', label: '阶段' },
+  { key: 'issues', label: '问题' },
   { key: 'writing', label: '写作' },
   { key: 'citations', label: '引用' },
   { key: 'disclosure', label: 'AI 使用声明' },
@@ -252,7 +252,8 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [tab, setTab] = useState<TabKey>('issues')
+  // 0→1 阶段写作是主路径；导入 DOCX 后会自动切到「问题」页。
+  const [tab, setTab] = useState<TabKey>('stages')
   const [chatOpen, setChatOpen] = useState(false)
   // CSS 隐藏的桌面 aside 仍会挂载组件；用媒体查询决定只渲染一份面板。
   const [desktopChat, setDesktopChat] = useState(
@@ -377,7 +378,8 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
     clearError()
     setUploading(true)
     try {
-      await uploadDocument(file)
+      const uploaded = await uploadDocument(file)
+      if (uploaded) setTab('issues')
     } finally {
       setUploading(false)
     }
@@ -568,6 +570,11 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {!document && (
+                  <Button size="sm" onClick={() => setTab('issues')}>
+                    <Upload size={13} /> 导入 DOCX
+                  </Button>
+                )}
                 <Button size="sm" className="xl:hidden" onClick={() => setChatOpen(true)}>
                   <MessageSquare size={13} /> AI 写作
                 </Button>
@@ -589,12 +596,13 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
             <div className="mt-3 flex items-start gap-2 rounded-md border border-accent/20 bg-accentSoft/20 px-3 py-2 text-xs leading-relaxed text-dim">
               <ShieldCheck size={14} className="mt-0.5 shrink-0 text-accent" />
               <p>
-                <span className="font-mono text-accent">v0.2</span> 格式体检、引用 L1、AI 使用声明与定稿包导出。
-                原始 DOCX 只读；每次修复都先备份，可逐条预览、应用和撤销。
+                <span className="font-mono text-accent">v0.3</span> 从选题到定稿的阶段写作、格式体检、引用 L1、
+                AI 使用声明与导出。阶段稿可导出 MD / DOCX / PDF；导入的原始 DOCX 只读，
+                每次修复都先备份，可逐条预览、应用和撤销。
               </p>
             </div>
 
-            {!document ? (
+            {!document && tab === 'issues' && (
               <div
                 onDragOver={(event) => {
                   event.preventDefault()
@@ -622,8 +630,18 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
                   {uploading ? <Spinner /> : <Upload size={13} />}
                   {uploading ? '解析中…' : '选择 DOCX'}
                 </Button>
+                <p className="mt-3 text-2xs leading-relaxed text-faint">
+                  还没有可导入的论文？也可以从选题开始，按阶段写并逐段确认。
+                  <button
+                    onClick={() => setTab('stages')}
+                    className="ml-1 text-accent underline underline-offset-2"
+                  >
+                    去阶段页
+                  </button>
+                </p>
               </div>
-            ) : (
+            )}
+            {document && (
               <div className="mt-5 rounded-lg border border-edge bg-panel/40 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
@@ -913,10 +931,24 @@ export function ThesisWorkspaceView({ onOpenSettings }: { onOpenSettings: () => 
             )}
 
             {tab === 'stages' && (
-              <StagePanel project={current} />
+              <>
+                {!document && (
+                  <p className="mt-4 rounded-md border border-edge bg-panel/40 px-3 py-2 text-xs leading-relaxed text-dim">
+                    从选题、来源、提纲开始，按阶段写并逐段确认。还没有导入论文也可以直接写，
+                    导出时会把已填写的阶段整理成阶段稿；已经有一份 DOCX？
+                    <button
+                      onClick={() => setTab('issues')}
+                      className="ml-1 text-accent underline underline-offset-2"
+                    >
+                      导入后做格式体检
+                    </button>
+                  </p>
+                )}
+                <StagePanel project={current} onOpenChat={() => setChatOpen(true)} />
+              </>
             )}
             {tab === 'writing' && (
-              <WritingPanel project={current} />
+              <WritingPanel project={current} onOpenStages={() => setTab('stages')} />
             )}
             {tab === 'citations' && (
               <div className="mt-4"><CitationPanel /></div>

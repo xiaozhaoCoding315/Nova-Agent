@@ -11,7 +11,8 @@ import type {
   LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
   GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
   RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
-  RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task, TaskListItem,
+  RemoteInstruction, RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task,
+  TaskListItem,
   ThesisApplyResult, ThesisCitationAudit,
   ThesisCitationEvidence, ThesisDisclosure, ThesisDisclosureInput, ThesisDocument,
   ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisExportReadiness, ThesisFix,
@@ -511,6 +512,15 @@ export const api = {
       request<ThesisExportReadiness>(`/thesis/projects/${projectId}/export-readiness`),
     exportReport: (projectId: string, format: 'html' | 'docx') =>
       downloadFile(`/thesis/projects/${projectId}/report/export?format=${format}`),
+    exportManuscript: (
+      projectId: string,
+      format: 'md' | 'docx' | 'pdf',
+      allowUnconfirmed = false,
+    ) =>
+      downloadFile(
+        `/thesis/projects/${projectId}/manuscript?format=${format}`
+        + (allowUnconfirmed ? '&allow_unconfirmed=true' : ''),
+      ),
     exportPackage: (projectId: string, allowUnconfirmed = false) =>
       downloadFile(
         `/thesis/projects/${projectId}/export${allowUnconfirmed ? '?allow_unconfirmed=true' : ''}`,
@@ -575,6 +585,14 @@ export const api = {
     readNotifications: (ids: string[] = []) =>
       request<{ ok: boolean; changed: number }>(
         '/remote/notifications/read', json({ ids }),
+      ),
+    instructions: (status = 'pending') =>
+      request<{ instructions: RemoteInstruction[] }>(
+        `/remote/instructions?status=${encodeURIComponent(status)}`,
+      ),
+    resolveInstruction: (instructionId: string, status: 'sent' | 'rejected') =>
+      request<{ ok: boolean; instruction: RemoteInstruction }>(
+        `/remote/instructions/${instructionId}/resolve`, json({ status }),
       ),
     audit: () => request<RemoteAudit>('/remote/audit'),
   },

@@ -346,7 +346,14 @@ def export_warnings(state: StageState) -> list[dict]:
             "kind": "not_final",
             "message": f"当前还在「{STAGE_LABELS[state.stage]}」阶段，不是定稿阶段",
         })
-    for index, stage in enumerate(STAGES[: current_index + 1]):
+    for index, stage in enumerate(STAGES):
+        wrote_content = bool((state.contents.get(stage) or "").strip())
+        # Earlier stages are checked even when empty (the author moved past
+        # them); later stages only when they actually ship content, because
+        # the manuscript includes every non-empty stage, not just those up to
+        # the current one.
+        if index > current_index and not wrote_content:
+            continue
         confirmation = state.confirmations.get(stage)
         if confirmation is None:
             warnings.append({
@@ -370,6 +377,43 @@ def export_warnings(state: StageState) -> list[dict]:
                 "message": f"{STAGE_LABELS[stage]}的内容还没有进入待审阅状态",
             })
     return warnings
+
+
+def render_manuscript(state: StageState, title: str) -> str:
+    """Render the author's stage contents as one Markdown manuscript.
+
+    This is deliberately plain: it joins what the author wrote, in stage order,
+    and records whether each stage was confirmed.  It is not a school template
+    and never invents content for an empty stage.
+    """
+    heading = (title or "").strip() or "未命名论文"
+    lines = [
+        f"# {heading}",
+        "",
+        "> 由 Nova Agent 按阶段整理，只包含作者填写过的阶段内容。",
+        "> 这是阶段稿，不是学校模板排版的最终论文；提交前请自行核对格式与内容。",
+        "",
+    ]
+    for stage in STAGES:
+        content = (state.contents.get(stage) or "").strip()
+        if not content:
+            continue
+        confirmation = state.confirmations.get(stage)
+        if confirmation is None:
+            status = "未确认草稿"
+        elif confirmation.stale:
+            status = "确认已失效，内容改过"
+        else:
+            status = f"作者已确认（{confirmation.confirmed_at or '时间未记录'}）"
+        lines.extend([
+            f"## {STAGE_LABELS[stage]}",
+            "",
+            f"> 状态：{status}",
+            "",
+            content,
+            "",
+        ])
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def prompt_block(state: StageState) -> str:
@@ -397,6 +441,7 @@ __all__ = [
     "ADVANCE_READY", "CONFIRMABLE_READY", "MAX_STAGE_CONTENT", "READINESS",
     "READINESS_LABELS", "STAGES", "STAGE_LABELS", "Confirmation", "StageError",
     "StageEvent", "StageState", "advance", "confirm", "digest_text", "draft_event",
-    "export_warnings", "mark_stale", "next_stage", "prompt_block", "return_to",
+    "export_warnings", "mark_stale", "next_stage", "prompt_block", "render_manuscript",
+    "return_to",
     "set_artifact", "set_content", "set_readiness", "stage_summary",
 ]

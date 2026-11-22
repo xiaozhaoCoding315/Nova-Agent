@@ -176,16 +176,22 @@ async def _default_branch(token: str, owner: str, repo: str) -> str:
     return str((data or {}).get("default_branch") or "main")
 
 
-async def _branch_exists(token: str, owner: str, repo: str, branch: str) -> bool:
+async def _branch_sha(token: str, owner: str, repo: str, branch: str) -> str:
     try:
-        await _request(
+        data, _ = await _request(
             "GET", f"/repos/{owner}/{repo}/branches/{quote(branch, safe='')}", token,
         )
-        return True
     except GitHubError as exc:
         if "404" in str(exc):
-            return False
+            return ""
         raise
+    commit = (data or {}).get("commit") if isinstance(data, dict) else None
+    return str((commit or {}).get("sha") or "")
+
+
+def _local_head(root: Path) -> str:
+    result = _run_git(Path(root), "rev-parse", "HEAD")
+    return (result.stdout or "").strip() if result.returncode == 0 else ""
 
 
 async def create_draft_pr(
@@ -215,8 +221,16 @@ async def create_draft_pr(
     target_base = (base or "").strip() or await _default_branch(token, owner, repo)
     if target_base == branch:
         raise GitHubError("head 与 base 不能是同一个分支")
-    if not await _branch_exists(token, owner, repo, branch):
+    remote_sha = await _branch_sha(token, owner, repo, branch)
+    if not remote_sha:
         raise GitHubError(f"远端还没有分支 {branch}；先推送分支，再创建 PR")
+    head_sha = _local_head(root)
+    if not head_sha:
+        raise GitHubError("无法读取本地 HEAD；先在要提交的分支上提交")
+    if head_sha != remote_sha:
+        raise GitHubError(
+            f"本地 HEAD 与远端分支 {branch} 不一致；先提交并推送，再创建 PR"
+        )
 
     data, _ = await _request(
         "POST", f"/repos/{owner}/{repo}/pulls", token,

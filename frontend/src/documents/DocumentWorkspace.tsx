@@ -51,6 +51,7 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
   const [convertSource, setConvertSource] = useState('')
   const [convertTarget, setConvertTarget] = useState<'docx' | 'pdf'>('docx')
   const [convertProfile, setConvertProfile] = useState<Workspace['kind']>('report')
+  const [convertLossy, setConvertLossy] = useState(false)
   const [convertResult, setConvertResult] = useState<DocumentConvertResult | null>(null)
   const [converting, setConverting] = useState(false)
   const [diagnostics, setDiagnostics] = useState<DocumentDiagnostics | null>(null)
@@ -302,7 +303,7 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
         source_path: convertSource.trim(),
         target_format: convertTarget,
         profile: convertProfile,
-        allow_lossy: false,
+        allow_lossy: convertLossy,
       })
       setConvertResult(result)
     } catch (err) {
@@ -608,6 +609,18 @@ export function DocumentWorkspace({ open, onClose }: { open: boolean; onClose: (
                   </select>
                 </label>
               </div>
+              <label className="flex items-start gap-1.5 rounded-sm border border-warn/30 bg-warn/10 px-2 py-1.5 text-2xs leading-relaxed text-warn">
+                <input
+                  type="checkbox"
+                  checked={convertLossy}
+                  onChange={(event) => setConvertLossy(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  允许有损转换。Markdown 里的原始 HTML 或公式可能丢失；默认会拒绝，
+                  并先列出会丢失的内容。
+                </span>
+              </label>
               <Button
                 size="sm"
                 className="w-full"

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -23,8 +23,10 @@ router = APIRouter()
 
 _CLAIM_WINDOW_SECONDS = 60.0
 _CLAIM_LIMIT = 12
+_COMMAND_LIMIT = 120
 _claim_lock = threading.Lock()
 _claim_times: dict[str, list[float]] = {}
+_command_times: dict[str, list[float]] = {}
 
 
 class PairingCreateIn(BaseModel):
@@ -47,6 +49,10 @@ class NotificationsReadIn(BaseModel):
     ids: list[str] = Field(default_factory=list, max_length=100)
 
 
+class InstructionResolveIn(BaseModel):
+    status: Literal["sent", "rejected"]
+
+
 def _enabled() -> None:
     if not settings.remote_enabled:
         raise HTTPException(status_code=404, detail="远程工作台未开启")
@@ -61,6 +67,35 @@ def _rate_limit(host: str) -> None:
             raise HTTPException(status_code=429, detail="配对尝试过于频繁，请稍后再试")
         values.append(now)
         _claim_times[key] = values
+        if len(_claim_times) > 2000:
+            stale = [
+                item for item, stamps in _claim_times.items()
+                if not any(now - stamp < _CLAIM_WINDOW_SECONDS for stamp in stamps)
+            ]
+            for item in stale:
+                _claim_times.pop(item, None)
+            if len(_claim_times) > 2000:
+                _claim_times.clear()
+
+
+def _command_rate_limit(host: str) -> None:
+    now = time.monotonic()
+    key = host or "unknown"
+    with _claim_lock:
+        values = [value for value in _command_times.get(key, []) if now - value < _CLAIM_WINDOW_SECONDS]
+        if len(values) >= _COMMAND_LIMIT:
+            raise HTTPException(status_code=429, detail="命令过于频繁，请稍后再试")
+        values.append(now)
+        _command_times[key] = values
+        if len(_command_times) > 2000:
+            stale = [
+                item for item, stamps in _command_times.items()
+                if not any(now - stamp < _CLAIM_WINDOW_SECONDS for stamp in stamps)
+            ]
+            for item in stale:
+                _command_times.pop(item, None)
+            if len(_command_times) > 2000:
+                _command_times.clear()
 
 
 def _base_url(request: Request) -> str:
@@ -75,7 +110,9 @@ async def remote_config(user: dict = Depends(get_current_user)):
         "mode": "relay" if settings.remote_relay_url.strip() else "direct",
         "pairing_ttl_seconds": settings.remote_pairing_ttl_seconds,
         "workbench_path": "/m",
-        "commands": ["status.get", "run.stop", "approval.list", "approval.decide"],
+        "commands": [
+            "status.get", "run.stop", "approval.list", "approval.decide", "chat.instruct",
+        ],
         "transport": "same-origin HTTPS; 本地不新开公网端口",
     }
 
@@ -170,9 +207,17 @@ async def reject_pairing(
 
 
 @router.post("/remote/commands")
-async def run_command(payload: dict[str, Any] = Body(...)):
+async def run_command(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+):
     """Verify and run one signed command from a bound device."""
     _enabled()
+    host = request.client.host if request.client else "unknown"
+    _command_rate_limit(host)
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > 20_000:
+        raise HTTPException(status_code=413, detail="命令内容过大")
     if len(json.dumps(payload, ensure_ascii=False, default=str)) > 20_000:
         raise HTTPException(status_code=413, detail="命令内容过大")
     try:
@@ -221,6 +266,39 @@ async def read_notifications(
     _enabled()
     changed = store.mark_notifications_read(user["id"], body.ids)
     return {"ok": True, "changed": changed}
+
+
+@router.get("/remote/instructions")
+async def list_instructions(
+    status: str | None = Query(default=None, max_length=20),
+    limit: int = Query(default=20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """Pending phone instructions for the desktop to review."""
+    _enabled()
+    return {
+        "instructions": store.list_instructions(user["id"], status=status, limit=limit),
+    }
+
+
+@router.post("/remote/instructions/{instruction_id}/resolve")
+async def resolve_instruction(
+    instruction_id: str,
+    body: InstructionResolveIn,
+    user: dict = Depends(get_current_user),
+):
+    """Mark a reviewed instruction as sent into the chat or rejected.
+
+    The desktop sends the text through the normal chat path first; this endpoint
+    only records the outcome.  The phone never gets a second execution path.
+    """
+    _enabled()
+    try:
+        item = store.resolve_instruction(user["id"], instruction_id, body.status)
+    except store.RemoteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.mark_notifications_for_task(user["id"], item["instruction_id"])
+    return {"ok": True, "instruction": item}
 
 
 @router.get("/remote/audit")

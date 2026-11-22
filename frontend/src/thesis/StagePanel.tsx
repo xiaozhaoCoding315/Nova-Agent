@@ -1,11 +1,13 @@
 import clsx from 'clsx'
 import {
-  ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, FileText, ShieldCheck,
+  ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, FileDown, FileText, MessageSquare,
+  ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type { ThesisProjectDetail, ThesisStages } from '../lib/types'
+import { useThesis } from '../stores/thesis'
 
 const READINESS_OPTIONS = [
   { value: 'not_started', label: '未开始' },
@@ -38,7 +40,13 @@ function readinessTone(readiness: string): 'ok' | 'warn' | 'err' | 'dim' | 'acce
   return 'dim'
 }
 
-export function StagePanel({ project }: { project: ThesisProjectDetail }) {
+export function StagePanel({
+  project,
+  onOpenChat,
+}: {
+  project: ThesisProjectDetail
+  onOpenChat?: () => void
+}) {
   const [board, setBoard] = useState<ThesisStages | null>(null)
   const [content, setContent] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -51,6 +59,7 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
   const [wordCount, setWordCount] = useState('')
   const [drafting, setDrafting] = useState(false)
   const [draftNote, setDraftNote] = useState('')
+  const [exporting, setExporting] = useState('')
 
   const current = useMemo(
     () => board?.summary.find((item) => item.position === 'current') ?? null,
@@ -142,6 +151,34 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
       setError(messageOf(err, '操作失败'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const exportManuscript = async (format: 'md' | 'docx' | 'pdf') => {
+    setExporting(format)
+    setError('')
+    setNotice('')
+    try {
+      const readiness = await api.thesis.exportReadiness(project.id)
+      let acknowledge = false
+      if (!readiness.ready) {
+        const lines = readiness.warnings
+          .slice(0, 6)
+          .map((item) => `· ${item.message}`)
+          .join('\n')
+        const proceed = window.confirm(
+          `导出前检查到以下未确认项：\n${lines}\n\n仍然导出阶段稿？` +
+          '未确认的内容会以「未确认草稿」标记写进文件。',
+        )
+        if (!proceed) return
+        acknowledge = true
+      }
+      await api.thesis.exportManuscript(project.id, format, acknowledge)
+      setNotice(`已导出 ${format.toUpperCase()} 阶段稿`)
+    } catch (err) {
+      setError(messageOf(err, '导出阶段稿失败'))
+    } finally {
+      setExporting('')
     }
   }
 
@@ -262,6 +299,20 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
                 <span className="mr-auto text-2xs text-faint">
                   只生成当前阶段，不写整篇；缺的信息会写成「待补充」。
                 </span>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    useThesis.getState().setChatSeed(
+                      `当前论文项目《${project.title}》，阶段「${current.label}」。` +
+                      '请先不要写正文，先问我 1-3 个具体问题，确认这一阶段的目标、范围、' +
+                      '已有材料和导师要求。问题一次问完，简短具体。',
+                    )
+                    setDraftOpen(false)
+                    onOpenChat?.()
+                  }}
+                >
+                  <MessageSquare size={12} /> 先问我 1-3 个问题
+                </Button>
                 <Button size="sm" variant="primary" onClick={() => void generateDraft()} disabled={drafting}>
                   {drafting ? <Spinner /> : <FileText size={12} />} 生成草稿
                 </Button>
@@ -366,6 +417,32 @@ export function StagePanel({ project }: { project: ThesisProjectDetail }) {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="rounded-lg border border-edge bg-panel/40 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-ink">
+              <FileDown size={13} /> 阶段稿导出
+            </p>
+            <p className="mt-1.5 text-2xs leading-relaxed text-faint">
+              把各阶段已填写的内容按顺序整理成一份稿子。未确认或已失效的内容会先提示，
+              确认后仍会以「未确认草稿」标记写入。
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(['md', 'docx', 'pdf'] as const).map((format) => (
+                <Button
+                  key={format}
+                  size="sm"
+                  onClick={() => void exportManuscript(format)}
+                  disabled={!!exporting}
+                >
+                  {exporting === format ? <Spinner /> : <FileDown size={12} />}
+                  {format.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-2xs leading-relaxed text-faint">
+              这是通用版式，不是学校模板；提交前请自行核对格式与内容。
+            </p>
           </section>
 
           <section className="rounded-lg border border-edge bg-panel/40 p-3 text-2xs leading-relaxed text-faint">

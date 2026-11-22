@@ -60,6 +60,14 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
   const [jdText, setJdText] = useState('')
   const [template, setTemplate] = useState('classic')
   const [selectedFacts, setSelectedFacts] = useState<string[]>([])
+  const [exporting, setExporting] = useState('')
+
+  const [editingFact, setEditingFact] = useState<ResumeFact | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editCategory, setEditCategory] = useState('')
+  const [editDetail, setEditDetail] = useState('')
+  const [editMetrics, setEditMetrics] = useState('')
+  const [editEvidence, setEditEvidence] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -215,6 +223,40 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
     }
   }
 
+  const openEdit = (fact: ResumeFact) => {
+    setEditingFact(fact)
+    setEditTitle(fact.title)
+    setEditCategory(fact.category)
+    setEditDetail(fact.detail)
+    setEditMetrics(fact.metrics.join('\n'))
+    setEditEvidence(fact.evidence)
+  }
+
+  const saveEdit = async () => {
+    if (!activeId || !editingFact || !editTitle.trim() || !editCategory.trim()) return
+    setBusy(true)
+    setError('')
+    try {
+      await api.resume.updateFact(activeId, editingFact.id, {
+        title: editTitle.trim(),
+        category: editCategory.trim(),
+        detail: editDetail.trim(),
+        metrics: editMetrics
+          .split(/[\n,，]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+        evidence: editEvidence.trim(),
+      })
+      setEditingFact(null)
+      setNotice('事实已更新；旧岗位版本不会自动改变，需要重新生成。')
+      await loadDetail(activeId)
+    } catch (err) {
+      setError(messageOf(err, '保存事实失败'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const createVersion = async () => {
     if (!activeId || !jobTitle.trim() || selectedFacts.length === 0) return
     setBusy(true)
@@ -259,12 +301,15 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
 
   const download = async (format: 'md' | 'docx' | 'pdf') => {
     if (!selectedVersion) return
+    setExporting(format)
     setError('')
     try {
       if (format === 'md') await api.resume.downloadMarkdown(selectedVersion.id)
       else await api.resume.exportVersion(selectedVersion.id, format)
     } catch (err) {
       setError(messageOf(err, `导出 ${format.toUpperCase()} 失败`))
+    } finally {
+      setExporting('')
     }
   }
 
@@ -406,6 +451,12 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
                                 <option value="needs_confirmation">待确认</option>
                                 <option value="excluded">不采用</option>
                               </select>
+                              <button
+                                onClick={() => openEdit(fact)}
+                                className="text-2xs text-accent underline underline-offset-2"
+                              >
+                                编辑
+                              </button>
                             </div>
                             {fact.detail && <p className="mt-1 text-2xs leading-relaxed text-dim">{fact.detail}</p>}
                             {fact.metrics.length > 0 && (
@@ -433,14 +484,19 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <span className="text-xs text-ink">{selectedVersion.title}</span>
                           <span className="text-2xs text-faint">{selectedVersion.company}</span>
-                          <Button size="sm" className="ml-auto" onClick={() => void download('md')}>
-                            <Download size={12} /> MD
+                          <Button
+                            size="sm"
+                            className="ml-auto"
+                            onClick={() => void download('md')}
+                            disabled={!!exporting}
+                          >
+                            {exporting === 'md' ? <Spinner /> : <Download size={12} />} MD
                           </Button>
-                          <Button size="sm" onClick={() => void download('docx')}>
-                            <Download size={12} /> DOCX
+                          <Button size="sm" onClick={() => void download('docx')} disabled={!!exporting}>
+                            {exporting === 'docx' ? <Spinner /> : <Download size={12} />} DOCX
                           </Button>
-                          <Button size="sm" onClick={() => void download('pdf')}>
-                            <Download size={12} /> PDF
+                          <Button size="sm" onClick={() => void download('pdf')} disabled={!!exporting}>
+                            {exporting === 'pdf' ? <Spinner /> : <Download size={12} />} PDF
                           </Button>
                         </div>
                         <pre className="mt-2 max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-md border border-edge bg-base px-3 py-2 font-mono text-2xs leading-6 text-dim">
@@ -596,11 +652,14 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
               onChange={(event) => setTemplate(event.target.value)}
               className="rounded-sm border border-edge bg-base px-1.5 py-1 text-2xs text-dim outline-none focus:border-accent"
             >
-              <option value="classic">classic</option>
-              <option value="modern">modern</option>
-              <option value="compact">compact</option>
+              <option value="classic">经典（两级标题、指标分行）</option>
+              <option value="modern">现代（加粗标题行、三级标题）</option>
+              <option value="compact">紧凑（三级标题、每条事实一行）</option>
             </select>
           </div>
+          <p className="text-2xs leading-relaxed text-faint">
+            模板只改变标题层级和指标/依据的排布，不增删事实。导出前请在 Word 中检查版式。
+          </p>
           <div className="max-h-44 space-y-1 overflow-y-auto rounded-sm border border-edge bg-base/40 p-2">
             {includable.length === 0 ? (
               <p className="text-2xs text-faint">没有可用事实。先确认证据或去掉待确认的数字。</p>
@@ -628,6 +687,59 @@ export function ResumeWorkspace({ open, onClose }: { open: boolean; onClose: () 
           >
             {busy ? <Spinner /> : null} 生成
           </Button>
+        </div>
+      </Modal>
+
+      <Modal open={editingFact !== null} onClose={() => setEditingFact(null)} title="编辑事实">
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={editCategory}
+              onChange={(event) => setEditCategory(event.target.value)}
+              placeholder="类别，如 项目 / 实习 / 技能"
+              className="w-36 rounded-sm border border-edge bg-base px-2 py-1.5 text-xs outline-none focus:border-accent"
+            />
+            <input
+              value={editTitle}
+              onChange={(event) => setEditTitle(event.target.value)}
+              placeholder="事实标题"
+              className="min-w-0 flex-1 rounded-sm border border-edge bg-base px-2 py-1.5 text-xs outline-none focus:border-accent"
+            />
+          </div>
+          <textarea
+            value={editDetail}
+            onChange={(event) => setEditDetail(event.target.value)}
+            rows={3}
+            placeholder="具体做了什么。不要写没有依据的数字。"
+            className="w-full resize-y rounded-sm border border-edge bg-base px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent"
+          />
+          <textarea
+            value={editMetrics}
+            onChange={(event) => setEditMetrics(event.target.value)}
+            rows={2}
+            placeholder="指标：每行一条；有数字就必须有证据"
+            className="w-full resize-y rounded-sm border border-edge bg-base px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent"
+          />
+          <input
+            value={editEvidence}
+            onChange={(event) => setEditEvidence(event.target.value)}
+            placeholder="证据：仓库、证书、链接、老师评价"
+            className="w-full rounded-sm border border-edge bg-base px-2 py-1.5 text-xs outline-none focus:border-accent"
+          />
+          <p className="text-2xs leading-relaxed text-faint">
+            修改只影响事实库；已生成的岗位版本不会自动更新，需要重新生成。
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => setEditingFact(null)}>取消</Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void saveEdit()}
+              disabled={busy || !editTitle.trim() || !editCategory.trim()}
+            >
+              {busy ? <Spinner /> : null} 保存
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

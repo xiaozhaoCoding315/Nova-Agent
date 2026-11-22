@@ -1,14 +1,17 @@
 import clsx from 'clsx'
 import {
-  AlertTriangle, Bell, Check, Clock, Copy, RefreshCw, ShieldCheck, Smartphone, Trash2,
+  AlertTriangle, Bell, Check, Clock, Copy, MessageSquare, RefreshCw, ShieldCheck,
+  Smartphone, Trash2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Modal, Spinner } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import type {
-  RemoteAudit, RemoteConfig, RemoteDevice, RemoteNotification, RemotePairing,
+  RemoteAudit, RemoteConfig, RemoteDevice, RemoteInstruction, RemoteNotification,
+  RemotePairing,
 } from '../lib/types'
+import { useChat } from '../stores/chat'
 
 type CreatedPairing = {
   pairing: RemotePairing
@@ -31,6 +34,7 @@ const NOTIFICATION_LABEL: Record<string, string> = {
   failed: '失败',
   device: '设备',
   status: '状态',
+  instruction: '指令',
 }
 
 function messageOf(error: unknown, fallback: string): string {
@@ -41,6 +45,16 @@ function remainingSeconds(expiresAt: string): number {
   const value = new Date(expiresAt).getTime()
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.round((value - Date.now()) / 1000))
+}
+
+function needsHttps(link: string): boolean {
+  try {
+    const url = new URL(link)
+    return url.protocol === 'http:'
+      && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  } catch {
+    return false
+  }
 }
 
 export function RemotePanel({
@@ -56,6 +70,12 @@ export function RemotePanel({
   const [created, setCreated] = useState<CreatedPairing | null>(null)
   const [pairing, setPairing] = useState<RemotePairing | null>(null)
   const [devices, setDevices] = useState<RemoteDevice[]>([])
+  const [instructions, setInstructions] = useState<RemoteInstruction[]>([])
+  const [instructionBusy, setInstructionBusy] = useState('')
+  // An instruction already sent into the chat whose phone-side status could
+  // not be updated.  Keeping it out of the normal send path prevents a second
+  // click from sending the same text twice.
+  const [unsyncedSends, setUnsyncedSends] = useState<Record<string, true>>({})
   const [notifications, setNotifications] = useState<RemoteNotification[]>([])
   const [audit, setAudit] = useState<RemoteAudit | null>(null)
   const [unread, setUnread] = useState(0)
@@ -70,14 +90,17 @@ export function RemotePanel({
     setLoading(true)
     setError('')
     try {
-      const [configData, deviceData, notificationData, auditData] = await Promise.all([
-        api.remote.config(),
-        api.remote.devices(),
-        api.remote.notifications(),
-        api.remote.audit(),
-      ])
+      const [configData, deviceData, instructionData, notificationData, auditData] =
+        await Promise.all([
+          api.remote.config(),
+          api.remote.devices(),
+          api.remote.instructions(),
+          api.remote.notifications(),
+          api.remote.audit(),
+        ])
       setConfig(configData)
       setDevices(deviceData.devices)
+      setInstructions(instructionData.instructions)
       setNotifications(notificationData.notifications)
       setUnread(notificationData.unread)
       onUnreadChange?.(notificationData.unread)
@@ -100,6 +123,17 @@ export function RemotePanel({
     const tick = setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000)
     return () => clearInterval(tick)
   }, [created])
+
+  useEffect(() => {
+    if (!open) return
+    const timer = setInterval(() => {
+      if (document.hidden) return
+      api.remote.instructions()
+        .then((data) => setInstructions(data.instructions))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [open])
 
   useEffect(() => {
     if (!open || !created) return
@@ -191,6 +225,89 @@ export function RemotePanel({
     }
   }
 
+  const resolveSent = async (item: RemoteInstruction) => {
+    setInstructionBusy(item.instruction_id)
+    setError('')
+    try {
+      await api.remote.resolveInstruction(item.instruction_id, 'sent')
+      setInstructions((items) => (
+        items.filter((entry) => entry.instruction_id !== item.instruction_id)
+      ))
+      setUnsyncedSends((items) => {
+        const next = { ...items }
+        delete next[item.instruction_id]
+        return next
+      })
+      onClose()
+      return true
+    } catch (err) {
+      setUnsyncedSends((items) => ({ ...items, [item.instruction_id]: true }))
+      setError(messageOf(
+        err,
+        '指令已进入对话，但手机端状态同步失败；请点「重试同步」，不要再次发送',
+      ))
+      return false
+    } finally {
+      setInstructionBusy('')
+    }
+  }
+
+  const sendInstruction = async (item: RemoteInstruction) => {
+    const chat = useChat.getState()
+    if (chat.streaming || chat.uploading) {
+      setError('当前对话还在执行，等它完成后再发送这条指令')
+      return
+    }
+    if (chat.attachments.length > 0) {
+      setError('输入框里还有附件，请先发送或移除，再处理手机指令')
+      return
+    }
+    if (chat.sessionId && chat.backgroundTurns[chat.sessionId]) {
+      setError('当前会话仍有后台任务，请先停止或重新连接')
+      return
+    }
+    if (chat.productMode === 'thesis' && !chat.thesisProjectId) {
+      setError('请先在论文模式里打开一个项目，再发送指令')
+      return
+    }
+    setInstructionBusy(item.instruction_id)
+    setError('')
+    setNotice('')
+    let resolving = false
+    const accept = () => {
+      if (resolving) return
+      resolving = true
+      void resolveSent(item)
+    }
+    const accepted = await chat.send(item.text, chat.selectedRepoIds, accept)
+    if (!accepted && !resolving) {
+      setInstructionBusy('')
+      setError('指令没有进入对话，请检查网络或模型设置后再试；它仍在待确认列表里')
+      return
+    }
+    if (!resolving) {
+      resolving = true
+      void resolveSent(item)
+    }
+  }
+
+  const rejectInstruction = async (item: RemoteInstruction) => {
+    setInstructionBusy(item.instruction_id)
+    setError('')
+    setNotice('')
+    try {
+      await api.remote.resolveInstruction(item.instruction_id, 'rejected')
+      setInstructions((items) => (
+        items.filter((entry) => entry.instruction_id !== item.instruction_id)
+      ))
+      setNotice('已拒绝这条指令')
+    } catch (err) {
+      setError(messageOf(err, '拒绝指令失败'))
+    } finally {
+      setInstructionBusy('')
+    }
+  }
+
   const markRead = async () => {
     try {
       await api.remote.readNotifications()
@@ -224,10 +341,10 @@ export function RemotePanel({
         <div className="flex items-start gap-2 rounded-md border border-edge bg-panel/40 px-3 py-2">
           <Smartphone size={15} className="mt-0.5 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">手机看进度、收通知、停止任务</p>
+            <p className="text-sm font-medium">手机看进度、发指令、收通知、停止任务</p>
             <p className="mt-0.5 text-2xs leading-relaxed text-dim">
               不新开公网端口：手机打开本站的手机工作台，用一次性链接配对。手机上只看到脱敏进度；
-              高风险操作仍需在这台电脑上确认。
+              手机发来的指令先排队，必须在这台电脑上确认后才会进入对话；高风险操作仍需在电脑上确认。
             </p>
             {config && (
               <p className="mt-1 font-mono text-2xs text-faint">
@@ -268,6 +385,13 @@ export function RemotePanel({
             </p>
           ) : (
             <div className="rounded-md border border-edge bg-panel/40 p-3">
+              {needsHttps(created.link) && (
+                <p className="mb-2 flex items-start gap-1.5 rounded-sm border border-warn/30 bg-warn/10 px-2.5 py-2 text-2xs leading-relaxed text-warn">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                  当前地址是 HTTP，手机浏览器不会开放设备密钥，扫码后只会看到「需要 HTTPS」。
+                  等域名和证书生效后再绑定。
+                </p>
+              )}
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="mx-auto shrink-0 rounded-sm bg-white p-2">
                   <QRCodeSVG value={created.link} size={156} level="M" />
@@ -359,6 +483,76 @@ export function RemotePanel({
                   </li>
                 )
               })}
+            </ul>
+          )}
+        </section>
+
+        <section className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-ink">
+              <MessageSquare size={13} /> 手机指令
+              {instructions.length > 0 && (
+                <Badge tone="warn">{instructions.length} 条待确认</Badge>
+              )}
+            </p>
+          </div>
+          {instructions.length === 0 ? (
+            <p className="text-2xs text-faint">
+              手机发来的指令会先出现在这里；确认后才会作为普通消息进入当前对话。
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {instructions.map((item) => (
+                <li key={item.instruction_id} className="rounded-sm border border-accent/30 bg-accentSoft/15 px-2.5 py-2">
+                  <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
+                    {item.text}
+                  </p>
+                  <p className="mt-1 font-mono text-2xs text-faint">
+                    {item.device_id.slice(0, 12)} · {new Date(item.created_at).toLocaleString()}
+                  </p>
+                  <p className="mt-1 text-2xs leading-relaxed text-faint">
+                    发送后会进入当前会话，使用当前权限模式；不会在手机上直接执行。
+                  </p>
+                  {unsyncedSends[item.instruction_id] ? (
+                    <div className="mt-1.5">
+                      <p className="text-2xs leading-relaxed text-warn">
+                        指令已进入当前对话，手机端状态还没同步。请重试同步，不要再次发送。
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        className="mt-1.5"
+                        onClick={() => void resolveSent(item)}
+                        disabled={!!instructionBusy}
+                      >
+                        {instructionBusy === item.instruction_id
+                          ? <Spinner />
+                          : <RefreshCw size={12} />}
+                        重试同步
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => void sendInstruction(item)}
+                        disabled={!!instructionBusy}
+                      >
+                        {instructionBusy === item.instruction_id ? <Spinner /> : <Check size={12} />}
+                        确认并发送到当前对话
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => void rejectInstruction(item)}
+                        disabled={!!instructionBusy}
+                      >
+                        拒绝
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
             </ul>
           )}
         </section>

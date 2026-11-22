@@ -10,6 +10,25 @@ import type { Repo, ThesisProjectDetail } from '../lib/types'
 import { useMode } from '../stores/mode'
 import { useThesis } from '../stores/thesis'
 
+const WRITING_PROMPTS_STAGE = [
+  {
+    title: '起草一章',
+    body: '请根据「阶段」页里我确认过的提纲，起草其中一章的初稿。先读我的阶段说明和项目说明，缺的信息写成「待补充」，不要编造数据或引用；正文标注「AI 草稿，需本人核对」。',
+  },
+  {
+    title: '改得自然一点',
+    body: '把下面这段草稿改成自然、口语化的书面表达，保持事实和引用不变，不要增加没有依据的内容。改完请指出你改动最大的三处。',
+  },
+  {
+    title: '检查引用缺口',
+    body: '检查这一章里哪些判断需要引用但还没有引用，哪些引用在「引用」页里找不到对应条目。只列出问题，不要替我补引用。',
+  },
+  {
+    title: '回看阶段材料',
+    body: '请对照我的七个阶段说明，指出每个阶段还缺哪些材料或需要我确认的地方，按阶段列成清单。',
+  },
+]
+
 const WRITING_PROMPTS = [
   {
     title: '梳理项目',
@@ -29,7 +48,13 @@ const WRITING_PROMPTS = [
   },
 ]
 
-export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
+export function WritingPanel({
+  project,
+  onOpenStages,
+}: {
+  project: ThesisProjectDetail
+  onOpenStages?: () => void
+}) {
   const localMode = useMode((state) => state.mode?.local ?? false)
   const updateProject = useThesis((state) => state.updateProject)
   const setChatSeed = useThesis((state) => state.setChatSeed)
@@ -198,15 +223,23 @@ export function WritingPanel({ project }: { project: ThesisProjectDetail }) {
       </section>
 
       <section className="rounded-lg border border-edge bg-panel/40 p-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <MessageSquareQuote size={16} className="text-accent" />
           <p className="text-sm font-medium text-ink">写作快捷指令</p>
+          {onOpenStages && (
+            <Button size="sm" className="ml-auto" onClick={onOpenStages}>
+              <BookOpenCheck size={12} /> 去阶段页
+            </Button>
+          )}
         </div>
         <p className="mt-1 text-xs leading-relaxed text-dim">
-          点击后填入右侧写作对话；它会先读项目再回答。生成的正文是草稿，需要你核对、改写并记入 AI 使用声明。
+          {project.source_repo_id
+            ? '点击后填入右侧写作对话；它会先读项目再回答。'
+            : '点击后填入右侧写作对话；它会先看阶段说明和已导入的文献。'}
+          生成的正文是草稿，需要你核对、改写并记入 AI 使用声明。
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {WRITING_PROMPTS.map((item) => (
+          {(project.source_repo_id ? WRITING_PROMPTS : WRITING_PROMPTS_STAGE).map((item) => (
             <button
               key={item.title}
               onClick={() => setChatSeed(item.body)}

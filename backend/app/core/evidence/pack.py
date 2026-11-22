@@ -521,6 +521,10 @@ def _find_artifact(name: str, roots: Sequence[Path]) -> Path | None:
         if candidate.is_file():
             return candidate
         flat = (root_resolved / relative.name).resolve()
+        try:
+            flat.relative_to(root_resolved)
+        except ValueError:
+            continue
         if flat != candidate and flat.is_file():
             return flat
     return None

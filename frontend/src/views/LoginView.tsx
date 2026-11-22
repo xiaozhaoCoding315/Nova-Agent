@@ -489,7 +489,7 @@ export function LoginView() {
             {healthLabel}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono">v{health?.version ?? '2.2.1'}</span>
+          <span className="font-mono">v{health?.version ?? '2.2.2'}</span>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
           <a href="/guide" className="transition-colors hover:text-ink">使用文档</a>

@@ -3092,6 +3092,23 @@
         "title": "ImpactSymbolOut",
         "type": "object"
       },
+      "InstructionResolveIn": {
+        "properties": {
+          "status": {
+            "enum": [
+              "sent",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "InstructionResolveIn",
+        "type": "object"
+      },
       "InviteCodeCreateRequest": {
         "properties": {
           "expires_days": {
@@ -7881,7 +7898,7 @@
   },
   "info": {
     "title": "Nova Agent",
-    "version": "2.2.1"
+    "version": "2.2.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11538,6 +11555,118 @@
           }
         },
         "summary": "Revoke Device",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/instructions": {
+      "get": {
+        "description": "Pending phone instructions for the desktop to review.",
+        "operationId": "list_instructions_api_v1_remote_instructions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Instructions",
+        "tags": [
+          "remote"
+        ]
+      }
+    },
+    "/api/v1/remote/instructions/{instruction_id}/resolve": {
+      "post": {
+        "description": "Mark a reviewed instruction as sent into the chat or rejected.\n\nThe desktop sends the text through the normal chat path first; this endpoint\nonly records the outcome.  The phone never gets a second execution path.",
+        "operationId": "resolve_instruction_api_v1_remote_instructions__instruction_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instruction_id",
+            "required": true,
+            "schema": {
+              "title": "Instruction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstructionResolveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Instruction",
         "tags": [
           "remote"
         ]
@@ -15752,6 +15881,68 @@
           }
         },
         "summary": "Get Thesis Issues",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/v1/thesis/projects/{project_id}/manuscript": {
+      "get": {
+        "description": "Export the author's stage contents as Markdown, DOCX or PDF.\n\nThis is the 0-to-1 path: it does not need an imported DOCX.  Empty stages\nare omitted; unconfirmed or stale stages require an explicit acknowledgement.",
+        "operationId": "export_thesis_manuscript_api_v1_thesis_projects__project_id__manuscript_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "docx",
+              "pattern": "^(md|docx|pdf)$",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "allow_unconfirmed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Allow Unconfirmed",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Thesis Manuscript",
         "tags": [
           "thesis"
         ]

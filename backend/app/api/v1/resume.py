@@ -6,6 +6,7 @@ job version until the user confirms or removes the number.
 """
 from __future__ import annotations
 
+import asyncio
 import shutil
 import tempfile
 from pathlib import Path
@@ -241,7 +242,8 @@ async def export_version(
     source = workdir / "resume.md"
     source.write_text(markdown, encoding="utf-8")
     try:
-        result = convert_document(
+        result = await asyncio.to_thread(
+            convert_document,
             source, fmt, workdir / "out", profile="resume", overwrite=True,
         )
     except ConversionError as exc:

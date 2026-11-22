@@ -105,7 +105,7 @@ def test_create_draft_pr_requires_pushed_branch_and_never_merges(monkeypatch):
         if method == "GET" and path.startswith("/repos/") and "/branches/" not in path:
             return {"default_branch": "main"}, {}
         if method == "GET" and "/branches/" in path:
-            return {}, {}
+            return {"commit": {"sha": "a" * 40}}, {}
         if method == "POST" and path.endswith("/pulls"):
             return {"number": 12, "html_url": "https://github.com/alice/demo/pull/12", "state": "open"}, {}
         raise AssertionError(f"unexpected call {method} {path}")
@@ -121,6 +121,7 @@ def test_create_draft_pr_requires_pushed_branch_and_never_merges(monkeypatch):
     })
     monkeypatch.setattr(github_service, "_request", fake_request)
     monkeypatch.setattr(github_service, "execute", fake_execute)
+    monkeypatch.setattr(github_service, "_local_head", lambda root: "a" * 40)
 
     import asyncio
 
@@ -161,6 +162,36 @@ def test_create_draft_pr_refuses_unpushed_branch(monkeypatch):
             authorization="create-draft-pr",
         ))
     assert "推送" in str(exc.value)
+
+
+def test_create_draft_pr_refuses_when_local_head_is_not_pushed(monkeypatch):
+    async def fake_token(user_id: int):
+        return "token"
+
+    async def fake_request(method: str, path: str, token: str, **kwargs):
+        if method == "GET" and "/branches/" in path:
+            # The branch is URL-encoded, so feat/x arrives as feat%2Fx.
+            return {"commit": {"sha": "b" * 40}}, {}
+        if method == "GET" and path.startswith("/repos/"):
+            return {"default_branch": "main"}, {}
+        raise AssertionError(f"unexpected call {method} {path}")
+
+    monkeypatch.setattr(github_service, "_token", fake_token)
+    monkeypatch.setattr(github_service, "repo_remote", lambda root: {
+        "host": "github.com", "owner": "alice", "repo": "demo",
+        "full_name": "alice/demo", "branch": "feat/x",
+    })
+    monkeypatch.setattr(github_service, "_request", fake_request)
+    monkeypatch.setattr(github_service, "_local_head", lambda root: "a" * 40)
+
+    import asyncio
+
+    with pytest.raises(GitHubError) as exc:
+        asyncio.run(github_service.create_draft_pr(
+            7, "repo1", Path("."), title="Add x",
+            authorization="create-draft-pr",
+        ))
+    assert "不一致" in str(exc.value)
 
 
 def test_pr_status_reports_ci_and_reviews_without_merge(monkeypatch):

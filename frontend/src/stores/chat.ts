@@ -64,7 +64,12 @@ type ChatState = {
   newSession: () => void
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
-  send: (content: string, repoIds: string[]) => Promise<void>
+  /** Returns true once the server accepted the turn (a turn id arrived). */
+  send: (
+    content: string,
+    repoIds: string[],
+    onAccepted?: () => void,
+  ) => Promise<boolean>
   attachTurn: (turnId: string) => Promise<void>
   resolveApproval: (toolCallId: string, approved: boolean) => Promise<void>
   stop: () => void
@@ -835,12 +840,12 @@ export const useChat = create<ChatState>((set, get) => ({
     })
   },
 
-  send: async (content, repoIds) => {
-    if (get().streaming || get().uploading || !content.trim()) return
+  send: async (content, repoIds, onAccepted) => {
+    if (get().streaming || get().uploading || !content.trim()) return false
     const currentSession = get().sessionId
     if (currentSession && get().backgroundTurns[currentSession]) {
       set({ error: '本会话仍有任务在后台执行，请先重新连接或停止。' })
-      return
+      return false
     }
     const pendingAttachments = get().attachments
 
@@ -867,6 +872,12 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
 
     const { owner, controller } = beginStream()
+    let accepted = false
+    const markAccepted = () => {
+      if (accepted) return
+      accepted = true
+      onAccepted?.()
+    }
 
     // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
     const providerSpec = activeProviderSpec(get().provider)
@@ -903,13 +914,18 @@ export const useChat = create<ChatState>((set, get) => ({
           thesis_project_id: get().thesisProjectId ?? undefined,
         },
         (event, data) => {
-          if (ownsStream(owner)) applyStreamEvent(set, event, data, sentinelPersisted)
+          if (!ownsStream(owner)) return
+          if (event === 'turn' && data.turn_id) markAccepted()
+          applyStreamEvent(set, event, data, sentinelPersisted)
         },
         controller.signal,
         (info) => {
           if (!ownsStream(owner)) return
           attachedTurnId = info.turnId
-          if (info.turnId) set({ turnId: info.turnId })
+          if (info.turnId) {
+            markAccepted()
+            set({ turnId: info.turnId })
+          }
         },
       )
     } catch (err) {
@@ -919,7 +935,7 @@ export const useChat = create<ChatState>((set, get) => ({
     } finally {
       if (!ownsStream(owner)) {
         void get().loadSessions()
-        return
+        return accepted
       }
       const state = get()
       const message = finishedAssistantMessage(state)
@@ -938,7 +954,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       if (turnId && sessionId) {
         const fresh = await fetchTurn(turnId)
-        if (!ownsStream(owner)) return
+        if (!ownsStream(owner)) return accepted
         if (fresh && !isTerminalStatus(fresh.status)) {
           set((s) => ({
             backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId },
@@ -957,6 +973,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       void get().loadSessions()
     }
+    return accepted
   },
 
   attachTurn: async (turnId) => {

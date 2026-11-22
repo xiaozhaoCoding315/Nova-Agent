@@ -150,6 +150,22 @@ def test_prompt_includes_bounded_stage_note() -> None:
     assert "不是指令" in text
 
 
+def test_render_manuscript_keeps_stage_order_and_confirmation_state() -> None:
+    state = stages.StageState(stage="outline", readiness="gathering")
+    state.contents["topic"] = "校园二手交易系统"
+    state.contents["outline"] = "第一章 绪论"
+    state.confirmations["topic"] = stages.Confirmation(
+        sha256=stages.digest_text("校园二手交易系统"),
+        confirmed_at="2026-11-22T00:00:00+00:00",
+    )
+    text = stages.render_manuscript(state, "毕业论文")
+    assert text.startswith("# 毕业论文")
+    assert text.index("## 选题") < text.index("## 提纲")
+    assert "作者已确认" in text
+    assert "未确认草稿" in text
+    assert "## 来源" not in text  # empty stages are omitted, not invented
+
+
 def test_export_warnings_name_unconfirmed_and_not_final() -> None:
     state = stages.StageState()
     warnings = stages.export_warnings(state)
@@ -184,6 +200,15 @@ def test_export_warnings_cover_every_unconfirmed_stage_up_to_current() -> None:
     warnings = stages.export_warnings(state)
     unconfirmed = [item["stage"] for item in warnings if item["kind"] == "unconfirmed"]
     assert unconfirmed == ["topic", "sources", "outline"]
+
+
+def test_export_warnings_cover_downstream_content_the_manuscript_ships() -> None:
+    state = stages.StageState(stage="outline", readiness="gathering")
+    state.contents["drafting"] = "后面补写的一章，也会进入导出的阶段稿"
+    warnings = stages.export_warnings(state)
+    unconfirmed = [item["stage"] for item in warnings if item["kind"] == "unconfirmed"]
+    assert "drafting" in unconfirmed
+    assert "topic" in unconfirmed
 
 
 def test_stage_draft_prompt_keeps_author_in_control() -> None:

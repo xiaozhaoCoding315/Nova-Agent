@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import shutil
+import tempfile
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -38,12 +39,14 @@ from app.core.thesis.docx.patcher import (
     preview_fix,
 )
 from app.core.thesis.models import DocumentModel
+from app.core.documents.convert import ConversionError, convert_document
 from app.core.thesis.report.builder import (
     build_disclosure_docx,
     build_report_docx,
     citations_csv,
     render_report_html,
     write_export_package,
+    write_stage_package,
 )
 from app.core.thesis.rules.builtin import (
     GENERIC_TEMPLATE,
@@ -1674,13 +1677,82 @@ def _enrich_citation_audit(
     return audit
 
 
+def _cleanup_stale_exports(export_dir: Path, *, min_age_seconds: int = 3600) -> None:
+    """Remove abandoned one-shot ZIPs without touching an in-flight download."""
+    if not export_dir.is_dir():
+        return
+    cutoff = datetime.now(timezone.utc).timestamp() - min_age_seconds
+    for stale in export_dir.glob("*.zip"):
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+async def _export_stage_project(
+    user_id: int, project_id: str, project: dict[str, Any],
+) -> tuple[Path, str]:
+    """Build a package from stage contents when no DOCX was imported.
+
+    The Markdown source is always included; a DOCX is added only when Pandoc
+    actually produced one.  Unconfirmed contents stay in the package because
+    the caller has already shown the warnings and obtained acknowledgement.
+    """
+    from app.core.thesis import stage_service, stages
+
+    board = await stage_service.get_board(user_id, project_id)
+    state = stages.StageState.from_dict(board["state"])
+    if not any(value.strip() for value in state.contents.values()):
+        raise ValueError("还没有可导出的文档或阶段内容；请先在「阶段」页填写内容。")
+    markdown = stages.render_manuscript(state, str(project.get("title") or ""))
+    template = get_template(project["template_id"])
+    disclosures = await list_disclosures(user_id, project_id)
+    disclosure_docx = build_disclosure_docx(project, template, disclosures)
+
+    stage_docx: bytes | None = None
+    workdir = Path(tempfile.mkdtemp(prefix="nova-thesis-stage-"))
+    try:
+        source = workdir / "manuscript.md"
+        source.write_text(markdown, encoding="utf-8")
+        result = await asyncio.to_thread(
+            convert_document,
+            source,
+            "docx",
+            workdir / "out",
+            profile="thesis",
+            overwrite=True,
+        )
+        if result.status == "done" and result.output_path:
+            stage_docx = Path(result.output_path).read_bytes()
+    except (ConversionError, OSError):
+        stage_docx = None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+    export_dir = thesis_container(user_id, project_id) / "exports"
+    _cleanup_stale_exports(export_dir)
+    zip_path = await asyncio.to_thread(
+        write_stage_package,
+        export_dir,
+        str(project.get("title") or "论文"),
+        stage_docx=stage_docx,
+        stage_markdown=markdown,
+        disclosure_docx=disclosure_docx,
+        stage_summary=stages.stage_summary(state),
+        warnings=stages.export_warnings(state),
+        project=project,
+    )
+    return zip_path, zip_path.name
+
+
 async def export_project(user_id: int, project_id: str) -> tuple[Path, str] | None:
     project = await get_project(user_id, project_id)
     if not project:
         return None
     full = await _latest_document_full(user_id, project_id)
     if not full:
-        raise ValueError("请先导入一份可解析的 DOCX")
+        return await _export_stage_project(user_id, project_id, project)
     document = full["document"]
     template = get_template(project["template_id"])
     model = (
@@ -1713,10 +1785,9 @@ async def export_project(user_id: int, project_id: str) -> tuple[Path, str] | No
     if fixed_docx is not None and not fixed_docx.is_file():
         fixed_docx = None
     export_dir = thesis_container(user_id, project_id) / "exports"
-    # Each export is a one-shot download; keep only the zip produced here.
-    if export_dir.is_dir():
-        for stale in export_dir.glob("*.zip"):
-            stale.unlink(missing_ok=True)
+    # Each export is a one-shot download; clean only abandoned files so a
+    # concurrent export or an in-flight download is never deleted.
+    _cleanup_stale_exports(export_dir)
     zip_path = await asyncio.to_thread(
         write_export_package,
         export_dir,

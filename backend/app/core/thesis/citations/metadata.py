@@ -18,7 +18,7 @@ import httpx
 
 CROSSREF_API = "https://api.crossref.org/works/{doi}"
 USER_AGENT = (
-    "Nova-Agent/2.2.1 (thesis-mode; "
+    "Nova-Agent/2.2.2 (thesis-mode; "
     "+https://github.com/xiaozhaoCoding315/Nova-Agent)"
 )
 CACHE_TTL = timedelta(days=30)

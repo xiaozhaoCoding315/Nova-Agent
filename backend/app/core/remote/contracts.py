@@ -21,8 +21,12 @@ Intent = Literal[
     "approval.decide",
     "run.resume",
     "answer.select",
+    "chat.instruct",
 ]
 CommandStatus = Literal["allowed", "denied", "requires_local"]
+
+# A phone instruction is queued for desktop review, never executed remotely.
+MAX_INSTRUCTION_CHARS = 4000
 
 
 def utc_now() -> datetime:
@@ -203,6 +207,7 @@ class CommandEnvelope:
     args_ciphertext: str = ""
     approval_id: str = ""
     decision: str = ""        # approve | reject, only for approval.decide
+    instruction: str = ""     # plain text for chat.instruct; queued, never executed remotely
     v: int = 1
 
     def ttl_seconds(self) -> float:
@@ -221,6 +226,7 @@ class CommandEnvelope:
             "args_ciphertext": self.args_ciphertext,
             "approval_id": self.approval_id,
             "decision": self.decision,
+            "instruction": self.instruction,
             "issued_at": self.issued_at,
             "expires_at": self.expires_at,
             "nonce": self.nonce,
@@ -242,6 +248,7 @@ class CommandEnvelope:
             args_ciphertext=str(data.get("args_ciphertext") or ""),
             approval_id=str(data.get("approval_id") or ""),
             decision=str(data.get("decision") or ""),
+            instruction=str(data.get("instruction") or ""),
             v=int(data.get("v") or 1),
         )
 

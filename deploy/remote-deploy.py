@@ -221,9 +221,18 @@ def main() -> int:
             print("==> 服务器没有 Docker，先跑一键准备脚本（装 Docker/镜像加速/swap）")
             code, out = run(ssh, f"cd {args.remote_dir} && bash deploy/setup-aliyun.sh {args.remote_dir}", timeout=600)
             print(out[-2000:])
+        # 2G/1Mbps 的 ECS 上，apt（LibreOffice/CJK 字体）和 npm 同时下载会
+        # 把带宽抢满并让 npm 卡在 read timeout。先单独构建不含前端的
+        # runtime-base 缓存 apt/pip 层，再构建 app 时只跑 npm，最后用已有
+        # 镜像启动，避免重新构建 sandbox/builder/node 三个镜像。
         cmd = (
             f"cd {args.remote_dir} && "
-            "setsid docker compose up -d --build < /dev/null > build.log 2>&1 & "
+            "setsid bash -c '"
+            "docker build --target runtime-base -f backend/Dockerfile "
+            "-t nova-agent-runtime-base:buildcache . "
+            "&& docker compose build app "
+            "&& docker compose up -d --no-build"
+            "' < /dev/null > build.log 2>&1 & "
             "echo BUILD_STARTED"
         )
         try:

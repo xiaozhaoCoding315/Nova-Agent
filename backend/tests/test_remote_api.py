@@ -51,6 +51,7 @@ def _envelope(
     approval_id: str = "",
     action_hash: str = "",
     decision: str = "",
+    instruction: str = "",
 ) -> dict:
     now = datetime.now(timezone.utc)
     envelope = CommandEnvelope(
@@ -64,6 +65,7 @@ def _envelope(
         approval_id=approval_id,
         action_hash=action_hash,
         decision=decision,
+        instruction=instruction,
     )
     envelope.signature = _signature(private_key, envelope)
     return envelope.to_dict()
@@ -275,6 +277,120 @@ def test_stop_is_signed_idempotent_and_revocation_is_immediate(api, phone, monke
     assert "撤销" in after.json()["decision"]["reason"]
 
 
+def test_phone_instruction_is_signed_queued_and_resolved_locally(api, phone, monkeypatch):
+    from app.core.remote import service as remote_service
+
+    _, device = _pair(api, phone)
+    private, _ = phone
+
+    async def fake_query(sql: str, params: tuple):
+        return []
+
+    monkeypatch.setattr(remote_service, "query", fake_query)
+
+    queued = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="instruct-1", command_id="instruct-1",
+        instruction="  请把第一章的引用缺口列出来  ",
+    ))
+    assert queued.status_code == 200, queued.text
+    body = queued.json()
+    assert body["ok"] is True
+    assert body["queued"] is True
+    item = body["instruction"]
+    assert item["status"] == "pending"
+    assert item["text"] == "请把第一章的引用缺口列出来"
+
+    listed = api.get("/remote/instructions").json()["instructions"]
+    assert [entry["instruction_id"] for entry in listed] == [item["instruction_id"]]
+    notifications = api.get("/remote/notifications").json()["notifications"]
+    queued_note = next(
+        entry for entry in notifications
+        if entry["kind"] == "instruction" and entry["task_id"] == item["instruction_id"]
+    )
+    assert queued_note["read"] is False
+
+    # The text is part of the signed envelope; swapping it invalidates the signature.
+    tampered = _envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="instruct-2", command_id="instruct-2", instruction="正常内容",
+    )
+    tampered["instruction"] = "被替换的内容"
+    rejected = api.post("/remote/commands", json=tampered)
+    assert rejected.json()["ok"] is False
+    assert "signature" in rejected.json()["decision"]["reason"]
+
+    # Nothing executes from the phone: the desktop records what it did with it.
+    resolved = api.post(
+        f"/remote/instructions/{item['instruction_id']}/resolve",
+        json={"status": "sent"},
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["instruction"]["status"] == "sent"
+    notifications = api.get("/remote/notifications").json()["notifications"]
+    assert next(
+        entry for entry in notifications
+        if entry["kind"] == "instruction" and entry["task_id"] == item["instruction_id"]
+    )["read"] is True
+    again = api.post(
+        f"/remote/instructions/{item['instruction_id']}/resolve",
+        json={"status": "rejected"},
+    )
+    assert again.status_code == 400
+
+    status = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "status.get", private,
+        nonce="instruct-status", command_id="instruct-status",
+    ))
+    assert status.json()["instructions"][0]["status"] == "sent"
+
+
+def test_phone_instruction_rejects_empty_oversized_and_unbounded_queue(api, phone):
+    _, device = _pair(api, phone)
+    private, _ = phone
+
+    empty = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="ins-empty", command_id="ins-empty", instruction="   ",
+    ))
+    assert empty.json()["ok"] is False
+    assert "不能为空" in empty.json()["decision"]["reason"]
+
+    oversized = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="ins-big", command_id="ins-big", instruction="x" * 4001,
+    ))
+    assert oversized.json()["ok"] is False
+    assert "过长" in oversized.json()["decision"]["reason"]
+
+    ids: list[str] = []
+    for index in range(5):
+        queued = api.post("/remote/commands", json=_envelope(
+            device["device_id"], "chat.instruct", private,
+            nonce=f"ins-{index}", command_id=f"ins-{index}",
+            instruction=f"第 {index + 1} 条指令",
+        ))
+        assert queued.json()["ok"] is True, queued.text
+        ids.append(queued.json()["instruction"]["instruction_id"])
+
+    sixth = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="ins-sixth", command_id="ins-sixth", instruction="第六条",
+    ))
+    assert sixth.json()["ok"] is False
+    assert "太多" in sixth.json()["decision"]["reason"]
+
+    resolved = api.post(
+        f"/remote/instructions/{ids[0]}/resolve", json={"status": "rejected"},
+    )
+    assert resolved.status_code == 200
+    retry = api.post("/remote/commands", json=_envelope(
+        device["device_id"], "chat.instruct", private,
+        nonce="ins-seventh", command_id="ins-seventh", instruction="处理完后再发",
+    ))
+    assert retry.json()["ok"] is True
+
+
 def test_cross_user_cannot_read_pairing_or_revoke(api, phone):
     created = api.post("/remote/pairings", json={}).json()
     other = _client(8)
@@ -342,6 +458,18 @@ def test_remote_approval_list_and_decide(api, phone, monkeypatch):
     assert "处理过" in again.json()["decision"]["reason"]
 
 
+def test_remote_risk_classification_uses_real_tool_names() -> None:
+    from app.core.remote.approvals import classify_risk
+
+    for name in (
+        "run_command", "run_code", "local_run_command", "local_write_file",
+        "install_deps", "diagnostics", "fetch_url", "web_search", "mcp__custom",
+    ):
+        assert classify_risk(name, {"code": "print(1)"}) == "high", name
+    assert classify_risk("write_files", {"path": "src/x.ts"}) == "medium"
+    assert classify_risk("edit_file", {"path": "src/x.ts"}) == "medium"
+
+
 def test_high_risk_approval_is_never_remote_decidable(api, phone, monkeypatch):
     from app.core.remote import approvals as remote_approvals
     from app.core.remote import service as remote_service
@@ -358,8 +486,8 @@ def test_high_risk_approval_is_never_remote_decidable(api, phone, monkeypatch):
         session_id="session-2",
         task_id="turn-2",
         tool_call_id="tool-2",
-        tool_name="local_exec",
-        args={"command": "rm -rf /"},
+        tool_name="run_code",
+        args={"code": "print(1)"},
     )
     assert record is not None
     assert record["risk"] == "high"

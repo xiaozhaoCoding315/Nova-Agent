@@ -144,11 +144,27 @@ async def get_export_readiness(user_id: int, project_id: str) -> dict[str, Any]:
     board = await get_board(user_id, project_id)
     state = stages.StageState.from_dict(board["state"])
     warnings = stages.export_warnings(state)
+    rows = await query(
+        "SELECT 1 FROM thesis_documents "
+        "WHERE project_id = %s AND user_id = %s AND status = 'parsed' LIMIT 1",
+        (board["project_id"], user_id),
+    )
+    document_available = bool(rows)
+    manuscript_available = any(value.strip() for value in state.contents.values())
+    if not document_available and not manuscript_available:
+        warnings.append({
+            "stage": "",
+            "label": "内容",
+            "kind": "no_content",
+            "message": "还没有可导出的文档或阶段内容",
+        })
     return {
         "project_id": board["project_id"],
         "ready": not warnings,
         "stage": state.stage,
         "readiness": state.readiness,
+        "document_available": document_available,
+        "manuscript_available": manuscript_available,
         "warnings": warnings,
     }
 

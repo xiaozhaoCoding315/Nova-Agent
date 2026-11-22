@@ -1397,6 +1397,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remote/instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Instructions
+         * @description Pending phone instructions for the desktop to review.
+         */
+        get: operations["list_instructions_api_v1_remote_instructions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/instructions/{instruction_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Instruction
+         * @description Mark a reviewed instruction as sent into the chat or rejected.
+         *
+         *     The desktop sends the text through the normal chat path first; this endpoint
+         *     only records the outcome.  The phone never gets a second execution path.
+         */
+        post: operations["resolve_instruction_api_v1_remote_instructions__instruction_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remote/notifications": {
         parameters: {
             query?: never;
@@ -2870,6 +2913,29 @@ export interface paths {
         };
         /** Get Thesis Issues */
         get: operations["get_thesis_issues_api_v1_thesis_projects__project_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/manuscript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Thesis Manuscript
+         * @description Export the author's stage contents as Markdown, DOCX or PDF.
+         *
+         *     This is the 0-to-1 path: it does not need an imported DOCX.  Empty stages
+         *     are omitted; unconfirmed or stale stages require an explicit acknowledgement.
+         */
+        get: operations["export_thesis_manuscript_api_v1_thesis_projects__project_id__manuscript_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4390,6 +4456,14 @@ export interface components {
              * @default
              */
             signature: string;
+        };
+        /** InstructionResolveIn */
+        InstructionResolveIn: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "rejected";
         };
         /** InviteCodeCreateRequest */
         InviteCodeCreateRequest: {
@@ -9208,6 +9282,73 @@ export interface operations {
             };
         };
     };
+    list_instructions_api_v1_remote_instructions_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_instruction_api_v1_remote_instructions__instruction_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_notifications_api_v1_remote_notifications_get: {
         parameters: {
             query?: {
@@ -12271,6 +12412,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThesisIssueOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_manuscript_api_v1_thesis_projects__project_id__manuscript_get: {
+        parameters: {
+            query?: {
+                format?: string;
+                allow_unconfirmed?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

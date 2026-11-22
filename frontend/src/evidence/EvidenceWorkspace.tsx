@@ -83,6 +83,10 @@ export function EvidenceWorkspace({ open, onClose }: { open: boolean; onClose: (
   const [activeId, setActiveId] = useState('')
   const [repoId, setRepoId] = useState('')
   const [verification, setVerification] = useState<EvidenceVerifyResult | null>(null)
+  const [buildOpen, setBuildOpen] = useState(false)
+  const [claimsJson, setClaimsJson] = useState('')
+  const [artifactPaths, setArtifactPaths] = useState('')
+  const [environmentJson, setEnvironmentJson] = useState('')
 
   const [compareOpen, setCompareOpen] = useState(false)
   const [localJson, setLocalJson] = useState(SAMPLE_LOCAL)
@@ -155,13 +159,45 @@ export function EvidenceWorkspace({ open, onClose }: { open: boolean; onClose: (
 
   const buildPack = async () => {
     if (!repoId) return
-    setBusy(true)
     setError('')
+    let claims: Record<string, unknown>[] | undefined
+    if (claimsJson.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(claimsJson)
+        if (!Array.isArray(parsed)) throw new Error('not an array')
+        claims = parsed as Record<string, unknown>[]
+      } catch {
+        setError('自定义主张必须是 JSON 数组，例如 [{"kind":"human_note","text":"..."}]')
+        return
+      }
+    }
+    let environment: Record<string, unknown> | undefined
+    if (environmentJson.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(environmentJson)
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('not an object')
+        }
+        environment = parsed as Record<string, unknown>
+      } catch {
+        setError('环境描述必须是 JSON 对象')
+        return
+      }
+    }
+    setBusy(true)
     try {
-      const created = await api.evidence.build(repoId)
+      const created = await api.evidence.build(repoId, {
+        claims,
+        artifact_paths: artifactPaths
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        environment,
+      })
       setActiveId(created.pack_id)
       setPack(created)
       await loadPacks(created.pack_id)
+      setBuildOpen(false)
     } catch (err) {
       setError(messageOf(err, '生成证据包失败'))
     } finally {
@@ -248,8 +284,49 @@ export function EvidenceWorkspace({ open, onClose }: { open: boolean; onClose: (
             >
               {busy ? <Spinner /> : <RefreshCw size={12} />} 从验证结果生成
             </Button>
+            <button
+              onClick={() => setBuildOpen((value) => !value)}
+              className="text-left text-2xs text-accent underline underline-offset-2"
+            >
+              {buildOpen ? '收起自定义输入' : '高级：自定义主张 / 工件 / 环境'}
+            </button>
+            {buildOpen && (
+              <div className="space-y-1.5 rounded-sm border border-edge bg-base/40 p-2">
+                <label className="block text-2xs text-dim">
+                  自定义主张（JSON 数组，可选）
+                  <textarea
+                    value={claimsJson}
+                    onChange={(event) => setClaimsJson(event.target.value)}
+                    rows={3}
+                    placeholder='[{"kind":"human_note","statement":"我手工验证了导出"}]'
+                    className="mt-0.5 w-full resize-y rounded-sm border border-edge bg-base px-1.5 py-1 font-mono text-2xs text-ink outline-none placeholder:text-faint focus:border-accent"
+                  />
+                </label>
+                <label className="block text-2xs text-dim">
+                  工件路径（每行一个，相对仓库根目录）
+                  <textarea
+                    value={artifactPaths}
+                    onChange={(event) => setArtifactPaths(event.target.value)}
+                    rows={2}
+                    placeholder={'dist/report.pdf\nlogs/test.log'}
+                    className="mt-0.5 w-full resize-y rounded-sm border border-edge bg-base px-1.5 py-1 font-mono text-2xs text-ink outline-none placeholder:text-faint focus:border-accent"
+                  />
+                </label>
+                <label className="block text-2xs text-dim">
+                  环境描述（JSON 对象，可选）
+                  <textarea
+                    value={environmentJson}
+                    onChange={(event) => setEnvironmentJson(event.target.value)}
+                    rows={2}
+                    placeholder='{"os":"linux","tool_versions":{"node":"20"}}'
+                    className="mt-0.5 w-full resize-y rounded-sm border border-edge bg-base px-1.5 py-1 font-mono text-2xs text-ink outline-none placeholder:text-faint focus:border-accent"
+                  />
+                </label>
+              </div>
+            )}
             <p className="text-2xs leading-relaxed text-faint">
-              只读取仓库里最近一次验证的事实；失败、跳过与不支持都会留在「未证实」里。
+              默认只读取仓库里最近一次验证的事实；失败、跳过与不支持都会留在「未证实」里。
+              自定义工件必须位于仓库内，路径越界会被拒绝。
             </p>
           </div>
 

@@ -43,21 +43,26 @@ class EvidenceCompareIn(BaseModel):
     container: dict[str, Any] = Field(default_factory=dict)
 
 
-def _resolve_artifacts(root: Path, items: list[str]) -> list[Path]:
+def _resolve_artifacts(root: Path, items: list[str]) -> list[tuple[Path, str]]:
+    """Resolve artifact paths and keep their repo-relative names.
+
+    Using the basename would make a nested artifact unfindable during
+    verification, so the name stored in the pack must be the relative path.
+    """
     base = root.resolve()
-    resolved: list[Path] = []
+    resolved: list[tuple[Path, str]] = []
     for raw in items:
         value = (raw or "").strip()
         if not value:
             continue
         candidate = (base / value).resolve()
         try:
-            candidate.relative_to(base)
+            relative = candidate.relative_to(base)
         except ValueError as exc:
             raise ValueError(f"工件路径必须位于仓库目录内：{raw}") from exc
         if not candidate.is_file():
             raise ValueError(f"工件不存在：{raw}")
-        resolved.append(candidate)
+        resolved.append((candidate, relative.as_posix()))
     return resolved
 
 
