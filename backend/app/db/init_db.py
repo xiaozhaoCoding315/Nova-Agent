@@ -1325,6 +1325,24 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS available_at "
         "TIMESTAMPTZ NOT NULL DEFAULT now()",
     ]),
+    # 28: fact lifecycle.  Categories let cross-project preferences live in
+    # global scope; status/version/supersedes keep corrections visible instead
+    # of silently deleting the old value.  pgvector storage is created at
+    # runtime by ``vector_store.ensure_schema`` because not every deployment
+    # ships the extension.
+    (28, [
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS category "
+        "VARCHAR(24) NOT NULL DEFAULT 'fact'",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS status "
+        "VARCHAR(16) NOT NULL DEFAULT 'active'",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS supersedes_id BIGINT "
+        "REFERENCES facts(id) ON DELETE SET NULL",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS updated_at "
+        "TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "CREATE INDEX IF NOT EXISTS idx_facts_scope_status "
+        "ON facts (user_id, scope_type, scope_id, status, importance DESC)",
+    ]),
 ]
 
 
@@ -1381,6 +1399,13 @@ async def init_postgres() -> str:
             )]
         )
         logger.info("schema_migration_applied", version=version)
+
+    # pgvector is optional; a missing extension must never block startup.
+    try:
+        from app.core.memory import vector_store
+        await vector_store.ensure_schema()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("fact_vector_schema_skipped", error=str(exc))
 
     return db_state
 

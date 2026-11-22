@@ -1224,4 +1224,38 @@ Builder 项目复用仓库工作区、索引、证据、项目大脑与影响分
 ### 39.7 验证与边界
 - 新增/更新单测：`test_memory_summary.py`、`test_memory_scope.py`、`test_memory_compaction.py`、`test_facts.py`、`test_memory_daily.py`、`test_jobs.py`、`test_retriever.py`、`test_local_retrieval.py`。
 - 全量回归（2026-11-22）：后端 `pytest` 1423 passed / 12 skipped；`ruff check app tests evals` 通过；`evals` 的 scripted smoke 通过；前端 `npm run build`、`npm run contract:check` 通过。
-- 尚未做：facts 的 pgvector 候选召回（当前用 JSONB + 新近度上限）、自动学习的 global 偏好（目前 global 仅保留给显式写入）、日摘要的仓库级细分（dev 日摘要按产品模式聚合）。这些属于 P1。
+- 原 P1 缺口（pgvector、global 偏好、仓库级日摘要、编辑/冲突、评估集）已在 §40 落地。
+
+## 40. v6.2 增量：P1 记忆能力（2026-11-22）
+
+迁移版本 28。
+
+### 40.1 事实生命周期与纠错
+- `facts` 新增 `category/status/version/supersedes_id/updated_at`；`status` 为 `active/superseded/archived`，检索、去重与容量统计只看 active。
+- 同一作用域内高相似（0.85–0.92）的 `preference/correction` 会自动把旧值标为 `superseded`，新值版本 +1 并记录 `supersedes_id`；显式 `supersedes_id` 与抽取器的 `replaces` 片段优先。
+- 新增 `POST /memory/facts`（显式记住）、`PATCH /memory/facts/{id}`（改内容/重要度/TTL/类别/状态）、`GET /memory/facts/{id}/sources`（来源会话、消息、被替代链）；删除仍保留。
+- `GET /memory` 默认只返回 active，可用 `include_inactive=true` 或 `status=` 查看历史；设置页支持新增、编辑、归档/恢复、显示已归档、来源与版本标签。
+
+### 40.2 跨项目偏好自动学习
+- 抽取提示词改为结构化对象：`text/kind/scope/replaces`，兼容旧的字符串数组。
+- 只有“用户明确表达的稳定跨项目偏好”（语言、回答风格、工具、工作习惯，且原文含偏好线索）进入 `global`；项目/仓库/论文内容一律留在当前作用域。
+- 抽取结果写入 `category`，供冲突检测、UI 分类和评估使用。
+
+### 40.3 仓库级日摘要与回溯
+- 日摘要新增 `repo:<repo_id>` 作用域，只聚合“仅绑定该仓库”的 dev 会话，避免多仓库会话被重复计入。
+- `recent_daily()` 按可读作用域取最近 7 天日摘要；用户问“昨天/上次/之前/最近”等回溯性问题时，以 `近期日摘要` 区块注入 prompt，并计入 context meter。
+
+### 40.4 pgvector 事实召回（可选）
+- 启动时探测 `vector` 扩展；存在则创建 `fact_vectors`（`vector(embedding_dim)`）与 HNSW cosine 索引，事实写入同步索引，检索先用 ANN 取候选再精排。
+- 扩展缺失、建表失败或查询异常时自动退回 JSONB cosine；清理任务会为历史事实补索引。pgvector 不是启动硬依赖。
+
+### 40.5 记忆评估集
+- 新增 `evals/memory_golden.json`（真实/合成事实、作用域、向量、回溯问题）与 `evals/memory_eval.py`。
+- 指标：`recall@8`、`scope_leak`、`stale_rate`、`duplicate_rate`、`compaction_retention`、`memory_token_share`，并与 `evals/memory_baseline.json` 对比。
+- `python -m evals.memory_eval --check` 进入 `scripts/check.sh`；`tests/test_memory_eval.py` 在 pytest 中跑快速子集。
+
+### 40.6 验证与边界
+- 新增/更新单测：`test_memory_lifecycle.py`、`test_memory_extraction.py`、`test_fact_vectors.py`、`test_memory_daily.py`、`test_memory_eval.py`、`test_memory_scope.py`、`test_facts.py`。
+- 边界修复：显式 `replaces` 纠正常与旧事实余弦 ≥0.92，原先会被语义去重吞掉；现当显式替换目标存在时跳过去重保护（`test_explicit_supersede_bypasses_semantic_dedup`）。
+- 全量回归（2026-11-22）：后端 `pytest` 1455 passed / 12 skipped；`ruff check app tests evals`、`memory_eval --check`、前端 `npm run build`、`npm run contract:check` 全部通过。
+- 尚未做：P1 的记忆索引与 `memory_search/read` 工具、项目大脑注入、导出/删除全部、用户级记忆开关；P2 的分层指令、完整跨会话消息检索、夜间整合、子代理记忆、团队 store 与投毒防护。

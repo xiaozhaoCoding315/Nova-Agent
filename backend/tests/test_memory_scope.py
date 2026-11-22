@@ -186,24 +186,32 @@ async def test_daily_rollup_is_scoped(monkeypatch):
 async def test_memory_api_filters_and_returns_scope(monkeypatch):
     from app.api.v1 import memory as memory_api
 
-    fact_rows = [
-        (1, "论文方向", 1.2, 90, None, None, None, "thesis", "p1", "s1", 0.9),
-    ]
+    fact_rows = [{
+        "id": 1, "content": "论文方向", "importance": 1.2, "ttl_days": 90,
+        "scope_type": "thesis", "scope_id": "p1",
+        "source_session_id": "s1", "status": "active", "category": "project",
+    }]
     daily_rows = [
         (date(2026, 10, 22), "论文进展", 10, None, None, "thesis", "p1"),
     ]
-    query = AsyncMock(side_effect=[fact_rows, daily_rows])
+    list_facts = AsyncMock(return_value=fact_rows)
+    query = AsyncMock(return_value=daily_rows)
+    monkeypatch.setattr(memory_api.facts_mod, "list_facts", list_facts)
     monkeypatch.setattr(memory_api, "query", query)
 
     result = await memory_api.get_memory(
         scope_type="thesis", scope_id="p1", user={"id": 7},
     )
 
-    fact_sql, fact_params = query.await_args_list[0].args
-    assert "scope_type = %s" in fact_sql
-    assert fact_params == (7, "thesis", "p1")
+    list_facts.assert_awaited_once_with(
+        7, scope_type="thesis", scope_id="p1", status=None,
+        include_inactive=False,
+    )
     assert result["facts"][0]["scope_type"] == "thesis"
     assert result["facts"][0]["source_session_id"] == "s1"
+    daily_sql, daily_params = query.await_args.args
+    assert "scope_type = %s" in daily_sql
+    assert daily_params == (7, "thesis", "p1")
     assert result["daily"][0]["scope_id"] == "p1"
 
 

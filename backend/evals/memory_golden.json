@@ -1,0 +1,574 @@
+{
+  "top_k": 8,
+  "context_window": 8000,
+  "facts": [
+    {
+      "id": 1,
+      "content": "用户偏好中文回答",
+      "scope_type": "global",
+      "scope_id": "",
+      "status": "active",
+      "category": "preference",
+      "importance": 1.0,
+      "embedding": [
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "content": "用户偏好小步提交",
+      "scope_type": "global",
+      "scope_id": "",
+      "status": "active",
+      "category": "preference",
+      "importance": 1.1,
+      "embedding": [
+        0.8,
+        0.6
+      ]
+    },
+    {
+      "id": 10,
+      "content": "用户讨厌冗长解释",
+      "scope_type": "global",
+      "scope_id": "",
+      "status": "active",
+      "category": "preference",
+      "importance": 1.0,
+      "embedding": [
+        0.3,
+        0.95
+      ]
+    },
+    {
+      "id": 13,
+      "content": "用户偏好 Java",
+      "scope_type": "global",
+      "scope_id": "",
+      "status": "superseded",
+      "category": "preference",
+      "importance": 2.0,
+      "embedding": [
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "content": "项目使用 FastAPI",
+      "scope_type": "dev",
+      "scope_id": "",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "id": 14,
+      "content": "项目使用 FastAPI 框架",
+      "scope_type": "dev",
+      "scope_id": "",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "id": 4,
+      "content": "数据库是 PostgreSQL",
+      "scope_type": "dev",
+      "scope_id": "",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.75,
+        0.66
+      ]
+    },
+    {
+      "id": 11,
+      "content": "部署端口是 8080",
+      "scope_type": "dev",
+      "scope_id": "",
+      "status": "active",
+      "category": "decision",
+      "importance": 1.0,
+      "embedding": [
+        0.2,
+        0.8
+      ]
+    },
+    {
+      "id": 5,
+      "content": "入口文件是 app/main.py",
+      "scope_type": "repo",
+      "scope_id": "r1",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.7,
+        0.7
+      ]
+    },
+    {
+      "id": 6,
+      "content": "测试命令是 pytest",
+      "scope_type": "repo",
+      "scope_id": "r1",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.3,
+        0.95
+      ]
+    },
+    {
+      "id": 7,
+      "content": "前端使用 Vue",
+      "scope_type": "repo",
+      "scope_id": "r2",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.8,
+        0.6
+      ]
+    },
+    {
+      "id": 12,
+      "content": "Node 版本是 20",
+      "scope_type": "repo",
+      "scope_id": "r2",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.3,
+        0.7
+      ]
+    },
+    {
+      "id": 8,
+      "content": "论文题目是可解释推荐",
+      "scope_type": "thesis",
+      "scope_id": "p1",
+      "status": "active",
+      "category": "project",
+      "importance": 1.0,
+      "embedding": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": 9,
+      "content": "引用格式是 GB/T 7714",
+      "scope_type": "thesis",
+      "scope_id": "p1",
+      "status": "active",
+      "category": "decision",
+      "importance": 1.0,
+      "embedding": [
+        0.1,
+        0.99
+      ]
+    },
+    {
+      "id": 100,
+      "content": "辅助项目事实 0",
+      "scope_type": "repo",
+      "scope_id": "r9-0",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "id": 101,
+      "content": "辅助项目事实 1",
+      "scope_type": "repo",
+      "scope_id": "r9-1",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.5403,
+        0.8415
+      ]
+    },
+    {
+      "id": 102,
+      "content": "辅助项目事实 2",
+      "scope_type": "repo",
+      "scope_id": "r9-2",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.4161,
+        0.9093
+      ]
+    },
+    {
+      "id": 103,
+      "content": "辅助项目事实 3",
+      "scope_type": "repo",
+      "scope_id": "r9-3",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.99,
+        0.1411
+      ]
+    },
+    {
+      "id": 104,
+      "content": "辅助项目事实 4",
+      "scope_type": "repo",
+      "scope_id": "r9-4",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.6536,
+        -0.7568
+      ]
+    },
+    {
+      "id": 105,
+      "content": "辅助项目事实 5",
+      "scope_type": "repo",
+      "scope_id": "r9-5",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.2837,
+        -0.9589
+      ]
+    },
+    {
+      "id": 106,
+      "content": "辅助项目事实 6",
+      "scope_type": "repo",
+      "scope_id": "r9-6",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.9602,
+        -0.2794
+      ]
+    },
+    {
+      "id": 107,
+      "content": "辅助项目事实 7",
+      "scope_type": "repo",
+      "scope_id": "r9-7",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.7539,
+        0.657
+      ]
+    },
+    {
+      "id": 108,
+      "content": "辅助项目事实 8",
+      "scope_type": "repo",
+      "scope_id": "r9-8",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.1455,
+        0.9894
+      ]
+    },
+    {
+      "id": 109,
+      "content": "辅助项目事实 9",
+      "scope_type": "repo",
+      "scope_id": "r9-9",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.9111,
+        0.4121
+      ]
+    },
+    {
+      "id": 110,
+      "content": "辅助项目事实 10",
+      "scope_type": "repo",
+      "scope_id": "r9-10",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.8391,
+        -0.544
+      ]
+    },
+    {
+      "id": 111,
+      "content": "辅助项目事实 11",
+      "scope_type": "repo",
+      "scope_id": "r9-11",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.0044,
+        -1.0
+      ]
+    },
+    {
+      "id": 112,
+      "content": "辅助项目事实 12",
+      "scope_type": "repo",
+      "scope_id": "r9-12",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.8439,
+        -0.5366
+      ]
+    },
+    {
+      "id": 113,
+      "content": "辅助项目事实 13",
+      "scope_type": "repo",
+      "scope_id": "r9-13",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.9074,
+        0.4202
+      ]
+    },
+    {
+      "id": 114,
+      "content": "辅助项目事实 14",
+      "scope_type": "repo",
+      "scope_id": "r9-14",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.1367,
+        0.9906
+      ]
+    },
+    {
+      "id": 115,
+      "content": "辅助项目事实 15",
+      "scope_type": "repo",
+      "scope_id": "r9-15",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.7597,
+        0.6503
+      ]
+    },
+    {
+      "id": 116,
+      "content": "辅助项目事实 16",
+      "scope_type": "repo",
+      "scope_id": "r9-16",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.9577,
+        -0.2879
+      ]
+    },
+    {
+      "id": 117,
+      "content": "辅助项目事实 17",
+      "scope_type": "repo",
+      "scope_id": "r9-17",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        -0.2752,
+        -0.9614
+      ]
+    },
+    {
+      "id": 118,
+      "content": "辅助项目事实 18",
+      "scope_type": "repo",
+      "scope_id": "r9-18",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.6967,
+        -0.7174
+      ]
+    },
+    {
+      "id": 119,
+      "content": "辅助项目事实 19",
+      "scope_type": "repo",
+      "scope_id": "r9-19",
+      "status": "active",
+      "category": "fact",
+      "importance": 1.0,
+      "embedding": [
+        0.999,
+        0.0448
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "global_preferences",
+      "query_embedding": [
+        1.0,
+        0.0
+      ],
+      "readable_scopes": [
+        [
+          "global",
+          ""
+        ],
+        [
+          "dev",
+          ""
+        ]
+      ],
+      "must_recall": [
+        1,
+        10
+      ],
+      "forbidden": [
+        8,
+        13
+      ]
+    },
+    {
+      "id": "repo_entry_points",
+      "query_embedding": [
+        0.7,
+        0.7
+      ],
+      "readable_scopes": [
+        [
+          "global",
+          ""
+        ],
+        [
+          "dev",
+          ""
+        ],
+        [
+          "repo",
+          "r1"
+        ]
+      ],
+      "must_recall": [
+        5,
+        6
+      ],
+      "forbidden": [
+        7,
+        8
+      ]
+    },
+    {
+      "id": "thesis_context",
+      "query_embedding": [
+        0.5,
+        0.5
+      ],
+      "readable_scopes": [
+        [
+          "global",
+          ""
+        ],
+        [
+          "thesis",
+          "p1"
+        ]
+      ],
+      "must_recall": [
+        8,
+        9
+      ],
+      "forbidden": [
+        5,
+        7
+      ]
+    },
+    {
+      "id": "stale_preference",
+      "query_embedding": [
+        1.0,
+        0.0
+      ],
+      "readable_scopes": [
+        [
+          "global",
+          ""
+        ]
+      ],
+      "must_recall": [
+        1
+      ],
+      "forbidden": [
+        13
+      ]
+    },
+    {
+      "id": "commit_habit",
+      "query_embedding": [
+        0.9,
+        0.1
+      ],
+      "readable_scopes": [
+        [
+          "global",
+          ""
+        ]
+      ],
+      "must_recall": [
+        2
+      ],
+      "forbidden": []
+    }
+  ],
+  "compaction": {
+    "summary": "目标：给 FastAPI 服务增加 JWT 登录。已确认先做数据库迁移和测试；刷新令牌过期问题仍未解决，下一步补集成测试。",
+    "required_keywords": [
+      "FastAPI",
+      "JWT",
+      "迁移",
+      "测试"
+    ]
+  }
+}

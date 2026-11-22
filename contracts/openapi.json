@@ -4235,8 +4235,126 @@
         "title": "MemoryDailyOut",
         "type": "object"
       },
+      "MemoryFactCreate": {
+        "properties": {
+          "category": {
+            "default": "fact",
+            "enum": [
+              "fact",
+              "preference",
+              "project",
+              "decision",
+              "correction"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "importance": {
+            "default": 1.0,
+            "maximum": 2.0,
+            "minimum": 0.1,
+            "title": "Importance",
+            "type": "number"
+          },
+          "scope_id": {
+            "default": "",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "default": "global",
+            "enum": [
+              "global",
+              "dev",
+              "thesis",
+              "repo"
+            ],
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "ttl_days": {
+            "default": 90,
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Ttl Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MemoryFactCreate",
+        "type": "object"
+      },
+      "MemoryFactCreateOut": {
+        "properties": {
+          "added": {
+            "default": true,
+            "title": "Added",
+            "type": "boolean"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "MemoryFactCreateOut",
+        "type": "object"
+      },
+      "MemoryFactMessageOut": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "preview": {
+            "default": "",
+            "title": "Preview",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "MemoryFactMessageOut",
+        "type": "object"
+      },
       "MemoryFactOut": {
         "properties": {
+          "category": {
+            "default": "fact",
+            "enum": [
+              "fact",
+              "preference",
+              "project",
+              "decision",
+              "correction"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
           "confidence": {
             "default": 1.0,
             "title": "Confidence",
@@ -4301,6 +4419,17 @@
             "title": "Scope Type",
             "type": "string"
           },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
           "source_session_id": {
             "anyOf": [
               {
@@ -4312,9 +4441,47 @@
             ],
             "title": "Source Session Id"
           },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "superseded",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
           "ttl_days": {
             "default": 90,
             "title": "Ttl Days",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
             "type": "integer"
           }
         },
@@ -4323,6 +4490,189 @@
           "content"
         ],
         "title": "MemoryFactOut",
+        "type": "object"
+      },
+      "MemoryFactSourceOut": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "MemoryFactSourceOut",
+        "type": "object"
+      },
+      "MemoryFactSourcesOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "fact_id": {
+            "title": "Fact Id",
+            "type": "integer"
+          },
+          "source_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryFactMessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryFactSourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryFactSupersedesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fact_id",
+          "content"
+        ],
+        "title": "MemoryFactSourcesOut",
+        "type": "object"
+      },
+      "MemoryFactSupersedesOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "status",
+          "version"
+        ],
+        "title": "MemoryFactSupersedesOut",
+        "type": "object"
+      },
+      "MemoryFactUpdate": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fact",
+                  "preference",
+                  "project",
+                  "decision",
+                  "correction"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "importance": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "superseded",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "ttl_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Days"
+          }
+        },
+        "title": "MemoryFactUpdate",
         "type": "object"
       },
       "MemoryOut": {
@@ -11404,6 +11754,32 @@
               ],
               "title": "Scope Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_inactive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Inactive",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -11496,6 +11872,47 @@
         ]
       }
     },
+    "/api/v1/memory/facts": {
+      "post": {
+        "operationId": "create_fact_api_v1_memory_facts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryFactCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactCreateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Fact",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/v1/memory/facts/{fact_id}": {
       "delete": {
         "operationId": "delete_fact_api_v1_memory_facts__fact_id__delete",
@@ -11533,6 +11950,98 @@
           }
         },
         "summary": "Delete Fact",
+        "tags": [
+          "memory"
+        ]
+      },
+      "patch": {
+        "operationId": "update_fact_api_v1_memory_facts__fact_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryFactUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Fact",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/v1/memory/facts/{fact_id}/sources": {
+      "get": {
+        "operationId": "get_fact_sources_api_v1_memory_facts__fact_id__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactSourcesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Fact Sources",
         "tags": [
           "memory"
         ]

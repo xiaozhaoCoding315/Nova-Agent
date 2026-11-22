@@ -23,6 +23,7 @@ from app.core.jobs import service as jobs_service
 from app.core.llm import factory as llm_factory_mod
 from app.core.llm import usage as usage_mod
 from app.core.memory import compaction as compaction_mod
+from app.core.memory import daily as daily_mod
 from app.core.memory import facts as facts_mod
 from app.core.memory import session as session_mod
 from app.core.rag import retriever as retriever_mod
@@ -296,6 +297,7 @@ class InProcessHarness:
         self._patch(session_mod, "count_messages_since", AsyncMock(return_value=0))
         self._patch(facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
         self._patch(facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+        self._patch(daily_mod, "recent_daily", AsyncMock(return_value=[]))
         self._patch(
             compaction_mod, "latest_compaction", AsyncMock(return_value="")
         )

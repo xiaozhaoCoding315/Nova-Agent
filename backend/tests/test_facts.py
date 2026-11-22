@@ -73,6 +73,28 @@ async def test_relevant_facts_blend_semantics_and_importance(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_relevant_facts_use_pgvector_candidates_when_available(monkeypatch):
+    rows = [
+        (1, "使用 Java", [0.0, 1.0], 1.0),
+        (2, "使用 FastAPI", [1.0, 0.0], 1.0),
+    ]
+    query = AsyncMock(return_value=rows)
+    monkeypatch.setattr(facts_mod, "query", query)
+    monkeypatch.setattr(facts_mod, "execute", AsyncMock())
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: QueryEmbedder())
+    rank = AsyncMock(return_value=[2, 1])
+    monkeypatch.setattr(facts_mod.vector_store, "rank_fact_ids", rank)
+
+    facts = await facts_mod.get_relevant_facts(1, "FastAPI 项目", limit=2)
+
+    assert facts == ["使用 FastAPI", "使用 Java"]
+    rank.assert_awaited_once()
+    sql, params = query.await_args.args
+    assert "id IN" in sql
+    assert params == (1, 2, 1)
+
+
+@pytest.mark.asyncio
 async def test_promote_facts_requires_multiple_days(monkeypatch):
     execute = AsyncMock(return_value=[(1,), (2,)])
     monkeypatch.setattr(facts_mod, "execute", execute)

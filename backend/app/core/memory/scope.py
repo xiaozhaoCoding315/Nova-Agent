@@ -2,8 +2,12 @@
 
 Facts and daily summaries are never shared implicitly across product surfaces.
 A dev conversation may read global + dev + its selected repos; a thesis
-conversation may read global + that thesis project only.  Automatic
-extraction writes to the surface that produced the turn, never to ``global``.
+conversation may read global + that thesis project only.
+
+Automatic extraction writes to the surface that produced the turn.  The one
+exception is an explicit, stable cross-project preference (language, tone,
+workflow habit), which the extractor may route to ``global``; project and
+thesis facts always stay in their owning scope.
 """
 from dataclasses import dataclass
 

@@ -1,4 +1,5 @@
 """Daily memory layer: one compressed summary per user, scope and day."""
+import re
 from datetime import date, datetime, time, timedelta, timezone
 
 import structlog
@@ -15,6 +16,13 @@ logger = structlog.get_logger()
 DAILY_MIN_MESSAGES = 8
 MAX_DAILY_LINES = 40
 MAX_DAILY_CHARS = 2000
+RECENT_DAILY_DAYS = 7
+
+_RETROSPECTIVE = re.compile(
+    r"(昨天|昨日|前天|上次|上一次|之前|此前|最近|那会儿|还记得|做到哪|"
+    r"yesterday|last time|previously|last session|where were we)",
+    re.IGNORECASE,
+)
 
 _PROMPT = """把下面这一天的对话压缩成一份供以后查阅的中文日摘要。
 保留：目标、已确认的决策、技术约束、未完成事项、重要偏好与结论。
@@ -32,6 +40,66 @@ def _truncate(text: str) -> str:
     return "\n".join(lines[:MAX_DAILY_LINES])[:MAX_DAILY_CHARS]
 
 
+def is_retrospective(text: str) -> bool:
+    """Questions about earlier work should see the episodic daily layer."""
+    return bool(_RETROSPECTIVE.search(text or ""))
+
+
+def _scope_filter(scopes: list[scope_mod.Scope] | None) -> tuple[str, list]:
+    if scopes is None:
+        return "", []
+    if not scopes:
+        return " AND FALSE", []
+    parts: list[str] = []
+    params: list = []
+    for scope in scopes:
+        parts.append("(scope_type = %s AND scope_id = %s)")
+        params.extend([scope.type, scope.id])
+    return " AND (" + " OR ".join(parts) + ")", params
+
+
+async def recent_daily(
+    user_id: int,
+    scopes: list[scope_mod.Scope] | None,
+    days: int = RECENT_DAILY_DAYS,
+    limit: int = 5,
+) -> list[dict]:
+    """Recent daily summaries for the readable scopes, newest first."""
+    since = date.today() - timedelta(days=max(1, int(days)))
+    scope_sql, scope_params = _scope_filter(scopes)
+    rows = await query(
+        "SELECT day, summary, scope_type, scope_id FROM memory_daily "
+        f"WHERE user_id = %s AND day >= %s {scope_sql} "
+        "ORDER BY day DESC LIMIT %s",
+        (user_id, since, *scope_params, max(1, int(limit))),
+    )
+    return [
+        {
+            "day": row[0].isoformat() if isinstance(row[0], date) else str(row[0]),
+            "summary": row[1], "scope_type": row[2] or scope_mod.DEV,
+            "scope_id": row[3] or "",
+        }
+        for row in rows
+    ]
+
+
+def format_daily_block(rows: list[dict]) -> str:
+    """Compact prompt block for retrospective questions."""
+    if not rows:
+        return ""
+    lines = []
+    for row in rows:
+        scope = scope_mod.normalize(row.get("scope_type"), row.get("scope_id"))
+        lines.append(
+            f"- {row.get('day', '')} · {scope.label}: "
+            f"{(row.get('summary') or '').strip()[:600]}"
+        )
+    return (
+        "\n\n## 近期日摘要（用户提到过去的工作，按时间倒序）\n"
+        + "\n".join(lines)
+    )
+
+
 def _day_bounds(day: date) -> tuple[datetime, datetime]:
     start = datetime.combine(day, time.min, tzinfo=timezone.utc)
     return start, start + timedelta(days=1)
@@ -46,7 +114,9 @@ def _session_scope_filter(scope: scope_mod.Scope) -> tuple[str, list]:
         )
     if scope.type == scope_mod.REPO:
         return (
-            "AND s.product_mode = 'dev' AND EXISTS ("
+            "AND s.product_mode = 'dev' AND ("
+            "  SELECT COUNT(*) FROM session_repos sr2 WHERE sr2.session_id = s.id"
+            ") = 1 AND EXISTS ("
             "  SELECT 1 FROM session_repos sr "
             "  WHERE sr.session_id = s.id AND sr.repo_id::text = %s)",
             [scope.id],
@@ -156,5 +226,23 @@ async def rollup_yesterday(ctx=None) -> int:
         written += 1 if await rollup_day(
             int(user_id), yesterday, ctx=ctx,
             scope_type=scope_type, scope_id=scope_id,
+        ) else 0
+
+    # Single-repo sessions also get a repo-scoped daily summary, so a question
+    # about this repository can retrieve its own episodic history.
+    repo_rows = await query(
+        "SELECT DISTINCT s.user_id, sr.repo_id::text "
+        "FROM messages m JOIN sessions s ON s.id = m.session_id "
+        "JOIN session_repos sr ON sr.session_id = s.id "
+        "WHERE m.created_at >= %s AND m.created_at < %s "
+        "AND s.product_mode = 'dev' AND ("
+        "  SELECT COUNT(*) FROM session_repos sr2 WHERE sr2.session_id = s.id"
+        ") = 1",
+        (start, end),
+    )
+    for user_id, repo_id in repo_rows:
+        written += 1 if await rollup_day(
+            int(user_id), yesterday, ctx=ctx,
+            scope_type=scope_mod.REPO, scope_id=str(repo_id),
         ) else 0
     return written

@@ -1312,6 +1312,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Fact */
+        post: operations["create_fact_api_v1_memory_facts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory/facts/{fact_id}": {
         parameters: {
             query?: never;
@@ -1324,6 +1341,24 @@ export interface paths {
         post?: never;
         /** Delete Fact */
         delete: operations["delete_fact_api_v1_memory_facts__fact_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Fact */
+        patch: operations["update_fact_api_v1_memory_facts__fact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/memory/facts/{fact_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fact Sources */
+        get: operations["get_fact_sources_api_v1_memory_facts__fact_id__sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4938,8 +4973,71 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** MemoryFactCreate */
+        MemoryFactCreate: {
+            /**
+             * Category
+             * @default fact
+             * @enum {string}
+             */
+            category: "fact" | "preference" | "project" | "decision" | "correction";
+            /** Content */
+            content: string;
+            /**
+             * Importance
+             * @default 1
+             */
+            importance: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             * @enum {string}
+             */
+            scope_type: "global" | "dev" | "thesis" | "repo";
+            /**
+             * Ttl Days
+             * @default 90
+             */
+            ttl_days: number;
+        };
+        /** MemoryFactCreateOut */
+        MemoryFactCreateOut: {
+            /**
+             * Added
+             * @default true
+             */
+            added: boolean;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+        };
+        /** MemoryFactMessageOut */
+        MemoryFactMessageOut: {
+            /** Id */
+            id?: number | null;
+            /**
+             * Preview
+             * @default
+             */
+            preview: string;
+            /** Role */
+            role?: string | null;
+        };
         /** MemoryFactOut */
         MemoryFactOut: {
+            /**
+             * Category
+             * @default fact
+             * @enum {string}
+             */
+            category: "fact" | "preference" | "project" | "decision" | "correction";
             /**
              * Confidence
              * @default 1
@@ -4970,13 +5068,71 @@ export interface components {
              * @default global
              */
             scope_type: string;
+            /** Source Message Id */
+            source_message_id?: number | null;
             /** Source Session Id */
             source_session_id?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "superseded" | "archived";
+            /** Supersedes Id */
+            supersedes_id?: number | null;
             /**
              * Ttl Days
              * @default 90
              */
             ttl_days: number;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /** MemoryFactSourceOut */
+        MemoryFactSourceOut: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** MemoryFactSourcesOut */
+        MemoryFactSourcesOut: {
+            /** Content */
+            content: string;
+            /** Fact Id */
+            fact_id: number;
+            source_message?: components["schemas"]["MemoryFactMessageOut"] | null;
+            source_session?: components["schemas"]["MemoryFactSourceOut"] | null;
+            supersedes?: components["schemas"]["MemoryFactSupersedesOut"] | null;
+        };
+        /** MemoryFactSupersedesOut */
+        MemoryFactSupersedesOut: {
+            /** Content */
+            content: string;
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** MemoryFactUpdate */
+        MemoryFactUpdate: {
+            /** Category */
+            category?: ("fact" | "preference" | "project" | "decision" | "correction") | null;
+            /** Content */
+            content?: string | null;
+            /** Importance */
+            importance?: number | null;
+            /** Status */
+            status?: ("active" | "superseded" | "archived") | null;
+            /** Ttl Days */
+            ttl_days?: number | null;
         };
         /** MemoryOut */
         MemoryOut: {
@@ -9146,6 +9302,8 @@ export interface operations {
             query?: {
                 scope_type?: string | null;
                 scope_id?: string | null;
+                status?: string | null;
+                include_inactive?: boolean;
             };
             header?: never;
             path?: never;
@@ -9207,6 +9365,39 @@ export interface operations {
             };
         };
     };
+    create_fact_api_v1_memory_facts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryFactCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactCreateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_fact_api_v1_memory_facts__fact_id__delete: {
         parameters: {
             query?: never;
@@ -9225,6 +9416,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_fact_api_v1_memory_facts__fact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryFactUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fact_sources_api_v1_memory_facts__fact_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactSourcesOut"];
                 };
             };
             /** @description Validation Error */

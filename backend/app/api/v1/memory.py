@@ -3,9 +3,19 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.memory import facts as facts_mod
+from app.core.memory import scope as scope_mod
 from app.core.security.auth import get_current_user
 from app.db import execute, query
-from app.models.schemas import MemoryOut, OkOut
+from app.models.schemas import (
+    MemoryFactCreate,
+    MemoryFactCreateOut,
+    MemoryFactOut,
+    MemoryFactSourcesOut,
+    MemoryFactUpdate,
+    MemoryOut,
+    OkOut,
+)
 
 router = APIRouter()
 
@@ -14,37 +24,28 @@ router = APIRouter()
 async def get_memory(
     scope_type: str | None = None,
     scope_id: str | None = None,
+    status: str | None = None,
+    include_inactive: bool = False,
     user: dict = Depends(get_current_user),
 ):
-    scope_sql = ""
-    scope_params: list = []
-    if scope_type:
-        scope_sql = " AND scope_type = %s AND scope_id = %s"
-        scope_params = [scope_type.strip().lower(), (scope_id or "").strip()]
-    facts = await query(
-        "SELECT id, content, importance, ttl_days, promoted_at, last_used_at, "
-        "created_at, scope_type, scope_id, source_session_id::text, confidence "
-        f"FROM facts WHERE user_id = %s{scope_sql} "
-        "ORDER BY importance DESC, last_used_at DESC LIMIT 200",
-        (user["id"], *scope_params),
+    fact_list = await facts_mod.list_facts(
+        user["id"], scope_type=scope_type, scope_id=scope_id,
+        status=status, include_inactive=include_inactive,
     )
+    daily_scope_sql = ""
+    daily_params: list = []
+    if scope_type:
+        scope = scope_mod.normalize(scope_type, scope_id)
+        daily_scope_sql = " AND scope_type = %s AND scope_id = %s"
+        daily_params = [scope.type, scope.id]
     daily = await query(
         "SELECT day, summary, message_count, created_at, updated_at, "
         "scope_type, scope_id FROM memory_daily "
-        f"WHERE user_id = %s{scope_sql} ORDER BY day DESC LIMIT 60",
-        (user["id"], *scope_params),
+        f"WHERE user_id = %s{daily_scope_sql} ORDER BY day DESC LIMIT 60",
+        (user["id"], *daily_params),
     )
     return {
-        "facts": [
-            {
-                "id": r[0], "content": r[1], "importance": float(r[2] or 1.0),
-                "ttl_days": int(r[3] or 90), "promoted_at": r[4],
-                "last_used_at": r[5], "created_at": r[6],
-                "scope_type": r[7] or "global", "scope_id": r[8] or "",
-                "source_session_id": r[9], "confidence": float(r[10] or 1.0),
-            }
-            for r in facts
-        ],
+        "facts": fact_list,
         "daily": [
             {
                 "day": r[0].isoformat() if isinstance(r[0], date) else str(r[0]),
@@ -55,6 +56,58 @@ async def get_memory(
             for r in daily
         ],
     }
+
+
+@router.post("/memory/facts", response_model=MemoryFactCreateOut)
+async def create_fact(
+    body: MemoryFactCreate, user: dict = Depends(get_current_user),
+):
+    scope = scope_mod.normalize(body.scope_type, body.scope_id)
+    if scope.type in (scope_mod.REPO, scope_mod.THESIS) and not scope.id:
+        raise HTTPException(status_code=400, detail="该作用域需要 scope_id")
+    added = await facts_mod.add_fact(
+        user["id"], body.content,
+        ttl_days=body.ttl_days, importance=body.importance,
+        scope_type=scope.type, scope_id=scope.id,
+        category=body.category,
+    )
+    return {"ok": True, "added": added}
+
+
+@router.patch("/memory/facts/{fact_id}", response_model=MemoryFactOut)
+async def update_fact(
+    fact_id: int,
+    body: MemoryFactUpdate,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        updated = await facts_mod.edit_fact(
+            user["id"], fact_id,
+            content=body.content,
+            importance=body.importance,
+            ttl_days=body.ttl_days,
+            category=body.category,
+            status=body.status,
+        )
+    except facts_mod.FactDuplicateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return updated
+
+
+@router.get(
+    "/memory/facts/{fact_id}/sources", response_model=MemoryFactSourcesOut,
+)
+async def get_fact_sources(
+    fact_id: int, user: dict = Depends(get_current_user),
+):
+    sources = await facts_mod.fact_sources(user["id"], fact_id)
+    if sources is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return sources
 
 
 @router.delete("/memory/facts/{fact_id}", response_model=OkOut)
@@ -79,10 +132,11 @@ async def delete_daily(
         parsed = date.fromisoformat(day)
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD")
+    scope = scope_mod.normalize(scope_type, scope_id)
     rows = await execute(
         "DELETE FROM memory_daily WHERE user_id = %s AND day = %s "
         "AND scope_type = %s AND scope_id = %s RETURNING day",
-        (user["id"], parsed, scope_type.strip().lower(), scope_id.strip()),
+        (user["id"], parsed, scope.type, scope.id),
     )
     if not rows:
         raise HTTPException(status_code=404, detail="日摘要不存在")

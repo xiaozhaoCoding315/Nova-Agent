@@ -1052,6 +1052,8 @@ export type LlmTestResult = {
 }
 
 export type MemoryScopeType = 'global' | 'dev' | 'thesis' | 'repo'
+export type MemoryCategory = 'fact' | 'preference' | 'project' | 'decision' | 'correction'
+export type MemoryFactStatus = 'active' | 'superseded' | 'archived'
 
 export type MemoryFact = {
   id: number
@@ -1061,10 +1063,41 @@ export type MemoryFact = {
   promoted_at?: string | null
   last_used_at?: string | null
   created_at?: string | null
+  updated_at?: string | null
   scope_type: MemoryScopeType
   scope_id: string
   source_session_id?: string | null
+  source_message_id?: number | null
   confidence: number
+  category: MemoryCategory
+  status: MemoryFactStatus
+  version: number
+  supersedes_id?: number | null
+}
+
+export type MemoryFactInput = {
+  content: string
+  scope_type?: MemoryScopeType
+  scope_id?: string
+  importance?: number
+  ttl_days?: number
+  category?: MemoryCategory
+}
+
+export type MemoryFactUpdate = {
+  content?: string
+  importance?: number
+  ttl_days?: number
+  category?: MemoryCategory
+  status?: MemoryFactStatus
+}
+
+export type MemoryFactSources = {
+  fact_id: number
+  content: string
+  source_session?: { id?: string | null; title?: string | null } | null
+  source_message?: { id?: number | null; role?: string | null; preview: string } | null
+  supersedes?: { id: number; content: string; status: string; version: number } | null
 }
 
 export type MemoryDaily = {

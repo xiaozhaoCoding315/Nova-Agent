@@ -8,7 +8,8 @@ import type {
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
-  LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
+  LlmTestResult, Memory, MemoryFact, MemoryFactInput, MemoryFactSources,
+  MemoryFactUpdate, Message, Metrics, ModeInfo, RegisterResult, Repo,
   GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
   RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
   RemoteInstruction, RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task,
@@ -346,15 +347,26 @@ export const api = {
   },
 
   memory: {
-    get: (scope?: { type: string; id?: string }) => {
+    get: (
+      scope?: { type: string; id?: string },
+      options?: { includeInactive?: boolean; status?: string },
+    ) => {
       const params = new URLSearchParams()
       if (scope?.type) {
         params.set('scope_type', scope.type)
         params.set('scope_id', scope.id ?? '')
       }
+      if (options?.includeInactive) params.set('include_inactive', 'true')
+      if (options?.status) params.set('status', options.status)
       const query = params.toString()
       return request<Memory>(`/memory${query ? `?${query}` : ''}`)
     },
+    addFact: (body: MemoryFactInput) =>
+      request<{ ok: boolean; added: boolean }>('/memory/facts', json(body)),
+    updateFact: (id: number, body: MemoryFactUpdate) =>
+      request<MemoryFact>(`/memory/facts/${id}`, { method: 'PATCH', ...json(body) }),
+    getFactSources: (id: number) =>
+      request<MemoryFactSources>(`/memory/facts/${id}/sources`),
     removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
     removeDaily: (day: string, scopeType = 'dev', scopeId = '') => {
       const params = new URLSearchParams({

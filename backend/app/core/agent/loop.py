@@ -40,6 +40,7 @@ from app.core.llm.factory import (
 from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import compaction as compaction_mod
+from app.core.memory import daily as daily_mod
 from app.core.memory import facts as facts_mod
 from app.core.memory import scope as memory_scope
 from app.core.memory import session as session_mod
@@ -194,11 +195,16 @@ async def run_chat(
         or resolve_context_window(user["id"])
     )
     fact_list: list[str] = []
+    daily_rows: list[dict] = []
     try:
         fact_scopes = memory_scope.readable_scopes(session, repo_ids)
         fact_list = await facts_mod.get_relevant_facts(
             user["id"], user_message, scopes=fact_scopes,
         )
+        if daily_mod.is_retrospective(user_message):
+            daily_rows = await daily_mod.recent_daily(
+                user["id"], fact_scopes,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history_budget = max(
@@ -233,6 +239,10 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    daily_block = daily_mod.format_daily_block(daily_rows)
+    if daily_block:
+        system_content += daily_block
+        prompt_sections["daily"] = daily_block
     if not (session.get("summary") or "").strip():
         # A long previous turn may have been compacted before the rolling
         # session summary caught up.  Re-inject its persisted summary so the
@@ -339,6 +349,7 @@ async def run_chat(
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
         "thesis": "论文上下文", "compaction": "压缩摘要",
+        "daily": "近期日摘要",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)

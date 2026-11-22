@@ -681,10 +681,70 @@ class MemoryFactOut(BaseModel):
     promoted_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     scope_type: str = "global"
     scope_id: str = ""
     source_session_id: Optional[str] = None
+    source_message_id: Optional[int] = None
     confidence: float = 1.0
+    category: Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ] = "fact"
+    status: Literal["active", "superseded", "archived"] = "active"
+    version: int = 1
+    supersedes_id: Optional[int] = None
+
+
+class MemoryFactCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=500)
+    scope_type: Literal["global", "dev", "thesis", "repo"] = "global"
+    scope_id: str = ""
+    importance: float = Field(default=1.0, ge=0.1, le=2.0)
+    ttl_days: int = Field(default=90, ge=1, le=3650)
+    category: Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ] = "fact"
+
+
+class MemoryFactCreateOut(BaseModel):
+    ok: bool = True
+    added: bool = True
+
+
+class MemoryFactUpdate(BaseModel):
+    content: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    importance: Optional[float] = Field(default=None, ge=0.1, le=2.0)
+    ttl_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    category: Optional[Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ]] = None
+    status: Optional[Literal["active", "superseded", "archived"]] = None
+
+
+class MemoryFactSourceOut(BaseModel):
+    id: Optional[str] = None
+    title: Optional[str] = None
+
+
+class MemoryFactMessageOut(BaseModel):
+    id: Optional[int] = None
+    role: Optional[str] = None
+    preview: str = ""
+
+
+class MemoryFactSupersedesOut(BaseModel):
+    id: int
+    content: str
+    status: str
+    version: int
+
+
+class MemoryFactSourcesOut(BaseModel):
+    fact_id: int
+    content: str
+    source_session: Optional[MemoryFactSourceOut] = None
+    source_message: Optional[MemoryFactMessageOut] = None
+    supersedes: Optional[MemoryFactSupersedesOut] = None
 
 
 class MemoryDailyOut(BaseModel):
