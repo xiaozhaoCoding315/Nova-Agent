@@ -196,6 +196,15 @@ const IDLE_STREAM = {
   streamUsage: null as StreamUsage | null,
 }
 
+/** Notices worth keeping after the stream closes: turn outcome and memory state. */
+const PERSISTENT_NOTICE_KINDS = new Set([
+  'incomplete', 'interrupted', 'memory_recalled', 'memory_learning',
+])
+
+function keepNotice(notice: { kind: string; message: string } | null) {
+  return notice && PERSISTENT_NOTICE_KINDS.has(notice.kind) ? notice : null
+}
+
 function isTerminalStatus(status: TurnStatus | null | undefined): boolean {
   return status === 'succeeded' || status === 'failed'
     || status === 'canceled' || status === 'interrupted'
@@ -708,7 +717,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...IDLE_STREAM,
         turnId: null,
         turnStatus: null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
         error: err instanceof ApiError ? err.message : '加载会话失败',
       }))
     }
@@ -768,7 +777,7 @@ export const useChat = create<ChatState>((set, get) => ({
           ...IDLE_STREAM,
           turnId: null,
           turnStatus: null,
-          turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+          turnNotice: keepNotice(s.turnNotice),
           error: message,
         }))
       } else {
@@ -817,7 +826,7 @@ export const useChat = create<ChatState>((set, get) => ({
       ...IDLE_STREAM,
       turnId: null,
       turnStatus: turnId ? 'canceled' : null,
-      turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+      turnNotice: keepNotice(s.turnNotice),
       backgroundTurns: withoutBackground(s.backgroundTurns, sessionId),
     }))
     void get().loadSessions()
@@ -946,7 +955,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...IDLE_STREAM,
         turnId: null,
         turnStatus: null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
       }))
       if (abortController === controller) {
         abortController = null
@@ -1020,7 +1029,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...(messagesLoaded ? IDLE_STREAM : { streaming: false }),
         turnId: null,
         turnStatus: fresh?.status ?? null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
       }))
       if (fresh && !isTerminalStatus(fresh.status)) {
         if (sessionId) {

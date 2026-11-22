@@ -9,7 +9,8 @@ import type {
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
   LlmTestResult, Memory, MemoryFact, MemoryFactInput, MemoryFactSources,
-  MemoryFactUpdate, Message, Metrics, ModeInfo, RegisterResult, Repo,
+  MemoryFactUpdate, MemoryPurgeResult, MemorySettings, MemorySettingsUpdate,
+  Message, Metrics, ModeInfo, RegisterResult, Repo,
   GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
   RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
   RemoteInstruction, RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task,
@@ -92,7 +93,11 @@ function json(body: unknown): RequestInit {
 }
 
 /** Fetch a file with the session cookie and hand it to the browser. */
-async function downloadFile(path: string, options: RequestInit = {}): Promise<void> {
+async function downloadFile(
+  path: string,
+  options: RequestInit = {},
+  fallbackName = 'download',
+): Promise<void> {
   let res: globalThis.Response
   try {
     res = await fetch(`/api/v1${path}`, { credentials: 'include', ...options })
@@ -117,7 +122,7 @@ async function downloadFile(path: string, options: RequestInit = {}): Promise<vo
   const plainMatch = /filename="?([^";]+)"?/i.exec(disposition)
   const filename = utf8Match
     ? decodeURIComponent(utf8Match[1])
-    : plainMatch?.[1] ?? 'download'
+    : plainMatch?.[1] ?? fallbackName
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -377,6 +382,30 @@ export const api = {
         `/memory/daily/${encodeURIComponent(day)}?${params.toString()}`,
         { method: 'DELETE' },
       )
+    },
+    settings: () => request<MemorySettings>('/settings/memory'),
+    updateSettings: (body: MemorySettingsUpdate) =>
+      request<MemorySettings>('/settings/memory', { ...json(body), method: 'PUT' }),
+    exportMemory: (format: 'json' | 'markdown' = 'markdown') =>
+      downloadFile(
+        `/memory/export?format=${format === 'json' ? 'json' : 'markdown'}`,
+        {},
+        `nova-memory.${format === 'json' ? 'json' : 'md'}`,
+      ),
+    purge: (options: {
+      includeMessages?: boolean
+      scopeType?: string
+      scopeId?: string
+    } = {}) => {
+      const params = new URLSearchParams({ confirm: 'true' })
+      if (options.scopeType) {
+        params.set('scope_type', options.scopeType)
+        params.set('scope_id', options.scopeId ?? '')
+      }
+      if (options.includeMessages === false) params.set('include_messages', 'false')
+      return request<MemoryPurgeResult>(`/memory/all?${params.toString()}`, {
+        method: 'DELETE',
+      })
     },
   },
 

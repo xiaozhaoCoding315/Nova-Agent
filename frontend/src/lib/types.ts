@@ -1073,6 +1073,9 @@ export type MemoryFact = {
   status: MemoryFactStatus
   version: number
   supersedes_id?: number | null
+  merged_into_id?: number | null
+  topic?: string
+  one_line?: string
 }
 
 export type MemoryFactInput = {
@@ -1082,6 +1085,7 @@ export type MemoryFactInput = {
   importance?: number
   ttl_days?: number
   category?: MemoryCategory
+  topic?: string
 }
 
 export type MemoryFactUpdate = {
@@ -1090,6 +1094,7 @@ export type MemoryFactUpdate = {
   ttl_days?: number
   category?: MemoryCategory
   status?: MemoryFactStatus
+  topic?: string
 }
 
 export type MemoryFactSources = {
@@ -1113,6 +1118,25 @@ export type MemoryDaily = {
 export type Memory = {
   facts: MemoryFact[]
   daily: MemoryDaily[]
+}
+
+export type MemorySettings = {
+  auto_memory: boolean
+  retention_days: number
+  default_scope: 'global' | 'dev'
+  blocked_categories: MemoryCategory[]
+  blocked_keywords: string[]
+  scope_overrides: Record<string, { auto_memory?: boolean }>
+}
+
+export type MemorySettingsUpdate = Partial<MemorySettings>
+
+export type MemoryPurgeResult = {
+  ok: boolean
+  facts: number
+  daily: number
+  lessons: number
+  messages: number
 }
 
 export type ToolMetric = {

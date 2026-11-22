@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import structlog
 
 from app.core.agent.context_meter import estimate_message_content
+from app.core.security.redaction import redact_obj, redact_text
 from app.db import execute, query, transaction
 
 logger = structlog.get_logger()
@@ -384,6 +385,10 @@ async def add_message(
     attachments: list[dict] | None = None,
 ) -> int:
     import json
+    # Redact known key/token patterns before persistence: memory extraction,
+    # exports and future retrieval must never see credentials.
+    safe_content = redact_text(content or "")
+    safe_tool_json = redact_obj(tool_json) if tool_json else None
     rows = await execute(
         """
         INSERT INTO messages
@@ -391,8 +396,8 @@ async def add_message(
         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         (
-            session_id, role, content,
-            json.dumps(tool_json, ensure_ascii=False) if tool_json else None,
+            session_id, role, safe_content,
+            json.dumps(safe_tool_json, ensure_ascii=False) if safe_tool_json else None,
             json.dumps(attachments or [], ensure_ascii=False, default=str),
             prompt_tokens, completion_tokens,
         ),
@@ -478,5 +483,5 @@ async def count_messages_since(
 async def set_summary(session_id: str, summary: str, upto_id: int) -> None:
     await execute(
         "UPDATE sessions SET summary = %s, summary_upto_id = %s WHERE id = %s",
-        (summary, upto_id, session_id),
+        (redact_text(summary), upto_id, session_id),
     )

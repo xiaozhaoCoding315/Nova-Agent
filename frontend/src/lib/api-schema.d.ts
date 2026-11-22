@@ -1295,6 +1295,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete All Memory */
+        delete: operations["delete_all_memory_api_v1_memory_all_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory/daily/{day}": {
         parameters: {
             query?: never;
@@ -1307,6 +1324,23 @@ export interface paths {
         post?: never;
         /** Delete Daily */
         delete: operations["delete_daily_api_v1_memory_daily__day__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Memory */
+        get: operations["export_memory_api_v1_memory_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2453,6 +2487,24 @@ export interface paths {
         put?: never;
         /** Test Llm Settings */
         post: operations["test_llm_settings_api_v1_settings_llm_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Settings */
+        get: operations["get_memory_settings_api_v1_settings_memory_get"];
+        /** Update Memory Settings */
+        put: operations["update_memory_settings_api_v1_settings_memory_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5000,6 +5052,11 @@ export interface components {
              */
             scope_type: "global" | "dev" | "thesis" | "repo";
             /**
+             * Topic
+             * @default
+             */
+            topic: string;
+            /**
              * Ttl Days
              * @default 90
              */
@@ -5056,6 +5113,13 @@ export interface components {
             importance: number;
             /** Last Used At */
             last_used_at?: string | null;
+            /** Merged Into Id */
+            merged_into_id?: number | null;
+            /**
+             * One Line
+             * @default
+             */
+            one_line: string;
             /** Promoted At */
             promoted_at?: string | null;
             /**
@@ -5080,6 +5144,11 @@ export interface components {
             status: "active" | "superseded" | "archived";
             /** Supersedes Id */
             supersedes_id?: number | null;
+            /**
+             * Topic
+             * @default
+             */
+            topic: string;
             /**
              * Ttl Days
              * @default 90
@@ -5131,6 +5200,8 @@ export interface components {
             importance?: number | null;
             /** Status */
             status?: ("active" | "superseded" | "archived") | null;
+            /** Topic */
+            topic?: string | null;
             /** Ttl Days */
             ttl_days?: number | null;
         };
@@ -5140,6 +5211,82 @@ export interface components {
             daily?: components["schemas"]["MemoryDailyOut"][];
             /** Facts */
             facts?: components["schemas"]["MemoryFactOut"][];
+        };
+        /** MemoryPurgeOut */
+        MemoryPurgeOut: {
+            /**
+             * Daily
+             * @default 0
+             */
+            daily: number;
+            /**
+             * Facts
+             * @default 0
+             */
+            facts: number;
+            /**
+             * Lessons
+             * @default 0
+             */
+            lessons: number;
+            /**
+             * Messages
+             * @default 0
+             */
+            messages: number;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+        };
+        /** MemorySettingsOut */
+        MemorySettingsOut: {
+            /**
+             * Auto Memory
+             * @default true
+             */
+            auto_memory: boolean;
+            /** Blocked Categories */
+            blocked_categories?: string[];
+            /** Blocked Keywords */
+            blocked_keywords?: string[];
+            /**
+             * Default Scope
+             * @default dev
+             * @enum {string}
+             */
+            default_scope: "global" | "dev";
+            /**
+             * Retention Days
+             * @default 90
+             */
+            retention_days: number;
+            /** Scope Overrides */
+            scope_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** MemorySettingsUpdate */
+        MemorySettingsUpdate: {
+            /** Auto Memory */
+            auto_memory?: boolean | null;
+            /** Blocked Categories */
+            blocked_categories?: ("fact" | "preference" | "project" | "decision" | "correction")[] | null;
+            /** Blocked Keywords */
+            blocked_keywords?: string[] | null;
+            /** Default Scope */
+            default_scope?: ("global" | "dev") | null;
+            /** Retention Days */
+            retention_days?: number | null;
+            /** Scope Overrides */
+            scope_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
         };
         /** MessageOut */
         MessageOut: {
@@ -9331,6 +9478,40 @@ export interface operations {
             };
         };
     };
+    delete_all_memory_api_v1_memory_all_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+                scope_type?: string | null;
+                scope_id?: string;
+                include_messages?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryPurgeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_daily_api_v1_memory_daily__day__delete: {
         parameters: {
             query?: {
@@ -9352,6 +9533,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_memory_api_v1_memory_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+                scope_type?: string | null;
+                scope_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -11651,6 +11865,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_settings_api_v1_settings_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsOut"];
+                };
+            };
+        };
+    };
+    update_memory_settings_api_v1_settings_memory_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemorySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsOut"];
                 };
             };
             /** @description Validation Error */

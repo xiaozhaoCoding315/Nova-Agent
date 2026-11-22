@@ -2,9 +2,9 @@
 from app.config import settings
 from app.core.tools import (
     diagnose, diagnostics, edit_file, fetch_url, glob_files, grep, impact,
-    install_deps, json_tool, list_files, local_exec, plan, read_attachment,
-    read_file, run_code, run_command, search_code, sql_tool, subagents,
-    thesis as thesis_tools, web_search, write_files,
+    install_deps, json_tool, list_files, local_exec, memory_tools, plan,
+    read_attachment, read_file, run_code, run_command, search_code, sql_tool,
+    subagents, thesis as thesis_tools, web_search, write_files,
 )
 from app.core.tools.base import (  # noqa: F401  (re-exported for callers)
     ToolBusinessError,
@@ -36,6 +36,8 @@ def build_registry() -> ToolRegistry:
     registry.register(sql_tool.TOOL)
     registry.register(plan.TOOL)
     registry.register(subagents.TOOL)
+    for tool in memory_tools.ALL:
+        registry.register(tool)
     for tool in thesis_tools.ALL:
         registry.register(tool)
     if settings.enable_fetch_url:

@@ -32,7 +32,10 @@ async def test_add_fact_persists_category_status_and_version(monkeypatch):
 
     insert_sql, insert_params = execute.await_args_list[0].args
     assert "status" in insert_sql and "version" in insert_sql
-    assert insert_params[11:] == ("preference", "active", 1, None)
+    # Category/status/version/supersedes, then topic and the derived one-line.
+    assert insert_params[11:15] == ("preference", "active", 1, None)
+    assert insert_params[15] == ""
+    assert insert_params[16] == "偏好中文回答"
 
 
 @pytest.mark.asyncio
@@ -53,7 +56,7 @@ async def test_add_fact_supersedes_previous_preference(monkeypatch):
     assert "status = 'superseded'" in supersede_sql
     assert supersede_params == (12, 7)
     insert_params = execute.await_args_list[1].args[1]
-    assert insert_params[11:] == ("preference", "active", 2, 12)
+    assert insert_params[11:15] == ("preference", "active", 2, 12)
 
 
 @pytest.mark.asyncio
@@ -193,8 +196,13 @@ async def test_memory_api_edit_returns_updated_fact(monkeypatch):
     from fastapi import HTTPException
 
     from app.api.v1 import memory as memory_api
+    from app.core.memory import policy as policy_mod
     from app.models.schemas import MemoryFactCreate, MemoryFactUpdate
 
+    monkeypatch.setattr(
+        memory_api.policy_mod, "get_policy",
+        AsyncMock(return_value=policy_mod.DEFAULT_POLICY),
+    )
     updated = {"id": 5, "content": "偏好 Flask", "status": "active"}
     edit = AsyncMock(return_value=updated)
     monkeypatch.setattr(memory_api.facts_mod, "edit_fact", edit)

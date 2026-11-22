@@ -4278,6 +4278,12 @@
             "title": "Scope Type",
             "type": "string"
           },
+          "topic": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Topic",
+            "type": "string"
+          },
           "ttl_days": {
             "default": 90,
             "maximum": 3650.0,
@@ -4397,6 +4403,22 @@
             ],
             "title": "Last Used At"
           },
+          "merged_into_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into Id"
+          },
+          "one_line": {
+            "default": "",
+            "title": "One Line",
+            "type": "string"
+          },
           "promoted_at": {
             "anyOf": [
               {
@@ -4461,6 +4483,11 @@
               }
             ],
             "title": "Supersedes Id"
+          },
+          "topic": {
+            "default": "",
+            "title": "Topic",
+            "type": "string"
           },
           "ttl_days": {
             "default": 90,
@@ -4658,6 +4685,18 @@
             ],
             "title": "Status"
           },
+          "topic": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
           "ttl_days": {
             "anyOf": [
               {
@@ -4693,6 +4732,179 @@
           }
         },
         "title": "MemoryOut",
+        "type": "object"
+      },
+      "MemoryPurgeOut": {
+        "properties": {
+          "daily": {
+            "default": 0,
+            "title": "Daily",
+            "type": "integer"
+          },
+          "facts": {
+            "default": 0,
+            "title": "Facts",
+            "type": "integer"
+          },
+          "lessons": {
+            "default": 0,
+            "title": "Lessons",
+            "type": "integer"
+          },
+          "messages": {
+            "default": 0,
+            "title": "Messages",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "MemoryPurgeOut",
+        "type": "object"
+      },
+      "MemorySettingsOut": {
+        "properties": {
+          "auto_memory": {
+            "default": true,
+            "title": "Auto Memory",
+            "type": "boolean"
+          },
+          "blocked_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Categories",
+            "type": "array"
+          },
+          "blocked_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Keywords",
+            "type": "array"
+          },
+          "default_scope": {
+            "default": "dev",
+            "enum": [
+              "global",
+              "dev"
+            ],
+            "title": "Default Scope",
+            "type": "string"
+          },
+          "retention_days": {
+            "default": 90,
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "scope_overrides": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Scope Overrides",
+            "type": "object"
+          }
+        },
+        "title": "MemorySettingsOut",
+        "type": "object"
+      },
+      "MemorySettingsUpdate": {
+        "properties": {
+          "auto_memory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Memory"
+          },
+          "blocked_categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "fact",
+                    "preference",
+                    "project",
+                    "decision",
+                    "correction"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Categories"
+          },
+          "blocked_keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Keywords"
+          },
+          "default_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "global",
+                  "dev"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Scope"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "scope_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Overrides"
+          }
+        },
+        "title": "MemorySettingsUpdate",
         "type": "object"
       },
       "MessageOut": {
@@ -11810,6 +12022,85 @@
         ]
       }
     },
+    "/api/v1/memory/all": {
+      "delete": {
+        "operationId": "delete_all_memory_api_v1_memory_all_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_messages",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Messages",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPurgeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete All Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/v1/memory/daily/{day}": {
       "delete": {
         "operationId": "delete_daily_api_v1_memory_daily__day__delete",
@@ -11867,6 +12158,79 @@
           }
         },
         "summary": "Delete Daily",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/v1/memory/export": {
+      "get": {
+        "operationId": "export_memory_api_v1_memory_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Memory",
         "tags": [
           "memory"
         ]
@@ -15022,6 +15386,66 @@
           }
         },
         "summary": "Test Llm Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/memory": {
+      "get": {
+        "operationId": "get_memory_settings_api_v1_settings_memory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Memory Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_memory_settings_api_v1_settings_memory_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemorySettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Memory Settings",
         "tags": [
           "settings"
         ]

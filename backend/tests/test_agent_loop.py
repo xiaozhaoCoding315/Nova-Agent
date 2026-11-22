@@ -40,6 +40,12 @@ def _patch_common(monkeypatch, llm):
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+    monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    # The DB is not part of these loop tests; use the permissive default.
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),
+    )
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
     monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
@@ -89,7 +95,11 @@ async def test_plain_answer_event_sequence(monkeypatch):
     events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
 
     names = [e["event"] for e in events]
-    assert names == ["meta", "retrieval", "context", "token", "usage", "evidence", "done"]
+    assert names == [
+        "meta", "retrieval", "context", "token", "usage", "evidence",
+        "notice", "done",
+    ]
+    assert events[6]["data"]["kind"] == "memory_learning"
     assert events[3]["data"]["text"] == "你好"
     assert events[4]["data"]["prompt_tokens"] == 10
     context_event = events[2]["data"]
@@ -237,7 +247,10 @@ async def test_context_includes_facts_in_system_prompt(monkeypatch):
 
     llm = CapturingLLM([[{"type": "content", "content": "ok"}, {"type": "finish", "finish_reason": "stop"}]])
     _patch_common(monkeypatch, llm)
-    monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=["用户偏好 Java 后端"]))
+    monkeypatch.setattr(
+        loop_mod.facts_mod, "get_relevant_facts",
+        AsyncMock(return_value=[(1, "用户偏好 Java 后端", "preference")]),
+    )
 
     await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
 
@@ -896,7 +909,7 @@ async def test_image_rejection_retries_text_only_once(monkeypatch):
     assert isinstance(llm.calls[1], str)
     assert "不支持图片输入" in llm.calls[1]
     assert [event["data"]["kind"] for event in events
-            if event["event"] == "notice"] == ["vision_rejected"]
+            if event["event"] == "notice"] == ["vision_rejected", "memory_learning"]
     assert any(event["event"] == "token" and event["data"]["text"] == "按文本继续"
                for event in events)
 
@@ -921,4 +934,67 @@ async def test_image_rejection_survives_fallback_chain(monkeypatch):
     assert any(event["event"] == "token" and event["data"]["text"] == "按文本继续"
                for event in events)
     assert [event["data"]["kind"] for event in events
-            if event["event"] == "notice"] == ["vision_rejected"]
+            if event["event"] == "notice"] == ["vision_rejected", "memory_learning"]
+
+
+@pytest.mark.asyncio
+async def test_auto_memory_off_skips_injection_and_extraction(monkeypatch):
+    """The master switch stops automatic recall and learning, not tools."""
+    captured = {}
+
+    class CapturingLLM(FakeLLM):
+        async def astream_with_tools(self, messages, tools):
+            captured["messages"] = messages
+            async for event in super().astream_with_tools(messages, tools):
+                yield event
+
+    llm = CapturingLLM([[{"type": "content", "content": "ok"},
+                         {"type": "finish", "finish_reason": "stop"}]])
+    _patch_common(monkeypatch, llm)
+    get_relevant = AsyncMock(return_value=[(1, "工资是 12345", "fact")])
+    monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", get_relevant)
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.MemoryPolicy(auto_memory=False)),
+    )
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+
+    get_relevant.assert_not_awaited()
+    loop_mod.facts_mod.extract_facts_from_turn.assert_not_awaited()
+    assert "工资是 12345" not in captured["messages"][0]["content"]
+    assert not [
+        event for event in events
+        if event["event"] == "notice" and event["data"].get("kind") == "memory_learning"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_blocked_keyword_daily_summary_is_not_injected(monkeypatch):
+    captured = {}
+
+    class CapturingLLM(FakeLLM):
+        async def astream_with_tools(self, messages, tools):
+            captured["messages"] = messages
+            async for event in super().astream_with_tools(messages, tools):
+                yield event
+
+    llm = CapturingLLM([[{"type": "content", "content": "ok"},
+                         {"type": "finish", "finish_reason": "stop"}]])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod.daily_mod, "is_retrospective", lambda _msg: True)
+    monkeypatch.setattr(
+        loop_mod.daily_mod, "recent_daily",
+        AsyncMock(return_value=[{
+            "day": "2026-11-21", "summary": "工资是 12345",
+            "scope_type": "dev", "scope_id": "",
+        }]),
+    )
+    blocked = loop_mod.memory_policy_mod.MemoryPolicy(blocked_keywords=("工资",))
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy", AsyncMock(return_value=blocked),
+    )
+
+    await _collect(loop_mod.run_chat(USER, SESSION, "上次说到哪了", []))
+
+    assert "工资是 12345" not in captured["messages"][0]["content"]

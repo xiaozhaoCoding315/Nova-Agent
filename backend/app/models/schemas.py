@@ -693,6 +693,9 @@ class MemoryFactOut(BaseModel):
     status: Literal["active", "superseded", "archived"] = "active"
     version: int = 1
     supersedes_id: Optional[int] = None
+    merged_into_id: Optional[int] = None
+    topic: str = ""
+    one_line: str = ""
 
 
 class MemoryFactCreate(BaseModel):
@@ -704,6 +707,7 @@ class MemoryFactCreate(BaseModel):
     category: Literal[
         "fact", "preference", "project", "decision", "correction",
     ] = "fact"
+    topic: str = Field(default="", max_length=120)
 
 
 class MemoryFactCreateOut(BaseModel):
@@ -719,6 +723,7 @@ class MemoryFactUpdate(BaseModel):
         "fact", "preference", "project", "decision", "correction",
     ]] = None
     status: Optional[Literal["active", "superseded", "archived"]] = None
+    topic: Optional[str] = Field(default=None, max_length=120)
 
 
 class MemoryFactSourceOut(BaseModel):
@@ -760,6 +765,34 @@ class MemoryDailyOut(BaseModel):
 class MemoryOut(BaseModel):
     facts: list[MemoryFactOut] = Field(default_factory=list)
     daily: list[MemoryDailyOut] = Field(default_factory=list)
+
+
+class MemoryPurgeOut(BaseModel):
+    ok: bool = True
+    facts: int = 0
+    daily: int = 0
+    lessons: int = 0
+    messages: int = 0
+
+
+class MemorySettingsOut(BaseModel):
+    auto_memory: bool = True
+    retention_days: int = 90
+    default_scope: Literal["global", "dev"] = "dev"
+    blocked_categories: list[str] = Field(default_factory=list)
+    blocked_keywords: list[str] = Field(default_factory=list)
+    scope_overrides: dict[str, dict] = Field(default_factory=dict)
+
+
+class MemorySettingsUpdate(BaseModel):
+    auto_memory: Optional[bool] = None
+    retention_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    default_scope: Optional[Literal["global", "dev"]] = None
+    blocked_categories: Optional[list[Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ]]] = None
+    blocked_keywords: Optional[list[str]] = None
+    scope_overrides: Optional[dict[str, dict]] = None
 
 
 class ToolMetricOut(BaseModel):

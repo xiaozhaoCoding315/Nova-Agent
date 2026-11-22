@@ -42,6 +42,7 @@ from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import compaction as compaction_mod
 from app.core.memory import daily as daily_mod
 from app.core.memory import facts as facts_mod
+from app.core.memory import policy as memory_policy_mod
 from app.core.memory import scope as memory_scope
 from app.core.memory import session as session_mod
 from app.core.memory.context import build_system_prompt
@@ -195,16 +196,51 @@ async def run_chat(
         or resolve_context_window(user["id"])
     )
     fact_list: list[str] = []
+    fact_rows: list[tuple[int, str, str]] = []
+    memory_index_rows: list[dict] = []
     daily_rows: list[dict] = []
+    fact_scopes = memory_scope.readable_scopes(session, repo_ids)
+    memory_policy = memory_policy_mod.DEFAULT_POLICY
     try:
-        fact_scopes = memory_scope.readable_scopes(session, repo_ids)
-        fact_list = await facts_mod.get_relevant_facts(
-            user["id"], user_message, scopes=fact_scopes,
+        memory_policy = await memory_policy_mod.get_policy(user["id"])
+    except Exception as exc:  # noqa: BLE001
+        # Settings are a policy overlay, not a hard dependency: fall back to
+        # the permissive default so a settings read failure keeps memory on.
+        logger.warning("memory_policy_load_failed", error=str(exc))
+    try:
+        turn_scope = memory_scope.extraction_scope(session, repo_ids)
+        # The master switch and per-repo/thesis overrides stop automatic
+        # injection; explicit memory tools still work when the model asks.
+        memory_on = memory_policy.auto_memory and (
+            turn_scope is None
+            or memory_policy_mod.scope_allowed(memory_policy, turn_scope)
         )
-        if daily_mod.is_retrospective(user_message):
-            daily_rows = await daily_mod.recent_daily(
-                user["id"], fact_scopes,
+        if memory_on:
+            fact_rows = await facts_mod.get_relevant_facts(
+                user["id"], user_message, scopes=fact_scopes, with_ids=True,
             )
+            fact_rows = [
+                row for row in fact_rows
+                if memory_policy_mod.allows_fact(
+                    memory_policy, row[1], row[2],
+                )
+            ]
+            fact_list = [row[1] for row in fact_rows]
+            memory_index_rows = await facts_mod.build_index_rows(
+                user["id"], fact_scopes,
+                exclude_ids=[row[0] for row in fact_rows],
+                policy=memory_policy,
+            )
+            if daily_mod.is_retrospective(user_message):
+                daily_rows = await daily_mod.recent_daily(
+                    user["id"], fact_scopes,
+                )
+                daily_rows = [
+                    row for row in daily_rows
+                    if memory_policy_mod.allows_fact(
+                        memory_policy, row.get("summary") or "", "",
+                    )
+                ]
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history_budget = max(
@@ -239,6 +275,20 @@ async def run_chat(
         summary=session.get("summary") or "",
         sections=prompt_sections,
     )
+    brain_block = ""
+    if (session.get("product_mode") or "dev") != "thesis" and repo_ids:
+        try:
+            from app.core.memory.brain import build_repo_brain_block
+            brain_block = await build_repo_brain_block(user["id"], repo_ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("repo_brain_load_failed", error=str(exc))
+    if brain_block:
+        system_content += brain_block
+        prompt_sections["brain"] = brain_block
+    index_block = facts_mod.format_index_block(memory_index_rows)
+    if index_block:
+        system_content += index_block
+        prompt_sections["memory_index"] = index_block
     daily_block = daily_mod.format_daily_block(daily_rows)
     if daily_block:
         system_content += daily_block
@@ -349,7 +399,8 @@ async def run_chat(
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
         "thesis": "论文上下文", "compaction": "压缩摘要",
-        "daily": "近期日摘要",
+        "daily": "近期日摘要", "memory_index": "记忆索引",
+        "brain": "项目大脑",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)
@@ -402,6 +453,17 @@ async def run_chat(
         yield _sse(
             "notice", kind="thesis_context_degraded",
             message=thesis_degraded,
+        )
+    if fact_list or memory_index_rows:
+        parts = []
+        if fact_list:
+            parts.append(f"召回 {len(fact_list)} 条")
+        if memory_index_rows:
+            parts.append(f"索引 {len(memory_index_rows)} 条")
+        yield _sse(
+            "notice", kind="memory_recalled",
+            count=len(fact_list), indexed=len(memory_index_rows),
+            message="长期记忆：" + "，".join(parts) + "（可在设置页查看或纠错）",
         )
 
     protected_roots: tuple[str, ...] = ()
@@ -532,7 +594,11 @@ async def run_chat(
         # Facts are extracted into the turn's own product scope.  Dev and
         # thesis conversations never share an automatically learned bucket.
         extract_scope = memory_scope.extraction_scope(session, repo_ids)
-        if final_text and extract_scope is not None:
+        extraction_allowed = (
+            extract_scope is not None
+            and memory_policy_mod.scope_allowed(memory_policy, extract_scope)
+        )
+        if final_text and extraction_allowed:
             queued: str | None = None
             if user_message_id:
                 try:
@@ -554,6 +620,7 @@ async def run_chat(
                     ),
                     label="facts_extract",
                 )
+            holder["memory_queued"] = True
         try:
             from app.core.jobs.service import enqueue_session_summary, is_running
             from app.core.memory.summary import SUMMARY_BATCH
@@ -1142,6 +1209,11 @@ async def run_chat(
             holder["message_id"] = await _persist_turn()
         except Exception as exc:  # noqa: BLE001
             logger.error("chat_persist_failed", error=str(exc))
+    if holder.get("memory_queued"):
+        yield _sse(
+            "notice", kind="memory_learning",
+            message="本轮对话已进入记忆抽取队列（可在设置页关闭自动记忆）。",
+        )
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     await trace_record(session["id"], turn_id, "done", {

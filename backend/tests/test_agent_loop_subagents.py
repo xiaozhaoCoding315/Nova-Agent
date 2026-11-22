@@ -107,6 +107,14 @@ async def test_parent_loop_emits_subagent_events_and_persists(monkeypatch):
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+    monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),
+    )
+    monkeypatch.setattr(
+        "app.core.memory.brain.build_repo_brain_block", AsyncMock(return_value=""),
+    )
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
     monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
@@ -164,6 +172,14 @@ async def test_malformed_subagent_payload_degrades_without_raising(monkeypatch):
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+    monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),
+    )
+    monkeypatch.setattr(
+        "app.core.memory.brain.build_repo_brain_block", AsyncMock(return_value=""),
+    )
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
     monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))
@@ -232,6 +248,14 @@ async def test_parent_loop_redacts_subagent_payloads(monkeypatch):
     monkeypatch.setattr(loop_mod.session_mod, "add_message", AsyncMock(return_value=101))
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+    monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),
+    )
+    monkeypatch.setattr(
+        "app.core.memory.brain.build_repo_brain_block", AsyncMock(return_value=""),
+    )
     monkeypatch.setattr(loop_mod, "log_audit", AsyncMock())
     monkeypatch.setattr(loop_mod, "_record_usage", AsyncMock())
     monkeypatch.setattr(loop_mod, "local_agent_online", AsyncMock(return_value=False))

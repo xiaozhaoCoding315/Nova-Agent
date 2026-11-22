@@ -582,7 +582,9 @@ Anthropic 的对应做法是：auto memory 按 git 仓库一个目录；子代�
 
 已在后续批次补齐：pgvector 事实召回（可选扩展 + JSONB 回退）、显式稳定的 global 偏好自动学习、仓库级日摘要与回溯注入、事实编辑/归档/版本/冲突替代、记忆评估集（`evals/memory_eval.py`，已进 `scripts/check.sh`）。设计与边界见 [`docs/DESIGN.md`](DESIGN.md) §40。补齐后全量回归：后端 1455 passed / 12 skipped，ruff、前端构建与契约检查、记忆评估通过。
 
-仍未做（P1/P2）：记忆索引与 `memory_search/read` 工具、项目大脑注入 prompt、记忆导出/删除全部、用户级记忆开关；分层指令、完整跨会话消息检索、夜间整合、子代理记忆、团队 store、记忆投毒防护。
+再补齐 P1 产品能力（2026-11-22，迁移 29）：记忆索引 + `memory_search/read` 工具、对话内 Saved/Recalled 提示、日摘要检索、确定性夜间去重整合、项目大脑注入 dev prompt、统一脱敏与导出/删除全部、用户级记忆策略 API 与设置页（自动记忆、保留天数、默认作用域、屏蔽类别/关键词、作用域覆盖）。设计与边界见 [`docs/DESIGN.md`](DESIGN.md) §41；新增 `test_memory_policy.py`、`test_memory_index.py`、`test_memory_consolidation.py`、`test_memory_api_extra.py`、`test_repo_brain_prompt.py`。全量回归：后端 **1497 passed / 12 skipped**（`NOVA_TEST_FAST=1`），ruff、记忆评估、前端构建与契约检查全部通过。
+
+仍未做（P2）：分层指令（用户级稳定指令层）、完整跨会话消息检索、子代理记忆、团队/组织 store、记忆投毒与工作区信任防护。
 
 ---
 

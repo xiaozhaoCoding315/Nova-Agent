@@ -1,12 +1,14 @@
 import {
-  Archive, Brain, Check, Clock, Coins, Pencil, Plus, RotateCcw, Trash2, X,
+  Archive, Brain, Check, Clock, Coins, Download, Pencil, Plus, RotateCcw,
+  SlidersHorizontal, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Spinner } from '../../components/common'
+import { Badge, Button, Modal, Spinner } from '../../components/common'
 import { api, ApiError } from '../../lib/api'
 import type {
-  Memory, MemoryCategory, MemoryFact, MemoryScopeType,
+  Memory, MemoryCategory, MemoryFact, MemoryScopeType, MemorySettings,
 } from '../../lib/types'
+import { inputClass } from '../../lib/ui'
 
 const SCOPE_LABELS: Record<MemoryScopeType, string> = {
   global: '全局',
@@ -52,6 +54,32 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
   const [draftScope, setDraftScope] = useState<MemoryScopeType>('global')
   const [draftScopeId, setDraftScopeId] = useState('')
   const [draftCategory, setDraftCategory] = useState<MemoryCategory>('preference')
+  const [settings, setSettings] = useState<MemorySettings | null>(null)
+  const [draftSettings, setDraftSettings] = useState<MemorySettings | null>(null)
+  const [keywordsText, setKeywordsText] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [overrideKey, setOverrideKey] = useState('')
+  const [purgeOpen, setPurgeOpen] = useState(false)
+  const [purgeMessages, setPurgeMessages] = useState(true)
+  const [purging, setPurging] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    api.memory.settings()
+      .then((next) => {
+        if (!alive) return
+        setSettings(next)
+        setDraftSettings(next)
+        setKeywordsText(next.blocked_keywords.join('，'))
+      })
+      .catch((err) => {
+        if (alive) setError(err instanceof ApiError ? err.message : '记忆设置加载失败')
+      })
+    return () => {
+      alive = false
+    }
+  }, [refreshToken])
 
   useEffect(() => {
     let alive = true
@@ -153,6 +181,103 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
     }
   }
 
+  const patchDraft = (patch: Partial<MemorySettings>) => {
+    setDraftSettings((current) => (current ? { ...current, ...patch } : current))
+  }
+
+  const openSettings = () => {
+    if (!settingsOpen && settings) {
+      setDraftSettings(settings)
+      setKeywordsText(settings.blocked_keywords.join('，'))
+    }
+    setSettingsOpen((value) => !value)
+    setError(null)
+    setNotice(null)
+  }
+
+  const toggleBlockedCategory = (category: MemoryCategory) => {
+    if (!draftSettings) return
+    const blocked = draftSettings.blocked_categories.includes(category)
+      ? draftSettings.blocked_categories.filter((item) => item !== category)
+      : [...draftSettings.blocked_categories, category]
+    patchDraft({ blocked_categories: blocked })
+  }
+
+  const addOverride = () => {
+    const key = overrideKey.trim()
+    if (!key || !draftSettings) return
+    patchDraft({
+      scope_overrides: {
+        ...draftSettings.scope_overrides,
+        [key]: { auto_memory: true },
+      },
+    })
+    setOverrideKey('')
+  }
+
+  const removeOverride = (key: string) => {
+    if (!draftSettings) return
+    const next = { ...draftSettings.scope_overrides }
+    delete next[key]
+    patchDraft({ scope_overrides: next })
+  }
+
+  const saveSettings = async () => {
+    if (!draftSettings) return
+    if (draftSettings.retention_days < 1 || draftSettings.retention_days > 3650) {
+      setError('保留天数需在 1–3650 之间')
+      return
+    }
+    setSavingSettings(true)
+    setError(null)
+    try {
+      const updated = await api.memory.updateSettings({
+        ...draftSettings,
+        blocked_keywords: keywordsText
+          .split(/[,，\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      })
+      setSettings(updated)
+      setDraftSettings(updated)
+      setKeywordsText(updated.blocked_keywords.join('，'))
+      setSettingsOpen(false)
+      setNotice('记忆设置已保存，下一轮对话生效')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '保存记忆设置失败')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const exportMemory = async (format: 'json' | 'markdown') => {
+    setError(null)
+    try {
+      await api.memory.exportMemory(format)
+      setNotice(format === 'markdown' ? '已导出 Markdown' : '已导出 JSON')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '导出失败')
+    }
+  }
+
+  const purgeAll = async () => {
+    setPurging(true)
+    setError(null)
+    try {
+      const result = await api.memory.purge({ includeMessages: purgeMessages })
+      setPurgeOpen(false)
+      setNotice(
+        `已删除 ${result.facts} 条事实、${result.daily} 份日摘要、${result.lessons} 条经验`
+        + (purgeMessages ? `、${result.messages} 条消息` : ''),
+      )
+      reload()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '删除失败')
+    } finally {
+      setPurging(false)
+    }
+  }
+
   const facts = memory
     ? memory.facts.filter((fact) => scopeFilter === 'all' || fact.scope_type === scopeFilter)
     : []
@@ -170,6 +295,7 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
           {memory
             ? `${activeCount} 条生效事实 · ${memory.daily.length} 份日摘要`
             : loading ? '加载中…' : '暂无数据'}
+          {settings && ` · 自动记忆${settings.auto_memory ? '开' : '关'} · 保留 ${settings.retention_days} 天`}
         </span>
         <button
           type="button"
@@ -182,6 +308,173 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
 
       {error && <p className="mb-2 text-xs text-err">{error}</p>}
       {notice && <p className="mb-2 text-xs text-ok">{notice}</p>}
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={openSettings}
+          className="flex items-center gap-1 rounded border border-edge px-2 py-1 text-xs text-dim transition-colors hover:bg-raised hover:text-fg"
+        >
+          <SlidersHorizontal size={12} /> 记忆策略
+        </button>
+        <button
+          type="button"
+          onClick={() => void exportMemory('markdown')}
+          className="flex items-center gap-1 rounded border border-edge px-2 py-1 text-xs text-dim transition-colors hover:bg-raised hover:text-fg"
+        >
+          <Download size={12} /> 导出 Markdown
+        </button>
+        <button
+          type="button"
+          onClick={() => void exportMemory('json')}
+          className="flex items-center gap-1 rounded border border-edge px-2 py-1 text-xs text-dim transition-colors hover:bg-raised hover:text-fg"
+        >
+          <Download size={12} /> 导出 JSON
+        </button>
+        <button
+          type="button"
+          onClick={() => setPurgeOpen(true)}
+          className="ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs text-err/80 transition-colors hover:bg-err/10 hover:text-err"
+        >
+          <Trash2 size={12} /> 删除全部
+        </button>
+      </div>
+
+      {settingsOpen && draftSettings && (
+        <div className="mb-3 space-y-3 rounded-lg border border-edge/80 bg-base/40 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm">自动记忆</p>
+              <p className="text-2xs leading-relaxed text-dim">
+                关闭后不再自动抽取或注入长期记忆；已保存的记忆仍可在下方查看、导出或删除。
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={draftSettings.auto_memory}
+              onChange={(event) => patchDraft({ auto_memory: event.target.checked })}
+              aria-label="自动记忆"
+              className="mt-1"
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs text-dim">事实保留天数（1–3650）</span>
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={draftSettings.retention_days}
+                onChange={(event) => patchDraft({
+                  retention_days: Number(event.target.value) || 0,
+                })}
+                className={inputClass}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-dim">手动记忆默认作用域</span>
+              <select
+                value={draftSettings.default_scope}
+                onChange={(event) => patchDraft({
+                  default_scope: event.target.value as 'global' | 'dev',
+                })}
+                className={inputClass}
+              >
+                <option value="dev">开发</option>
+                <option value="global">全局</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <p className="text-xs text-dim">不参与记忆的类别</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {(Object.keys(CATEGORY_LABELS) as MemoryCategory[]).map((category) => (
+                <label
+                  key={category}
+                  className="flex items-center gap-1 rounded border border-edge/70 bg-base px-1.5 py-0.5 text-2xs text-dim"
+                >
+                  <input
+                    type="checkbox"
+                    checked={draftSettings.blocked_categories.includes(category)}
+                    onChange={() => toggleBlockedCategory(category)}
+                  />
+                  {CATEGORY_LABELS[category]}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-xs text-dim">屏蔽关键词（逗号分隔；命中即不学习也不召回）</span>
+            <input
+              value={keywordsText}
+              onChange={(event) => setKeywordsText(event.target.value)}
+              placeholder="例如：工资，身份证"
+              className={inputClass}
+            />
+          </label>
+          <div>
+            <p className="text-xs text-dim">按作用域覆盖</p>
+            {Object.keys(draftSettings.scope_overrides).length === 0 && (
+              <p className="mt-1 text-2xs text-dim/70">
+                暂无覆盖。键名形如 dev:、repo:&lt;仓库 ID&gt;、thesis:&lt;项目 ID&gt;。
+              </p>
+            )}
+            <div className="mt-1 space-y-1">
+              {Object.entries(draftSettings.scope_overrides).map(([key, value]) => (
+                <div
+                  key={key}
+                  className="flex items-center gap-2 rounded border border-edge/70 bg-base/40 px-2 py-1"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{key}</span>
+                  <label className="flex items-center gap-1 text-2xs text-dim">
+                    <input
+                      type="checkbox"
+                      checked={value.auto_memory !== false}
+                      onChange={(event) => patchDraft({
+                        scope_overrides: {
+                          ...draftSettings.scope_overrides,
+                          [key]: { ...value, auto_memory: event.target.checked },
+                        },
+                      })}
+                    />
+                    自动记忆
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeOverride(key)}
+                    className="text-dim transition-colors hover:text-err"
+                    aria-label="移除作用域覆盖"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <input
+                value={overrideKey}
+                onChange={(event) => setOverrideKey(event.target.value)}
+                placeholder="repo:<仓库 ID>"
+                className={inputClass}
+              />
+              <Button size="sm" onClick={addOverride} disabled={!overrideKey.trim()}>
+                添加
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => setSettingsOpen(false)}>取消</Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void saveSettings()}
+              disabled={savingSettings}
+            >
+              {savingSettings && <Spinner />} 保存设置
+            </Button>
+          </div>
+        </div>
+      )}
 
       {adding && (
         <div className="mb-3 space-y-2 rounded-lg border border-edge/80 bg-base/40 p-2.5">
@@ -313,8 +606,10 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
                   {fact.promoted_at && <Badge tone="ok">已晋升</Badge>}
                   {fact.status === 'superseded' && <Badge tone="warn">已被新记忆替代</Badge>}
                   {fact.status === 'archived' && <Badge tone="err">已归档</Badge>}
+                  {fact.topic && <Badge tone="dim">{fact.topic}</Badge>}
                   {fact.version > 1 && <span>v{fact.version}</span>}
                   {fact.supersedes_id && <span>纠正 #{fact.supersedes_id}</span>}
+                  {fact.merged_into_id && <span>已合并到 #{fact.merged_into_id}</span>}
                   {fact.source_session_id && (
                     <span>来源会话 {fact.source_session_id.slice(0, 8)}
                       {fact.source_message_id ? ` · 消息 #${fact.source_message_id}` : ''}
@@ -384,6 +679,37 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
             : '这个范围还没有记忆。切换到「全部」查看其他范围的记忆。'}
         </p>
       )}
+
+      <Modal
+        open={purgeOpen}
+        onClose={() => setPurgeOpen(false)}
+        title="删除全部记忆"
+        width="max-w-sm"
+      >
+        <p className="text-sm leading-relaxed text-dim">
+          将永久删除当前账号的全部长期事实、日摘要与经验教训，操作无法撤销。
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-xs text-dim">
+          <input
+            type="checkbox"
+            checked={purgeMessages}
+            onChange={(event) => setPurgeMessages(event.target.checked)}
+            className="mt-0.5"
+          />
+          同时删除聊天消息、压缩记录与会话摘要（取消勾选则只清空长期记忆）
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button size="sm" onClick={() => setPurgeOpen(false)}>取消</Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => void purgeAll()}
+            disabled={purging}
+          >
+            {purging && <Spinner />} 确认删除
+          </Button>
+        </div>
+      </Modal>
     </section>
   )
 }

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.memory import facts as facts_mod
+from app.core.memory import policy as policy_mod
 from app.core.memory import scope as scope_mod
 
 
@@ -72,6 +73,10 @@ async def test_extract_facts_from_turn_routes_preferences_and_project_facts(monk
     )
     monkeypatch.setattr("app.core.llm.usage.record_usage", AsyncMock())
     monkeypatch.setattr("app.core.security.limits.ensure_token_budget", AsyncMock())
+    monkeypatch.setattr(
+        policy_mod, "get_policy",
+        AsyncMock(return_value=policy_mod.DEFAULT_POLICY),
+    )
     add_fact = AsyncMock(return_value=True)
     monkeypatch.setattr(facts_mod, "add_fact", add_fact)
 
@@ -108,6 +113,10 @@ async def test_extract_facts_resolves_replaces_hint(monkeypatch):
     )
     monkeypatch.setattr("app.core.llm.usage.record_usage", AsyncMock())
     monkeypatch.setattr("app.core.security.limits.ensure_token_budget", AsyncMock())
+    monkeypatch.setattr(
+        policy_mod, "get_policy",
+        AsyncMock(return_value=policy_mod.DEFAULT_POLICY),
+    )
     monkeypatch.setattr(
         facts_mod, "_find_fact_by_hint", AsyncMock(return_value=12)
     )

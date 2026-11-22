@@ -1343,6 +1343,33 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_facts_scope_status "
         "ON facts (user_id, scope_type, scope_id, status, importance DESC)",
     ]),
+    # 29: memory index and user memory policy.  ``topic``/``one_line`` feed a
+    # compact, bounded index block (details are read on demand through tools);
+    # ``merged_into_id`` lets nightly deterministic consolidation be undone.
+    (29, [
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS topic "
+        "VARCHAR(120) NOT NULL DEFAULT ''",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS one_line "
+        "VARCHAR(160) NOT NULL DEFAULT ''",
+        "ALTER TABLE facts ADD COLUMN IF NOT EXISTS merged_into_id BIGINT "
+        "REFERENCES facts(id) ON DELETE SET NULL",
+        "UPDATE facts SET one_line = LEFT(content, 120) "
+        "WHERE one_line = '' AND content <> ''",
+        "CREATE INDEX IF NOT EXISTS idx_facts_user_index ON facts "
+        "(user_id, status, promoted_at DESC NULLS LAST, importance DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS user_memory_settings (
+            user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            auto_memory BOOLEAN NOT NULL DEFAULT TRUE,
+            retention_days INT NOT NULL DEFAULT 90,
+            default_scope VARCHAR(16) NOT NULL DEFAULT 'dev',
+            blocked_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+            blocked_keywords JSONB NOT NULL DEFAULT '[]'::jsonb,
+            scope_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+    ]),
 ]
 
 

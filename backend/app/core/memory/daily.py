@@ -83,6 +83,36 @@ async def recent_daily(
     ]
 
 
+async def search_daily(
+    user_id: int,
+    query_text: str,
+    scopes: list[scope_mod.Scope] | None,
+    limit: int = 5,
+    days: int = 90,
+) -> list[dict]:
+    """Keyword search over daily summaries, newest first."""
+    text = (query_text or "").strip()[:100]
+    if not text:
+        return []
+    like = f"%{text}%"
+    since = date.today() - timedelta(days=max(1, int(days)))
+    scope_sql, scope_params = _scope_filter(scopes)
+    rows = await query(
+        "SELECT day, summary, scope_type, scope_id FROM memory_daily "
+        f"WHERE user_id = %s AND day >= %s AND summary ILIKE %s {scope_sql} "
+        "ORDER BY day DESC LIMIT %s",
+        (user_id, since, like, *scope_params, max(1, int(limit))),
+    )
+    return [
+        {
+            "day": row[0].isoformat() if isinstance(row[0], date) else str(row[0]),
+            "summary": redact_text(row[1])[:600],
+            "scope_type": row[2] or scope_mod.DEV, "scope_id": row[3] or "",
+        }
+        for row in rows
+    ]
+
+
 def format_daily_block(rows: list[dict]) -> str:
     """Compact prompt block for retrospective questions."""
     if not rows:
@@ -182,7 +212,9 @@ async def rollup_day(
         logger.warning("daily_summary_failed", user_id=user_id, day=str(day), error=str(exc))
         return 0
 
-    summary = _truncate(str(data.get("summary") or data.get("text") or ""))
+    summary = redact_text(
+        _truncate(str(data.get("summary") or data.get("text") or ""))
+    )
     if not summary:
         return 0
     await execute(
