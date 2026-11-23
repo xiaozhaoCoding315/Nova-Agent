@@ -199,6 +199,10 @@ def main() -> int:
         "--byok-surface", choices=["desktop", "any"], default=None,
         help="desktop = 网页端只用服务端模型，自定义 Key 去桌面客户端；any = 网页端也允许自带 Key",
     )
+    parser.add_argument(
+        "--icp-beian", default=None,
+        help="ICP 备案号，如 冀ICP备2026051171号；构建期变量，改完必须重建 app 镜像",
+    )
     parser.add_argument("--admin-password", default="")
     parser.add_argument("--demo-password", default="")
     args = parser.parse_args()
@@ -375,10 +379,12 @@ def main() -> int:
             updates["LLM_BYOK_SURFACE"] = args.byok_surface
         if args.shared_key_registered:
             updates["LLM_SERVER_FALLBACK_REGISTERED"] = "true"
+        if args.icp_beian is not None:
+            updates["ICP_BEIAN"] = args.icp_beian.strip()
         if not updates:
             print(
                 "!! env 阶段需要 --llm-key / --llm-model / --llm-provider "
-                "/ --byok-surface 中至少一项"
+                "/ --byok-surface / --icp-beian 中至少一项"
             )
             ssh.close()
             return 1
@@ -407,10 +413,20 @@ def main() -> int:
         finally:
             sftp.close()
 
-        # 回显只给键名与长度，永不打印值本身。
+        # 回显只给键名与长度，永不打印值本身。备案号不是密钥，照常显示方便核对。
         for key in updates:
-            print(f"  {key} 已更新（{len(updates[key])} 字符，值不显示）")
-        print("==> .env 已更新。下一步：docker compose up -d --force-recreate app")
+            if key == "ICP_BEIAN":
+                print(f"  {key} 已更新：{updates[key] or '（空，不展示）'}")
+            else:
+                print(f"  {key} 已更新（{len(updates[key])} 字符，值不显示）")
+        if "ICP_BEIAN" in updates:
+            # Vite 在打包时静态替换，只重建容器不会生效。
+            print(
+                "==> .env 已更新。ICP_BEIAN 是构建期变量："
+                "docker compose build app && docker compose up -d --no-build app"
+            )
+        else:
+            print("==> .env 已更新。下一步：docker compose up -d --force-recreate app")
 
     elif args.phase == "health":
         code, out = run(ssh, "curl -s http://127.0.0.1:8000/api/v1/status/health | head -c 600")

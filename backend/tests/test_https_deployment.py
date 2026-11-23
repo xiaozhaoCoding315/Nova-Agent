@@ -87,3 +87,16 @@ def test_icp_number_is_injected_at_build_time() -> None:
     assert "ENV VITE_ICP_BEIAN=$VITE_ICP_BEIAN" in dockerfile
     # compose 必须把 ICP_BEIAN 作为 build arg 传进去，否则上面两行收不到值。
     assert "VITE_ICP_BEIAN: ${ICP_BEIAN:-}" in _compose()
+
+
+def test_icp_notice_links_to_the_filing_system() -> None:
+    """页面要展示备案号并链到工信部系统，缺一不可。
+
+    构建链路本身由上面那条测试守住；这条守的是渲染端：读到变量后必须
+    输出成指向 beian.miit.gov.cn 的链接，而不是只显示一行文字。
+    """
+    notice = (ROOT / "frontend" / "src" / "components" / "IcpNotice.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "VITE_ICP_BEIAN" in notice
+    assert "https://beian.miit.gov.cn/" in notice

@@ -200,11 +200,15 @@ TRUSTED_PROXIES=172.18.0.0/16
 ### 4. 备案号展示（备案通过后必做）
 
 大陆网站备案通过后必须在页面底部展示备案号并链接到 `beian.miit.gov.cn`，否则
-可能被抽查要求整改。Nova 在登录页页脚和左栏底部各渲染一处，内容来自构建期变量：
+可能被抽查要求整改。Nova 在登录页页脚、`/downloads` 页脚和登录后左栏底部各渲染
+一处（同一个 `IcpNotice` 组件），内容来自构建期变量：
 
 ```bash
-# .env
-ICP_BEIAN=粤ICP备12345678号-1
+# 用部署脚本（只改这一个键，保留 .env 其余内容）
+python deploy/remote-deploy.py env --icp-beian 冀ICP备2026051171号
+
+# 或者手工改 .env 后重建
+# ICP_BEIAN=冀ICP备2026051171号
 docker compose build app && docker compose up -d --no-build app
 ```
 
