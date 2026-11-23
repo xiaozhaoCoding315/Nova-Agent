@@ -16,7 +16,11 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core.agent.context_governor import compact_messages
+from app.core.agent.context_governor import (
+    SpillCollector,
+    compact_messages,
+    rewrite_blob_tokens,
+)
 from app.core.agent.evidence import extract_citations, verify_citations
 from app.core.agent.tool_output import (
     neutralize_control_tags,
@@ -28,6 +32,7 @@ from app.core.llm.factory import (
     resolve_context_window,
 )
 from app.core.llm.usage import record_usage
+from app.core.memory import blobs as blobs_mod
 from app.core.memory import facts as facts_mod
 from app.core.memory import policy as memory_policy_mod
 from app.core.memory import scope as memory_scope
@@ -75,6 +80,19 @@ def _parse_arguments(raw) -> dict:
         return value if isinstance(value, dict) else {}
     except (TypeError, ValueError):
         return {}
+
+
+def _step_detail(_name: str, args: dict, result: dict) -> str:
+    """One readable line per tool call, for the parent's progress list."""
+    target = ""
+    for key in ("path", "query", "pattern", "fact_id", "repo_id"):
+        if args.get(key):
+            target = str(args[key])
+            break
+    outcome = "ok" if result.get("ok") else "失败"
+    if target:
+        return f"{outcome}：{target}"[:160]
+    return outcome
 
 
 def _extract_findings(summary: str, limit: int = 12) -> list[dict]:
@@ -172,6 +190,10 @@ async def run_subagent(
     timeout = max(1.0, float(timeout if timeout is not None else settings.subagent_timeout))
     rounds = 0
     tools_used: list[str] = []
+    # What each round actually did.  A sub-agent that hits the round cap has
+    # to tell the parent how far it got, otherwise "partial" is a word with
+    # no content and the parent cannot decide whether to retry or move on.
+    completed_steps: list[dict] = []
     usage_total = {
         "prompt_tokens": 0, "completion_tokens": 0, "model": "", "provider": "",
     }
@@ -305,7 +327,16 @@ async def run_subagent(
                     raise _StopSubagent() from exc
 
                 window = resolve_context_window(user["id"], llm, overrides)
-                compact_messages(messages, window, keep_recent=6)
+                # Same recoverable compaction as the parent loop: dropped
+                # middle sections stay readable through context_read.
+                spill = SpillCollector()
+                compact_messages(messages, window, keep_recent=6, spill=spill)
+                if spill:
+                    blob_ids = await blobs_mod.save_blobs(
+                        session_id, spill.originals, turn_id=turn_id,
+                    )
+                    if blob_ids:
+                        rewrite_blob_tokens(messages, blob_ids)
 
                 text, tool_calls, usage, thinking_blocks = await _stream_round(
                     llm, messages, specs,
@@ -327,6 +358,10 @@ async def run_subagent(
                 if not tool_calls:
                     summary_parts.append(text)
                     completed = True
+                    completed_steps.append({
+                        "round": round_no, "action": "summary",
+                        "detail": redact_text(text)[:200],
+                    })
                     break
 
                 assistant_message = {
@@ -359,6 +394,12 @@ async def run_subagent(
                     else:
                         result = await registry.execute(name, args, ctx)
                     tools_used.append(name)
+                    completed_steps.append({
+                        "round": round_no,
+                        "action": name,
+                        "ok": bool(result.get("ok")),
+                        "detail": _step_detail(name, args, result),
+                    })
                     await _emit({
                         "phase": "tool", "id": task_id, "name": name,
                         "ok": bool(result.get("ok")),
@@ -387,6 +428,10 @@ async def run_subagent(
                 final = await _final_summary(llm, messages)
                 if final.strip():
                     summary_parts.append(final)
+                    completed_steps.append({
+                        "round": rounds, "action": "summary",
+                        "detail": redact_text(final)[:200],
+                    })
     except TimeoutError:
         status = "timeout"
         error = f"子代理超过 {int(timeout)} 秒未完成"
@@ -458,6 +503,9 @@ async def run_subagent(
         # Explicit even when false: the parent must never treat a capped
         # sub-agent's answer as a complete one.
         "partial": status == "partial",
+        # What it managed before stopping.  A "partial" flag alone leaves the
+        # parent guessing whether anything usable was produced.
+        "completed_steps": redact_obj(completed_steps[-20:]),
         # A sub-agent that read a web page can carry instruction-shaped text
         # back into the parent context; escape control markers on the way in.
         "summary": neutralize_control_tags(summary),
@@ -488,6 +536,8 @@ async def run_subagent(
         "files": result["files"],
         "rounds": result["rounds"],
         "tools": result["tools"],
+        "partial": result["partial"],
+        "completed_steps": result["completed_steps"],
         "tokens": result["tokens"],
         "ms": result["ms"],
         "citations": citations,

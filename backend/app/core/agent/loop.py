@@ -15,10 +15,12 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.core.agent.context_governor import (
+    SpillCollector,
     blend_scale,
     calibration_scale,
     compact_messages,
     needs_compaction,
+    rewrite_blob_tokens,
 )
 from app.core.agent.context_meter import (
     estimate_message_content,
@@ -50,6 +52,7 @@ from app.core.llm.factory import (
 )
 from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
+from app.core.memory import blobs as blobs_mod
 from app.core.memory import compaction as compaction_mod
 from app.core.memory import daily as daily_mod
 from app.core.memory import episodic as episodic_mod
@@ -798,9 +801,22 @@ async def run_chat(
                             logger.warning(
                                 "compaction_summary_failed", error=str(exc)
                             )
+                    # 被砍掉的中间段先落库再改写占位符：模型需要细节时能用
+                    # context_read 取回，而不是永久丢失。
+                    spill = SpillCollector()
                     compaction = compact_messages(
-                        messages, round_window, scale=estimate_scale,
+                        messages, round_window, scale=estimate_scale, spill=spill,
                     )
+                    if spill:
+                        blob_ids = await blobs_mod.save_blobs(
+                            session["id"], spill.originals, turn_id=turn_id,
+                        )
+                        if blob_ids:
+                            rewrite_blob_tokens(messages, blob_ids)
+                            context_info["context_blobs"] = (
+                                int(context_info.get("context_blobs") or 0)
+                                + len(blob_ids)
+                            )
                     if compaction.applied:
                         compactions = int(context_info.get("compactions") or 0) + 1
                         context_info["compactions"] = compactions

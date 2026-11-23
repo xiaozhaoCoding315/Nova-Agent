@@ -137,3 +137,16 @@ async def test_memory_search_kind_episodic_merges_hits(monkeypatch):
 
     assert result["episodes"][0]["session_id"] == "s"
     fact_search.assert_not_awaited()
+
+
+def test_memory_search_schema_offers_episodic():
+    """The implementation accepted `episodic` long before the schema did.
+
+    A model can only choose values listed in the enum, so the tool's schema
+    silently made cross-session recall unreachable.
+    """
+    from app.core.tools import memory_tools
+
+    kind = memory_tools.SEARCH_TOOL.parameters["properties"]["kind"]
+    assert "episodic" in kind["enum"]
+    assert set(kind["enum"]) == {"all", "fact", "daily", "episodic"}

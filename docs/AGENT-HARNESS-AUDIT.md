@@ -234,3 +234,27 @@ _breakers: dict[str, CircuitBreaker] = {}    # 进程级全局字典
 ## 5. 与「成熟 harness」的差距，一句话版本
 
 成熟 harness 的标志不是「有重试和熔断的代码」，而是**所有对外部世界的调用都走同一条可观测、可配置、可评估的路径**。Nova 目前是：工具走 harness、检索走 harness、模型调用走 loop 里手写的另一套、provider 健康无人记录、非幂等与幂等一视同仁。把这条路径收敛起来，比再加任何新功能都更能提升稳定性。
+
+---
+
+## 6. 实施状态（2026-11-23）
+
+本文提出的 8 项已全部落地，其中第 2 项按流式语义做了调整。
+
+| 项 | 状态 | 落点 |
+|---|---|---|
+| P0-1 模型调用容错 | 已实现 | `core/harness/retry.py`（状态分类、full-jitter、`Retry-After`、账号级失败不重试）；`agent/loop.py` 用同一套 `retry_delay_for`/`is_retryable_error` |
+| P0-2 非幂等工具 | 已实现 | `ToolDefinition.idempotent` + `tools/base.py` 的 `use_retry=tool.idempotent`；失败时把「可能已执行」的提示交还模型 |
+| P0-3 熔断作用域 | 已实现 | `core/harness/circuit.py` 按 `name:scope` 分桶、半开 `Semaphore`；`core/llm/health.py` 记录 provider 健康 |
+| P1-1 Provider 归因 | 已实现 | `usage_log.provider`（迁移 31）+ `/status/health` 的 `llm_providers` |
+| P1-2 可恢复压缩 | 已实现 | 校准系数 + 每 8 轮重做摘要 + **原文落 `context_blobs`（迁移 32）并用 `context_read` 取回** |
+| P1-3 计划跨轮 | 已实现 | `session.latest_plan` / `format_plan_block` 重新注入 system prompt |
+| P1-4 注入边界 | 已实现 | `core/agent/tool_output.py` 的 `<untrusted_external_content>` 围栏、`scan_injection`、控制标签中和 |
+| P1-5 超时语义 | 已实现 | `local_available` 作为调用前的可用性检查（工具不出现在 specs 里），不靠超时兜底 |
+| P2-1 子代理预算 | 已实现 | `run_subagent` 返回 `partial` + `completed_steps`；失败任务保持同一套键 |
+| P2-2 故障注入 eval | 已实现 | `evals/tasks/resilience.py` 4 个任务，`evals/baselines/scripted.json` 已刷新 |
+| P2-3 客户端复用 | 已实现 | `core/llm/client_cache.py`：按 `(loop, base_url, key 摘要)` 共享，`lifespan` 关闭；不再每轮新建连接池 |
+
+**与原文的偏差（第 2 项）**：loop 没有直接把模型调用交给 `execute_with_harness`。原因是 loop 的单位是流式 async generator，一旦吐出 token 就不能整体重来——重来会重复执行工具调用。所以 loop 复用 `retry.py` 的策略函数而不是包装器；这条约束与本文引用的 Claude Code 规则一致，已写进 `retry_delay_for` 的 docstring。
+
+**顺带修的真 bug**：`memory_search` 的 schema `enum` 漏了 `episodic`，而实现早已支持——模型按 schema 只能选 `all/fact/daily`，跨会话检索实际不可达。已补 enum 并加回归测试。

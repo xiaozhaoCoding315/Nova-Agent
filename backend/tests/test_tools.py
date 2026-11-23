@@ -25,6 +25,7 @@ def test_registry_has_all_tools_with_openai_specs():
         "json_tool", "sql_tool", "fetch_url", "web_search", "local_run_command",
         "local_write_file", "edit_file", "grep", "glob", "update_plan",
         "spawn_agents", "memory_search", "memory_read", "memory_save",
+        "context_read",
         # Thesis-mode read-only tools are registered globally; `specs()`
         # without product_mode lists everything, and the registry filters
         # them out for dev sessions.

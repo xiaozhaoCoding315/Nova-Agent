@@ -70,6 +70,9 @@ def _failed_task(task_id: str, title: str, error: str, agent: str = "") -> dict:
     return {
         "id": task_id, "title": title, "status": "failed", "agent": agent,
         "summary": "", "findings": [], "files": [], "rounds": 0,
+        # Same keys as a completed task: the parent must not have to branch
+        # on which shape it got before reading progress.
+        "partial": False, "completed_steps": [],
         "tools": [], "tokens": {"prompt": 0, "completion": 0}, "ms": 0,
         "citations": {
             "citations": [], "executed": False, "verified": 0,
@@ -163,7 +166,8 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
         ),
         "note": (
             "子代理只读；结果中的文件行号已做引用校验，"
-            "仍需主代理复核关键结论。"
+            "仍需主代理复核关键结论。partial=true 表示触达轮次上限，"
+            "completed_steps 列出了它已经完成的步骤——不要把它当成完整结论。"
         ),
     }
 

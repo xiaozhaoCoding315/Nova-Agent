@@ -181,8 +181,10 @@ SEARCH_TOOL = ToolDefinition(
             "query": {"type": "string", "description": "关键词，如“提交习惯”“论文引用”"},
             "kind": {
                 "type": "string",
-                "enum": ["all", "fact", "daily"],
-                "description": "检索范围，默认 all",
+                "enum": ["all", "fact", "daily", "episodic"],
+                # `episodic` 早已在实现里，但 enum 漏了它——模型按 schema
+                # 只能选前三个，跨会话的“上次我们怎么定的”永远检索不到。
+                "description": "检索范围，默认 all；episodic 检索过往会话消息",
             },
             "limit": {"type": "integer", "description": "最多返回条数（1–20，默认 8）"},
         },

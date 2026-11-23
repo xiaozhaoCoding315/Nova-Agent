@@ -1,11 +1,10 @@
-import httpx
 import structlog
-from openai import AsyncOpenAI
 
 from app.config import settings
 from app.core.agent.image_input import strip_image_blocks
 from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
+from app.core.llm.client_cache import get_client
 from app.core.llm.fallback import FallbackLLM
 from app.core.llm.providers import get_provider
 from app.core.llm.user_settings import get_user_config
@@ -47,11 +46,9 @@ class OpenAICompatibleLLM(LLMProvider):
         supports_vision: bool = False,
         provider_id: str = "",
     ):
-        self.client = AsyncOpenAI(
-            api_key=api_key or "ollama",
-            base_url=base_url,
-            http_client=httpx.AsyncClient(follow_redirects=False),
-        )
+        # Shared per (loop, endpoint, key): a 16-round turn used to build 16
+        # connection pools and close none of them.
+        self.client = get_client(api_key, base_url)
         self.model = model
         # Attribution for usage_log and provider health.  Without it a turn
         # that silently degraded to the backup vendor looks identical to one

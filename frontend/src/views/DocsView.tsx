@@ -514,7 +514,7 @@ export function DocsView() {
 
                 <Callout tone="warn" title="先启用 HTTPS">
                   手机绑定依赖浏览器 WebCrypto，只有 HTTPS（或 localhost）才开放设备密钥。
-                  用 http://IP:8000 打开手机工作台会显示「需要 HTTPS」；等域名与证书生效后再配对。
+                  用 http://IP:8000 打开手机工作台会显示「需要 HTTPS」；部署者启用域名与证书后再配对。
                 </Callout>
 
                 <P>

@@ -1420,6 +1420,23 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         # "answers got worse" cannot be investigated after the fact.
         "ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS provider VARCHAR(32)",
     ]),
+    (32, [
+        # Recoverable compaction: the middle of a shrunk tool result is kept
+        # here and the placeholder carries its id, so the model can read the
+        # original back instead of losing it permanently.
+        """
+        CREATE TABLE IF NOT EXISTS context_blobs (
+            id BIGSERIAL PRIMARY KEY,
+            session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            turn_id UUID,
+            tool_name VARCHAR(64) NOT NULL DEFAULT '',
+            content TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_context_blobs_session "
+        "ON context_blobs (session_id, id DESC)",
+    ]),
 ]
 
 
