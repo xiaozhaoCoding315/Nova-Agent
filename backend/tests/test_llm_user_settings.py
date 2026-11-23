@@ -272,6 +272,13 @@ async def test_byok_closed_serves_registered_users_from_the_shared_key(monkeypat
     monkeypatch.setattr(settings, "nova_mode", "server")
     monkeypatch.setattr(settings, "llm_allow_server_fallback", True)
     monkeypatch.setattr(settings, "llm_server_fallback_registered", False)
+    # 必须钉住「服务端有 Key」。`llm_byok_open` 在没配任何服务端 Key 时也会返回
+    # True（否则部署起来没人能用模型），此时 _fallback_allowed_for 会转去查账号
+    # 等级。CI 环境没有任何 Key，本地开发机通常有，不钉住这条测试就会两处结论
+    # 不同——本机绿、CI 红。
+    monkeypatch.setattr(settings, "dashscope_api_key", "sk-server")
+    for key in ("zhipu_api_key", "agnes_api_key", "deepseek_api_key", "anthropic_api_key"):
+        monkeypatch.setattr(settings, key, "")
 
     async def _never(_sql, _params):  # pragma: no cover - must not be reached
         raise AssertionError("BYOK 关闭时不应再查账号等级")
