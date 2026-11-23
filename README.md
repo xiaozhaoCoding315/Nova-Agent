@@ -18,7 +18,7 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
-| **多用户模型接入（BYOK）** | 每个用户可在设置页为 16 家厂商分别保存 API Key 与模型（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
+| **多用户模型接入（BYOK）** | 每个用户可在设置页为 17 家厂商分别保存 API Key 与模型（Agnes AI / 智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
 | **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（计划/审查/Builder/修复任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
 | **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
@@ -181,6 +181,8 @@
 - 日摘要：维护循环按天把跨会话对话压缩为 ≤40 行摘要，存入 `memory_daily`；按 global/dev/repo/thesis 作用域隔离，可关键词检索并在回溯性问题中注入
 - 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重；同一事实在 ≥2 天出现后自动晋升；按语义相关度 + 重要性混合召回；访问加权、闲置衰减、TTL 清理；相近偏好/纠错自动替代旧值并保留版本与来源
 - 记忆索引 + `memory_search` / `memory_read` 工具：prompt 只放高价值摘要索引，完整原文按需读取；dev 会话额外注入仓库「项目大脑」（入口、热点文件、阅读顺序）
+- 人工指令分层：组织策略 → 用户指令 → 项目指令，支持 `paths:` 只在实际访问匹配文件时追加注入；关闭自动记忆仍生效，但不能覆盖安全/权限规则
+- 跨会话检索与复核：`memory_search(kind=episodic)` 检索历史消息与会话摘要；高风险、同主题冲突与夜间合并进入人工复核队列；子代理可使用独立角色记忆（`agent:<name>`），主会话不继承
 - 设置页可查看/编辑/归档事实与日摘要，配置自动记忆、保留天数、屏蔽类别/关键词与作用域覆盖，并导出 JSON/Markdown 或删除全部记忆
 
 ## 技术栈
@@ -190,7 +192,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | 默认智谱 GLM-4.7-Flash（免费）；内置 16 家厂商目录（智谱 / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），预设 Base URL 固定；每个用户可保存多家凭据并设默认，会话级可切换厂商 / 模型 / 推理强度 / 上下文窗口；真实 GLM 流式调用已验证 |
+| LLM | 默认智谱 GLM-4.7-Flash（免费）；内置 17 家厂商目录（Agnes AI / 智谱 / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），预设 Base URL 固定；每个用户可保存多家凭据并设默认，会话级可切换厂商 / 模型 / 推理强度 / 上下文窗口；真实 GLM 流式调用已验证 |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -208,7 +210,9 @@ docker compose up -d --build  # 构建并启动全部服务
 
 公开多用户部署建议设 `LLM_ALLOW_SERVER_FALLBACK=false`，强制每个用户在设置页填写自己的 API Key，未配置时不会回退到服务端 Key。
 
-启用 HTTPS（有域名时）：仓库自带 `Caddyfile`（根域名给博客、`nova.` 子域名给 Nova，改域名即可），
+启用 HTTPS（有域名时）：备案通过后直接跑 `bash deploy/enable-https.sh` 预检、再
+`--apply` 一键配置（会自动改 `.env`、重建 app、启动 Caddy，失败自动回滚）。手工方式：
+仓库自带 `Caddyfile`（根域名给博客、`nova.` 子域名给 Nova，改域名即可），
 把 `.env` 的 `TRUSTED_PROXIES` 填成本项目 docker 网段（如 `172.18.0.0/16`，支持 CIDR；
 别填 Caddy 容器 IP，容器重建就变）、`APP_BIND` 改成 `127.0.0.1`（否则 `:8000` 是绕过
 HTTPS 的明文旁路），再 `docker compose --profile https up -d`。`COOKIE_SECURE` 留空时，
@@ -279,12 +283,14 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.2
 
 | 变量 | 说明 |
 |---|---|
+| `AGNES_API_KEY` / `AGNES_MODEL` / `AGNES_BASE_URL` | Agnes AI 免费文本模型（OpenAI 兼容，默认 `agnes-3.0-flash`，地址 `https://api.agnes-ai.cn/v1`） |
 | `ZHIPU_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
 | `ZHIPU_MODEL` / `ZHIPU_BASE_URL` / `DASHSCOPE_MODEL` | 服务端默认模型与智谱服务地址（智谱默认 `glm-4.7-flash`，地址 `https://open.bigmodel.cn/api/paas/v4`；DashScope 默认 `qwen3.8-max`） |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic 原生通道（tool use + prompt caching）；`ANTHROPIC_PROMPT_CACHING=true` 默认开启 |
-| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `zhipu,dashscope,deepseek,anthropic` 启用降级链 |
+| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `agnes,zhipu,dashscope,deepseek,anthropic` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `LLM_SERVER_FALLBACK_REGISTERED` | 共享 Key 是否对注册用户开放（默认 `false`：仅游客与管理员可用，注册用户必须自带 Key） |
+| `LLM_BYOK_SURFACE` | `desktop` = 网页端固定使用服务端模型，自定义厂商/Key 只在桌面客户端配置；`any`（默认）= 网页端也可自带 Key。没有服务端 Key 或本机运行时自动放开 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
 | `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号；多用户部署建议改用注册/游客，不共享 demo 账号 |
 | `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
@@ -354,7 +360,7 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.2
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
 | `GET /api/v1/status/health` / `usage` / `metrics?days=7` | 依赖探活 / 用量配额 / 交付指标 |
-| `GET /api/v1/settings/llm/providers` | 服务商目录（16 家，含预设 Base URL、默认模型与能力标记） |
+| `GET /api/v1/settings/llm/providers` | 服务商目录（17 家，含预设 Base URL、默认模型与能力标记） |
 | `GET /api/v1/settings/llm/credentials` · `PUT/DELETE /credentials/{provider}` · `POST /credentials/{provider}/default` | 个人凭据列表 / 保存或删除单个厂商 / 设为默认（响应只含掩码） |
 | `GET/PUT/DELETE /api/v1/settings/llm` | 当前生效配置汇总 / 保存为默认凭据 / 清空 |
 | `POST /api/v1/settings/llm/test` | 用当前或待保存配置做一次真实连通性测试 |
@@ -634,6 +640,8 @@ cd frontend && npm run contract:check
 - 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
 - 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升；相近偏好/纠错会替代旧值，夜间还会归档同作用域近重复（余弦 ≥0.96），不做 LLM 改写
 - 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序；关闭自动记忆后不再自动抽取或注入，手动管理与导出仍可用
+- 人工指令与记忆都有长度上限；`paths:` 只做 fnmatch/前缀匹配，不追踪符号链接或文件重命名；跨会话检索是关键词 + 可选向量近似，不做跨语言语义搜索
+- 高风险记忆默认进入待审核队列，正则风险分级可能漏判，最终仍需用户在复核队列确认；团队记忆 store 尚未实现（当前无 workspace/member 模型）
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 已接入，黄金仓库回归需要本机 Docker/DB 手动执行
 
 ## License

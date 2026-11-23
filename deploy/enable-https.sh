@@ -26,7 +26,8 @@ say() { printf '%s\n' "$*"; }
 ok() { printf '  [ok]   %s\n' "$*"; }
 warn() { printf '  [warn] %s\n' "$*"; }
 stop() { printf '  [stop] %s\n' "$*"; blocked=1; }
-env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-; }
+# 缺键时 grep 退出 1，set -e 会让整个预检静默中止；这里显式吞掉非零退出。
+env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 
 say "Nova HTTPS 预检 · 目录 $ROOT · 域名 $DOMAIN"
 
@@ -179,9 +180,11 @@ fi
 docker compose up -d --no-build app
 docker compose --profile https up -d caddy
 
-say "等待证书与 HTTPS 健康检查（最多 120 秒）…"
+# 首次签发要等 ACME 目录/订单/校验/下载，国内访问 Let's Encrypt 常见 2–4 分钟；
+# 窗口太短会在证书刚签发时误判失败并回滚（已发生过一次）。给足 6 分钟。
+say "等待证书与 HTTPS 健康检查（最多 360 秒）…"
 healthy=0
-for _ in $(seq 1 24); do
+for _ in $(seq 1 72); do
   if curl -fsS -m 8 "https://$DOMAIN/api/v1/status/health" >/dev/null 2>&1; then
     healthy=1
     break
