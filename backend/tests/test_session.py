@@ -88,3 +88,47 @@ async def test_set_repo_ids_replaces_join_rows_and_primary(monkeypatch):
     assert "primary_repo_id" in update_sql
     assert update_params[0] == "repo-a"
     assert update_params[2] == "s1"
+
+
+@pytest.mark.asyncio
+async def test_latest_plan_is_owner_scoped_and_reads_tool_json(monkeypatch):
+    query = AsyncMock(return_value=[({"steps": [{"title": "a", "status": "pending"}]},)])
+    monkeypatch.setattr(session_mod, "query", query)
+
+    plan = await session_mod.latest_plan("s1", 7)
+
+    sql, params = query.await_args.args
+    assert "tool_json->'plan'" in sql
+    assert "s.user_id = %s" in sql
+    assert params == ("s1", 7)
+    assert plan["steps"][0]["title"] == "a"
+
+
+@pytest.mark.asyncio
+async def test_latest_plan_ignores_non_object_payload(monkeypatch):
+    monkeypatch.setattr(session_mod, "query", AsyncMock(return_value=[("garbage",)]))
+    assert await session_mod.latest_plan("s1", 7) is None
+
+
+def test_format_plan_block_marks_status_and_warns_about_staleness():
+    block = session_mod.format_plan_block({
+        "steps": [
+            {"title": "定位代码", "status": "completed"},
+            {"title": "修改实现", "status": "in_progress"},
+            {"title": "跑测试", "status": "pending"},
+        ],
+        "explanation": "先读后改",
+    })
+    assert "## 当前任务计划" in block
+    assert "- [x] 定位代码" in block
+    assert "- [>] 修改实现" in block
+    assert "- [ ] 跑测试" in block
+    assert "先读后改" in block
+    assert "修正" in block
+
+
+def test_format_plan_block_is_empty_without_steps():
+    assert session_mod.format_plan_block(None) == ""
+    assert session_mod.format_plan_block({}) == ""
+    assert session_mod.format_plan_block({"steps": []}) == ""
+    assert session_mod.format_plan_block({"steps": [{"title": ""}]}) == ""

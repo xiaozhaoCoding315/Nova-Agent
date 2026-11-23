@@ -8,8 +8,10 @@ import type {
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
-  LlmTestResult, Memory, MemoryFact, MemoryFactInput, MemoryFactSources,
-  MemoryFactUpdate, MemoryPurgeResult, MemorySettings, MemorySettingsUpdate,
+  Instruction, InstructionInput, InstructionUpdate,
+  LlmTestResult, Memory, MemoryFact, MemoryFactInput, MemoryFactScopeType,
+  MemoryFactSources, MemoryFactUpdate, MemoryPurgeResult, MemoryReviewItem,
+  MemorySettings, MemorySettingsUpdate, MemoryTopic,
   Message, Metrics, ModeInfo, RegisterResult, Repo,
   GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
   RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
@@ -373,7 +375,7 @@ export const api = {
     getFactSources: (id: number) =>
       request<MemoryFactSources>(`/memory/facts/${id}/sources`),
     removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
-    removeDaily: (day: string, scopeType = 'dev', scopeId = '') => {
+    removeDaily: (day: string, scopeType: MemoryFactScopeType = 'dev', scopeId = '') => {
       const params = new URLSearchParams({
         scope_type: scopeType,
         scope_id: scopeId,
@@ -383,6 +385,21 @@ export const api = {
         { method: 'DELETE' },
       )
     },
+    topics: (scope?: { type: string; id?: string }) => {
+      const params = new URLSearchParams()
+      if (scope?.type) {
+        params.set('scope_type', scope.type)
+        params.set('scope_id', scope.id ?? '')
+      }
+      const query = params.toString()
+      return request<MemoryTopic[]>(`/memory/topics${query ? `?${query}` : ''}`)
+    },
+    reviewQueue: (status = 'pending') =>
+      request<MemoryReviewItem[]>(`/memory/review?status=${encodeURIComponent(status)}`),
+    approveReview: (id: number) =>
+      request<MemoryReviewItem>(`/memory/review/${id}/approve`, { method: 'POST' }),
+    rejectReview: (id: number) =>
+      request<MemoryReviewItem>(`/memory/review/${id}/reject`, { method: 'POST' }),
     settings: () => request<MemorySettings>('/settings/memory'),
     updateSettings: (body: MemorySettingsUpdate) =>
       request<MemorySettings>('/settings/memory', { ...json(body), method: 'PUT' }),
@@ -407,6 +424,21 @@ export const api = {
         method: 'DELETE',
       })
     },
+  },
+
+  instructions: {
+    list: (level?: string) =>
+      request<Instruction[]>(
+        `/settings/instructions${level ? `?level=${encodeURIComponent(level)}` : ''}`,
+      ),
+    create: (body: InstructionInput) =>
+      request<Instruction>('/settings/instructions', json(body)),
+    update: (id: number, body: InstructionUpdate) =>
+      request<Instruction>(`/settings/instructions/${id}`, {
+        ...json(body), method: 'PUT',
+      }),
+    remove: (id: number) =>
+      request<{ ok: boolean }>(`/settings/instructions/${id}`, { method: 'DELETE' }),
   },
 
   deploys: {

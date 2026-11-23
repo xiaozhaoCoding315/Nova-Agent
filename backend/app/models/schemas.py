@@ -553,6 +553,10 @@ class LlmSettingsOut(BaseModel):
     key_hint: Optional[str] = None
     server_model: Optional[str] = None
     allow_server_fallback: bool = True
+    # Whether this surface may create/edit per-user credentials.  False means
+    # the shared server model is the only choice here; custom models are
+    # configured in the desktop client.
+    byok_enabled: bool = True
     context_window: Optional[int] = None       # None = 跟随部署默认窗口
     reasoning_effort: Optional[str] = None     # "" / low / medium / high
     providers: list[LlmProviderOut] = Field(default_factory=list)
@@ -690,7 +694,7 @@ class MemoryFactOut(BaseModel):
     category: Literal[
         "fact", "preference", "project", "decision", "correction",
     ] = "fact"
-    status: Literal["active", "superseded", "archived"] = "active"
+    status: Literal["active", "superseded", "archived", "pending"] = "active"
     version: int = 1
     supersedes_id: Optional[int] = None
     merged_into_id: Optional[int] = None
@@ -793,6 +797,68 @@ class MemorySettingsUpdate(BaseModel):
     ]]] = None
     blocked_keywords: Optional[list[str]] = None
     scope_overrides: Optional[dict[str, dict]] = None
+
+
+class InstructionOut(BaseModel):
+    id: int
+    level: Literal["org", "user", "project"]
+    scope_type: str = "global"
+    scope_id: str = ""
+    name: str = ""
+    content: str
+    paths: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    priority: int = 100
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InstructionCreate(BaseModel):
+    level: Literal["org", "user", "project"] = "user"
+    scope_type: Literal["global", "dev", "thesis", "repo"] = "global"
+    scope_id: str = Field(default="", max_length=64)
+    name: str = Field(default="", max_length=120)
+    content: str = Field(min_length=1, max_length=8000)
+    paths: list[str] = Field(default_factory=list, max_length=20)
+    enabled: bool = True
+    priority: int = Field(default=100, ge=0, le=1000)
+
+
+class MemoryTopicOut(BaseModel):
+    topic: str
+    scope_type: str = "global"
+    scope_id: str = ""
+    count: int = 0
+    updated_at: Optional[datetime] = None
+    samples: list[str] = Field(default_factory=list)
+
+
+class MemoryReviewItemOut(BaseModel):
+    id: int
+    kind: Literal["high_risk_fact", "merge", "conflict"]
+    fact_id: Optional[int] = None
+    target_fact_id: Optional[int] = None
+    status: Literal["pending", "approved", "rejected"] = "pending"
+    reason: str = ""
+    payload: dict = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    content: str = ""
+    one_line: str = ""
+    category: str = "fact"
+    scope_type: str = "global"
+    scope_id: str = ""
+    target_content: Optional[str] = None
+
+
+class InstructionUpdate(BaseModel):
+    level: Optional[Literal["org", "user", "project"]] = None
+    scope_type: Optional[Literal["global", "dev", "thesis", "repo"]] = None
+    scope_id: Optional[str] = Field(default=None, max_length=64)
+    name: Optional[str] = Field(default=None, max_length=120)
+    content: Optional[str] = Field(default=None, min_length=1, max_length=8000)
+    paths: Optional[list[str]] = Field(default=None, max_length=20)
+    enabled: Optional[bool] = None
+    priority: Optional[int] = Field(default=None, ge=0, le=1000)
 
 
 class ToolMetricOut(BaseModel):

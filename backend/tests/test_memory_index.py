@@ -135,8 +135,10 @@ def _ctx(**overrides) -> ToolContext:
 async def test_memory_search_combines_facts_and_daily(monkeypatch):
     facts_search = AsyncMock(return_value=[{"id": 1}])
     daily_search = AsyncMock(return_value=[{"day": "2026-11-21"}])
+    episodic_search = AsyncMock(return_value=[])
     monkeypatch.setattr(facts_mod, "search_facts", facts_search)
     monkeypatch.setattr(daily_mod, "search_daily", daily_search)
+    monkeypatch.setattr(memory_tools.episodic_mod, "search_episodic", episodic_search)
     monkeypatch.setattr(policy_mod, "get_policy", AsyncMock(return_value=policy_mod.DEFAULT_POLICY))
 
     result = await memory_tools.memory_search({"query": "记忆"}, _ctx())
@@ -206,6 +208,9 @@ async def test_memory_search_filters_blocked_daily(monkeypatch):
             "day": "2026-11-21", "summary": "工资是 12345",
             "scope_type": "dev", "scope_id": "",
         }]),
+    )
+    monkeypatch.setattr(
+        memory_tools.episodic_mod, "search_episodic", AsyncMock(return_value=[]),
     )
     blocked = policy_mod.MemoryPolicy(blocked_keywords=("工资",))
     monkeypatch.setattr(policy_mod, "get_policy", AsyncMock(return_value=blocked))

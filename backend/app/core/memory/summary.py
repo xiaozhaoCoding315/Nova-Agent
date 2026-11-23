@@ -105,6 +105,12 @@ async def maybe_summarize(
     if not summary:
         return 0
     await session_mod.set_summary(session_id, summary, int(to_summarize[-1]["id"]))
+    try:
+        from app.core.memory import vector_store
+
+        await vector_store.index_session(user_id, session_id, summary)
+    except Exception as exc:  # noqa: BLE001 — vectors are optional
+        logger.debug("session_summary_index_failed", error=str(exc))
     logger.info(
         "session_summary_written", session=session_id, messages=len(to_summarize)
     )

@@ -44,9 +44,24 @@ async def test_record_usage_writes_source(monkeypatch):
     monkeypatch.setattr(usage_mod, "execute", execute)
     await usage_mod.record_usage(
         1, None,
-        {"prompt_tokens": 3, "completion_tokens": 4, "model": "test"},
+        {"prompt_tokens": 3, "completion_tokens": 4, "model": "test",
+         "provider": "agnes"},
         tool_calls=2, source="task",
     )
     sql, params = execute.await_args.args
     assert "source" in sql
-    assert params == (1, None, "test", 3, 4, 2, "task")
+    assert "provider" in sql
+    assert params == (1, None, "test", "agnes", 3, 4, 2, "task")
+
+
+@pytest.mark.asyncio
+async def test_record_usage_without_provider_stores_null(monkeypatch):
+    """Older call sites (and non-provider usage events) must stay valid."""
+    monkeypatch.setattr(settings, "nova_test_fast", False)
+    execute = AsyncMock()
+    monkeypatch.setattr(usage_mod, "execute", execute)
+    await usage_mod.record_usage(
+        1, None, {"prompt_tokens": 1, "completion_tokens": 1, "model": "m"},
+    )
+    _sql, params = execute.await_args.args
+    assert params[3] is None

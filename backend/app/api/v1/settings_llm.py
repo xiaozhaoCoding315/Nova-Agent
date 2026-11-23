@@ -58,45 +58,74 @@ def _public_view(
     usable = bool(config) and (
         bool(config.get("api_key")) or config.get("provider") in KEYLESS_PROVIDERS
     )
+    # With BYOK closed the shared key must serve every account: a registered
+    # user has no credential of their own to fall back on.
+    byok_enabled = settings.llm_byok_open
     server_applies = bool(
         settings.llm_allow_server_fallback
         and (
-            user.get("is_guest")
+            not byok_enabled
+            or user.get("is_guest")
             or user.get("role") == "admin"
             or settings.llm_server_fallback_registered
         )
     )
-    if usable:
+    # Stored credentials are only reported when this surface may use them;
+    # otherwise the picker would offer models the server ignores.
+    active = config if (usable and byok_enabled) else None
+    if active is not None:
         source = "user"
     elif settings.llm_configured and server_applies:
         source = "server"
     else:
         source = "none"
 
+    providers = provider_list() if byok_enabled else []
+    credentials = [
+        _credential_view(item) for item in (configs or [])
+    ] if byok_enabled else []
+
     return LlmSettingsOut(
         source=source,
-        configured=usable,
-        provider=config["provider"] if config else None,
-        model=config["model"] if usable else server_default_model(),
-        base_url=config["base_url"] if usable else None,
-        has_key=has_key,
-        key_hint=config.get("key_hint") if has_key else None,
+        configured=active is not None,
+        provider=active["provider"] if active else None,
+        model=active["model"] if active else server_default_model(),
+        base_url=active["base_url"] if active else None,
+        has_key=has_key and byok_enabled,
+        key_hint=active.get("key_hint") if has_key and active else None,
         server_model=server_default_model(),
         allow_server_fallback=server_applies and settings.llm_configured,
-        context_window=config.get("context_window") if usable else None,
-        reasoning_effort=config.get("reasoning_effort") if usable else None,
-        providers=provider_list(),
-        credentials=[_credential_view(item) for item in (configs or [])],
-        updated_at=config.get("updated_at") if usable else None,
+        byok_enabled=byok_enabled,
+        context_window=active.get("context_window") if active else None,
+        reasoning_effort=active.get("reasoning_effort") if active else None,
+        providers=providers,
+        credentials=credentials,
+        updated_at=active.get("updated_at") if active else None,
     )
 
 
 async def _public_for(user: dict) -> LlmSettingsOut:
+    if not settings.llm_byok_open:
+        return _public_view(None, user, [])
     configs = await list_user_configs(user["id"])
     default = next((item for item in configs if item.get("is_default")), None)
     if default is None and configs:
         default = configs[0]
     return _public_view(default, user, configs)
+
+
+def _require_byok() -> None:
+    """Refuse credential writes on a surface that has none.
+
+    The web UI hides the editor when ``byok_enabled`` is false, but the
+    endpoint must not depend on the UI for that: a saved credential here
+    would be silently ignored by the factory.
+    """
+    if not settings.llm_byok_open:
+        raise HTTPException(
+            status_code=403,
+            detail="本服务使用统一模型，不支持自定义 API Key；需要自定义模型请下载桌面客户端",
+        )
 
 
 @router.get("/settings/llm/providers", response_model=list[LlmProviderOut])
@@ -106,6 +135,8 @@ async def list_providers(user: dict = Depends(get_current_user)):
 
 @router.get("/settings/llm/credentials", response_model=list[LlmCredentialOut])
 async def list_credentials(user: dict = Depends(get_current_user)):
+    if not settings.llm_byok_open:
+        return []
     return [_credential_view(item) for item in await list_user_configs(user["id"])]
 
 
@@ -117,6 +148,7 @@ async def save_credential(
     body: LlmCredentialUpdate,
     user: dict = Depends(get_current_user),
 ):
+    _require_byok()
     try:
         config = await save_user_config(
             user["id"],
@@ -137,6 +169,7 @@ async def save_credential(
     "/settings/llm/credentials/{provider}", response_model=OkOut,
 )
 async def delete_credential(provider: str, user: dict = Depends(get_current_user)):
+    _require_byok()
     if not await delete_user_config(user["id"], provider):
         raise HTTPException(status_code=404, detail="该厂商尚未配置")
     return {"ok": True}
@@ -147,6 +180,7 @@ async def delete_credential(provider: str, user: dict = Depends(get_current_user
     response_model=LlmCredentialOut,
 )
 async def make_default(provider: str, user: dict = Depends(get_current_user)):
+    _require_byok()
     config = await set_default_provider(user["id"], provider)
     if config is None:
         raise HTTPException(status_code=404, detail="该厂商尚未配置")
@@ -163,6 +197,7 @@ async def update_llm_settings(
     body: LlmSettingsUpdate,
     user: dict = Depends(get_current_user),
 ):
+    _require_byok()
     try:
         await save_user_config(
             user["id"],
@@ -190,6 +225,7 @@ async def test_llm_settings(
     body: LlmSettingsUpdate,
     user: dict = Depends(get_current_user),
 ):
+    _require_byok()
     spec = get_provider(body.provider)
     if not spec:
         raise HTTPException(status_code=400, detail="不支持的模型服务商")

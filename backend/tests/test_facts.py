@@ -1,4 +1,5 @@
 """Long-term facts must be deduplicated per user, not globally."""
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -31,6 +32,40 @@ async def test_add_fact_dedup_and_insert_are_user_scoped(monkeypatch):
     assert "ON CONFLICT (user_id, scope_type, scope_id, hash)" in insert_sql
     assert insert_params[0] == 7
     assert "INSERT INTO fact_days" in execute.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_add_fact_serializes_writers_in_same_scope(monkeypatch):
+    active = 0
+    max_active = 0
+
+    async def fake_locked(*args, **kwargs):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return True
+
+    monkeypatch.setattr(facts_mod, "_add_fact_locked", fake_locked)
+    results = await asyncio.gather(*[
+        facts_mod.add_fact(7, f"记忆内容 {index}", scope_type="dev")
+        for index in range(5)
+    ])
+
+    assert all(results)
+    assert max_active == 1
+
+
+def test_write_lock_is_shared_per_scope_only():
+    first = facts_mod._write_lock(1, "dev", "a")
+    same = facts_mod._write_lock(1, "dev", "a")
+    other_scope = facts_mod._write_lock(1, "dev", "b")
+    other_user = facts_mod._write_lock(2, "dev", "a")
+
+    assert first is same
+    assert first is not other_scope
+    assert first is not other_user
 
 
 @pytest.mark.asyncio

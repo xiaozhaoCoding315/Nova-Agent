@@ -16,6 +16,21 @@ class ScriptExhausted(RuntimeError):
     """The agent asked for more LLM rounds than the script provides."""
 
 
+class ScriptedFailure:
+    """A script round that raises instead of streaming.
+
+    Fault injection needs the loop to see a real provider error, not a
+    pre-canned answer, so a script entry may be a failure instead of a tuple
+    of events.
+    """
+
+    def __init__(self, exc: BaseException):
+        self.exc = exc
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"ScriptedFailure({self.exc!r})"
+
+
 class EvalConfigError(RuntimeError):
     """Live eval cannot start because provider configuration is missing."""
 
@@ -48,7 +63,10 @@ class ScriptedExecutor:
             raise ScriptExhausted(
                 f"ScriptExhausted: LLM 调用次数超过脚本轮次（已调用 {len(self.llm_messages)} 次）"
             )
-        for event in self._rounds.pop(0):
+        round_script = self._rounds.pop(0)
+        if isinstance(round_script, ScriptedFailure):
+            raise round_script.exc
+        for event in round_script:
             yield event
 
 

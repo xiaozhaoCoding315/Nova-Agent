@@ -130,7 +130,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     note: '自带 Key，数据留在你的环境；本地与服务器共用同一套工具和审批。',
     rows: [
       {
-        name: '16 家模型接入（BYOK）',
+        name: '17 家模型接入（BYOK）',
         detail: '多家凭据并存、密钥加密存储、接口只回掩码；会话级切换厂商、模型、推理强度与上下文窗口。',
       },
       {

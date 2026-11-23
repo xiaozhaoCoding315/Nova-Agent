@@ -25,7 +25,9 @@ from app.core.llm import usage as usage_mod
 from app.core.memory import brain as brain_mod
 from app.core.memory import compaction as compaction_mod
 from app.core.memory import daily as daily_mod
+from app.core.memory import episodic as episodic_mod
 from app.core.memory import facts as facts_mod
+from app.core.memory import instructions as instructions_mod
 from app.core.memory import policy as policy_mod
 from app.core.memory import session as session_mod
 from app.core.rag import retriever as retriever_mod
@@ -297,10 +299,21 @@ class InProcessHarness:
         )
         self._patch(session_mod, "add_message", AsyncMock(return_value=1))
         self._patch(session_mod, "count_messages_since", AsyncMock(return_value=0))
+        # No database in scripted evals; the plan overlay reads from it.
+        self._patch(
+            session_mod, "latest_plan",
+            AsyncMock(return_value=copy.deepcopy(self.task.prior_plan)),
+        )
         self._patch(facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
         self._patch(facts_mod, "build_index_rows", AsyncMock(return_value=[]))
         self._patch(facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
         self._patch(daily_mod, "recent_daily", AsyncMock(return_value=[]))
+        self._patch(
+            episodic_mod, "recent_session_summaries", AsyncMock(return_value=[]),
+        )
+        self._patch(
+            instructions_mod, "for_turn", AsyncMock(return_value=([], [])),
+        )
         self._patch(
             policy_mod, "get_policy",
             AsyncMock(return_value=policy_mod.DEFAULT_POLICY),

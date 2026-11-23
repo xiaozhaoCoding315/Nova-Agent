@@ -18,6 +18,13 @@ TOOL_TAIL = 1600
 OLD_TEXT_HEAD = 500
 OLD_TEXT_TAIL = 500
 
+# The estimator is a character heuristic; base64 blobs, minified JSON and
+# dense logs can be off by 2-3x in either direction.  The loop feeds back
+# ``actual_prompt_tokens / estimated`` after every round, clamped to this
+# range so one weird round cannot collapse or balloon the budget.
+MIN_SCALE = 0.35
+MAX_SCALE = 3.0
+
 
 @dataclass(frozen=True)
 class CompactionResult:
@@ -32,17 +39,41 @@ class CompactionResult:
         return max(0, self.before - self.after)
 
 
-def compaction_limit(window: int, budget_ratio: float = BUDGET_RATIO) -> int:
-    return max(int(window * budget_ratio), 4_000)
+def clamp_scale(scale: float) -> float:
+    return min(max(float(scale or 1.0), MIN_SCALE), MAX_SCALE)
+
+
+def calibration_scale(estimated: int, actual: int) -> float:
+    """How far the character estimate was off for one real prompt."""
+    if estimated <= 0 or actual <= 0:
+        return 1.0
+    return clamp_scale(actual / estimated)
+
+
+def blend_scale(current: float, observed: float, alpha: float = 0.5) -> float:
+    """Exponential moving average: one odd round must not rewrite the budget."""
+    return clamp_scale((1 - alpha) * current + alpha * observed)
+
+
+def compaction_limit(
+    window: int, budget_ratio: float = BUDGET_RATIO, scale: float = 1.0,
+) -> int:
+    # Scaling the budget is equivalent to scaling every estimate, and keeps the
+    # comparison in one place.  A scale > 1 means the estimator undercounts, so
+    # the effective budget must shrink.
+    return max(int(window * budget_ratio / clamp_scale(scale)), 4_000)
 
 
 def needs_compaction(
-    messages: list[dict], window: int, budget_ratio: float = BUDGET_RATIO
+    messages: list[dict],
+    window: int,
+    budget_ratio: float = BUDGET_RATIO,
+    scale: float = 1.0,
 ) -> bool:
     """Whether the next LLM call would exceed the compaction budget."""
     return (
         len(messages) > 2
-        and estimate_messages(messages) > compaction_limit(window, budget_ratio)
+        and estimate_messages(messages) > compaction_limit(window, budget_ratio, scale)
     )
 
 
@@ -51,9 +82,10 @@ def compact_messages(
     window: int,
     budget_ratio: float = BUDGET_RATIO,
     keep_recent: int = KEEP_RECENT_MESSAGES,
+    scale: float = 1.0,
 ) -> CompactionResult:
     """Shrink old tool results in place when the prompt exceeds the budget."""
-    limit = compaction_limit(window, budget_ratio)
+    limit = compaction_limit(window, budget_ratio, scale)
     before = estimate_messages(messages)
     if before <= limit or len(messages) <= 2:
         return CompactionResult(False, before, before, 0, limit)

@@ -1,20 +1,22 @@
 import {
   Archive, Brain, Check, Clock, Coins, Download, Pencil, Plus, RotateCcw,
-  SlidersHorizontal, Trash2, X,
+  ShieldAlert, SlidersHorizontal, Tags, Trash2, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Modal, Spinner } from '../../components/common'
 import { api, ApiError } from '../../lib/api'
 import type {
-  Memory, MemoryCategory, MemoryFact, MemoryScopeType, MemorySettings,
+  Memory, MemoryCategory, MemoryFact, MemoryFactScopeType, MemoryReviewItem,
+  MemoryReviewKind, MemoryScopeType, MemorySettings, MemoryTopic,
 } from '../../lib/types'
 import { inputClass } from '../../lib/ui'
 
-const SCOPE_LABELS: Record<MemoryScopeType, string> = {
+const SCOPE_LABELS: Record<MemoryFactScopeType, string> = {
   global: '全局',
   dev: '开发',
   thesis: '论文项目',
   repo: '仓库',
+  agent: '子代理',
 }
 
 const SCOPE_FILTERS: Array<{ value: 'all' | MemoryScopeType; label: string }> = [
@@ -33,7 +35,13 @@ const CATEGORY_LABELS: Record<MemoryCategory, string> = {
   correction: '纠正',
 }
 
-function scopeLabel(type: MemoryScopeType, id: string): string {
+const REVIEW_KIND_LABELS: Record<MemoryReviewKind, string> = {
+  high_risk_fact: '高风险记忆',
+  merge: '重复记忆合并',
+  conflict: '同主题冲突',
+}
+
+function scopeLabel(type: MemoryFactScopeType, id: string): string {
   const base = SCOPE_LABELS[type] ?? type
   return id ? `${base} · ${id.slice(0, 8)}` : base
 }
@@ -63,6 +71,9 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
   const [purgeOpen, setPurgeOpen] = useState(false)
   const [purgeMessages, setPurgeMessages] = useState(true)
   const [purging, setPurging] = useState(false)
+  const [topics, setTopics] = useState<MemoryTopic[]>([])
+  const [reviewItems, setReviewItems] = useState<MemoryReviewItem[]>([])
+  const [reviewBusy, setReviewBusy] = useState<number | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -101,7 +112,38 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
     }
   }, [refreshToken, showInactive, reloadKey])
 
+  useEffect(() => {
+    let alive = true
+    Promise.all([api.memory.topics(), api.memory.reviewQueue()])
+      .then(([nextTopics, nextReview]) => {
+        if (!alive) return
+        setTopics(nextTopics)
+        setReviewItems(nextReview)
+      })
+      .catch((err) => {
+        if (alive) setError(err instanceof ApiError ? err.message : '记忆索引加载失败')
+      })
+    return () => {
+      alive = false
+    }
+  }, [refreshToken, reloadKey])
+
   const reload = () => setReloadKey((value) => value + 1)
+
+  const resolveReview = async (id: number, approve: boolean) => {
+    setReviewBusy(id)
+    setError(null)
+    try {
+      if (approve) await api.memory.approveReview(id)
+      else await api.memory.rejectReview(id)
+      setNotice(approve ? '已通过，记忆按规则生效' : '已拒绝，该记忆不会生效')
+      reload()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '复核失败')
+    } finally {
+      setReviewBusy(null)
+    }
+  }
 
   const removeFact = async (id: number) => {
     try {
@@ -340,6 +382,53 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
         </button>
       </div>
 
+      {reviewItems.length > 0 && (
+        <div className="mb-3 space-y-1.5 rounded-lg border border-warn/40 bg-warn/5 p-2.5">
+          <p className="flex flex-wrap items-center gap-1 text-xs font-medium text-warn">
+            <ShieldAlert size={12} /> 待复核 {reviewItems.length} 条
+            <span className="font-normal text-dim">（通过前不会注入或参与检索）</span>
+          </p>
+          {reviewItems.map((item) => (
+            <div
+              key={item.id}
+              className="rounded border border-edge/70 bg-base/50 px-2 py-1.5"
+            >
+              <div className="flex flex-wrap items-center gap-1.5 text-2xs text-dim">
+                <Badge tone="warn">{REVIEW_KIND_LABELS[item.kind]}</Badge>
+                <span>{item.reason || '需要确认'}</span>
+                <Badge tone="dim">{scopeLabel(item.scope_type, item.scope_id)}</Badge>
+                <span className="ml-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={reviewBusy === item.id}
+                    onClick={() => void resolveReview(item.id, true)}
+                    className="flex items-center gap-0.5 rounded bg-ok/15 px-1.5 py-0.5 text-ok transition-colors hover:bg-ok/25 disabled:opacity-50"
+                  >
+                    <Check size={10} /> 通过
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewBusy === item.id}
+                    onClick={() => void resolveReview(item.id, false)}
+                    className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-dim transition-colors hover:bg-raised hover:text-err disabled:opacity-50"
+                  >
+                    <X size={10} /> 拒绝
+                  </button>
+                </span>
+              </div>
+              <p className="mt-1 text-sm leading-relaxed">
+                {item.content || item.one_line}
+              </p>
+              {item.target_content && (
+                <p className="mt-0.5 text-2xs text-dim">
+                  对照现有：{item.target_content}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {settingsOpen && draftSettings && (
         <div className="mb-3 space-y-3 rounded-lg border border-edge/80 bg-base/40 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -555,8 +644,23 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
               checked={showInactive}
               onChange={(event) => setShowInactive(event.target.checked)}
             />
-            显示已归档
+            显示已归档/待审核
           </label>
+        </div>
+      )}
+
+      {topics.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          <Tags size={11} className="text-dim" />
+          {topics.slice(0, 16).map((topic) => (
+            <span
+              key={`${topic.scope_type}:${topic.scope_id}:${topic.topic}`}
+              title={topic.samples.join('\n')}
+              className="rounded-full border border-edge/70 bg-base/40 px-2 py-0.5 text-2xs text-dim"
+            >
+              {topic.topic} · {topic.count}
+            </span>
+          ))}
         </div>
       )}
 
@@ -606,6 +710,7 @@ export function MemorySection({ refreshToken }: { refreshToken: number }) {
                   {fact.promoted_at && <Badge tone="ok">已晋升</Badge>}
                   {fact.status === 'superseded' && <Badge tone="warn">已被新记忆替代</Badge>}
                   {fact.status === 'archived' && <Badge tone="err">已归档</Badge>}
+                  {fact.status === 'pending' && <Badge tone="warn">待审核</Badge>}
                   {fact.topic && <Badge tone="dim">{fact.topic}</Badge>}
                   {fact.version > 1 && <span>v{fact.version}</span>}
                   {fact.supersedes_id && <span>纠正 #{fact.supersedes_id}</span>}

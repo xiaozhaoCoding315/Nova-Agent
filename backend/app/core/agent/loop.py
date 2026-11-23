@@ -14,7 +14,12 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core.agent.context_governor import compact_messages, needs_compaction
+from app.core.agent.context_governor import (
+    blend_scale,
+    calibration_scale,
+    compact_messages,
+    needs_compaction,
+)
 from app.core.agent.context_meter import (
     estimate_message_content,
     estimate_messages,
@@ -32,6 +37,12 @@ from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
 from app.core.agent.tool_output import build_preview, serialize_tool_result
 from app.core.harness.config import TIMEOUTS
+from app.core.harness.retry import (
+    http_status,
+    is_retryable_error,
+    retry_delay_for,
+    sleep_before_retry,
+)
 from app.core.llm.factory import (
     LLMNotConfiguredError,
     get_llm,
@@ -41,6 +52,7 @@ from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
 from app.core.memory import compaction as compaction_mod
 from app.core.memory import daily as daily_mod
+from app.core.memory import episodic as episodic_mod
 from app.core.memory import facts as facts_mod
 from app.core.memory import policy as memory_policy_mod
 from app.core.memory import scope as memory_scope
@@ -142,7 +154,9 @@ async def run_chat(
     edits: list[dict] = []
     subagent_runs: list[dict] = []
     content_parts: list[str] = []
-    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "model": ""}
+    usage_total = {
+        "prompt_tokens": 0, "completion_tokens": 0, "model": "", "provider": "",
+    }
     plan_state: dict | None = None
     rounds = 0
     sandbox_runs_ok = 0
@@ -199,7 +213,18 @@ async def run_chat(
     fact_rows: list[tuple[int, str, str]] = []
     memory_index_rows: list[dict] = []
     daily_rows: list[dict] = []
+    episodic_rows: list[dict] = []
+    instruction_rows: list[dict] = []
+    path_instruction_rows: list[dict] = []
     fact_scopes = memory_scope.readable_scopes(session, repo_ids)
+    try:
+        from app.core.memory import instructions as instructions_mod
+
+        instruction_rows, path_instruction_rows = await instructions_mod.for_turn(
+            user["id"], fact_scopes,
+        )
+    except Exception as exc:  # noqa: BLE001 — instructions are an overlay
+        logger.warning("instructions_load_failed", error=str(exc))
     memory_policy = memory_policy_mod.DEFAULT_POLICY
     try:
         memory_policy = await memory_policy_mod.get_policy(user["id"])
@@ -241,6 +266,15 @@ async def run_chat(
                         memory_policy, row.get("summary") or "", "",
                     )
                 ]
+                episodic_rows = await episodic_mod.recent_session_summaries(
+                    user["id"], fact_scopes,
+                )
+                episodic_rows = [
+                    row for row in episodic_rows
+                    if memory_policy_mod.allows_fact(
+                        memory_policy, row.get("snippet") or "", "",
+                    )
+                ]
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
     history_budget = max(
@@ -255,6 +289,13 @@ async def run_chat(
         # The summary may have just been extended to make room for history.
         session["summary"] = history_bundle.summary
         session["summary_upto_id"] = history_bundle.upto_id
+    # A plan is cross-turn state: the history rebuild only replays message
+    # text, so without this a continued turn cannot see the plan it built.
+    try:
+        prior_plan = await session_mod.latest_plan(session["id"], user["id"])
+    except Exception as exc:  # noqa: BLE001 — plan is an overlay
+        logger.debug("latest_plan_load_failed", error=str(exc))
+        prior_plan = None
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
         try:
@@ -274,7 +315,12 @@ async def run_chat(
         repos=repo_meta, rules=repo_rules,
         summary=session.get("summary") or "",
         sections=prompt_sections,
+        instructions=instruction_rows,
     )
+    plan_block = session_mod.format_plan_block(prior_plan)
+    if plan_block:
+        system_content += plan_block
+        prompt_sections["plan"] = plan_block
     brain_block = ""
     if (session.get("product_mode") or "dev") != "thesis" and repo_ids:
         try:
@@ -293,6 +339,10 @@ async def run_chat(
     if daily_block:
         system_content += daily_block
         prompt_sections["daily"] = daily_block
+    episodic_block = episodic_mod.format_session_block(episodic_rows)
+    if episodic_block:
+        system_content += episodic_block
+        prompt_sections["episodes"] = episodic_block
     if not (session.get("summary") or "").strip():
         # A long previous turn may have been compacted before the rolling
         # session summary caught up.  Re-inject its persisted summary so the
@@ -400,7 +450,8 @@ async def run_chat(
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
         "thesis": "论文上下文", "compaction": "压缩摘要",
         "daily": "近期日摘要", "memory_index": "记忆索引",
-        "brain": "项目大脑",
+        "brain": "项目大脑", "instructions": "人工指令",
+        "episodes": "近期会话摘要",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)
@@ -641,17 +692,26 @@ async def run_chat(
         "系统提示：你已连续调用多轮工具。请从中断处继续完成任务；"
         "若任务已完成，请直接给出最终答复与总结，不要再调用工具。"
     )
+    # 第二次之后的压缩只剩截断，每 8 轮重做一次摘要补上被丢掉的内容。
+    SUMMARY_REFRESH_ROUNDS = 8
     image_retry_available = bool(vision_images)
     vision_notice_sent = False
     compaction_summary = ""
     compaction_attempted = False
-    compaction_recorded = False
+    # 已落库的那一份摘要；重做摘要后与新值不同，会再记一条。
+    recorded_summary = ""
+    compaction_summary_anchor = ""
+    last_summary_round = 0
+    # 估算器的校准系数：每轮用真实 prompt_tokens 修正，长任务里 base64/大 JSON
+    # 会让字符估算偏差 2-3 倍，不校准就会要么超窗、要么过早压缩。
+    estimate_scale = 1.0
     try:
         # 3) tool-calling rounds — 长任务模式：段触顶注入继续指令而不是终止，
         #    瞬时失败自动重试（对齐主流 Agent 的 driver 续跑模式）
         rounds = 0
         continuations_left = max(int(settings.max_continuations), 0)
         turn_deadline = time.monotonic() + max(int(settings.turn_timeout), 60)
+        path_instructions_seen: set[int] = set()
         for round_no in itertools.count(1):
             if time.monotonic() > turn_deadline:
                 errors.append("任务时长达到上限（自动暂停）")
@@ -677,11 +737,16 @@ async def run_chat(
 
             llm_failed: str | None = None
             llm_error_detail = ""
+            last_llm_exc: Exception | None = None
+            llm_fatal = False
+            # 本轮实际发送的估算值，供校准使用（失败路径也可能留空）。
+            prompt_estimate = 0
             max_retries = max(int(settings.llm_round_retries), 0)
             retries_used = 0
             while True:
                 llm_failed = None
                 llm_error_detail = ""
+                last_llm_exc = None
                 try:
                     llm = await get_llm(
                         user["id"], model=session.get("model"),
@@ -709,12 +774,19 @@ async def run_chat(
                     # Respect the user's configured window (BYOK), not just the
                     # server default used for the UI estimate.
                     round_window = resolve_context_window(user["id"], llm)
-                    if not compaction_attempted and needs_compaction(
-                        messages, round_window
+                    # 长任务里只摘要一次不够：第二次之后的压缩只剩字符截断，
+                    # 被砍掉的内容没有替代物。每 SUMMARY_REFRESH_ROUNDS 轮重做一次。
+                    summary_due = (
+                        not compaction_attempted
+                        or round_no - last_summary_round >= SUMMARY_REFRESH_ROUNDS
+                    )
+                    if summary_due and needs_compaction(
+                        messages, round_window, scale=estimate_scale
                     ):
                         # Summarize before the governor mutates old content:
                         # otherwise the decisions in those messages are gone.
                         compaction_attempted = True
+                        last_summary_round = round_no
                         try:
                             compaction_summary = (
                                 await compaction_mod.summarize_for_compaction(
@@ -726,14 +798,18 @@ async def run_chat(
                             logger.warning(
                                 "compaction_summary_failed", error=str(exc)
                             )
-                    compaction = compact_messages(messages, round_window)
+                    compaction = compact_messages(
+                        messages, round_window, scale=estimate_scale,
+                    )
                     if compaction.applied:
                         compactions = int(context_info.get("compactions") or 0) + 1
                         context_info["compactions"] = compactions
                         context_info["last_compaction_saved"] = compaction.saved
                         context_info["messages_total"] = compaction.after
-                        if compaction_summary and not compaction_recorded:
-                            compaction_recorded = True
+                        # 新摘要替换旧的：system prompt 里只保留最新一份，
+                        # 否则每轮重做的摘要会一直堆在头部把上下文吃回去。
+                        if compaction_summary and compaction_summary != recorded_summary:
+                            recorded_summary = compaction_summary
                             record_id = await compaction_mod.record_compaction(
                                 session["id"], compaction_summary,
                                 turn_id=turn_id,
@@ -743,11 +819,19 @@ async def run_chat(
                             )
                             if record_id is not None:
                                 context_info["compaction_id"] = record_id
-                                messages[0]["content"] = (
-                                    messages[0]["content"]
-                                    + "\n\n## 本轮较早内容压缩摘要\n"
-                                    + compaction_summary
+                                system_base = messages[0]["content"]
+                                if compaction_summary_anchor:
+                                    anchor_at = system_base.rfind(
+                                        compaction_summary_anchor
+                                    )
+                                    # 找不到就原样保留（例如 system prompt 已被
+                                    # 别的逻辑重写），不要按 -1 切掉末尾字符。
+                                    if anchor_at >= 0:
+                                        system_base = system_base[:anchor_at]
+                                compaction_summary_anchor = (
+                                    "\n\n## 本轮较早内容压缩摘要\n" + compaction_summary
                                 )
+                                messages[0]["content"] = system_base + compaction_summary_anchor
                         await trace_record(session["id"], turn_id, "context_compacted", {
                             "before": compaction.before, "after": compaction.after,
                             "saved": compaction.saved, "messages": compaction.compacted,
@@ -763,6 +847,8 @@ async def run_chat(
                                 "notice", kind="context_compacted",
                                 message=f"对话上下文较长，{detail}以继续任务。",
                             )
+                    # 本轮实际发送的估算值，供下面用真实 usage 校准。
+                    prompt_estimate = estimate_messages(messages)
                     async with asyncio.timeout(settings.llm_timeout):
                         async for event in llm.astream_with_tools(messages, specs):
                             etype = event.get("type")
@@ -777,8 +863,9 @@ async def run_chat(
                             elif etype == "usage":
                                 usage = event["usage"]
                     break
-                except TimeoutError:
+                except TimeoutError as exc:
                     llm_failed = "timeout"
+                    last_llm_exc = exc
                 except LLMNotConfiguredError as exc:
                     # Configuration is deterministic: retrying the same call
                     # and the continuation path would only repeat the error.
@@ -808,16 +895,38 @@ async def run_chat(
                         )
                         continue
                     llm_failed = "error"
+                    last_llm_exc = exc
                     llm_error_detail = redact_text(str(exc))[:500]
-                if round_text or tool_calls or retries_used >= max_retries:
+                if round_text or tool_calls:
                     break
-                yield _sse(
-                    "notice", kind="retry",
-                    message=(
-                        "模型连接抖动，自动重试"
-                        f"（{retries_used + 2}/{max_retries + 1}）…"
-                    ),
+                delay = (
+                    None if last_llm_exc is None
+                    else retry_delay_for(last_llm_exc, retries_used, max_retries)
                 )
+                if delay is None:
+                    # Deterministic failure (bad key, quota exhausted, context
+                    # too long) or retries used up: re-sending cannot help.
+                    # A continuation prompt would only spend another call to
+                    # fail the same way, so surface the error instead.
+                    llm_fatal = last_llm_exc is not None and not is_retryable_error(
+                        last_llm_exc
+                    )
+                    break
+                if delay > 0:
+                    await trace_record(session["id"], turn_id, "llm_retry", {
+                        "attempt": retries_used + 1,
+                        "delay": round(delay, 2),
+                        "status": http_status(last_llm_exc) if last_llm_exc else None,
+                    })
+                    yield _sse(
+                        "notice", kind="retry",
+                        message=(
+                            "模型连接抖动，将在 "
+                            f"{delay:.0f} 秒后自动重试"
+                            f"（{retries_used + 2}/{max_retries + 1}）…"
+                        ),
+                    )
+                    await sleep_before_retry(delay)
                 retries_used += 1
 
             if llm_failed:
@@ -829,7 +938,7 @@ async def run_chat(
                                message=llm_error_detail)
                     break
                 had_output = bool(round_text or tool_calls)
-                if continuations_left > 0:
+                if continuations_left > 0 and not llm_fatal:
                     # 中断续跑：已流出的部分作为 assistant 消息入库，让模型接着写
                     continuations_left -= 1
                     if had_output:
@@ -854,9 +963,22 @@ async def run_chat(
                 break
 
             if usage:
+                # 用真实 prompt_tokens 修正估算器：下一次压缩判定才不会被
+                # base64 / 大 JSON / 压缩日志的字符比例骗过去。
+                if usage.get("prompt_tokens"):
+                    observed = calibration_scale(
+                        prompt_estimate, int(usage["prompt_tokens"]),
+                    )
+                    estimate_scale = blend_scale(estimate_scale, observed)
+                    context_info["estimate_scale"] = round(estimate_scale, 3)
                 usage_total["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
                 usage_total["completion_tokens"] += int(usage.get("completion_tokens") or 0)
                 usage_total["model"] = usage.get("model") or usage_total["model"]
+                # Keep the last answering vendor: a turn that degraded to the
+                # backup provider must be visible in usage_log.
+                usage_total["provider"] = (
+                    usage.get("provider") or usage_total.get("provider") or ""
+                )
 
             text = "".join(round_text)
             await trace_record(session["id"], turn_id, "llm_round", {
@@ -906,6 +1028,11 @@ async def run_chat(
                 getter = getattr(registry, "get", None)
                 tool = getter(name) if callable(getter) else None
                 return bool(getattr(tool, "streaming", False))
+
+            def _tool_category(name: str) -> str | None:
+                getter = getattr(registry, "get", None)
+                tool = getter(name) if callable(getter) else None
+                return getattr(tool, "category", None)
 
             async def _execute_one(item: tuple[dict, str, dict]) -> dict:
                 _, tool_name, tool_args = item
@@ -1158,9 +1285,25 @@ async def run_chat(
                         steps=output.get("steps", []),
                         explanation=output.get("explanation", ""),
                     )
+                tool_content = serialize_tool_result(
+                    name, result, category=_tool_category(name),
+                )
+                if path_instruction_rows:
+                    try:
+                        from app.core.memory import instructions as instructions_mod
+
+                        note = instructions_mod.match_path_block(
+                            path_instruction_rows,
+                            instructions_mod.paths_from_tool_args(args),
+                            path_instructions_seen,
+                        )
+                        if note:
+                            tool_content += note
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("path_instruction_failed", error=str(exc))
                 messages.append({
                     "role": "tool", "tool_call_id": tc.get("id", ""),
-                    "name": name, "content": serialize_tool_result(name, result),
+                    "name": name, "content": tool_content,
                 })
 
             # 段触顶：注入继续指令接着跑（主流 driver 续跑模式）

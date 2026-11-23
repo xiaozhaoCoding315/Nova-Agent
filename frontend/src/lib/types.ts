@@ -1019,6 +1019,8 @@ export type LlmSettings = {
   key_hint?: string | null
   server_model?: string | null
   allow_server_fallback: boolean
+  /** false = 本界面只能用服务端统一模型，自定义模型请在桌面客户端配置。 */
+  byok_enabled?: boolean
   context_window?: number | null
   reasoning_effort?: string | null
   providers: LlmProvider[]
@@ -1052,8 +1054,10 @@ export type LlmTestResult = {
 }
 
 export type MemoryScopeType = 'global' | 'dev' | 'thesis' | 'repo'
+/** Output-only: sub-agent role memory can appear in lists but is never writable from settings. */
+export type MemoryFactScopeType = MemoryScopeType | 'agent'
 export type MemoryCategory = 'fact' | 'preference' | 'project' | 'decision' | 'correction'
-export type MemoryFactStatus = 'active' | 'superseded' | 'archived'
+export type MemoryFactStatus = 'active' | 'superseded' | 'archived' | 'pending'
 
 export type MemoryFact = {
   id: number
@@ -1064,7 +1068,7 @@ export type MemoryFact = {
   last_used_at?: string | null
   created_at?: string | null
   updated_at?: string | null
-  scope_type: MemoryScopeType
+  scope_type: MemoryFactScopeType
   scope_id: string
   source_session_id?: string | null
   source_message_id?: number | null
@@ -1137,6 +1141,63 @@ export type MemoryPurgeResult = {
   daily: number
   lessons: number
   messages: number
+}
+
+export type InstructionLevel = 'org' | 'user' | 'project'
+
+export type Instruction = {
+  id: number
+  level: InstructionLevel
+  scope_type: MemoryScopeType
+  scope_id: string
+  name: string
+  content: string
+  paths: string[]
+  enabled: boolean
+  priority: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type InstructionInput = {
+  level?: InstructionLevel
+  scope_type?: MemoryScopeType
+  scope_id?: string
+  name?: string
+  content: string
+  paths?: string[]
+  enabled?: boolean
+  priority?: number
+}
+
+export type InstructionUpdate = Partial<InstructionInput>
+
+export type MemoryTopic = {
+  topic: string
+  scope_type: MemoryFactScopeType
+  scope_id: string
+  count: number
+  updated_at?: string | null
+  samples: string[]
+}
+
+export type MemoryReviewKind = 'high_risk_fact' | 'merge' | 'conflict'
+
+export type MemoryReviewItem = {
+  id: number
+  kind: MemoryReviewKind
+  fact_id?: number | null
+  target_fact_id?: number | null
+  status: 'pending' | 'approved' | 'rejected'
+  reason: string
+  payload: Record<string, unknown>
+  created_at?: string | null
+  content: string
+  one_line: string
+  category: string
+  scope_type: MemoryFactScopeType
+  scope_id: string
+  target_content?: string | null
 }
 
 export type ToolMetric = {

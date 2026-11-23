@@ -80,6 +80,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         base_url_setting="zhipu_base_url",
     ),
     ProviderSpec(
+        id="agnes", label="Agnes AI", group="domestic", kind="openai",
+        base_url="https://api.agnes-ai.cn/v1",
+        default_model="agnes-3.0-flash",
+        models=("agnes-3.0-flash", "agnes-3.0-pro", "agnes-2.5-flash"),
+        docs_url="https://agnes-ai.cn/",
+        free_tier=True, supports_reasoning=True, context_window=200_000,
+        env_key="AGNES_API_KEY", icon="agnes",
+        base_url_setting="agnes_base_url",
+    ),
+    ProviderSpec(
         id="dashscope", label="阿里云百炼 / DashScope", group="domestic", kind="openai",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         default_model="qwen3.8-max",

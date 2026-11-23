@@ -165,12 +165,16 @@ async def health():
 
     postgres, qdrant = await asyncio.gather(_check_postgres(), _check_qdrant())
     sandbox = await _check_sandbox()
+    from app.core.llm import health as llm_health
+
     components = {
         "postgres": postgres,
         "schema": await _check_schema(),
         "qdrant": qdrant,
         "llm": _check_llm(),
         "model": server_default_model() or settings.zhipu_model,
+        # Counters only (failures, cooldown) — never keys or request content.
+        "llm_providers": llm_health.snapshot(),
         "embedding": _check_embedding(),
         "sandbox": sandbox,
         "git": "ok" if _git_available() else "missing",

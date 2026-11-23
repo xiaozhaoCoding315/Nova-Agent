@@ -299,12 +299,20 @@ export function Composer({
     if (files.length > 0) onAttachFiles(files)
   }
 
-  const chipLabel = picker.value.provider && model ? `${picker.value.provider}/${model}` : modelLabel
+  /** 服务端统一模型时没有可切换的会话模型，胶囊只说明当前用的是哪个模型。 */
+  const managedModel = picker.settings?.byok_enabled === false
+  const chipLabel = managedModel
+    ? picker.settings?.server_model ?? modelLabel
+    : picker.value.provider && model
+      ? `${picker.value.provider}/${model}`
+      : modelLabel
   /**
    * 模型胶囊只显示模型名（厂商已在浮层首行），底栏宽度要留给权限与发送。
    * 未配置时不展示 Workbench 传进来的长提示语，胶囊里只留一个可点的「选择模型」。
    */
-  const modelShort = model ?? (modelLabel.startsWith('未配置') ? '选择模型' : modelLabel)
+  const modelShort = managedModel
+    ? chipLabel
+    : model ?? (modelLabel.startsWith('未配置') ? '选择模型' : modelLabel)
   const effortLabel = picker.value.reasoning_effort === 'low'
     ? '低'
     : picker.value.reasoning_effort === 'medium'

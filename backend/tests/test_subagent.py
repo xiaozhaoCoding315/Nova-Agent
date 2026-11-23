@@ -173,6 +173,7 @@ async def test_subagent_partial_after_round_limit(monkeypatch):
     result, _ = await _run(monkeypatch, llm, registry, max_rounds=2)
 
     assert result["status"] == "partial"
+    assert result["partial"] is True
     assert result["rounds"] == 2
     assert "达到上限后的总结" in result["summary"]
 

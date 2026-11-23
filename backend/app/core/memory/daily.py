@@ -226,6 +226,14 @@ async def rollup_day(
         "updated_at = now()",
         (user_id, day, summary, len(rows), scope.type, scope.id),
     )
+    try:
+        from app.core.memory import vector_store
+
+        await vector_store.index_daily(
+            user_id, scope.type, scope.id, day, summary,
+        )
+    except Exception as exc:  # noqa: BLE001 — vectors are optional
+        logger.debug("daily_summary_index_failed", error=str(exc))
     logger.info(
         "daily_summary_written", user_id=user_id, day=str(day),
         scope=scope.type, messages=len(rows),

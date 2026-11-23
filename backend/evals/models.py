@@ -30,10 +30,17 @@ class EvalTask:
     checks: tuple[Check, ...]
     permission_mode: str = "auto"
     attachments: tuple[dict[str, Any], ...] = ()
-    script: tuple[tuple[dict[str, Any], ...], ...] | None = None
+    # Each entry is one LLM round: a tuple of streamed events, or a
+    # ``ScriptedFailure`` for fault injection.
+    script: tuple[Any, ...] | None = None
     history: tuple[dict[str, Any], ...] = ()
     context_window: int | None = None
     timeout_s: float = 60.0
+    # Fault-injection tasks expect the turn to end with an ``error`` event;
+    # without this the runner would report the task itself as errored.
+    expect_error: bool = False
+    # A plan persisted by an earlier segment of the same session.
+    prior_plan: dict[str, Any] | None = None
 
 
 @dataclass

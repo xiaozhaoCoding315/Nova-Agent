@@ -15,8 +15,10 @@ SESSION = {"id": "11111111-1111-1111-1111-111111111111", "title": "t"}
 class FakeLLM:
     def __init__(self, scripts):
         self.scripts = list(scripts)
+        self.messages = []
 
     async def astream_with_tools(self, messages, tools):
+        self.messages = messages
         for event in self.scripts.pop(0):
             yield event
 
@@ -41,6 +43,15 @@ def _patch_common(monkeypatch, llm):
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
     monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    from app.core.memory import instructions as instructions_mod
+
+    monkeypatch.setattr(
+        instructions_mod, "for_turn", AsyncMock(return_value=([], [])),
+    )
+    monkeypatch.setattr(
+        loop_mod.episodic_mod, "recent_session_summaries",
+        AsyncMock(return_value=[]),
+    )
     # The DB is not part of these loop tests; use the permissive default.
     monkeypatch.setattr(
         loop_mod.memory_policy_mod, "get_policy",
@@ -112,6 +123,36 @@ async def test_plain_answer_event_sequence(monkeypatch):
     assert report["stats"]["rounds"] == 1
     tool_json = loop_mod.session_mod.add_message.await_args.kwargs["tool_json"]
     assert "report" in tool_json
+
+
+@pytest.mark.asyncio
+async def test_human_instructions_are_injected_even_without_auto_memory(monkeypatch):
+    llm = FakeLLM([[
+        {"type": "content", "content": "好"},
+        {"type": "finish", "finish_reason": "stop"},
+    ]])
+    _patch_common(monkeypatch, llm)
+    from app.core.memory import instructions as instructions_mod
+    from app.core.memory import policy as policy_mod
+
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=policy_mod.MemoryPolicy(auto_memory=False)),
+    )
+    monkeypatch.setattr(
+        instructions_mod, "for_turn",
+        AsyncMock(return_value=([
+            {"id": 1, "level": "user", "name": "习惯", "content": "先写测试"},
+        ], [])),
+    )
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+
+    system = llm.messages[0]["content"]
+    assert "人工指令" in system
+    assert "先写测试" in system
+    context_event = next(item for item in events if item["event"] == "context")
+    assert context_event["data"]["sections"]["人工指令"] > 0
 
 
 @pytest.mark.asyncio
@@ -562,6 +603,59 @@ async def test_update_plan_emits_and_persists(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_previous_plan_is_reinjected_into_system_prompt(monkeypatch):
+    """A continuation must see the plan the last segment built."""
+    from app.core.memory.session import HistoryBundle
+
+    llm = FakeLLM([[
+        {"type": "content", "content": "继续"},
+        {"type": "finish", "finish_reason": "stop"},
+    ]])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=HistoryBundle([], 0, "", 0, 0)),
+    )
+
+    async def fake_latest_plan(session_id, user_id):
+        return {
+            "steps": [
+                {"title": "定位代码", "status": "completed"},
+                {"title": "修改实现", "status": "in_progress"},
+            ],
+            "explanation": "先读后改",
+        }
+
+    monkeypatch.setattr(loop_mod.session_mod, "latest_plan", fake_latest_plan)
+
+    await _collect(loop_mod.run_chat(USER, SESSION, "继续", []))
+
+    system = llm.messages[0]["content"]
+    assert "## 当前任务计划" in system
+    assert "定位代码" in system and "修改实现" in system
+    assert "先读后改" in system
+    # The model must be told to correct a stale plan rather than follow it blindly.
+    assert "修正" in system
+
+
+@pytest.mark.asyncio
+async def test_no_plan_block_when_session_has_no_plan(monkeypatch):
+    llm = FakeLLM([[
+        {"type": "content", "content": "hi"},
+        {"type": "finish", "finish_reason": "stop"},
+    ]])
+    _patch_common(monkeypatch, llm)
+
+    async def no_plan(_session_id, _user_id):
+        return None
+
+    monkeypatch.setattr(loop_mod.session_mod, "latest_plan", no_plan)
+
+    await _collect(loop_mod.run_chat(USER, SESSION, "hi", []))
+    assert "## 当前任务计划" not in llm.messages[0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_tool_output_streams_while_running(monkeypatch):
     class StreamingRegistry:
         def specs(self, **_kwargs):
@@ -967,6 +1061,42 @@ async def test_auto_memory_off_skips_injection_and_extraction(monkeypatch):
         event for event in events
         if event["event"] == "notice" and event["data"].get("kind") == "memory_learning"
     ]
+
+
+@pytest.mark.asyncio
+async def test_retrospective_turn_injects_recent_session_summaries(monkeypatch):
+    captured = {}
+
+    class CapturingLLM(FakeLLM):
+        async def astream_with_tools(self, messages, tools):
+            captured["messages"] = messages
+            async for event in super().astream_with_tools(messages, tools):
+                yield event
+
+    llm = CapturingLLM([[{"type": "content", "content": "ok"},
+                         {"type": "finish", "finish_reason": "stop"}]])
+    _patch_common(monkeypatch, llm)
+    monkeypatch.setattr(loop_mod.daily_mod, "is_retrospective", lambda _msg: True)
+    monkeypatch.setattr(
+        loop_mod.daily_mod, "recent_daily", AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        loop_mod.episodic_mod, "recent_session_summaries",
+        AsyncMock(return_value=[{
+            "kind": "session_summary", "session_id": "sess-1",
+            "session_title": "认证重构", "snippet": "决定先修 token 刷新",
+            "created_at": "2026-11-20T10:00:00+00:00",
+        }]),
+    )
+
+    events = await _collect(loop_mod.run_chat(USER, SESSION, "上次说到哪了", []))
+
+    system = captured["messages"][0]["content"]
+    assert "近期会话摘要" in system
+    assert "认证重构" in system
+    assert "决定先修 token 刷新" in system
+    context_event = next(item for item in events if item["event"] == "context")
+    assert "近期会话摘要" in context_event["data"]["sections"]
 
 
 @pytest.mark.asyncio

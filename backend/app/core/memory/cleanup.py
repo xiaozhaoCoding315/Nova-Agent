@@ -23,4 +23,10 @@ async def run_cleanup() -> dict:
         result["daily_summaries"] = await daily.rollup_yesterday()
     except Exception:  # noqa: BLE001
         result["daily_summaries"] = 0
+    try:
+        from app.core.memory import topics
+
+        result["memory_topics"] = await topics.count_topics()
+    except Exception:  # noqa: BLE001
+        result["memory_topics"] = 0
     return result

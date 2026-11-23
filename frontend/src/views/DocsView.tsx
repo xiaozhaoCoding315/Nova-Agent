@@ -544,23 +544,27 @@ export function DocsView() {
               <Chapter>
                 <H2 id="models">模型与密钥</H2>
                 <P>
-                  Nova 支持自带 Key（BYOK）。每个账号可以保存多家厂商的凭据并指定默认，
-                  对话与后台任务统一走个人配置；管理员也可以选择是否允许使用服务端共享 Key。
+                  网页端默认使用部署方提供的统一模型（当前为 Agnes 3.0 Flash），
+                  无需填写任何 Key，也不消耗你自己的额度；同一服务下的会话都用这个模型，行为一致。
+                </P>
+                <Callout tone="note" title="想换模型或用自己的 Key？">
+                  下载桌面客户端，在「在本机运行」模式下即可配置任意厂商、模型与上下文窗口，
+                  配置只保存在你自己的电脑上。连接服务器时仍使用服务端统一模型。
+                </Callout>
+                <P>
+                  自托管部署可以设 <code className="font-mono text-ink">LLM_BYOK_SURFACE=any</code> 重新在网页端开放自带 Key（BYOK）。
+                  本地模式、以及没有配置服务端 Key 的实例会自动放开 BYOK，避免出现谁都连不上的服务。
                 </P>
                 <UL items={[
-                  '内置 16 家厂商目录：智谱 GLM、百炼、DeepSeek、OpenAI、Anthropic、Gemini、Groq、OpenRouter、Ollama 与自定义兼容端点等。',
+                  '桌面客户端内置 17 家厂商目录：Agnes AI、智谱 GLM、百炼、DeepSeek、OpenAI、Anthropic、Gemini、Groq、OpenRouter、Ollama 与自定义兼容端点等。',
                   '密钥加密存储，接口只返回掩码；日志、轨迹与工具输出中的密钥会被脱敏。',
-                  '会话级可以切换厂商、模型、推理强度、上下文窗口与温度，刷新后保留。',
+                  '桌面客户端支持会话级切换厂商、模型、推理强度、上下文窗口与温度，刷新后保留。',
                   '预设厂商的 Base URL 固定，不能改成指向其他地址；自定义端点由部署方自行负责。',
                 ]} />
                 <Callout tone="note" title="不要把 Key 贴在对话里">
-                  在设置页填写 Key。对话内容会进入模型上下文，也可能被工具读取；
+                  在桌面客户端的设置里填写 Key。对话内容会进入模型上下文，也可能被工具读取；
                   任何需要长期使用的凭据都应该放在设置里，而不是消息中。
                 </Callout>
-                <P>
-                  本地模式可以连接 Ollama 或任意 OpenAI 兼容端点；服务端是否允许共享 Key
-                  由 LLM_ALLOW_SERVER_FALLBACK 控制。关闭后，每个用户都必须填写自己的 Key。
-                </P>
               </Chapter>
 
               <Chapter>
@@ -648,7 +652,7 @@ BACKUP_DIR=/opt/nova-backups ./deploy/restore.sh`}</Code>
                 <H3>没有 API Key 能做什么？</H3>
                 <P>
                   论文的 DOCX 解析、格式体检与引用 L1 不需要模型；对话、AI 写作、引用 L2 与联网工具需要。
-                  服务端开启共享 Key 时可以直接使用，否则请在设置里填写自己的 Key。
+                  网页端默认使用服务端统一模型，可以直接使用；需要自己的模型时请用桌面客户端。
                 </P>
 
                 <H3>刷新页面会中断任务吗？</H3>

@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.memory import facts as facts_mod
 from app.core.memory import policy as policy_mod
+from app.core.memory import review as review_mod
 from app.core.memory import scope as scope_mod
+from app.core.memory import topics as topics_mod
 from app.core.security.audit import log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.redaction import redact_text
@@ -18,6 +20,8 @@ from app.models.schemas import (
     MemoryFactUpdate,
     MemoryOut,
     MemoryPurgeOut,
+    MemoryReviewItemOut,
+    MemoryTopicOut,
     OkOut,
 )
 
@@ -62,6 +66,59 @@ async def get_memory(
     }
 
 
+@router.get("/memory/topics", response_model=list[MemoryTopicOut])
+async def get_memory_topics(
+    scope_type: str | None = None,
+    scope_id: str = "",
+    limit: int = 20,
+    user: dict = Depends(get_current_user),
+):
+    scopes = None
+    if scope_type:
+        if scope_type not in scope_mod.VALID_TYPES:
+            raise HTTPException(status_code=400, detail="无效的作用域")
+        scopes = [scope_mod.normalize(scope_type, scope_id)]
+    return await topics_mod.build_topic_index(
+        user["id"], scopes, limit=limit,
+    )
+
+
+@router.get("/memory/review", response_model=list[MemoryReviewItemOut])
+async def list_memory_review(
+    status: str = "pending",
+    limit: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return await review_mod.list_items(user["id"], status=status, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post(
+    "/memory/review/{review_id}/approve", response_model=MemoryReviewItemOut,
+)
+async def approve_memory_review(
+    review_id: int, user: dict = Depends(get_current_user),
+):
+    item = await review_mod.resolve(user["id"], review_id, approve=True)
+    if item is None:
+        raise HTTPException(status_code=404, detail="复核项不存在或已处理")
+    return item
+
+
+@router.post(
+    "/memory/review/{review_id}/reject", response_model=MemoryReviewItemOut,
+)
+async def reject_memory_review(
+    review_id: int, user: dict = Depends(get_current_user),
+):
+    item = await review_mod.resolve(user["id"], review_id, approve=False)
+    if item is None:
+        raise HTTPException(status_code=404, detail="复核项不存在或已处理")
+    return item
+
+
 @router.post("/memory/facts", response_model=MemoryFactCreateOut)
 async def create_fact(
     body: MemoryFactCreate, user: dict = Depends(get_current_user),
@@ -80,6 +137,7 @@ async def create_fact(
         ttl_days=ttl_days, importance=body.importance,
         scope_type=scope.type, scope_id=scope.id,
         category=body.category, topic=body.topic,
+        explicit=True,
     )
     return {"ok": True, "added": added}
 
@@ -151,6 +209,11 @@ async def delete_daily(
     )
     if not rows:
         raise HTTPException(status_code=404, detail="日摘要不存在")
+    from app.core.memory import vector_store
+
+    await vector_store.delete_summary(
+        f"daily:{user['id']}:{scope.type}:{scope.id}:{parsed.isoformat()}"
+    )
     return {"ok": True}
 
 
@@ -310,6 +373,11 @@ async def delete_all_memory(
                 "RETURNING id",
                 (user["id"], scope.id),
             )
+        from app.core.memory import vector_store
+
+        await vector_store.delete_daily_scope(
+            user["id"], scope.type, scope.id,
+        )
         counts.update(
             facts=len(facts_removed or []),
             daily=len(daily_removed or []),
@@ -344,6 +412,9 @@ async def delete_all_memory(
             "WHERE user_id = %s",
             (user["id"],),
         )
+        from app.core.memory import vector_store
+
+        await vector_store.delete_user_summaries(user["id"])
         counts.update(
             facts=len(facts_removed or []),
             daily=len(daily_removed or []),

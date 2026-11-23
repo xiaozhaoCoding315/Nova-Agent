@@ -1398,6 +1398,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memory Review */
+        get: operations["list_memory_review_api_v1_memory_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/review/{review_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Memory Review */
+        post: operations["approve_memory_review_api_v1_memory_review__review_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/review/{review_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Memory Review */
+        post: operations["reject_memory_review_api_v1_memory_review__review_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Topics */
+        get: operations["get_memory_topics_api_v1_memory_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remote/audit": {
         parameters: {
             query?: never;
@@ -2383,6 +2451,42 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instructions */
+        get: operations["list_instructions_api_v1_settings_instructions_get"];
+        put?: never;
+        /** Create Instruction */
+        post: operations["create_instruction_api_v1_settings_instructions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/instructions/{instruction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Instruction */
+        put: operations["update_instruction_api_v1_settings_instructions__instruction_id__put"];
+        post?: never;
+        /** Delete Instruction */
+        delete: operations["delete_instruction_api_v1_settings_instructions__instruction_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4564,6 +4668,88 @@ export interface components {
              */
             signature: string;
         };
+        /** InstructionCreate */
+        InstructionCreate: {
+            /** Content */
+            content: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Level
+             * @default user
+             * @enum {string}
+             */
+            level: "org" | "user" | "project";
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Paths */
+            paths?: string[];
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             * @enum {string}
+             */
+            scope_type: "global" | "dev" | "thesis" | "repo";
+        };
+        /** InstructionOut */
+        InstructionOut: {
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "org" | "user" | "project";
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Paths */
+            paths?: string[];
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** InstructionResolveIn */
         InstructionResolveIn: {
             /**
@@ -4571,6 +4757,25 @@ export interface components {
              * @enum {string}
              */
             status: "sent" | "rejected";
+        };
+        /** InstructionUpdate */
+        InstructionUpdate: {
+            /** Content */
+            content?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Level */
+            level?: ("org" | "user" | "project") | null;
+            /** Name */
+            name?: string | null;
+            /** Paths */
+            paths?: string[] | null;
+            /** Priority */
+            priority?: number | null;
+            /** Scope Id */
+            scope_id?: string | null;
+            /** Scope Type */
+            scope_type?: ("global" | "dev" | "thesis" | "repo") | null;
         };
         /** InviteCodeCreateRequest */
         InviteCodeCreateRequest: {
@@ -4842,6 +5047,11 @@ export interface components {
             allow_server_fallback: boolean;
             /** Base Url */
             base_url?: string | null;
+            /**
+             * Byok Enabled
+             * @default true
+             */
+            byok_enabled: boolean;
             /** Configured */
             configured: boolean;
             /** Context Window */
@@ -5141,7 +5351,7 @@ export interface components {
              * @default active
              * @enum {string}
              */
-            status: "active" | "superseded" | "archived";
+            status: "active" | "superseded" | "archived" | "pending";
             /** Supersedes Id */
             supersedes_id?: number | null;
             /**
@@ -5240,6 +5450,64 @@ export interface components {
              */
             ok: boolean;
         };
+        /** MemoryReviewItemOut */
+        MemoryReviewItemOut: {
+            /**
+             * Category
+             * @default fact
+             */
+            category: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Fact Id */
+            fact_id?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "high_risk_fact" | "merge" | "conflict";
+            /**
+             * One Line
+             * @default
+             */
+            one_line: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /** Target Content */
+            target_content?: string | null;
+            /** Target Fact Id */
+            target_fact_id?: number | null;
+        };
         /** MemorySettingsOut */
         MemorySettingsOut: {
             /**
@@ -5287,6 +5555,30 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
+        };
+        /** MemoryTopicOut */
+        MemoryTopicOut: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Samples */
+            samples?: string[];
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Topic */
+            topic: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** MessageOut */
         MessageOut: {
@@ -9709,6 +10001,133 @@ export interface operations {
             };
         };
     };
+    list_memory_review_api_v1_memory_review_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_memory_review_api_v1_memory_review__review_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_memory_review_api_v1_memory_review__review_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_topics_api_v1_memory_topics_get: {
+        parameters: {
+            query?: {
+                scope_type?: string | null;
+                scope_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryTopicOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remote_audit_api_v1_remote_audit_get: {
         parameters: {
             query?: {
@@ -11622,6 +12041,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instructions_api_v1_settings_instructions_get: {
+        parameters: {
+            query?: {
+                level?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_instruction_api_v1_settings_instructions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_instruction_api_v1_settings_instructions__instruction_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_instruction_api_v1_settings_instructions__instruction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
                 };
             };
             /** @description Validation Error */

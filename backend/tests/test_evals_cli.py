@@ -4,7 +4,7 @@ import json
 import pytest
 
 from evals.cli import main
-from evals.tasks import ALL_TASKS
+from evals.tasks import ALL_TASKS, tasks_for_mode
 
 
 def test_list_prints_every_task(capsys):
@@ -24,7 +24,9 @@ def test_scripted_run_writes_json_and_markdown(tmp_path, capsys):
     ])
     assert code == 0
     data = json.loads(json_path.read_text(encoding="utf-8"))
-    assert data["summary"]["passed"] == 7
+    # The scripted run covers every scripted task (live ones need a real key).
+    assert data["summary"]["passed"] == len(tasks_for_mode("scripted"))
+    assert data["summary"]["passed"] == data["summary"]["total"]
     assert data["summary"]["failed"] == 0
     assert md_path.read_text(encoding="utf-8").startswith("# Nova Agent Eval — scripted")
     assert "read_and_answer" in capsys.readouterr().out

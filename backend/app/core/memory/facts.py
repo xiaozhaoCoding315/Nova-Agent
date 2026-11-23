@@ -1,8 +1,10 @@
 """Long-term memory (facts): extraction, dedup, retrieval, decay."""
+import asyncio
 import hashlib
 import json
 import math
 import re
+import weakref
 from datetime import date
 
 import structlog
@@ -35,7 +37,31 @@ CONSOLIDATE_LIMIT = 2000
 STATUS_ACTIVE = "active"
 STATUS_SUPERSEDED = "superseded"
 STATUS_ARCHIVED = "archived"
-VALID_STATUSES = {STATUS_ACTIVE, STATUS_SUPERSEDED, STATUS_ARCHIVED}
+STATUS_PENDING = "pending"
+VALID_STATUSES = {
+    STATUS_ACTIVE, STATUS_SUPERSEDED, STATUS_ARCHIVED, STATUS_PENDING,
+}
+MERGE_REVIEW_LIMIT = 50
+
+# Conflict detection and insert are separate round trips, so two writers in
+# the same scope (parallel sub-agents, nightly consolidation, chat turns) can
+# both pass the check and fork a topic.  This per-scope lock serializes them
+# within one process; the review queue's partial unique index stays the
+# cross-process net.
+_write_locks: "weakref.WeakValueDictionary[tuple, asyncio.Lock]" = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _write_lock(user_id: int, scope_type: str, scope_id: str) -> asyncio.Lock:
+    key = (user_id, scope_type, scope_id)
+    lock = _write_locks.get(key)
+    if lock is None:
+        # No await between get and set: the event loop cannot interleave two
+        # creators, so both callers always share one lock.
+        lock = asyncio.Lock()
+        _write_locks[key] = lock
+    return lock
 
 CATEGORY_FACT = "fact"
 CATEGORY_PREFERENCE = "preference"
@@ -490,13 +516,56 @@ async def add_fact(
     category: str = CATEGORY_FACT,
     supersedes_id: int | None = None,
     topic: str = "",
+    status: str = STATUS_ACTIVE,
+    risk_reason: str = "",
+    explicit: bool = False,
 ) -> bool:
-    """Store a fact; returns False when deduplicated or rejected."""
+    """Store a fact; returns False when deduplicated or rejected.
+
+    ``status='pending'`` writes a fact that is not injected or searchable until
+    the user approves it in the review queue.  ``explicit=True`` marks a
+    user-initiated write, which bypasses the same-topic conflict guard (the
+    user has just made the decision themselves).
+    """
+    scope = scope_mod.normalize(scope_type, scope_id)
+    async with _write_lock(user_id, scope.type, scope.id):
+        return await _add_fact_locked(
+            user_id, content, ttl_days, importance,
+            scope_type=scope_type, scope_id=scope_id,
+            source_session_id=source_session_id,
+            source_message_id=source_message_id,
+            confidence=confidence, category=category,
+            supersedes_id=supersedes_id, topic=topic, status=status,
+            risk_reason=risk_reason, explicit=explicit,
+        )
+
+
+async def _add_fact_locked(
+    user_id: int,
+    content: str,
+    ttl_days: int = DEFAULT_TTL_DAYS,
+    importance: float = 1.0,
+    *,
+    scope_type: str = scope_mod.GLOBAL,
+    scope_id: str = "",
+    source_session_id: str | None = None,
+    source_message_id: int | None = None,
+    confidence: float = 1.0,
+    category: str = CATEGORY_FACT,
+    supersedes_id: int | None = None,
+    topic: str = "",
+    status: str = STATUS_ACTIVE,
+    risk_reason: str = "",
+    explicit: bool = False,
+) -> bool:
     content = redact_text(content).strip()
     if not content or len(content) > 500:
         return False
     scope = scope_mod.normalize(scope_type, scope_id)
     category = _normalize_category(category)
+    status = _normalize_status(status)
+    topic = _normalize_topic(topic)
+    pending_target: int | None = None
 
     content_hash = _content_hash(content)
     existing = await query(
@@ -535,44 +604,59 @@ async def add_fact(
         logger.info("facts_cap_evicted", user_id=user_id, scope=scope.type)
 
     supersede_target: tuple[int, int] | None = None
-    if supersedes_id is not None:
-        old = await query(
-            "SELECT id, status, version, scope_type, scope_id, content "
-            "FROM facts WHERE id = %s AND user_id = %s AND status = 'active'",
-            (supersedes_id, user_id),
-        )
-        if (
-            old
-            and old[0][3] == scope.type
-            and (old[0][4] or "") == scope.id
-        ):
-            supersede_target = (int(old[0][0]), int(old[0][2] or 1))
-
     embedding = None
-    try:
-        from app.core.embedding.embedder import get_embedder
-        embedding = (await get_embedder().embed([content]))[0]
-    except Exception:  # noqa: BLE001
-        pass  # embedding is a nice-to-have for dedup only
+    if status == STATUS_ACTIVE:
+        if supersedes_id is not None:
+            old = await query(
+                "SELECT id, status, version, scope_type, scope_id, content "
+                "FROM facts WHERE id = %s AND user_id = %s AND status = 'active'",
+                (supersedes_id, user_id),
+            )
+            if (
+                old
+                and old[0][3] == scope.type
+                and (old[0][4] or "") == scope.id
+            ):
+                supersede_target = (int(old[0][0]), int(old[0][2] or 1))
 
-    # A correction is near-identical to what it replaces by nature, so an
-    # explicit ``replaces`` target must bypass the near-duplicate guard.
-    duplicate_id = None
-    if supersede_target is None:
-        duplicate_id = await _is_semantic_duplicate(
-            user_id, content, embedding, [scope],
-        )
-    if duplicate_id:
-        # Merging evidence into the existing row is the point of dedup:
-        # otherwise repeated observations never promote the fact.
-        await _reinforce(duplicate_id, user_id, 0.05)
-        await _record_fact_day(duplicate_id)
-        return False
+        try:
+            from app.core.embedding.embedder import get_embedder
+            embedding = (await get_embedder().embed([content]))[0]
+        except Exception:  # noqa: BLE001
+            pass  # embedding is a nice-to-have for dedup only
 
-    if supersede_target is None:
-        supersede_target = await _find_conflict(
-            user_id, embedding, scope, category,
-        )
+        # A correction is near-identical to what it replaces by nature, so an
+        # explicit ``replaces`` target must bypass the near-duplicate guard.
+        duplicate_id = None
+        if supersede_target is None:
+            duplicate_id = await _is_semantic_duplicate(
+                user_id, content, embedding, [scope],
+            )
+        if duplicate_id:
+            # Merging evidence into the existing row is the point of dedup:
+            # otherwise repeated observations never promote the fact.
+            await _reinforce(duplicate_id, user_id, 0.05)
+            await _record_fact_day(duplicate_id)
+            return False
+
+        if supersede_target is None:
+            supersede_target = await _find_conflict(
+                user_id, embedding, scope, category,
+            )
+        if supersede_target is None and topic and not explicit:
+            # One writer per topic: a second, different decision under the same
+            # topic is a conflict the user must resolve, not a silent fork.
+            conflict_rows = await query(
+                "SELECT id FROM facts WHERE user_id = %s AND scope_type = %s "
+                "AND scope_id = %s AND topic = %s AND category = %s "
+                "AND status = 'active' AND hash <> %s "
+                "ORDER BY last_used_at DESC LIMIT 1",
+                (user_id, scope.type, scope.id, topic, category, content_hash),
+            )
+            if conflict_rows:
+                status = STATUS_PENDING
+                pending_target = int(conflict_rows[0][0])
+                risk_reason = risk_reason or "同主题记忆冲突，需确认哪条有效"
     version = 1
     superseded_id = None
     if supersede_target is not None:
@@ -595,28 +679,52 @@ async def add_fact(
             json.dumps(embedding) if embedding else None,
             importance, ttl_days, scope.type, scope.id,
             source_session_id, source_message_id, confidence,
-            category, STATUS_ACTIVE, version, superseded_id,
-            _normalize_topic(topic), _one_line(content),
+            category, status, version, superseded_id,
+            topic, _one_line(content),
         ),
     )
     fact_id = None
     if rows:
         fact_id = rows[0][0]
-    else:
+    elif status == STATUS_ACTIVE:
         # The unique index also covers archived/superseded rows.  Re-adding a
         # previously retired memory reactivates it instead of silently failing.
+        # A pending row is never reactivated this way: only review can approve.
         fallback = await execute(
             "UPDATE facts SET status = 'active', version = version + 1, "
             "last_used_at = now(), last_decayed_at = CURRENT_DATE, "
             "updated_at = now() WHERE user_id = %s AND scope_type = %s "
-            "AND scope_id = %s AND hash = %s RETURNING id",
+            "AND scope_id = %s AND hash = %s "
+            "AND status IN ('archived', 'superseded') RETURNING id",
             (user_id, scope.type, scope.id, content_hash),
         )
         if fallback:
             fact_id = fallback[0][0]
-    if fact_id is not None:
+    elif status == STATUS_PENDING:
+        # The unique index also covers retired rows.  Queue that row for
+        # review instead of silently dropping the risky content.
+        fallback = await query(
+            "SELECT id FROM facts WHERE user_id = %s AND scope_type = %s "
+            "AND scope_id = %s AND hash = %s",
+            (user_id, scope.type, scope.id, content_hash),
+        )
+        if fallback:
+            fact_id = fallback[0][0]
+    if fact_id is not None and status == STATUS_ACTIVE:
         await _record_fact_day(fact_id)
         await vector_store.index_fact(int(fact_id), user_id, embedding)
+    elif fact_id is not None and status == STATUS_PENDING:
+        from app.core.memory import review as review_mod
+
+        kind = (
+            review_mod.KIND_CONFLICT if pending_target is not None
+            else review_mod.KIND_HIGH_RISK
+        )
+        await review_mod.enqueue(
+            user_id, kind, int(fact_id), pending_target,
+            reason=risk_reason or "高风险记忆待确认",
+            payload={"labels": risk_reason} if risk_reason else {},
+        )
     return True
 
 
@@ -843,7 +951,7 @@ async def consolidate_duplicates(limit: int = CONSOLIDATE_LIMIT) -> int:
     """
     rows = await query(
         "SELECT id, user_id, scope_type, scope_id, embedding, importance, "
-        "promoted_at, last_used_at FROM facts "
+        "promoted_at, last_used_at, content FROM facts "
         "WHERE status = 'active' AND embedding IS NOT NULL "
         "ORDER BY user_id, scope_type, scope_id, "
         "(promoted_at IS NOT NULL) DESC, importance DESC, last_used_at DESC "
@@ -855,6 +963,10 @@ async def consolidate_duplicates(limit: int = CONSOLIDATE_LIMIT) -> int:
         key = (int(row[1]), row[2] or "", row[3] or "")
         groups.setdefault(key, []).append(row)
     merged = 0
+    queued = 0
+    from app.core.memory import review as review_mod
+    from app.core.memory import risk as risk_mod
+
     for group_rows in groups.values():
         if len(group_rows) < 2:
             continue
@@ -872,6 +984,27 @@ async def consolidate_duplicates(limit: int = CONSOLIDATE_LIMIT) -> int:
             if target is None:
                 keepers.append(row)
                 continue
+            row_text = row[8] if len(row) > 8 else ""
+            target_text = target[8] if len(target) > 8 else ""
+            risky_labels = risk_mod.assess(row_text or "")
+            risky_labels += [
+                label for label in risk_mod.assess(target_text or "")
+                if label not in risky_labels
+            ]
+            risky_importance = float(row[5] or 0) >= 1.5 or float(target[5] or 0) >= 1.5
+            if (
+                risky_labels or risky_importance
+                or row[6] is not None or target[6] is not None
+            ) and queued < MERGE_REVIEW_LIMIT:
+                await review_mod.enqueue(
+                    int(row[1]), review_mod.KIND_MERGE, int(row[0]), int(target[0]),
+                    reason="高风险合并：" + (
+                        "、".join(risky_labels) if risky_labels else "重要或已晋升记忆"
+                    ),
+                    payload={"labels": risky_labels},
+                )
+                queued += 1
+                continue
             await execute(
                 "UPDATE facts SET status = 'archived', merged_into_id = %s, "
                 "updated_at = now() WHERE id = %s AND user_id = %s "
@@ -879,8 +1012,8 @@ async def consolidate_duplicates(limit: int = CONSOLIDATE_LIMIT) -> int:
                 (int(target[0]), int(row[0]), int(row[1])),
             )
             merged += 1
-    if merged:
-        logger.info("facts_consolidated", merged=merged)
+    if merged or queued:
+        logger.info("facts_consolidated", merged=merged, review_queued=queued)
     return merged
 
 
@@ -951,6 +1084,9 @@ async def extract_facts_from_turn(
                 supersedes_id = await _find_fact_by_hint(
                     user_id, target, item["replaces"],
                 )
+            from app.core.memory import risk as risk_mod
+
+            risk_labels = risk_mod.assess(item["text"])
             if await add_fact(
                 user_id, item["text"],
                 ttl_days=policy.retention_days,
@@ -959,6 +1095,8 @@ async def extract_facts_from_turn(
                 source_message_id=source_message_id,
                 category=item["kind"],
                 supersedes_id=supersedes_id,
+                status=STATUS_PENDING if risk_labels else STATUS_ACTIVE,
+                risk_reason="、".join(risk_labels),
             ):
                 added += 1
         return added

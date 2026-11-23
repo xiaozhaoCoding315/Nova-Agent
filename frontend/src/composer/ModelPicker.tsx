@@ -164,6 +164,57 @@ export function ModelPicker({
 
   if (!open) return null
 
+  // 服务端统一模型：这里没有可切换的厂商，只说明去哪里换模型。
+  if (settings?.byok_enabled === false) {
+    return (
+      <>
+        <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" />
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="模型选择"
+          tabIndex={-1}
+          className={clsx(
+            'z-50 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-panel shadow-pop outline-none',
+            placement === 'below'
+              ? 'fixed inset-x-2 top-12 sm:absolute sm:inset-x-auto sm:left-0 sm:top-full sm:mt-1.5'
+              : 'absolute bottom-full right-0 mb-2',
+          )}
+        >
+          <div className="flex items-center justify-between border-b border-edge/70 px-3 py-2">
+            <p className="text-sm font-medium text-ink">模型</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-5 w-5 items-center justify-center rounded-sm text-dim transition-colors hover:bg-raised hover:text-ink"
+              aria-label="关闭模型选择"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className="space-y-2 px-3 py-3">
+            <p className="font-mono text-sm text-ink">
+              {settings.source === 'server'
+                ? settings.server_model ?? '服务端默认模型'
+                : '服务端尚未配置模型'}
+            </p>
+            <p className="text-xs leading-relaxed text-dim">
+              本服务统一使用服务端模型，按会话切换已关闭。
+              需要自定义厂商与 Key，请下载桌面客户端并在本机运行模式下配置。
+            </p>
+            <a
+              href="/downloads"
+              className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 text-xs text-ink transition-colors hover:border-accent/40"
+            >
+              下载桌面客户端
+            </a>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   const selectProvider = (provider: LlmProvider) => {
     const credential = credentialMap.get(provider.id)
     if (!credential) return
@@ -659,15 +710,25 @@ export function useModelPicker(): {
   const activeCredential = credentials.find((credential) => credential.provider === activeProviderId) ?? null
   const activeSpec = settings?.providers.find((item) => item.id === activeProviderId) ?? null
 
-  const value: LlmOverrides = {
-    provider: activeProviderId,
-    // 模型没有「自动」档，保留 credential 回退以便 chip 显示生效模型。
-    model: model ?? activeCredential?.model ?? settings?.model ?? null,
-    // 推理与上下文必须用 store 原值：'' / null 才是「自动」，不能被默认值冒充成会话覆盖。
-    reasoning_effort: reasoningEffort,
-    context_window: contextWindow ?? null,
-    temperature,
-  }
+  // 服务端统一模型：会话里可能残留旧厂商覆盖，界面上不该显示成正在使用。
+  const managed = settings?.byok_enabled === false
+  const value: LlmOverrides = managed
+    ? {
+        provider: null,
+        model: settings?.server_model ?? settings?.model ?? null,
+        reasoning_effort: '',
+        context_window: null,
+        temperature: null,
+      }
+    : {
+        provider: activeProviderId,
+        // 模型没有「自动」档，保留 credential 回退以便 chip 显示生效模型。
+        model: model ?? activeCredential?.model ?? settings?.model ?? null,
+        // 推理与上下文必须用 store 原值：'' / null 才是「自动」，不能被默认值冒充成会话覆盖。
+        reasoning_effort: reasoningEffort,
+        context_window: contextWindow ?? null,
+        temperature,
+      }
 
   const onChange = (patch: LlmOverrides) => {
     void applyOverrides(patch)

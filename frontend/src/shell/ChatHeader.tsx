@@ -167,7 +167,12 @@ export function ChatHeader({
         : '未配置模型'
   const modelSource = llmSettings?.source === 'user'
     ? '个人密钥'
-    : llmSettings?.source === 'server' ? '服务端密钥' : '未配置'
+    : llmSettings?.source === 'server'
+      ? llmSettings.byok_enabled === false ? '服务端统一模型' : '服务端密钥'
+      : '未配置'
+  const modelHint = llmSettings?.byok_enabled === false
+    ? '服务端统一模型，切换请使用桌面客户端'
+    : '仅本会话，点击切换'
   const sandbox = health?.components.sandbox as { available?: boolean } | undefined
 
   const gitBranch = gitInfo?.available && gitInfo.initialized
@@ -321,7 +326,7 @@ export function ChatHeader({
             setModelOpen((value) => !value)
           }}
           className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
-          title={`模型：${modelLabel}（${modelSource}）· 仅本会话，点击切换`}
+          title={`模型：${modelLabel}（${modelSource}）· ${modelHint}`}
           aria-label={`模型：${modelLabel}，打开模型选择`}
           aria-haspopup="dialog"
           aria-expanded={modelOpen}

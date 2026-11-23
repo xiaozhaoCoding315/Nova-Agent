@@ -584,7 +584,9 @@ Anthropic 的对应做法是：auto memory 按 git 仓库一个目录；子代�
 
 再补齐 P1 产品能力（2026-11-22，迁移 29）：记忆索引 + `memory_search/read` 工具、对话内 Saved/Recalled 提示、日摘要检索、确定性夜间去重整合、项目大脑注入 dev prompt、统一脱敏与导出/删除全部、用户级记忆策略 API 与设置页（自动记忆、保留天数、默认作用域、屏蔽类别/关键词、作用域覆盖）。设计与边界见 [`docs/DESIGN.md`](DESIGN.md) §41；新增 `test_memory_policy.py`、`test_memory_index.py`、`test_memory_consolidation.py`、`test_memory_api_extra.py`、`test_repo_brain_prompt.py`。全量回归：后端 **1497 passed / 12 skipped**（`NOVA_TEST_FAST=1`），ruff、记忆评估、前端构建与契约检查全部通过。
 
-仍未做（P2）：分层指令（用户级稳定指令层）、完整跨会话消息检索、子代理记忆、团队/组织 store、记忆投毒与工作区信任防护。
+再补齐 P2 差异化能力（2026-11-22，迁移 30）：分层人工指令（org/user/project + `paths:` 按需注入 + 设置页）、跨会话消息/会话摘要检索（关键词 + 可选向量）、日/会话摘要 pgvector 索引、确定性主题索引与高风险/合并/冲突人工复核队列、子代理角色私有记忆（`agent:<name>`）、记忆投毒防护（高风险写入 `pending`）与同作用域写入串行化。设计与边界见 [`docs/DESIGN.md`](DESIGN.md) §42；新增 `test_memory_instructions.py`、`test_instructions_api.py`、`test_memory_episodic.py`、`test_summary_vectors.py`、`test_memory_topics.py`、`test_memory_review.py`、`test_memory_review_api.py`、`test_subagent_memory.py`。全量回归：后端 **1566 passed / 12 skipped**（`NOVA_TEST_FAST=1`），ruff、记忆评估、scripted eval 7/7、前端构建与契约检查全部通过。
+
+仍未做：**团队记忆 store**（本清单 P2-6）。Nova 当前没有 workspace/member 模型，workspace scope 会与现有 user/repo/thesis 权限重叠；等团队版需求明确后，再按“权限 + 版本 + 审计 + redact”一次性设计。
 
 ---
 

@@ -531,6 +531,11 @@ async def test_local_loop_hides_bridge_tools(monkeypatch):
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
     monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    from app.core.memory import instructions as instructions_mod
+
+    monkeypatch.setattr(
+        instructions_mod, "for_turn", AsyncMock(return_value=([], [])),
+    )
     monkeypatch.setattr(
         loop_mod.memory_policy_mod, "get_policy",
         AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),

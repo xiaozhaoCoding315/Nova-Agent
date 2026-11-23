@@ -1,6 +1,7 @@
 import structlog
 
 from app.core.agent.image_input import is_image_rejection, strip_image_blocks
+from app.core.llm import health
 from app.core.llm.base import LLMProvider
 from app.core.security.redaction import redact_text
 
@@ -13,6 +14,11 @@ def _messages_for(provider, messages: list[dict]) -> list[dict]:
         if getattr(provider, "supports_vision", False)
         else strip_image_blocks(messages)
     )
+
+
+def _chain(providers: list[LLMProvider]) -> list[LLMProvider]:
+    """Providers that recently failed go last, but never get dropped."""
+    return health.order_chain(providers)
 
 
 class FallbackLLM(LLMProvider):
@@ -29,15 +35,18 @@ class FallbackLLM(LLMProvider):
     async def astream(self, messages: list[dict], **kwargs):
         last_exc: Exception | None = None
         image_exc: Exception | None = None
-        for provider in self.providers:
+        for provider in _chain(self.providers):
             try:
                 provider_messages = _messages_for(provider, messages)
                 async for token in provider.astream(provider_messages, **kwargs):
                     yield token
+                health.record_success(provider)
                 return  # success — stop chain
             except Exception as e:
                 if is_image_rejection(e):
                     image_exc = image_exc or e
+                else:
+                    health.record_failure(provider, e)
                 last_exc = e
                 logger.warning("LLM provider failed, trying next",
                              provider=type(provider).__name__, error=redact_text(str(e))[:300])
@@ -56,7 +65,10 @@ class FallbackLLM(LLMProvider):
         Only providers with native tool support participate — a provider that
         ignores ``tools`` would silently degrade the coding loop to chat.
         """
-        providers = [p for p in self.providers if getattr(p, "supports_tools", False)]
+        providers = [
+            p for p in _chain(self.providers)
+            if getattr(p, "supports_tools", False)
+        ]
         if not providers:
             raise RuntimeError("没有支持工具调用的 LLM provider，已拒绝退化")
         last_exc: Exception | None = None
@@ -70,6 +82,7 @@ class FallbackLLM(LLMProvider):
                 ):
                     yielded = True
                     yield event
+                health.record_success(provider)
                 return  # success — stop chain
             except Exception as e:
                 if yielded:
@@ -78,6 +91,8 @@ class FallbackLLM(LLMProvider):
                     raise
                 if is_image_rejection(e):
                     image_exc = image_exc or e
+                else:
+                    health.record_failure(provider, e)
                 last_exc = e
                 logger.warning("LLM provider failed, trying next",
                              provider=type(provider).__name__, error=redact_text(str(e))[:300])

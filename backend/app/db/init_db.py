@@ -1370,6 +1370,56 @@ _MIGRATIONS: list[tuple[int, list[str]]] = [
         )
         """,
     ]),
+    # 30: P2 memory capabilities.  Layered human instructions (org/user/
+    # project, optional path scoping) are explicit config, not learned facts.
+    # The review queue holds high-risk facts and risky merges until the user
+    # resolves them; a partial unique index keeps one pending item per fact.
+    (30, [
+        """
+        CREATE TABLE IF NOT EXISTS user_instructions (
+            id BIGSERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            level VARCHAR(16) NOT NULL DEFAULT 'user',
+            scope_type VARCHAR(24) NOT NULL DEFAULT 'global',
+            scope_id VARCHAR(64) NOT NULL DEFAULT '',
+            name VARCHAR(120) NOT NULL DEFAULT '',
+            content TEXT NOT NULL,
+            paths JSONB NOT NULL DEFAULT '[]'::jsonb,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            priority INT NOT NULL DEFAULT 100,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_user_instructions_user "
+        "ON user_instructions (user_id, level, scope_type, scope_id, priority)",
+        """
+        CREATE TABLE IF NOT EXISTS memory_review_queue (
+            id BIGSERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind VARCHAR(24) NOT NULL,
+            fact_id BIGINT REFERENCES facts(id) ON DELETE CASCADE,
+            target_fact_id BIGINT REFERENCES facts(id) ON DELETE SET NULL,
+            reason VARCHAR(300) NOT NULL DEFAULT '',
+            payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            resolved_at TIMESTAMPTZ
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_memory_review_pending "
+        "ON memory_review_queue (user_id, status, created_at DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_review_open "
+        "ON memory_review_queue (user_id, kind, fact_id) WHERE status = 'pending'",
+        "CREATE INDEX IF NOT EXISTS idx_facts_topic "
+        "ON facts (user_id, scope_type, scope_id, topic)",
+    ]),
+    (31, [
+        # Which vendor actually answered.  Without it a turn that degraded to
+        # the backup provider is indistinguishable from the primary, so
+        # "answers got worse" cannot be investigated after the fact.
+        "ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS provider VARCHAR(32)",
+    ]),
 ]
 
 

@@ -114,6 +114,97 @@ def test_update_schemas_share_context_window_bounds(schema, payload):
         schema(**payload, context_window=10_000_001)
 
 
+def _close_byok(monkeypatch, *, model: str = "agnes-3.0-flash") -> None:
+    monkeypatch.setattr(settings_llm.settings, "llm_byok_surface", "desktop")
+    monkeypatch.setattr(settings_llm.settings, "nova_mode", "server")
+    monkeypatch.setattr(settings_llm.settings, "llm_model_priority", "agnes")
+    monkeypatch.setattr(settings_llm.settings, "agnes_api_key", "sk-server")
+    monkeypatch.setattr(settings_llm.settings, "agnes_model", model)
+    # The developer .env may hold other keys; only Agnes is under test here.
+    for name in ("zhipu_api_key", "deepseek_api_key", "dashscope_api_key",
+                 "anthropic_api_key"):
+        monkeypatch.setattr(settings_llm.settings, name, "")
+
+
+def test_byok_closed_reports_shared_model_only(client, monkeypatch):
+    """Web surface on a server-key deployment: one model, no credential editor."""
+    _close_byok(monkeypatch)
+    monkeypatch.setattr(
+        settings_llm, "list_user_configs", AsyncMock(return_value=[_config()]),
+    )
+
+    response = client.get("/api/v1/settings/llm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["byok_enabled"] is False
+    assert body["source"] == "server"
+    assert body["model"] == "agnes-3.0-flash"
+    assert body["server_model"] == "agnes-3.0-flash"
+    # A stored key must not be advertised as in effect.
+    assert body["configured"] is False
+    assert body["provider"] is None
+    assert body["has_key"] is False
+    assert body["key_hint"] is None
+    assert body["providers"] == []
+    assert body["credentials"] == []
+
+
+def test_byok_closed_still_serves_registered_users(client, monkeypatch):
+    """Closing BYOK means the shared key must reach registered accounts too."""
+    _close_byok(monkeypatch)
+    monkeypatch.setattr(settings_llm.settings, "llm_server_fallback_registered", False)
+    monkeypatch.setattr(
+        settings_llm, "list_user_configs", AsyncMock(return_value=[]),
+    )
+
+    body = client.get("/api/v1/settings/llm").json()
+
+    assert body["source"] == "server"
+    assert body["allow_server_fallback"] is True
+
+
+def test_byok_closed_rejects_credential_writes(client, monkeypatch):
+    _close_byok(monkeypatch)
+    save = AsyncMock(return_value=_config())
+    monkeypatch.setattr(settings_llm, "save_user_config", save)
+
+    response = client.put(
+        "/api/v1/settings/llm/credentials/zhipu",
+        json={"model": "glm-4.7-flash", "api_key": STORED_KEY},
+    )
+    assert response.status_code == 403
+    assert "桌面客户端" in response.json()["detail"]
+    save.assert_not_awaited()
+
+    assert client.delete("/api/v1/settings/llm/credentials/zhipu").status_code == 403
+    assert client.post("/api/v1/settings/llm/credentials/zhipu/default").status_code == 403
+    assert client.put(
+        "/api/v1/settings/llm",
+        json={"provider": "zhipu", "model": "glm-4.7-flash"},
+    ).status_code == 403
+    assert client.post(
+        "/api/v1/settings/llm/test",
+        json={"provider": "zhipu", "model": "glm-4.7-flash"},
+    ).status_code == 403
+    assert client.get("/api/v1/settings/llm/credentials").json() == []
+
+
+def test_byok_stays_open_without_a_server_key(client, monkeypatch):
+    """No shared key + no BYOK would leave the instance unusable."""
+    _close_byok(monkeypatch)
+    monkeypatch.setattr(settings_llm.settings, "agnes_api_key", "")
+    monkeypatch.setattr(
+        settings_llm, "list_user_configs", AsyncMock(return_value=[_config()]),
+    )
+
+    body = client.get("/api/v1/settings/llm").json()
+
+    assert body["byok_enabled"] is True
+    assert body["source"] == "user"
+    assert body["provider"] == "zhipu"
+
+
 def test_list_credentials_never_exposes_raw_key(client, monkeypatch):
     monkeypatch.setattr(
         settings_llm, "list_user_configs", AsyncMock(return_value=[_config()]),

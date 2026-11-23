@@ -24,7 +24,7 @@ def test_registry_has_all_tools_with_openai_specs():
         "write_files", "install_deps",
         "json_tool", "sql_tool", "fetch_url", "web_search", "local_run_command",
         "local_write_file", "edit_file", "grep", "glob", "update_plan",
-        "spawn_agents", "memory_search", "memory_read",
+        "spawn_agents", "memory_search", "memory_read", "memory_save",
         # Thesis-mode read-only tools are registered globally; `specs()`
         # without product_mode lists everything, and the registry filters
         # them out for dev sessions.
@@ -93,6 +93,91 @@ async def test_unknown_tool_returns_error_not_raise():
 async def test_invalid_args_are_business_errors():
     result = await get_registry().execute("sql_tool", {"sql": 123}, CTX)
     assert result["ok"] is False and result["business"] is True
+
+
+# ---------- side-effect safety ----------
+
+def test_side_effecting_tools_are_marked_non_idempotent():
+    registry = get_registry()
+    for name in ("run_command", "run_code", "install_deps",
+                 "local_run_command", "spawn_agents"):
+        assert registry.get(name).idempotent is False, name
+    # Reads and overwrite-writes stay retryable: a transient sandbox hiccup
+    # must not surface to the model as a failed read, and rewriting a file
+    # with identical content is harmless.
+    for name in ("read_file", "grep", "glob", "list_files", "search_code",
+                 "write_files", "local_write_file"):
+        assert registry.get(name).idempotent is True, name
+
+
+@pytest.mark.asyncio
+async def test_non_idempotent_tool_is_not_replayed_after_infra_error():
+    from app.core.harness import runtime as harness_runtime
+
+    calls = 0
+
+    async def flaky(args, ctx):
+        nonlocal calls
+        calls += 1
+        raise ConnectionError("sandbox link dropped")
+
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="side_effect", description="d", parameters={}, func=flaky,
+        category="execute", idempotent=False,
+    ))
+
+    seen: list[bool] = []
+    original = harness_runtime.execute_with_harness
+
+    async def spy(func, *args, **kwargs):
+        seen.append(kwargs.get("use_retry"))
+        return await original(func, *args, **kwargs)
+
+    import app.core.tools.base as tools_base
+    tools_base.execute_with_harness = spy
+    try:
+        result = await registry.execute("side_effect", {}, CTX)
+    finally:
+        tools_base.execute_with_harness = original
+
+    assert seen == [False]
+    assert calls == 1
+    assert result["ok"] is False
+    assert "可能已执行" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_idempotent_tool_still_retries():
+    from app.core.harness import retry as retry_mod
+
+    calls = 0
+
+    async def flaky(args, ctx):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionError("transient")
+        return {"value": 1}
+
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="read_only", description="d", parameters={}, func=flaky,
+    ))
+
+    original = retry_mod._sleep
+
+    async def no_sleep(_delay):
+        return None
+
+    retry_mod._sleep = no_sleep
+    try:
+        result = await registry.execute("read_only", {}, CTX)
+    finally:
+        retry_mod._sleep = original
+
+    assert result["ok"] is True
+    assert calls == 2
 
 
 # ---------- json_tool ----------

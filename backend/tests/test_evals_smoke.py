@@ -6,6 +6,7 @@ from evals.tasks import tasks_for_mode
 from evals.tasks.smoke import PERMISSION_DENIED, READ_AND_ANSWER
 
 SCRIPTED_IDS = {
+    # Harness behaviour: tool loop, permissions, planning, compaction.
     "read_and_answer",
     "edit_file_minimal",
     "write_files_multi",
@@ -13,6 +14,11 @@ SCRIPTED_IDS = {
     "plan_tool",
     "vision_image",
     "context_compaction",
+    # Resilience: retry classification and cross-turn plan reinjection.
+    "transient_503_is_retried",
+    "deterministic_401_is_not_retried",
+    "exhausted_quota_is_not_retried",
+    "plan_survives_a_continuation",
 }
 
 
@@ -30,7 +36,7 @@ async def test_scripted_smoke_suite_passes():
         (task.task_id, task.status, task.failure, task.error)
         for task in failures
     ]
-    assert report.summary["passed"] == 7
+    assert report.summary["passed"] == len(SCRIPTED_IDS)
 
 
 @pytest.mark.asyncio

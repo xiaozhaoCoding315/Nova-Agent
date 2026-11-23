@@ -1,8 +1,8 @@
 {
   "suite": "smoke",
   "mode": "scripted",
-  "generated_at": "2026-11-03T07:17:14.395288+00:00",
-  "git_sha": "25b291e",
+  "generated_at": "2026-11-23T03:59:00.687341+00:00",
+  "git_sha": "2c94985",
   "tasks": {
     "read_and_answer": "passed",
     "edit_file_minimal": "passed",
@@ -10,7 +10,11 @@
     "permission_denied": "passed",
     "plan_tool": "passed",
     "vision_image": "passed",
-    "context_compaction": "passed"
+    "context_compaction": "passed",
+    "transient_503_is_retried": "passed",
+    "deterministic_401_is_not_retried": "passed",
+    "exhausted_quota_is_not_retried": "passed",
+    "plan_survives_a_continuation": "passed"
   },
   "summary": {
     "pass_rate": 1.0

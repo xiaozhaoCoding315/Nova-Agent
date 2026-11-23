@@ -51,7 +51,9 @@ def test_caddy_reaches_the_blog_network() -> None:
 def test_caddyfile_routes_both_sites() -> None:
     text = CADDYFILE.read_text(encoding="utf-8")
     # 每条站点块都要有 reverse_proxy，且指向正确的容器。
-    assert "reverse_proxy app:8000" in text
+    # Nova 必须写容器全名：博客 compose 的服务也叫 `app`，Docker 会给它加别名
+    # `app`，写 `reverse_proxy app:8000` 会解析到博客容器（HTTPS 502）。
+    assert "reverse_proxy nova-agent-app-1:8000" in text
     assert "reverse_proxy blog-app-1:3000" in text
     # 站点行可以是多主机写法（"a.cn, www.a.cn {"），每个域名都要有证书，
     # 所以这里按逗号拆开计数，而不是只认行首那一个。

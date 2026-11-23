@@ -96,6 +96,38 @@ async def test_extract_facts_from_turn_routes_preferences_and_project_facts(monk
 
 
 @pytest.mark.asyncio
+async def test_extract_high_risk_fact_waits_for_review(monkeypatch):
+    payload = (
+        '[{"text": "生产数据库密码放在 .env", "kind": "fact", "scope": "current"}]'
+    )
+    monkeypatch.setattr(
+        "app.core.llm.factory.get_llm", AsyncMock(return_value=FakeLLM(payload))
+    )
+
+    async def fake_harness(fn, **_kwargs):
+        return await fn()
+
+    monkeypatch.setattr(
+        "app.core.harness.runtime.execute_with_harness", fake_harness
+    )
+    monkeypatch.setattr("app.core.llm.usage.record_usage", AsyncMock())
+    monkeypatch.setattr("app.core.security.limits.ensure_token_budget", AsyncMock())
+    monkeypatch.setattr(
+        policy_mod, "get_policy",
+        AsyncMock(return_value=policy_mod.DEFAULT_POLICY),
+    )
+    add_fact = AsyncMock(return_value=True)
+    monkeypatch.setattr(facts_mod, "add_fact", add_fact)
+
+    await facts_mod.extract_facts_from_turn(
+        7, "生产库密码在 .env 里，记住它", "好的", scope_type="dev",
+    )
+
+    assert add_fact.await_args.kwargs["status"] == facts_mod.STATUS_PENDING
+    assert "密钥凭据" in add_fact.await_args.kwargs["risk_reason"]
+
+
+@pytest.mark.asyncio
 async def test_extract_facts_resolves_replaces_hint(monkeypatch):
     payload = (
         '[{"text": "偏好 ruff", "kind": "correction", "scope": "current", '

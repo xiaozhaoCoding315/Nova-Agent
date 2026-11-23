@@ -297,4 +297,5 @@ TOOL = ToolDefinition(
     func=install_deps,
     category="execute",
     timeout=360,
+    idempotent=False,
 )
