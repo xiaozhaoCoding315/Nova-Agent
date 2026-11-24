@@ -3,15 +3,19 @@
 
 用法（在本机 Git Bash / PowerShell 运行）：
   python deploy/remote-deploy.py backup                                  # 备份数据库 / Qdrant / 仓库卷
-  python deploy/remote-deploy.py upload  --dashscope-key sk-xxxx          # 打包上传 + 写 .env
+  python deploy/remote-deploy.py upload  --llm-provider agnes --llm-key-file ~/agnes.key
+  python deploy/remote-deploy.py env     --llm-provider agnes --llm-key-file ~/agnes.key
   python deploy/remote-deploy.py build                                   # 后台启动 docker compose build
   python deploy/remote-deploy.py status                                  # 查看构建/服务状态
   python deploy/remote-deploy.py logs                                    # 看构建日志尾部
-  python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.2.exe
+  python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.2.2.exe
 
 可选参数：--host（默认 60.205.0.224）、--user（默认 root）、--password、
 --remote-dir（默认 /opt/nova-agent）、--admin-password / --demo-password（缺省自动生成）、
---llm-provider dashscope|deepseek（默认 dashscope）。
+--llm-provider agnes|dashscope|deepseek|zhipu（默认 agnes）、--llm-model（缺省用厂商默认）、
+--llm-key / --llm-key-file（推荐文件方式：Key 不进入命令行、进程列表与 Shell 历史）。
+
+env 阶段只改指定的几个键，其余 .env 内容原样保留；回显只打印键名与长度。
 """
 import argparse
 import io
@@ -22,6 +26,8 @@ import tarfile
 from pathlib import Path
 
 import paramiko
+
+DEFAULT_PROVIDER = "agnes"
 
 EXCLUDE_DIRS = {
     ".git", ".claude", ".superpowers", ".github", ".idea", ".vscode",
@@ -57,7 +63,9 @@ def gen_password(length: int = 14) -> str:
 
 
 def render_env(args, secret_key: str, admin_pw: str, demo_pw: str) -> str:
-    key_line = f"{args.llm_provider.upper()}_API_KEY={args.dashscope_key or ''}"
+    provider = (args.llm_provider or DEFAULT_PROVIDER).upper()
+    key_line = f"{provider}_API_KEY={args.llm_key or ''}"
+    model_line = f"{provider}_MODEL={args.llm_model}\n" if args.llm_model else ""
     return f"""# Nova Agent — 由 deploy/remote-deploy.py 生成
 APP_ENV=prod
 AUTO_INIT_DB=true
@@ -65,9 +73,15 @@ LOG_LEVEL=INFO
 
 # ---- LLM（游客与未配置 Key 的用户使用服务端 Key，因此必须允许回退）----
 LLM_ALLOW_SERVER_FALLBACK=true
-LLM_MODEL_PRIORITY={args.llm_provider}
+LLM_MODEL_PRIORITY={args.llm_provider or DEFAULT_PROVIDER}
+# 网页端统一使用上面的服务端模型；自定义厂商与 Key 只在桌面客户端配置。
+# 设为 any 可重新在网页端开放「自带 Key」。
+LLM_BYOK_SURFACE=desktop
 {key_line}
-DASHSCOPE_MODEL=qwen3.8-max
+{model_line}DASHSCOPE_MODEL=qwen3.8-max
+# Embedding 仍走 DashScope（text-embedding-v3）。聊天模型换成 Agnes 后，
+# 这把 Key 也要保留，否则向量检索退化为纯关键词。
+DASHSCOPE_API_KEY=
 EMBEDDING_MODEL=text-embedding-v3
 
 # ---- 账号 ----
@@ -117,6 +131,26 @@ WEB_SEARCH_PROVIDER=auto
 """
 
 
+def merge_env_text(text: str, updates: dict[str, str]) -> str:
+    """Replace the given keys in a .env body, appending any that are missing.
+
+    Commented-out lines are left alone: an operator who disabled a key on
+    purpose should not have it silently re-enabled by a deploy.
+    """
+    remaining = dict(updates)
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        key = line.split("=", 1)[0].strip()
+        if key in remaining and not stripped.startswith("#"):
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    for key, value in remaining.items():
+        out.append(f"{key}={value}")
+    return "\n".join(out) + "\n"
+
+
 def run(ssh: paramiko.SSHClient, cmd: str, timeout: int = 120) -> tuple[int, str]:
     _, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode("utf-8", "replace")
@@ -130,18 +164,63 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "phase",
-        choices=["backup", "upload", "build", "status", "logs", "health", "installer"],
+        choices=[
+            "backup", "upload", "build", "status", "logs", "health", "installer", "env",
+        ],
     )
     parser.add_argument("--host", default="60.205.0.224")
     parser.add_argument("--user", default="root")
     parser.add_argument("--password", default=None, help="SSH 密码；省略时使用密钥/agent 认证")
     parser.add_argument("--remote-dir", default="/opt/nova-agent")
     parser.add_argument("--file", default="", help="installer 阶段：本地安装包路径")
-    parser.add_argument("--dashscope-key", default="")
-    parser.add_argument("--llm-provider", choices=["dashscope", "deepseek"], default="dashscope")
+    parser.add_argument("--llm-key", "--dashscope-key", dest="llm_key", default="",
+                        help="所选 provider 的 API Key；旧参数名 --dashscope-key 仍可用")
+    parser.add_argument(
+        "--llm-key-file", default="",
+        help="从文件读取 Key（避免 Key 出现在命令行/进程列表/Shell 历史里）",
+    )
+    parser.add_argument("--llm-model", default="",
+                        help="模型名，写为 <PROVIDER>_MODEL；留空用 provider 默认值")
+    # None = 未显式指定：upload 阶段用 DEFAULT_PROVIDER，env 阶段则不动
+    # LLM_MODEL_PRIORITY（否则只改一个无关开关也会顺手切掉模型通道）。
+    parser.add_argument(
+        "--llm-provider", choices=["agnes", "dashscope", "deepseek", "zhipu"],
+        default=None,
+    )
+    parser.add_argument(
+        "--llm-priority", default="",
+        help="完整降级链，如 agnes,dashscope；省略则只写 --llm-provider 单个通道",
+    )
+    parser.add_argument(
+        "--shared-key-registered", action="store_true",
+        help="允许注册用户也使用服务端共享 Key（免费额度型 Key 才建议开启）",
+    )
+    parser.add_argument(
+        "--byok-surface", choices=["desktop", "any"], default=None,
+        help="desktop = 网页端只用服务端模型，自定义 Key 去桌面客户端；any = 网页端也允许自带 Key",
+    )
+    parser.add_argument(
+        "--icp-beian", default=None,
+        help="ICP 备案号，如 冀ICP备2026051171号；构建期变量，改完必须重建 app 镜像",
+    )
     parser.add_argument("--admin-password", default="")
     parser.add_argument("--demo-password", default="")
     args = parser.parse_args()
+
+    if args.llm_key_file:
+        if args.llm_key:
+            print("!! --llm-key 与 --llm-key-file 只能二选一", file=sys.stderr)
+            return 1
+        try:
+            args.llm_key = Path(args.llm_key_file).expanduser().read_text(
+                encoding="utf-8"
+            ).strip()
+        except OSError as exc:
+            print(f"!! 读取 --llm-key-file 失败：{exc}", file=sys.stderr)
+            return 1
+        if not args.llm_key:
+            print("!! --llm-key-file 是空文件", file=sys.stderr)
+            return 1
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -204,8 +283,8 @@ def main() -> int:
                 f.write(env)
             sftp.close()
             print("==> 已生成 .env")
-            if not args.dashscope_key:
-                print("!! 注意：未提供 LLM Key，游客对话会报模型未配置。可重跑 upload 并带 --dashscope-key，或手动编辑 .env")
+            if not args.llm_key:
+                print("!! 注意：未提供 LLM Key，游客对话会报模型未配置。可重跑 upload 并带 --llm-key，或手动编辑 .env")
             print("=" * 52)
             print(f"  管理员账号：admin / {admin_pw}")
             print(f"  演示账号：  demo  / {demo_pw}")
@@ -221,9 +300,18 @@ def main() -> int:
             print("==> 服务器没有 Docker，先跑一键准备脚本（装 Docker/镜像加速/swap）")
             code, out = run(ssh, f"cd {args.remote_dir} && bash deploy/setup-aliyun.sh {args.remote_dir}", timeout=600)
             print(out[-2000:])
+        # 2G/1Mbps 的 ECS 上，apt（LibreOffice/CJK 字体）和 npm 同时下载会
+        # 把带宽抢满并让 npm 卡在 read timeout。先单独构建不含前端的
+        # runtime-base 缓存 apt/pip 层，再构建 app 时只跑 npm，最后用已有
+        # 镜像启动，避免重新构建 sandbox/builder/node 三个镜像。
         cmd = (
             f"cd {args.remote_dir} && "
-            "setsid docker compose up -d --build < /dev/null > build.log 2>&1 & "
+            "setsid bash -c '"
+            "docker build --target runtime-base -f backend/Dockerfile "
+            "-t nova-agent-runtime-base:buildcache . "
+            "&& docker compose build app "
+            "&& docker compose up -d --no-build"
+            "' < /dev/null > build.log 2>&1 & "
             "echo BUILD_STARTED"
         )
         try:
@@ -270,6 +358,75 @@ def main() -> int:
             "'import json,sys; print(len(json.load(sys.stdin)[\"files\"]))'",
         )
         print(f"下载页条目数：{out.strip()}")
+
+    elif args.phase == "env":
+        # 只更新指定键，保留 .env 里其他内容；Key 只经 SFTP 写入远端，
+        # 不出现在命令行参数、构建日志或本机终端回显里。
+        updates: dict[str, str] = {}
+        if (args.llm_key or args.llm_model) and not args.llm_provider:
+            print("!! 写 Key / 模型名时必须显式指定 --llm-provider", file=sys.stderr)
+            ssh.close()
+            return 1
+        if args.llm_key:
+            updates[f"{args.llm_provider.upper()}_API_KEY"] = args.llm_key
+        if args.llm_model:
+            updates[f"{args.llm_provider.upper()}_MODEL"] = args.llm_model
+        if args.llm_priority:
+            updates["LLM_MODEL_PRIORITY"] = args.llm_priority.strip()
+        elif args.llm_provider:
+            updates["LLM_MODEL_PRIORITY"] = args.llm_provider
+        if args.byok_surface:
+            updates["LLM_BYOK_SURFACE"] = args.byok_surface
+        if args.shared_key_registered:
+            updates["LLM_SERVER_FALLBACK_REGISTERED"] = "true"
+        if args.icp_beian is not None:
+            updates["ICP_BEIAN"] = args.icp_beian.strip()
+        if not updates:
+            print(
+                "!! env 阶段需要 --llm-key / --llm-model / --llm-provider "
+                "/ --byok-surface / --icp-beian 中至少一项"
+            )
+            ssh.close()
+            return 1
+
+        env_path = f"{args.remote_dir}/.env"
+        code, out = run(ssh, f"test -f {env_path} && echo EXISTS || echo MISSING")
+        if "MISSING" in out:
+            print(f"!! 服务器上没有 {env_path}，请先执行 upload 生成")
+            ssh.close()
+            return 1
+
+        sftp = ssh.open_sftp()
+        try:
+            with sftp.file(env_path, "r") as f:
+                lines = f.read().decode("utf-8", "replace").splitlines()
+        finally:
+            sftp.close()
+
+        blob = merge_env_text("\n".join(lines), updates).encode("utf-8")
+        sftp = ssh.open_sftp()
+        try:
+            # 先写临时文件再 mv：中途断开也不会留下半个 .env。
+            with sftp.file(f"{env_path}.tmp", "w") as f:
+                f.write(blob)
+            run(ssh, f"mv {env_path}.tmp {env_path} && chmod 600 {env_path}")
+        finally:
+            sftp.close()
+
+        # 回显只给键名与长度，永不打印值本身。备案号不是密钥，照常显示方便核对。
+        for key in updates:
+            if key == "ICP_BEIAN":
+                print(f"  {key} 已更新：{updates[key] or '（空，不展示）'}")
+            else:
+                print(f"  {key} 已更新（{len(updates[key])} 字符，值不显示）")
+        if "ICP_BEIAN" in updates:
+            # Vite 在打包时静态替换，只重建容器不会生效。
+            print(
+                "==> .env 已更新。ICP_BEIAN 是构建期变量："
+                "docker compose build app && docker compose up -d --no-build app"
+            )
+        else:
+            print("==> .env 已更新。下一步：docker compose up -d --force-recreate app")
 
     elif args.phase == "health":
         code, out = run(ssh, "curl -s http://127.0.0.1:8000/api/v1/status/health | head -c 600")

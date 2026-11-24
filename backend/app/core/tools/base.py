@@ -17,6 +17,7 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.core.harness.config import TIMEOUTS
+from app.core.product_modes import THESIS, THESIS_TOOL_NAMES
 from app.core.harness.runtime import execute_with_harness
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.hooks import run_hook
@@ -36,7 +37,7 @@ class ToolContext:
     repo_ids: list[str] = field(default_factory=list)
     repo_roots: dict[str, str] = field(default_factory=dict)
     session_id: str = ""
-    permission_mode: str = "auto"   # readonly | ask | auto
+    permission_mode: str = "auto"   # readonly | ask | auto | full
     file_ids: list[str] = field(default_factory=list)
     tool_call_id: str = ""
     output_queue: object | None = None   # asyncio.Queue filled by streaming tools
@@ -46,6 +47,14 @@ class ToolContext:
     llm_overrides: dict = field(default_factory=dict)
     agent_depth: int = 0
     subagent_tasks_used: int = 0
+    # Product surface this turn belongs to.  Thesis mode keeps the same tool
+    # set and HostExecutor semantics as dev mode, but sensitive tools require
+    # a per-call approval and thesis artifacts are protected.
+    product_mode: str = "dev"            # dev | thesis
+    thesis_project_id: str | None = None
+    protected_roots: tuple[str, ...] = ()
+    # Set only inside a sub-agent: its role-private memory scope (agent:<name>).
+    agent_name: str = ""
 
 
 @dataclass
@@ -61,6 +70,13 @@ class ToolDefinition:
     parallel_safe: bool = False
     # 需要把运行中事件推给父循环的工具（spawn_agents）。
     streaming: bool = False
+    # Only offered to sub-agents with an explicit role (agent memory writes).
+    agent_only: bool = False
+    # Whether an infrastructure failure may be retried.  Replaying a command
+    # or a dependency install can duplicate a real side effect (a push, a
+    # publish, a half-finished migration), so those declare False and the
+    # recovery decision goes back to the model instead.
+    idempotent: bool = True
 
 
 # Tools the model should not even see in a given mode / availability state.
@@ -73,6 +89,9 @@ _SANDBOX_TOOLS = {"run_code", "run_command", "install_deps"}
 _LOCAL_TOOLS = {"local_run_command", "local_write_file"}
 # Local readonly/plan must not offer host linters that run with user rights.
 _LOCAL_READONLY_HIDDEN = {"diagnostics"}
+# Read-only thesis tools only make sense when the session is bound to a thesis
+# project; dev sessions never see them.
+_THESIS_TOOLS = THESIS_TOOL_NAMES
 
 _TYPE_CHECKS = {
     "string": lambda v: isinstance(v, str),
@@ -128,6 +147,8 @@ class ToolRegistry:
         permission_mode: str | None = None,
         sandbox_available: bool | None = None,
         local_available: bool | None = None,
+        product_mode: str | None = None,
+        agent_name: str | None = None,
     ) -> list[dict]:
         """OpenAI tools format, trimmed to what is usable in this context.
 
@@ -137,6 +158,11 @@ class ToolRegistry:
         """
         specs: list[dict] = []
         for tool in self._tools.values():
+            if tool.agent_only and not agent_name:
+                continue
+            if product_mode is not None and product_mode != THESIS \
+                    and tool.name in _THESIS_TOOLS:
+                continue
             if permission_mode == "readonly" and tool.name in _READONLY_HIDDEN:
                 continue
             if (
@@ -226,9 +252,12 @@ class ToolRegistry:
                 ctx,
                 context=f"tool/{name}",
                 timeout=tool.timeout,
-                use_retry=True,
+                use_retry=tool.idempotent,
                 use_circuit=True,
                 propagate=(ToolBusinessError,),
+                # Breaker state is per user: one broken sandbox must not lock
+                # the tool out for everyone else on the server.
+                scope=str(ctx.user.get("id", "")) or None,
             )
         except (ToolBusinessError, HTTPException) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
@@ -245,8 +274,17 @@ class ToolRegistry:
                 ctx, name, args, ok=False, ms=ms, detail=str(exc),
                 decision="allow", capabilities=list(decision.capabilities),
             )
+            error = f"工具执行失败: {exc}"
+            if not tool.idempotent:
+                # The side effect may have landed before the link broke.
+                # Replaying it is the harness's call to avoid, not the
+                # model's to make blindly.
+                error += (
+                    "（该工具可能已执行，系统未自动重试。请先检查实际状态"
+                    "——如文件是否已写入、进程是否已在运行——再决定是否重跑。）"
+                )
             return {
-                "ok": False, "error": redact_text(f"工具执行失败: {exc}"),
+                "ok": False, "error": redact_text(error),
                 "ms": ms, "business": False, "error_class": "infra",
             }
 
@@ -280,6 +318,8 @@ class ToolRegistry:
             "user": {"id": ctx.user.get("id"), "role": ctx.user.get("role")},
             "repo_ids": ctx.repo_ids,
             "permission_mode": ctx.permission_mode,
+            "product_mode": ctx.product_mode,
+            "thesis_project_id": ctx.thesis_project_id,
             "result": redact_obj(result) if result else None,
         }
 
@@ -312,6 +352,8 @@ class ToolRegistry:
                     "tool": name, "ok": ok, "ms": ms,
                     "decision": decision,
                     "capabilities": capabilities or [],
+                    "product_mode": ctx.product_mode,
+                    "thesis_project_id": ctx.thesis_project_id,
                     "args": _preview(args),
                     "detail": redact_text(detail)[:300],
                 },

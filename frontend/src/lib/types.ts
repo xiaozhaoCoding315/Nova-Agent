@@ -156,6 +156,8 @@ export type Session = {
   primary_repo_id?: string | null
   model?: string | null
   llm_overrides?: LlmOverrides
+  product_mode?: 'dev' | 'thesis'
+  thesis_project_id?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -472,7 +474,16 @@ export type Repo = {
   kind?: 'import' | 'builder'
   origin?: 'upload' | 'git' | 'local'
   error?: string | null
-  stats?: { files?: number; chunks?: number; symbols?: number; embedded?: number; dependencies?: number }
+  stats?: {
+    files?: number
+    chunks?: number
+    symbols?: number
+    embedded?: number
+    dependencies?: number
+    embed_candidates?: number
+    embed_limit?: number
+    embed_truncated?: number
+  }
   created_at?: string
   smoke?: { ok: boolean; status: string; note?: string; elapsed_ms?: number } | null
 }
@@ -498,12 +509,47 @@ export type VerifyStep = {
   name: string
   command: string
   required: boolean
-  status: 'passed' | 'failed' | 'skipped'
+  status: 'passed' | 'failed' | 'not_run' | 'skipped' | 'unsupported'
   exit_code: number
   timed_out?: boolean
   stdout: string
   stderr: string
   duration_ms: number
+  reason?: string
+}
+
+export type VerificationEnvironment = {
+  mode: 'container' | 'host' | 'unknown'
+  isolation: 'container' | 'none' | 'unknown'
+  network: 'disabled' | 'enabled' | 'host' | 'unknown'
+  workdir_scope: 'repo_snapshot' | 'host_repo' | 'unknown'
+  env_scrubbed: boolean
+  image: string
+  notes: string[]
+}
+
+export type VerificationWorkspace = {
+  commit: string
+  branch: string
+  dirty: boolean | null
+  workspace_digest: string
+  diff_digest: string
+  source: 'git' | 'snapshot'
+}
+
+export type VerificationReport = {
+  schema_version: string
+  status: 'passed' | 'failed' | 'not_run' | 'skipped' | 'unsupported'
+  stack: string
+  environment: VerificationEnvironment
+  workspace: VerificationWorkspace
+  steps: VerifyStep[]
+  notes: string[]
+  started_at: string
+  finished_at: string
+  elapsed_ms: number
+  command: string
+  exit_code: number
 }
 
 export type VerifyResult = {
@@ -518,6 +564,288 @@ export type VerifyResult = {
   command: string
   image: string
   at: string
+  report?: VerificationReport
+}
+
+export type EvidenceClaim = {
+  claim_id: string
+  statement: string
+  kind: string
+  status: 'confirmed' | 'unverified' | 'not_run' | 'unsupported' | 'failed'
+  commit: string
+  path: string
+  line: number | null
+  evidence_ids: string[]
+  notes: string[]
+}
+
+export type EvidenceArtifact = {
+  artifact_id: string
+  name: string
+  sha256: string
+  size: number
+  media_type: string
+  created_at: string
+}
+
+export type EvidenceEnvironment = {
+  mode: string
+  os: string
+  arch: string
+  isolation: string
+  network: string
+  image_digest: string
+  tool_versions: Record<string, string>
+  working_dir: string
+  notes: string[]
+}
+
+export type EvidencePack = {
+  schema_version: string
+  pack_id: string
+  task_id: string
+  repo_id: string
+  commit: string
+  created_at: string
+  claims: EvidenceClaim[]
+  artifacts: EvidenceArtifact[]
+  environment: EvidenceEnvironment
+  unproven: string[]
+  manifest_sha256: string
+}
+
+export type EvidencePackSummary = {
+  pack_id: string
+  task_id: string
+  repo_id: string
+  commit: string
+  created_at: string
+  claims: number
+  artifacts: number
+  unproven: number
+  manifest_sha256: string
+}
+
+export type EvidenceVerifyResult = {
+  pack_id: string
+  ok: boolean
+  problems: string[]
+}
+
+export type EnvironmentRow = {
+  dimension: string
+  local: unknown
+  container: unknown
+  result: 'same' | 'different' | 'unknown'
+  note: string
+}
+
+export type EnvironmentComparison = {
+  rows: EnvironmentRow[]
+  comparable: string[]
+  not_comparable: string[]
+  different: string[]
+  unknown: string[]
+  identical: boolean
+  note: string
+}
+
+export type GitHubConnectionStatus = {
+  connected: boolean
+  login: string
+  scopes: string
+  created_at?: string
+  updated_at?: string
+}
+
+export type GitHubRemote = {
+  host: string
+  owner: string
+  repo: string
+  full_name: string
+  branch: string
+}
+
+export type GitHubPullRequest = {
+  number: number
+  url: string
+  title: string
+  head: string
+  base: string
+  draft: boolean
+  state: string
+  owner?: string
+  repo?: string
+  created_at: string
+}
+
+export type GitHubCheck = {
+  name: string
+  status: string
+  conclusion: string
+  url: string
+  source: string
+}
+
+export type GitHubReview = {
+  id: number
+  user: string
+  state: string
+  body: string
+  submitted_at: string
+  url: string
+}
+
+export type GitHubComment = {
+  id: number
+  user: string
+  body: string
+  path: string
+  line: number | null
+  created_at: string
+  url: string
+}
+
+export type GitHubPullRequestStatus = {
+  number: number
+  url: string
+  title: string
+  state: string
+  draft: boolean
+  mergeable: boolean | null
+  mergeable_state: string
+  head: string
+  head_sha: string
+  base: string
+  updated_at: string
+  checks: GitHubCheck[]
+  reviews: GitHubReview[]
+  comments: GitHubComment[]
+  auto_merge: boolean
+  note: string
+}
+
+export type RemoteConfig = {
+  enabled: boolean
+  mode: 'direct' | 'relay'
+  pairing_ttl_seconds: number
+  workbench_path: string
+  commands: string[]
+  transport: string
+}
+
+export type RemotePairing = {
+  pair_id: string
+  status: 'pending' | 'claimed' | 'confirmed' | 'rejected' | 'expired'
+  created_at: string
+  expires_at: string
+  claimed_at: string
+  confirmed_at: string
+  device_id: string
+  device_name: string
+  sas: string
+}
+
+export type RemoteDevice = {
+  device_id: string
+  name: string
+  status: 'pending' | 'active' | 'revoked'
+  created_at: string
+  confirmed_at: string
+  revoked_at: string
+  last_seen_at: string
+  permissions: string[]
+  public_key: Record<string, string>
+}
+
+export type RemoteNotification = {
+  id: string
+  kind: string
+  status: string
+  summary: string
+  task_id: string
+  device_id: string
+  created_at: string
+  read: boolean
+}
+
+export type RemoteProgressEvent = {
+  event_id: string
+  task_id: string
+  session_id: string
+  kind: string
+  status: string
+  stage: string
+  percent: number | null
+  summary: string
+  created_at: string
+  metadata: Record<string, unknown>
+}
+
+export type RemoteApproval = {
+  approval_id: string
+  task_id: string
+  title: string
+  reason: string
+  risk: 'low' | 'medium' | 'high'
+  remote_decidable: boolean
+  action_hash: string
+  expires_at: string
+}
+
+export type RemoteInstruction = {
+  instruction_id: string
+  device_id: string
+  text: string
+  status: 'pending' | 'sent' | 'rejected' | 'expired'
+  created_at: string
+  expires_at: string
+  resolved_at: string
+}
+
+export type RemoteCommandEnvelope = {
+  v: number
+  command_id: string
+  device_id: string
+  type: 'status.get' | 'run.stop' | 'approval.list' | 'approval.decide' | 'chat.instruct'
+  action_hash: string
+  args_ciphertext: string
+  approval_id: string
+  decision: string
+  instruction: string
+  issued_at: string
+  expires_at: string
+  nonce: string
+  signature: string
+}
+
+export type RemoteCommandResult = {
+  ok: boolean
+  device_status: string
+  decision: {
+    allowed: boolean
+    reason: string
+    risk: string
+    requires_local: boolean
+    status: string
+  }
+  server_time?: string
+  events?: RemoteProgressEvent[]
+  notifications?: RemoteNotification[]
+  approvals?: RemoteApproval[]
+  instructions?: RemoteInstruction[]
+  instruction?: RemoteInstruction
+  queued?: boolean
+  approval?: { approval_id: string; status: string; action_hash: string }
+  stopped_task_ids?: string[]
+  idempotent?: boolean
+  pairing?: { pair_id: string; sas: string; expires_at: string }
+}
+
+export type RemoteAudit = {
+  local: Record<string, unknown>[]
+  relay: Record<string, unknown>[]
+  note: string
 }
 
 export type ContractStatus = {
@@ -691,6 +1019,8 @@ export type LlmSettings = {
   key_hint?: string | null
   server_model?: string | null
   allow_server_fallback: boolean
+  /** false = 本界面只能用服务端统一模型，自定义模型请在桌面客户端配置。 */
+  byok_enabled?: boolean
   context_window?: number | null
   reasoning_effort?: string | null
   providers: LlmProvider[]
@@ -723,6 +1053,12 @@ export type LlmTestResult = {
   message: string
 }
 
+export type MemoryScopeType = 'global' | 'dev' | 'thesis' | 'repo'
+/** Output-only: sub-agent role memory can appear in lists but is never writable from settings. */
+export type MemoryFactScopeType = MemoryScopeType | 'agent'
+export type MemoryCategory = 'fact' | 'preference' | 'project' | 'decision' | 'correction'
+export type MemoryFactStatus = 'active' | 'superseded' | 'archived' | 'pending'
+
 export type MemoryFact = {
   id: number
   content: string
@@ -731,6 +1067,46 @@ export type MemoryFact = {
   promoted_at?: string | null
   last_used_at?: string | null
   created_at?: string | null
+  updated_at?: string | null
+  scope_type: MemoryFactScopeType
+  scope_id: string
+  source_session_id?: string | null
+  source_message_id?: number | null
+  confidence: number
+  category: MemoryCategory
+  status: MemoryFactStatus
+  version: number
+  supersedes_id?: number | null
+  merged_into_id?: number | null
+  topic?: string
+  one_line?: string
+}
+
+export type MemoryFactInput = {
+  content: string
+  scope_type?: MemoryScopeType
+  scope_id?: string
+  importance?: number
+  ttl_days?: number
+  category?: MemoryCategory
+  topic?: string
+}
+
+export type MemoryFactUpdate = {
+  content?: string
+  importance?: number
+  ttl_days?: number
+  category?: MemoryCategory
+  status?: MemoryFactStatus
+  topic?: string
+}
+
+export type MemoryFactSources = {
+  fact_id: number
+  content: string
+  source_session?: { id?: string | null; title?: string | null } | null
+  source_message?: { id?: number | null; role?: string | null; preview: string } | null
+  supersedes?: { id: number; content: string; status: string; version: number } | null
 }
 
 export type MemoryDaily = {
@@ -739,11 +1115,89 @@ export type MemoryDaily = {
   message_count: number
   created_at?: string | null
   updated_at?: string | null
+  scope_type: MemoryScopeType
+  scope_id: string
 }
 
 export type Memory = {
   facts: MemoryFact[]
   daily: MemoryDaily[]
+}
+
+export type MemorySettings = {
+  auto_memory: boolean
+  retention_days: number
+  default_scope: 'global' | 'dev'
+  blocked_categories: MemoryCategory[]
+  blocked_keywords: string[]
+  scope_overrides: Record<string, { auto_memory?: boolean }>
+}
+
+export type MemorySettingsUpdate = Partial<MemorySettings>
+
+export type MemoryPurgeResult = {
+  ok: boolean
+  facts: number
+  daily: number
+  lessons: number
+  messages: number
+}
+
+export type InstructionLevel = 'org' | 'user' | 'project'
+
+export type Instruction = {
+  id: number
+  level: InstructionLevel
+  scope_type: MemoryScopeType
+  scope_id: string
+  name: string
+  content: string
+  paths: string[]
+  enabled: boolean
+  priority: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type InstructionInput = {
+  level?: InstructionLevel
+  scope_type?: MemoryScopeType
+  scope_id?: string
+  name?: string
+  content: string
+  paths?: string[]
+  enabled?: boolean
+  priority?: number
+}
+
+export type InstructionUpdate = Partial<InstructionInput>
+
+export type MemoryTopic = {
+  topic: string
+  scope_type: MemoryFactScopeType
+  scope_id: string
+  count: number
+  updated_at?: string | null
+  samples: string[]
+}
+
+export type MemoryReviewKind = 'high_risk_fact' | 'merge' | 'conflict'
+
+export type MemoryReviewItem = {
+  id: number
+  kind: MemoryReviewKind
+  fact_id?: number | null
+  target_fact_id?: number | null
+  status: 'pending' | 'approved' | 'rejected'
+  reason: string
+  payload: Record<string, unknown>
+  created_at?: string | null
+  content: string
+  one_line: string
+  category: string
+  scope_type: MemoryFactScopeType
+  scope_id: string
+  target_content?: string | null
 }
 
 export type ToolMetric = {
@@ -821,4 +1275,448 @@ export type DebtSnapshot = {
 export type DebtReport = {
   latest: DebtSnapshot | null
   history: DebtSnapshot[]
+}
+
+export type ThesisDegree = 'undergraduate' | 'master' | 'doctor'
+
+export type ThesisTemplate = {
+  id: string
+  name: string
+  description: string
+  source: string
+  version?: string
+  degree: string
+  is_sample: boolean
+}
+
+export type ThesisProject = {
+  id: string
+  title: string
+  school: string
+  degree: ThesisDegree | string
+  template_id: string
+  status: string
+  document_count: number
+  open_issue_count: number
+  source_repo_id?: string | null
+  source_notes?: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisStats = {
+  block_count?: number
+  paragraph_count?: number
+  table_count?: number
+  heading_count?: number
+  max_heading_level?: number
+  char_count?: number
+  word_count?: number
+  image_count?: number
+  section_count?: number
+  page_break_count?: number
+  empty_paragraph_count?: number
+  has_toc?: boolean
+  [key: string]: number | boolean | undefined
+}
+
+export type ThesisDocument = {
+  id: string
+  project_id: string
+  filename: string
+  sha256: string
+  size: number
+  mime: string
+  status: 'parsed' | 'failed' | string
+  parse_error?: string | null
+  stats: ThesisStats
+  version?: number
+  has_working_copy?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisOutlineNode = {
+  level: number
+  text: string
+  block_index: number
+  style: string
+}
+
+export type ThesisDocumentDetail = ThesisDocument & {
+  outline: ThesisOutlineNode[]
+  warnings: string[]
+}
+
+export type ThesisProjectDetail = ThesisProject & {
+  documents: ThesisDocument[]
+}
+
+export type ThesisIssue = {
+  id: string
+  project_id: string
+  document_id: string
+  rule_id: string
+  category: string
+  severity: 'blocker' | 'warn' | 'info' | string
+  title: string
+  detail: string
+  location: Record<string, unknown>
+  evidence: Record<string, unknown>
+  status: string
+  fix_type?: string | null
+  fix_available?: boolean
+  source?: string
+  template_version?: string
+  confidence?: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisFixPreview = {
+  issue_id: string
+  fix_type: string
+  payload: Record<string, unknown>
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  verification: Record<string, unknown>
+  note: string
+}
+
+export type ThesisFix = {
+  id: string
+  project_id: string
+  document_id: string
+  issue_id?: string | null
+  rule_id: string
+  fix_type: string
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  applied_at?: string | null
+  undone_at?: string | null
+}
+
+export type ThesisApplyResult = {
+  issue: ThesisIssue
+  fix: ThesisFix
+  document: ThesisDocument
+  remaining_counts: ThesisIssueCounts
+}
+
+export type ThesisCitation = {
+  id: string
+  project_id: string
+  document_id: string
+  kind: 'reference' | 'in_text' | string
+  raw: string
+  normalized: Record<string, unknown>
+  status: string
+  confidence: string
+  doi?: string
+  metadata_status?: string
+  metadata?: Record<string, unknown>
+  metadata_fetched_at?: string | null
+  created_at?: string | null
+}
+
+export type ThesisCitationAudit = {
+  project_id: string
+  document_id: string
+  references: Record<string, unknown>[]
+  in_text: Record<string, unknown>[]
+  citations: ThesisCitation[]
+  reference_section_found: boolean
+  generated_at: string
+}
+
+export type ThesisReferencePdf = {
+  id: string
+  project_id: string
+  filename: string
+  sha256: string
+  size: number
+  page_count: number
+  created_at?: string | null
+}
+
+export type ThesisCitationEvidence = {
+  id: string
+  project_id: string
+  document_id?: string | null
+  reference_index?: number | null
+  reference_raw: string
+  pdf_id?: string | null
+  pdf_filename: string
+  page?: number | null
+  quote: string
+  score: number
+  method: string
+  support: 'needs_review' | 'supported' | 'partial' | 'unsupported' | string
+  note: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ThesisEvidenceLocateResult = {
+  project_id: string
+  document_id: string
+  pdfs: ThesisReferencePdf[]
+  evidence: ThesisCitationEvidence[]
+  matched: number
+  total_references: number
+  located_at: string
+}
+
+export type ThesisDisclosure = {
+  id: string
+  project_id: string
+  tool: string
+  tool_version: string
+  purpose: string
+  stage: string
+  prompt: string
+  output: string
+  modified: boolean
+  created_at?: string | null
+}
+
+export type ThesisDisclosureInput = {
+  tool: string
+  tool_version?: string
+  purpose?: string
+  stage?: string
+  prompt?: string
+  output?: string
+  modified?: boolean
+}
+
+export type ThesisIssueCounts = {
+  blocker: number
+  warn: number
+  info: number
+  total: number
+}
+
+export type ThesisScanResult = {
+  project_id: string
+  document_id: string
+  template_id: string
+  issues: ThesisIssue[]
+  counts: ThesisIssueCounts
+  scanned_at: string
+}
+
+export type ThesisReport = {
+  project: ThesisProject
+  document: ThesisDocument | null
+  template: ThesisTemplate
+  counts: ThesisIssueCounts
+  by_category: Record<string, number>
+  issues: ThesisIssue[]
+  fixes: ThesisFix[]
+  generated_at: string
+}
+
+export type ThesisProjectInput = {
+  title: string
+  school?: string
+  degree?: ThesisDegree
+  template_id?: string
+  source_repo_id?: string | null
+  source_notes?: string
+}
+export type DocumentWorkspace = {
+  id: string
+  title: string
+  kind: 'report' | 'thesis' | 'resume'
+  created_at: string
+  root?: string | null
+}
+
+export type DocumentWorkspaceInput = {
+  title: string
+  kind?: 'report' | 'thesis' | 'resume'
+  root?: string | null
+}
+
+export type DocumentFile = {
+  path: string
+  size: number
+  sha256: string
+  updated_at: string
+}
+
+export type DocumentContent = {
+  path: string
+  content: string
+  sha256: string
+  size: number
+  last_known_sha?: string | null
+}
+
+export type DocumentVersion = {
+  version_id: string
+  path: string
+  sha256: string
+  size: number
+  created_at: string
+}
+
+export type DocumentWriteResult = {
+  path: string
+  sha256: string
+  created: boolean
+  version?: DocumentVersion | null
+}
+
+export type DocumentFidelity = {
+  source_format: string
+  target_format: string
+  status: 'exact' | 'partial' | 'lossy'
+  preserved: string[]
+  modified: string[]
+  dropped: string[]
+  unsupported: string[]
+  notes: string[]
+  renderer: string
+  renderer_version: string
+  template_version?: string | null
+}
+
+export type DocumentExportResult = {
+  status: 'done' | 'failed' | 'unsupported'
+  format: 'docx' | 'pdf'
+  path?: string | null
+  filename?: string | null
+  fidelity: Partial<DocumentFidelity>
+  diagnostics: string[]
+}
+
+export type DocumentConvertResult = {
+  status: string
+  output_path?: string | null
+  fidelity_path?: string | null
+  fidelity: DocumentFidelity
+  diagnostics: string[]
+}
+
+export type DocumentDiagnostics = {
+  workspace: Record<string, unknown>
+  manuscripts: number
+  unreadable: string[]
+  unsupported: Record<string, number>
+  tools: { pandoc: boolean; libreoffice: boolean }
+  schema_version: string
+}
+
+export type ThesisStageSummary = {
+  stage: string
+  label: string
+  position: 'current' | 'done' | 'upcoming'
+  readiness: string
+  readiness_label: string
+  confirmed: boolean
+  stale: boolean
+  confirmed_at: string
+  artifact: string
+}
+
+export type ThesisStageEvent = {
+  id: string
+  type: string
+  stage: string
+  from_stage: string
+  readiness: string
+  content_sha: string
+  note: string
+  created_at: string
+}
+
+export type ResumeProfile = {
+  id: string
+  user_id: number
+  name: string
+  headline: string
+  contact: Record<string, string>
+  created_at: string
+  updated_at: string
+}
+
+export type ResumeFactStatus =
+  | 'self_reported' | 'evidence_linked' | 'needs_confirmation' | 'excluded'
+
+export type ResumeFact = {
+  id: string
+  profile_id: string
+  category: string
+  title: string
+  detail: string
+  status: ResumeFactStatus
+  evidence: string
+  metrics: string[]
+  created_at: string
+  updated_at: string
+}
+
+export type ResumeJobVersion = {
+  id: string
+  profile_id: string
+  title: string
+  company: string
+  jd_text: string
+  jd_sha256: string
+  fact_ids: string[]
+  template: string
+  notes: string
+  created_at: string
+  updated_at: string
+  markdown?: string
+}
+
+export type ResumeProfileDetail = {
+  profile: ResumeProfile
+  facts: ResumeFact[]
+  versions: ResumeJobVersion[]
+}
+
+export type ResumeQuestion = { key: string; question: string }
+
+export type ThesisStageDraft = {
+  stage: string
+  label: string
+  content: string
+  usage?: Record<string, unknown> | null
+  note: string
+}
+
+export type ThesisExportWarning = {
+  stage: string
+  label: string
+  kind: 'not_final' | 'unconfirmed' | 'stale' | 'needs_review'
+  message: string
+}
+
+export type ThesisExportReadiness = {
+  project_id: string
+  ready: boolean
+  stage: string
+  readiness: string
+  document_available: boolean
+  manuscript_available: boolean
+  warnings: ThesisExportWarning[]
+}
+
+export type ThesisStages = {
+  project_id: string
+  state: {
+    stage: string
+    readiness: string
+    confirmations: Record<string, { sha256: string; confirmed_at: string; stale: boolean }>
+    artifacts: Record<string, string>
+    contents: Record<string, string>
+    updated_at: string
+  }
+  summary: ThesisStageSummary[]
+  current_content: string
+  events: ThesisStageEvent[]
 }

@@ -1,11 +1,14 @@
 """spawn_agents: parallel read-only sub-agent research."""
 import asyncio
 import json
+import re
 import uuid
 
 from app.config import settings
 from app.core.agent.subagent import run_subagent
 from app.core.indexing.pipeline import get_repo
+from app.core.memory import instructions as instructions_mod
+from app.core.memory import scope as memory_scope
 from app.core.security.redaction import redact_text
 from app.core.tools.base import ToolBusinessError, ToolContext, ToolDefinition
 
@@ -33,10 +36,17 @@ def _normalize_tasks(raw, ctx: ToolContext) -> list[dict]:
             raise ToolBusinessError(
                 f"第 {index} 个子任务的 repo_id 不在当前会话仓库范围内"
             )
+        agent = str(item.get("agent") or "").strip().lower()
+        if agent and not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", agent):
+            raise ToolBusinessError(
+                f"第 {index} 个子任务的 agent 需为小写字母开头的角色名"
+                "（a-z、0-9、_、-，最多 32 字符）"
+            )
         tasks.append({
             "title": title,
             "prompt": prompt,
             "repo_ids": [repo_id] if repo_id else list(ctx.repo_ids),
+            "agent": agent,
         })
     return tasks
 
@@ -55,11 +65,14 @@ async def _repo_meta(repo_ids: list[str], user_id: int) -> dict[str, dict]:
     return meta
 
 
-def _failed_task(task_id: str, title: str, error: str) -> dict:
+def _failed_task(task_id: str, title: str, error: str, agent: str = "") -> dict:
     """Failed-task result with the same shape as ``run_subagent``."""
     return {
-        "id": task_id, "title": title, "status": "failed",
+        "id": task_id, "title": title, "status": "failed", "agent": agent,
         "summary": "", "findings": [], "files": [], "rounds": 0,
+        # Same keys as a completed task: the parent must not have to branch
+        # on which shape it got before reading progress.
+        "partial": False, "completed_steps": [],
         "tools": [], "tokens": {"prompt": 0, "completion": 0}, "ms": 0,
         "citations": {
             "citations": [], "executed": False, "verified": 0,
@@ -86,6 +99,22 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
         repo_id: item["root_path"]
         for repo_id, item in meta.items() if item.get("root_path")
     }
+
+    # Human instructions are user-authored and apply even with auto memory
+    # off, so sub-agents see the same org/user/project rules as the parent.
+    instructions_block = ""
+    try:
+        scopes = memory_scope.readable_scopes(
+            {
+                "product_mode": ctx.product_mode or "dev",
+                "thesis_project_id": ctx.thesis_project_id,
+            },
+            ctx.repo_ids,
+        )
+        rows, _ = await instructions_mod.for_turn(int(ctx.user["id"]), scopes)
+        instructions_block = instructions_mod.format_block(rows)
+    except Exception:  # noqa: BLE001 — instructions are an optional overlay
+        pass
 
     async def emit(payload: dict) -> None:
         if ctx.output_queue is not None:
@@ -117,9 +146,13 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
                     emit=emit,
                     model=ctx.model,
                     overrides=ctx.llm_overrides,
+                    agent_name=task.get("agent") or "",
+                    instructions_block=instructions_block,
                 )
             except Exception as exc:  # noqa: BLE001 — one task must not sink the rest
-                return _failed_task(task_id, task["title"], str(exc))
+                return _failed_task(
+                    task_id, task["title"], str(exc), task.get("agent") or "",
+                )
 
     # Count before fan-out: if the harness cancels/times out this call, the
     # tasks still consumed their per-turn quota and must not be reusable.
@@ -133,7 +166,8 @@ async def spawn_agents(args: dict, ctx: ToolContext) -> dict:
         ),
         "note": (
             "子代理只读；结果中的文件行号已做引用校验，"
-            "仍需主代理复核关键结论。"
+            "仍需主代理复核关键结论。partial=true 表示触达轮次上限，"
+            "completed_steps 列出了它已经完成的步骤——不要把它当成完整结论。"
         ),
     }
 
@@ -167,6 +201,14 @@ TOOL = ToolDefinition(
                         "title": {"type": "string", "description": "不超过 80 字符的子任务标题"},
                         "prompt": {"type": "string", "description": "10–4000 字符的具体调研要求"},
                         "repo_id": {"type": "string", "description": "可选，必须是当前会话关联仓库的 id"},
+                        "agent": {
+                            "type": "string",
+                            "description": (
+                                "可选角色名（如 review/research）。同一角色的子任务"
+                                "共享私有记忆，主会话不会读取；小写字母开头，"
+                                "最多 32 字符"
+                            ),
+                        },
                     },
                     "required": ["title", "prompt"],
                 },
@@ -175,6 +217,7 @@ TOOL = ToolDefinition(
         "required": ["tasks"],
     },
     func=spawn_agents,
+    idempotent=False,
     timeout=max(TOOL_TIMEOUT, 120),
     category="read",
     capabilities=[],

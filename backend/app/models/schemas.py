@@ -259,6 +259,8 @@ class SessionOut(BaseModel):
     primary_repo_id: Optional[str] = None
     model: Optional[str] = None
     llm_overrides: dict = Field(default_factory=dict)
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -266,6 +268,8 @@ class SessionOut(BaseModel):
 class SessionCreateRequest(BaseModel):
     repo_ids: list[str] = Field(default_factory=list, max_length=5)
     llm_overrides: Optional[LlmOverrides] = None
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
 
 
 class MessageOut(BaseModel):
@@ -291,6 +295,10 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(default=None, max_length=120)
     llm_overrides: Optional[LlmOverrides] = None
     file_ids: list[str] = Field(default_factory=list, max_length=5)
+    # Only used when this request creates a new session. Thesis chat stays in
+    # its own history bucket instead of showing up in the dev-mode session list.
+    product_mode: Literal["dev", "thesis"] = "dev"
+    thesis_project_id: Optional[str] = None
 
 
 class TurnOut(BaseModel):
@@ -545,6 +553,10 @@ class LlmSettingsOut(BaseModel):
     key_hint: Optional[str] = None
     server_model: Optional[str] = None
     allow_server_fallback: bool = True
+    # Whether this surface may create/edit per-user credentials.  False means
+    # the shared server model is the only choice here; custom models are
+    # configured in the desktop client.
+    byok_enabled: bool = True
     context_window: Optional[int] = None       # None = 跟随部署默认窗口
     reasoning_effort: Optional[str] = None     # "" / low / medium / high
     providers: list[LlmProviderOut] = Field(default_factory=list)
@@ -626,6 +638,7 @@ class VerifyStepOut(BaseModel):
     stdout: str = ""
     stderr: str = ""
     duration_ms: int = 0
+    reason: str = ""
 
 
 class VerifyResultOut(BaseModel):
@@ -640,6 +653,9 @@ class VerifyResultOut(BaseModel):
     image: str = ""
     at: Optional[str] = None
     elapsed_ms: Optional[int] = None
+    # CAP-01/CAP-02: stable facts alongside the legacy fields.  Kept as a dict
+    # so older stored last_check payloads remain valid.
+    report: Optional[dict] = None
 
 
 class VerifyActionOut(BaseModel):
@@ -669,6 +685,75 @@ class MemoryFactOut(BaseModel):
     promoted_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    scope_type: str = "global"
+    scope_id: str = ""
+    source_session_id: Optional[str] = None
+    source_message_id: Optional[int] = None
+    confidence: float = 1.0
+    category: Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ] = "fact"
+    status: Literal["active", "superseded", "archived", "pending"] = "active"
+    version: int = 1
+    supersedes_id: Optional[int] = None
+    merged_into_id: Optional[int] = None
+    topic: str = ""
+    one_line: str = ""
+
+
+class MemoryFactCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=500)
+    scope_type: Literal["global", "dev", "thesis", "repo"] = "global"
+    scope_id: str = ""
+    importance: float = Field(default=1.0, ge=0.1, le=2.0)
+    ttl_days: int = Field(default=90, ge=1, le=3650)
+    category: Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ] = "fact"
+    topic: str = Field(default="", max_length=120)
+
+
+class MemoryFactCreateOut(BaseModel):
+    ok: bool = True
+    added: bool = True
+
+
+class MemoryFactUpdate(BaseModel):
+    content: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    importance: Optional[float] = Field(default=None, ge=0.1, le=2.0)
+    ttl_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    category: Optional[Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ]] = None
+    status: Optional[Literal["active", "superseded", "archived"]] = None
+    topic: Optional[str] = Field(default=None, max_length=120)
+
+
+class MemoryFactSourceOut(BaseModel):
+    id: Optional[str] = None
+    title: Optional[str] = None
+
+
+class MemoryFactMessageOut(BaseModel):
+    id: Optional[int] = None
+    role: Optional[str] = None
+    preview: str = ""
+
+
+class MemoryFactSupersedesOut(BaseModel):
+    id: int
+    content: str
+    status: str
+    version: int
+
+
+class MemoryFactSourcesOut(BaseModel):
+    fact_id: int
+    content: str
+    source_session: Optional[MemoryFactSourceOut] = None
+    source_message: Optional[MemoryFactMessageOut] = None
+    supersedes: Optional[MemoryFactSupersedesOut] = None
 
 
 class MemoryDailyOut(BaseModel):
@@ -677,11 +762,103 @@ class MemoryDailyOut(BaseModel):
     message_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    scope_type: str = "dev"
+    scope_id: str = ""
 
 
 class MemoryOut(BaseModel):
     facts: list[MemoryFactOut] = Field(default_factory=list)
     daily: list[MemoryDailyOut] = Field(default_factory=list)
+
+
+class MemoryPurgeOut(BaseModel):
+    ok: bool = True
+    facts: int = 0
+    daily: int = 0
+    lessons: int = 0
+    messages: int = 0
+
+
+class MemorySettingsOut(BaseModel):
+    auto_memory: bool = True
+    retention_days: int = 90
+    default_scope: Literal["global", "dev"] = "dev"
+    blocked_categories: list[str] = Field(default_factory=list)
+    blocked_keywords: list[str] = Field(default_factory=list)
+    scope_overrides: dict[str, dict] = Field(default_factory=dict)
+
+
+class MemorySettingsUpdate(BaseModel):
+    auto_memory: Optional[bool] = None
+    retention_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    default_scope: Optional[Literal["global", "dev"]] = None
+    blocked_categories: Optional[list[Literal[
+        "fact", "preference", "project", "decision", "correction",
+    ]]] = None
+    blocked_keywords: Optional[list[str]] = None
+    scope_overrides: Optional[dict[str, dict]] = None
+
+
+class InstructionOut(BaseModel):
+    id: int
+    level: Literal["org", "user", "project"]
+    scope_type: str = "global"
+    scope_id: str = ""
+    name: str = ""
+    content: str
+    paths: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    priority: int = 100
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class InstructionCreate(BaseModel):
+    level: Literal["org", "user", "project"] = "user"
+    scope_type: Literal["global", "dev", "thesis", "repo"] = "global"
+    scope_id: str = Field(default="", max_length=64)
+    name: str = Field(default="", max_length=120)
+    content: str = Field(min_length=1, max_length=8000)
+    paths: list[str] = Field(default_factory=list, max_length=20)
+    enabled: bool = True
+    priority: int = Field(default=100, ge=0, le=1000)
+
+
+class MemoryTopicOut(BaseModel):
+    topic: str
+    scope_type: str = "global"
+    scope_id: str = ""
+    count: int = 0
+    updated_at: Optional[datetime] = None
+    samples: list[str] = Field(default_factory=list)
+
+
+class MemoryReviewItemOut(BaseModel):
+    id: int
+    kind: Literal["high_risk_fact", "merge", "conflict"]
+    fact_id: Optional[int] = None
+    target_fact_id: Optional[int] = None
+    status: Literal["pending", "approved", "rejected"] = "pending"
+    reason: str = ""
+    payload: dict = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    content: str = ""
+    one_line: str = ""
+    category: str = "fact"
+    scope_type: str = "global"
+    scope_id: str = ""
+    target_content: Optional[str] = None
+
+
+class InstructionUpdate(BaseModel):
+    level: Optional[Literal["org", "user", "project"]] = None
+    scope_type: Optional[Literal["global", "dev", "thesis", "repo"]] = None
+    scope_id: Optional[str] = Field(default=None, max_length=64)
+    name: Optional[str] = Field(default=None, max_length=120)
+    content: Optional[str] = Field(default=None, min_length=1, max_length=8000)
+    paths: Optional[list[str]] = Field(default=None, max_length=20)
+    enabled: Optional[bool] = None
+    priority: Optional[int] = Field(default=None, ge=0, le=1000)
 
 
 class ToolMetricOut(BaseModel):
@@ -947,3 +1124,422 @@ class BrainOut(BaseModel):
 
 
 FileNodeOut.model_rebuild()
+
+
+# ---------- Thesis mode ----------
+
+class ThesisTemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    source: str = ""
+    version: str = ""
+    degree: str = "undergraduate"
+    is_sample: bool = False
+
+
+class ThesisProjectCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    school: str = Field(default="", max_length=120)
+    degree: Literal["undergraduate", "master", "doctor"] = "undergraduate"
+    template_id: str = Field(default="generic-undergraduate-v1", max_length=80)
+    source_repo_id: Optional[str] = None
+    source_notes: str = Field(default="", max_length=4000)
+
+
+class ThesisProjectUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    school: Optional[str] = Field(default=None, max_length=120)
+    degree: Optional[Literal["undergraduate", "master", "doctor"]] = None
+    template_id: Optional[str] = Field(default=None, max_length=80)
+    source_repo_id: Optional[str] = Field(default=None, max_length=64)
+    # An empty string explicitly detaches; omitting the key leaves it alone.
+    source_notes: Optional[str] = Field(default=None, max_length=4000)
+
+
+class ThesisProjectOut(BaseModel):
+    id: str
+    title: str
+    school: str = ""
+    degree: str = "undergraduate"
+    template_id: str = "generic-undergraduate-v1"
+    status: str = "draft"
+    document_count: int = 0
+    open_issue_count: int = 0
+    source_repo_id: Optional[str] = None
+    source_notes: str = ""
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisDocumentOut(BaseModel):
+    id: str
+    project_id: str
+    filename: str
+    sha256: str
+    size: int = 0
+    mime: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    status: str = "parsed"
+    parse_error: Optional[str] = None
+    stats: dict = Field(default_factory=dict)
+    version: int = 1
+    has_working_copy: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisOutlineNode(BaseModel):
+    level: int
+    text: str
+    block_index: int = 0
+    style: str = ""
+
+
+class ThesisDocumentDetailOut(ThesisDocumentOut):
+    outline: list[ThesisOutlineNode] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ThesisIssueOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    rule_id: str
+    category: str
+    severity: str
+    title: str
+    detail: str = ""
+    location: dict = Field(default_factory=dict)
+    evidence: dict = Field(default_factory=dict)
+    status: str = "open"
+    fix_type: Optional[str] = None
+    fix_available: bool = False
+    source: str = ""
+    template_version: str = ""
+    confidence: str = "high"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisIssueUpdate(BaseModel):
+    status: Literal["open", "ignored"]
+
+
+class ThesisIssueCountsOut(BaseModel):
+    blocker: int = 0
+    warn: int = 0
+    info: int = 0
+    total: int = 0
+
+
+class ThesisScanOut(BaseModel):
+    project_id: str
+    document_id: str
+    template_id: str
+    issues: list[ThesisIssueOut] = Field(default_factory=list)
+    counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+    scanned_at: datetime
+
+
+class ThesisProjectDetailOut(ThesisProjectOut):
+    documents: list[ThesisDocumentOut] = Field(default_factory=list)
+
+
+class ThesisReportOut(BaseModel):
+    project: ThesisProjectOut
+    document: Optional[ThesisDocumentOut] = None
+    template: ThesisTemplateOut
+    counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+    by_category: dict[str, int] = Field(default_factory=dict)
+    issues: list[ThesisIssueOut] = Field(default_factory=list)
+    fixes: list[dict] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class ThesisFixPreviewOut(BaseModel):
+    issue_id: str
+    fix_type: str
+    payload: dict = Field(default_factory=dict)
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+    verification: dict = Field(default_factory=dict)
+    note: str = ""
+
+
+class ThesisFixOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    issue_id: Optional[str] = None
+    rule_id: str = ""
+    fix_type: str = ""
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+    applied_at: Optional[datetime] = None
+    undone_at: Optional[datetime] = None
+
+
+class ThesisApplyOut(BaseModel):
+    issue: ThesisIssueOut
+    fix: ThesisFixOut
+    document: ThesisDocumentOut
+    remaining_counts: ThesisIssueCountsOut = Field(default_factory=ThesisIssueCountsOut)
+
+
+class ThesisCitationOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str
+    kind: str
+    raw: str = ""
+    normalized: dict = Field(default_factory=dict)
+    status: str = "unverified"
+    confidence: str = "medium"
+    doi: str = ""
+    metadata_status: str = ""
+    metadata: dict = Field(default_factory=dict)
+    metadata_fetched_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class ThesisReferencePdfOut(BaseModel):
+    id: str
+    project_id: str
+    filename: str
+    sha256: str = ""
+    size: int = 0
+    page_count: int = 0
+    created_at: Optional[datetime] = None
+
+
+class ThesisCitationEvidenceOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: Optional[str] = None
+    reference_index: Optional[int] = None
+    reference_raw: str = ""
+    pdf_id: Optional[str] = None
+    pdf_filename: str = ""
+    page: Optional[int] = None
+    quote: str = ""
+    score: float = 0.0
+    method: str = ""
+    support: str = "needs_review"
+    note: str = ""
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ThesisCitationEvidenceUpdate(BaseModel):
+    support: Literal["needs_review", "supported", "partial", "unsupported"]
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ThesisEvidenceLocateOut(BaseModel):
+    project_id: str
+    document_id: str = ""
+    pdfs: list[ThesisReferencePdfOut] = Field(default_factory=list)
+    evidence: list[ThesisCitationEvidenceOut] = Field(default_factory=list)
+    matched: int = 0
+    total_references: int = 0
+    located_at: datetime
+
+
+class ThesisCitationAuditOut(BaseModel):
+    project_id: str
+    document_id: str = ""
+    references: list[dict] = Field(default_factory=list)
+    in_text: list[dict] = Field(default_factory=list)
+    citations: list[ThesisCitationOut] = Field(default_factory=list)
+    reference_section_found: bool = False
+    generated_at: datetime
+
+
+class ThesisDisclosureCreate(BaseModel):
+    tool: str = Field(default="", max_length=120)
+    tool_version: str = Field(default="", max_length=40)
+    purpose: str = Field(default="", max_length=2000)
+    stage: str = Field(default="", max_length=80)
+    prompt: str = Field(default="", max_length=8000)
+    output: str = Field(default="", max_length=8000)
+    modified: bool = True
+
+
+class ThesisDisclosureOut(BaseModel):
+    id: str
+    project_id: str
+    tool: str = ""
+    tool_version: str = ""
+    purpose: str = ""
+    stage: str = ""
+    prompt: str = ""
+    output: str = ""
+    modified: bool = True
+    created_at: Optional[datetime] = None
+
+# ---------- Document workspaces ----------
+
+class DocumentWorkspaceIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    kind: Literal["report", "thesis", "resume"] = "report"
+    root: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DocumentWorkspaceOut(BaseModel):
+    id: str
+    title: str
+    kind: str
+    created_at: str = ""
+    root: Optional[str] = None
+
+
+class DocumentWorkspaceListOut(BaseModel):
+    workspaces: list[DocumentWorkspaceOut] = Field(default_factory=list)
+
+
+class DocumentFileOut(BaseModel):
+    path: str
+    size: int = 0
+    sha256: str = ""
+    updated_at: str = ""
+
+
+class DocumentFileListOut(BaseModel):
+    files: list[DocumentFileOut] = Field(default_factory=list)
+
+
+class DocumentContentOut(BaseModel):
+    path: str
+    content: str
+    sha256: str
+    size: int = 0
+    last_known_sha: Optional[str] = None
+
+
+class DocumentWriteIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    content: str
+    base_sha: Optional[str] = Field(default=None, max_length=64)
+    force: bool = False
+
+
+class DocumentVersionOut(BaseModel):
+    version_id: str
+    path: str
+    sha256: str = ""
+    size: int = 0
+    created_at: str = ""
+
+
+class DocumentWriteOut(BaseModel):
+    path: str
+    sha256: str
+    created: bool = False
+    version: Optional[DocumentVersionOut] = None
+
+
+class DocumentVersionListOut(BaseModel):
+    versions: list[DocumentVersionOut] = Field(default_factory=list)
+
+
+class DocumentRestoreIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    base_sha: Optional[str] = Field(default=None, max_length=64)
+
+
+class DocumentExportIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    format: Literal["docx", "pdf"] = "docx"
+
+
+class DocumentExportOut(BaseModel):
+    status: str
+    format: str
+    path: Optional[str] = None
+    filename: Optional[str] = None
+    fidelity: dict = Field(default_factory=dict)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+class DocumentDiagnosticsOut(BaseModel):
+    workspace: dict = Field(default_factory=dict)
+    manuscripts: int = 0
+    unreadable: list[str] = Field(default_factory=list)
+    unsupported: dict = Field(default_factory=dict)
+    tools: dict = Field(default_factory=dict)
+    schema_version: str = ""
+
+
+class DocumentDraftIn(BaseModel):
+    requirements: str = Field(min_length=2, max_length=8000)
+    path: str = Field(default="manuscripts/report.md", min_length=1, max_length=500)
+    word_count: Optional[int] = Field(default=None, ge=300, le=20000)
+
+
+class DocumentDraftOut(BaseModel):
+    path: str
+    sha256: str
+    content: str
+    usage: Optional[dict] = None
+
+
+class DocumentConvertIn(BaseModel):
+    source_path: str = Field(min_length=1, max_length=500)
+    target_format: Literal["docx", "pdf"] = "docx"
+    profile: Literal["report", "thesis", "resume"] = "report"
+    overwrite: bool = False
+    allow_lossy: bool = False
+
+
+class DocumentConvertOut(BaseModel):
+    status: str
+    output_path: Optional[str] = None
+    fidelity_path: Optional[str] = None
+    fidelity: dict = Field(default_factory=dict)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+# ---------- Thesis stages (M3) ----------
+
+class ThesisStageContentIn(BaseModel):
+    content: str = Field(default="", max_length=8000)
+
+
+class ThesisStageReadinessIn(BaseModel):
+    readiness: Literal[
+        "not_started", "gathering", "needs_user", "ready_for_review",
+        "accepted", "needs_changes",
+    ]
+
+
+class ThesisStageAdvanceIn(BaseModel):
+    to_stage: Optional[str] = Field(default=None, max_length=24)
+
+
+class ThesisStageReturnIn(BaseModel):
+    to_stage: str = Field(min_length=1, max_length=24)
+
+
+class ThesisStageConfirmIn(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
+class ThesisStagesOut(BaseModel):
+    project_id: str
+    state: dict = Field(default_factory=dict)
+    summary: list[dict] = Field(default_factory=list)
+    current_content: str = ""
+    events: list[dict] = Field(default_factory=list)
+
+
+class ThesisStageDraftIn(BaseModel):
+    requirements: str = Field(default="", max_length=4000)
+    word_count: Optional[int] = Field(default=None, ge=100, le=4000)
+
+
+class ThesisStageDraftOut(BaseModel):
+    stage: str
+    label: str
+    content: str
+    usage: Optional[dict] = None
+    note: str = "AI 草稿，需本人核对后保存和确认"

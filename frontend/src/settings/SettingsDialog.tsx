@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Activity, Blocks, Brain, Cpu, FolderOpen, KeyRound, RefreshCw, Server, Settings, TrendingUp, Users, X,
+  Activity, Blocks, Brain, Cpu, FolderOpen, KeyRound, RefreshCw, ScrollText, Server, Settings, TrendingUp, Users, X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Spinner } from '../components/common'
@@ -14,6 +14,7 @@ import { AccountSection } from './sections/AccountSection'
 import { AdminSection } from './sections/AdminSection'
 import { ExtensionsSection } from './sections/ExtensionsSection'
 import { FilesSection } from './sections/FilesSection'
+import { InstructionsSection } from './sections/InstructionsSection'
 import { MemorySection } from './sections/MemorySection'
 import { MetricsSection } from './sections/MetricsSection'
 import { ModelSection } from './sections/ModelSection'
@@ -21,8 +22,8 @@ import { SystemSection } from './sections/SystemSection'
 import { UsageSection } from './sections/UsageSection'
 
 export type SettingsSection =
-  | 'model' | 'usage' | 'metrics' | 'files' | 'memory' | 'extensions' | 'system'
-  | 'account' | 'admin'
+  | 'model' | 'usage' | 'metrics' | 'files' | 'memory' | 'instructions'
+  | 'extensions' | 'system' | 'account' | 'admin'
 
 const SECTIONS: { key: SettingsSection; label: string; icon: typeof Cpu }[] = [
   { key: 'model', label: '模型与密钥', icon: Cpu },
@@ -30,6 +31,7 @@ const SECTIONS: { key: SettingsSection; label: string; icon: typeof Cpu }[] = [
   { key: 'metrics', label: '交付指标', icon: TrendingUp },
   { key: 'files', label: '文件与存储', icon: FolderOpen },
   { key: 'memory', label: '长期记忆', icon: Brain },
+  { key: 'instructions', label: '人工指令', icon: ScrollText },
   { key: 'extensions', label: '扩展与技能', icon: Blocks },
   { key: 'system', label: '系统状态', icon: Server },
   { key: 'account', label: '账号与安全', icon: KeyRound },
@@ -37,11 +39,12 @@ const SECTIONS: { key: SettingsSection; label: string; icon: typeof Cpu }[] = [
 ]
 
 const DESCRIPTIONS: Record<SettingsSection, string> = {
-  model: '配置你自己的模型服务商与 API Key；支持按会话切换模型。',
+  model: '查看当前对话使用的模型；自定义厂商与 API Key 在桌面客户端配置。',
   usage: '用量、交付指标与运行状态。',
   metrics: '用量、交付指标与运行状态。',
   files: '聊天附件与手动上传的个人文件，计入存储配额。',
-  memory: '用量、交付指标与运行状态。',
+  memory: '自动抽取的长期事实、日摘要与待复核记忆；可编辑、导出或删除。',
+  instructions: '组织策略、用户指令与项目指令分层注入；不会覆盖安全与权限规则。',
   extensions: '操作员预置的 MCP 工具与技能手册；只读展示，配置在部署目录完成。',
   system: '用量、交付指标与运行状态。',
   account: '个人资料、密码与会话安全。',
@@ -220,7 +223,7 @@ function SettingsDialogBody({
               ))}
             </div>
             <p className="px-2 pb-1 pt-3 font-mono text-2xs text-faint">
-              v{health?.version ?? '2.2.1'} · {user?.display_name || user?.username || '本地用户'}
+              v{health?.version ?? '2.2.2'} · {user?.display_name || user?.username || '本地用户'}
             </p>
           </nav>
 
@@ -244,6 +247,9 @@ function SettingsDialogBody({
               )}
               {section === 'files' && <FilesSection key={refreshToken} />}
               {section === 'memory' && <MemorySection refreshToken={refreshToken} />}
+              {section === 'instructions' && (
+                <InstructionsSection refreshToken={refreshToken} />
+              )}
               {section === 'extensions' && <ExtensionsSection refreshToken={refreshToken} />}
               {section === 'system' && (
                 <SystemSection health={health} loading={healthLoading} error={healthError} />

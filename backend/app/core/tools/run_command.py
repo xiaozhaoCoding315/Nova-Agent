@@ -275,4 +275,7 @@ TOOL = ToolDefinition(
     category="execute",
     capabilities=["proc.exec", "fs.write"],
     timeout=310,
+    # A command can push, publish or mutate external state: replaying it
+    # after a transport failure would duplicate the side effect.
+    idempotent=False,
 )

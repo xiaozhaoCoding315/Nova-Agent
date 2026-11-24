@@ -405,11 +405,14 @@ export function Workbench({
 
         {turnNotice && (
           <div className="mx-auto mb-1 flex w-full max-w-4xl items-center gap-2 px-4 text-xs">
+            {turnNotice.kind.startsWith('memory_') && (
+              <Sparkles size={12} className="shrink-0 text-accent" />
+            )}
             <span className={clsx(
               'flex-1',
               turnNotice.kind === 'incomplete' || turnNotice.kind === 'interrupted'
                 ? 'text-warn'
-                : 'text-dim',
+                : turnNotice.kind.startsWith('memory_') ? 'text-accent' : 'text-dim',
             )}>
               {turnNotice.message}
             </span>

@@ -52,7 +52,9 @@ async def retrieve(
     valid_lists = [r for r in results if isinstance(r, list) and r]
     if not valid_lists:
         return []
-    fused = rrf_fuse(valid_lists, top_n=min(5, top_k))
+    # Honor the caller's requested depth; a hard cap of 5 silently starved
+    # callers (the chat loop asks for 8, evaluations ask for more).
+    fused = rrf_fuse(valid_lists, top_n=max(1, int(top_k)))
     # Indexes created before the secret filter may still contain credentials;
     # filtering here prevents leaking them until the repo is re-indexed.
     return [hit for hit in fused if not is_secret_path(hit.path)]

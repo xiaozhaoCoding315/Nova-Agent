@@ -41,6 +41,40 @@ async def test_index_embedding_is_skipped_in_local_mode(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_embedding_truncation_is_surfaced_in_stats(monkeypatch):
+    from app.core.embedding import embedder as embedder_mod
+    from app.core.indexing import pipeline
+
+    class FakeEmbedder:
+        async def embed(self, texts):
+            return [[0.1, 0.2] for _ in texts]
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(settings, "embeddings_enabled", True)
+    monkeypatch.setattr(settings, "index_embed_max_chunks", 1)
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(
+        "app.db.qdrant.upsert_points", AsyncMock(return_value=1)
+    )
+    stats: dict = {}
+    pending = [
+        (1, {"content": "a", "line_start": 1, "line_end": 1,
+             "lang": "python", "kind": "code"}, "a"),
+        (2, {"content": "b", "line_start": 2, "line_end": 2,
+             "lang": "python", "kind": "code"}, "b"),
+    ]
+
+    uploaded = await pipeline._embed_and_upload(
+        "00000000-0000-0000-0000-000000000001", 1, pending, stats=stats,
+    )
+
+    assert uploaded == 1
+    assert stats["embed_candidates"] == 2
+    assert stats["embed_limit"] == 1
+    assert stats["embed_truncated"] == 1
+
+
+@pytest.mark.asyncio
 async def test_retrieve_uses_keyword_only_in_local_mode(monkeypatch):
     called = {"dense": 0, "keyword": 0}
 

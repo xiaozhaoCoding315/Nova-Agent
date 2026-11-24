@@ -5,10 +5,12 @@ import { useChat } from './chat'
 import { useLlm } from './llm'
 import { useRepos } from './repos'
 import { clearStoredRuns, useRun } from './run'
+import { useThesis } from './thesis'
 
 function resetUserData(options: { clearRunStorage?: boolean } = {}) {
   useChat.getState().reset()
   useRepos.getState().reset()
+  useThesis.getState().reset()
   useLlm.getState().reset()
   // 运行面板不属于 chat store：必须单独停轮询并清空，否则上一个账号的任务会
   // 被下一个账号看到，失败的轮询也会在后台一直重试。

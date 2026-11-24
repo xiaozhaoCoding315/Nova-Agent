@@ -2,6 +2,9 @@
 
 一个**可自托管**的开发者 AI 工作台。不止于聊天：它会给结论附证据、算清改动影响面、在沙箱里复现 bug 并交付经过红-绿验证的补丁。
 
+> **论文模式（M0–M3 已落地）**：同一个 Nova，顶栏可切换到面向本科/研究生的毕业论文工作台。导入 DOCX，看清格式、结构与引用问题，逐条预览后决定是否修复；关联工程仓库或本机文件夹后，右侧 AI 写作助手可以读代码、梳理项目、起草章节草稿。不代写整篇论文、不降重、不做 AIGC 检测、不伪造引用，模型用你自己的。
+> 5 分钟上手见 [thesis-quickstart.md](docs/thesis-quickstart.md)，模板作者指南见 [thesis-template-guide.md](docs/thesis-template-guide.md)，设计见 [THESIS-MODE-DESIGN.md](docs/THESIS-MODE-DESIGN.md)，开发计划见 [THESIS-MODE-ROADMAP.md](docs/THESIS-MODE-ROADMAP.md)，整体产品升级路线见 [PRODUCT-UPGRADE-ROADMAP.md](docs/PRODUCT-UPGRADE-ROADMAP.md)，合成样例见 [thesis-samples/](thesis-samples/)。
+
 ## 差异化能力
 
 | 能力 | 说明 |
@@ -15,7 +18,7 @@
 | **只读 Reviewer** | 对编辑提案和红绿任务 diff 做独立审查：输出 `pass / warn / block`、blocking / non-blocking 与依据；审查员没有任何写入或执行工具。 |
 | **交付报告** | 每轮对话自动生成结构化报告：执行命令与退出码、改动文件、引用核对、未验证项、token 用量和耗时，历史消息可回看。 |
 | **交付指标** | 设置页聚合首次 Gate 通过率、返工率、审批耗时、token 用量与后台 Job p95，用数据而不是感觉衡量 Agent。 |
-| **多用户模型接入（BYOK）** | 每个用户可在设置页为 16 家厂商分别保存 API Key 与模型（智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
+| **多用户模型接入（BYOK）** | 每个用户可在设置页为 17 家厂商分别保存 API Key 与模型（Agnes AI / 智谱 GLM / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），多家凭据并存并可指定默认；预设厂商的 Base URL 固定，不能改指向他处；Anthropic 使用原生 tool use 与 prompt caching；密钥加密存储、接口只返回掩码；对话与后台任务统一走个人配置，并可按会话切换厂商 / 模型 / 推理强度 / 上下文窗口。 |
 | **按用户限额 + 个人预算** | 管理员可为每个账号单独覆盖五维限额（每日 token / 每小时消息 / 每日沙箱 / 每小时后台任务 / 存储 MB，空=跟随角色档、0=不限）；用户可在设置页给自己设「个人预算」，只会在管理员上限内进一步收紧；`/status/usage` 与管理员面板实时展示用量。 |
 | **模型路由与成本归因** | 服务端共享 Key 场景下按用途路由：`LLM_ROUTE_PLAN`（计划/审查/Builder/修复任务生成，强模型）与 `LLM_ROUTE_UTILITY`（会话/日摘要、事实抽取，小模型）；BYOK 用户的自选模型永不被覆盖；管理员面板按来源×模型聚合近 7 天 token 用量。 |
 | **技能系统（SKILL.md）** | 操作员把技能放在 `SKILLS_DIR`（默认 `data/skills/<名字>/SKILL.md`，YAML frontmatter 声明 `description` 与 `triggers`）；每轮注入技能索引，用户点名 `/技能名` 或命中触发词时注入完整手册（渐进披露）。 |
@@ -42,6 +45,42 @@
 左侧项目与会话，中间按轮次展开的对话与工具卡，右侧文件/引用/影响/变更。`/fix` 在对话内启动红-绿任务，运行面板展示步骤与 Gate；工作区从项目头或右栏以抽屉打开。模型、推理强度、上下文窗口与温度按会话切换，刷新后保留。
 
 设置只通过弹层进入；权限模式、轨迹与本机执行器入口都在对话顶栏。本地模式在左栏底部常驻显示「无容器隔离」。
+
+## 论文模式（毕业论文体检）
+
+顶栏切换「开发 / 论文」，原有开发模式不受影响。论文项目以 DOCX 为唯一事实源：本机解析、本机检查、本机修复；原文件只读，修复写入 `working.docx` 并保留版本备份，所有修改可撤销。没有 API Key 也能完成格式体检与引用 L1。
+
+右侧「AI 写作助手」常驻可用，复用开发模式的 Agent 工具、权限模式与本机执行器：关联项目后可读代码、检索实现、在授权范围内修改本地文件，并起草带 `文件路径:行号` 依据的章节草稿。论文对话按项目独立保存（`product_mode='thesis'`），不会出现在开发模式的会话列表里；切换模式不会串历史。
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| DOCX 解析与文档模型 | 可用 | 节、页边距、页面大小、标题层级、页眉页脚、页码域、参考文献与字数 |
+| 格式体检与证据卡 | 可用 | 每条问题含规则、位置、当前值、建议值、模板来源/版本、置信度 |
+| 安全修复 | 可用 | 页面大小、页边距、标题样式；预览 → 应用 → 撤销，修复后重解析并校验段落数/字数 |
+| 引用 L1（不联网） | 可用 | 数字编号 `[n]` 与作者-年份；缺条目、重复、编号不连续、首次出现顺序 |
+| 引用 L2（可选联网） | 可用（仅 DOI） | 只把 DOI 发往 Crossref，结果缓存 30 天；不发送论文正文 |
+| 引用 L3（全文证据） | 实验 | 用户自带 PDF，定位候选页码与原文；支持度由人工确认，不做自动判定 |
+| AI 使用声明 | 可用 | 本地登记工具/环节/用途/修改情况，导出声明 DOCX |
+| 定稿包 | 可用 | 修复版 DOCX + 体检报告 DOCX/HTML + 引用清单 CSV + AI 声明 + 修改记录 |
+| 项目关联与 AI 写作 | 可用 | 关联已有仓库或本机文件夹（与开发模式同一执行器/权限）；读代码、起草章节、标注 `文件路径:行号`；论文对话独立历史 |
+| 理工毕设复现 | 未包含 | 路线图中的后续阶段，需要环境锁定与沙箱产物收集 |
+
+- 上手：[docs/thesis-quickstart.md](docs/thesis-quickstart.md)
+- 模板：`thesis-templates/<slug>/template.json` + `SOURCE.md`；作者指南见 [docs/thesis-template-guide.md](docs/thesis-template-guide.md)。仓库内置的 3 个模板是**虚构演示校**，不是任何学校的官方规定；可用 `NOVA_THESIS_TEMPLATES=/path/to/templates` 指向外部模板目录。
+- 样例：`thesis-samples/` 全部为合成文本，可用 `python thesis-samples/generate_samples.py` 重新生成。
+- 边界：不代写整篇论文、不降重、不做 AIGC/查重检测、不伪造引用、不抓取知网/维普/万方；AI 生成的正文一律标注「AI 草稿，需本人核对与改写」，参考文献只能使用已导入条目；报告是本地检查结果，不是学校出具的合规证明。
+
+## 文档、简历、证据与遥控
+
+| 工作台 | 能做什么 | 边界 |
+|---|---|---|
+| 文档工作区 | Markdown 主控源、原子保存、版本回溯与 `sha256` 冲突检测；Pandoc/LibreOffice 导出 DOCX/PDF，并写保真报告 | 不核实事实；有损转换默认拒绝，需要你显式允许 |
+| 简历工作台 | 事实库、按岗位生成版本、逐条编辑事实；经典/现代/紧凑模板只改排版，不增删事实；导出 DOCX/PDF | 不编造经历、指标或技能 |
+| 证据包 | 把结论、命令输出、测试结果与环境信息打成可复核 ZIP；支持自定义 claims / environment / artifact_paths | 产物路径必须在仓库内 |
+| 遥控 / 手机工作台 | 一次性配对 + SAS；手机看脱敏进度、收完成通知、停止任务、处理中低风险审批；可发送自然语言指令，但必须先在电脑上确认 | 高风险操作只在电脑确认；不新开公网端口；手机绑定需要 HTTPS |
+| 论文阶段稿 | 七个阶段的作者确认、就绪度与失效检测；没有 DOCX 也能导出阶段稿 MD/DOCX/PDF，定稿包自动回退阶段稿 | 只整理你填写并确认过的内容，不生成未写段落 |
+
+桌面客户端的下载（仓库导出、文档/论文导出）会弹出系统保存对话框，由你选择本地目录。服务端模式则由浏览器下载目录决定。
 
 ## 多用户与数据隔离
 
@@ -139,9 +178,12 @@
 
 ### 三层记忆
 - 会话记忆：持久化消息 + 滚动摘要（每 20 条增量压缩并注入后续轮次）+ 标题自动生成
-- 日摘要：维护循环按天把跨会话对话压缩为 ≤40 行摘要，存入 `memory_daily`
-- 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重；同一事实在 ≥2 天出现后自动晋升；按语义相关度 + 重要性混合召回；访问加权、闲置衰减、TTL 清理
-- 设置页可查看/删除长期事实与日摘要
+- 日摘要：维护循环按天把跨会话对话压缩为 ≤40 行摘要，存入 `memory_daily`；按 global/dev/repo/thesis 作用域隔离，可关键词检索并在回溯性问题中注入
+- 长期记忆：对话中抽取用户偏好/事实，按用户隔离去重；同一事实在 ≥2 天出现后自动晋升；按语义相关度 + 重要性混合召回；访问加权、闲置衰减、TTL 清理；相近偏好/纠错自动替代旧值并保留版本与来源
+- 记忆索引 + `memory_search` / `memory_read` 工具：prompt 只放高价值摘要索引，完整原文按需读取；dev 会话额外注入仓库「项目大脑」（入口、热点文件、阅读顺序）
+- 人工指令分层：组织策略 → 用户指令 → 项目指令，支持 `paths:` 只在实际访问匹配文件时追加注入；关闭自动记忆仍生效，但不能覆盖安全/权限规则
+- 跨会话检索与复核：`memory_search(kind=episodic)` 检索历史消息与会话摘要；高风险、同主题冲突与夜间合并进入人工复核队列；子代理可使用独立角色记忆（`agent:<name>`），主会话不继承
+- 设置页可查看/编辑/归档事实与日摘要，配置自动记忆、保留天数、屏蔽类别/关键词与作用域覆盖，并导出 JSON/Markdown 或删除全部记忆
 
 ## 技术栈
 
@@ -150,7 +192,7 @@
 | 后端 | Python 3.12 · FastAPI · 自研 Agent 循环（无 LangChain 黑盒） |
 | 前端 | React 18 · TypeScript · Vite · TailwindCSS · Zustand · react-markdown + highlight.js |
 | 存储 | PostgreSQL 16（业务/会话/记忆/全文检索）· Qdrant（稠密向量） |
-| LLM | 默认智谱 GLM-4.7-Flash（免费）；内置 16 家厂商目录（智谱 / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），预设 Base URL 固定；每个用户可保存多家凭据并设默认，会话级可切换厂商 / 模型 / 推理强度 / 上下文窗口；真实 GLM 流式调用已验证 |
+| LLM | 默认智谱 GLM-4.7-Flash（免费）；内置 17 家厂商目录（Agnes AI / 智谱 / 百炼 / DeepSeek / OpenAI / Anthropic / Gemini / Groq / OpenRouter / Ollama / 自定义兼容端点等），预设 Base URL 固定；每个用户可保存多家凭据并设默认，会话级可切换厂商 / 模型 / 推理强度 / 上下文窗口；真实 GLM 流式调用已验证 |
 | 沙箱 | Docker（一次性容器，强隔离） |
 | 部署 | Docker Compose（app + postgres + qdrant + 沙箱镜像）· 可选 Caddy 自动 HTTPS |
 
@@ -168,7 +210,9 @@ docker compose up -d --build  # 构建并启动全部服务
 
 公开多用户部署建议设 `LLM_ALLOW_SERVER_FALLBACK=false`，强制每个用户在设置页填写自己的 API Key，未配置时不会回退到服务端 Key。
 
-启用 HTTPS（有域名时）：仓库自带 `Caddyfile`（根域名给博客、`nova.` 子域名给 Nova，改域名即可），
+启用 HTTPS（有域名时）：备案通过后直接跑 `bash deploy/enable-https.sh` 预检、再
+`--apply` 一键配置（会自动改 `.env`、重建 app、启动 Caddy，失败自动回滚）。手工方式：
+仓库自带 `Caddyfile`（根域名给博客、`nova.` 子域名给 Nova，改域名即可），
 把 `.env` 的 `TRUSTED_PROXIES` 填成本项目 docker 网段（如 `172.18.0.0/16`，支持 CIDR；
 别填 Caddy 容器 IP，容器重建就变）、`APP_BIND` 改成 `127.0.0.1`（否则 `:8000` 是绕过
 HTTPS 的明文旁路），再 `docker compose --profile https up -d`。`COOKIE_SECURE` 留空时，
@@ -225,7 +269,7 @@ python scripts\build_desktop.py        # 前端构建 + PyInstaller 后端 + NSI
 `http://<服务器>:8000/downloads` 下载：
 
 ```bash
-python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1.2.exe
+python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.2.2.exe
 ```
 
 也可推 `desktop-v*` 标签让 GitHub Actions 自动打包发布。
@@ -239,12 +283,14 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1
 
 | 变量 | 说明 |
 |---|---|
+| `AGNES_API_KEY` / `AGNES_MODEL` / `AGNES_BASE_URL` | Agnes AI 免费文本模型（OpenAI 兼容，默认 `agnes-3.0-flash`，地址 `https://api.agnes-ai.cn/v1`） |
 | `ZHIPU_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` | 服务端共享 LLM Key（用户未配置个人 Key 时使用；DashScope 同时提供 embedding） |
 | `ZHIPU_MODEL` / `ZHIPU_BASE_URL` / `DASHSCOPE_MODEL` | 服务端默认模型与智谱服务地址（智谱默认 `glm-4.7-flash`，地址 `https://open.bigmodel.cn/api/paas/v4`；DashScope 默认 `qwen3.8-max`） |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic 原生通道（tool use + prompt caching）；`ANTHROPIC_PROMPT_CACHING=true` 默认开启 |
-| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `zhipu,dashscope,deepseek,anthropic` 启用降级链 |
+| `LLM_MODEL_PRIORITY` | 服务端模型通道顺序，默认 `zhipu`；可写 `agnes,zhipu,dashscope,deepseek,anthropic` 启用降级链 |
 | `LLM_ALLOW_SERVER_FALLBACK` | `true` 允许未配置个人 Key 的用户使用服务端 Key；公开多用户部署建议 `false` |
 | `LLM_SERVER_FALLBACK_REGISTERED` | 共享 Key 是否对注册用户开放（默认 `false`：仅游客与管理员可用，注册用户必须自带 Key） |
+| `LLM_BYOK_SURFACE` | `desktop` = 网页端固定使用服务端模型，自定义厂商/Key 只在桌面客户端配置；`any`（默认）= 网页端也可自带 Key。没有服务端 Key 或本机运行时自动放开 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 管理员账号（启动时注入/更新） |
 | `DEMO_USERNAME` / `DEMO_PASSWORD` | 演示账号；多用户部署建议改用注册/游客，不共享 demo 账号 |
 | `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
@@ -314,7 +360,7 @@ python deploy/remote-deploy.py installer --file desktop/out/Nova-Agent-Setup-2.1
 | `GET /repos/{id}/export` | 导出仓库 zip（不含 .git） |
 | `GET /chat/sessions/{id}/trajectory` | 会话全链路轨迹（用户/检索/模型轮次/工具/审批） |
 | `GET /api/v1/status/health` / `usage` / `metrics?days=7` | 依赖探活 / 用量配额 / 交付指标 |
-| `GET /api/v1/settings/llm/providers` | 服务商目录（16 家，含预设 Base URL、默认模型与能力标记） |
+| `GET /api/v1/settings/llm/providers` | 服务商目录（17 家，含预设 Base URL、默认模型与能力标记） |
 | `GET /api/v1/settings/llm/credentials` · `PUT/DELETE /credentials/{provider}` · `POST /credentials/{provider}/default` | 个人凭据列表 / 保存或删除单个厂商 / 设为默认（响应只含掩码） |
 | `GET/PUT/DELETE /api/v1/settings/llm` | 当前生效配置汇总 / 保存为默认凭据 / 清空 |
 | `POST /api/v1/settings/llm/test` | 用当前或待保存配置做一次真实连通性测试 |
@@ -505,12 +551,13 @@ Node 依赖需先通过 `install_deps kind=node` 安装到仓库依赖卷；full
 
 ```bash
 cd backend && python -m pytest tests/ -q
+cd backend && python -m scripts.validate_thesis_templates
 cd frontend && npm run build
 cd frontend && npm run contract:check   # OpenAPI 与生成类型是否同步
 bash scripts/check.sh                   # 一键执行 lint + 测试 + 构建 + 契约检查
 ```
 
-- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 多厂商目录/多凭据加密/掩码/服务端回退开关、会话级模型覆盖、用户文件存储/配额/附件工具、幂等键与删除清理隔离
+- 单元测试（无需数据库）：认证/限流、注册/游客/恢复码/token 版本、Agent 循环事件协议与停止语义、工具、索引与分块、导入图解析、证据校验、ZIP 安全、SSRF 防护、熔断重试、任务队列、项目化会话、会话/日摘要、事实晋升与语义召回、交付指标、契约发现、能力权限、Hooks、密钥脱敏、预览部署/幂等/TTL、MCP allowlist/调用、Builder 契约/全栈文件校验、BYOK 多厂商目录/多凭据加密/掩码/服务端回退开关、会话级模型覆盖、用户文件存储/配额/附件工具、幂等键与删除清理隔离、论文 DOCX 解析/规则/引用 L1/L2/L3/修复/报告/模板校验
 - 契约测试（无需数据库）：`tests/test_contract.py` 校验 `contracts/openapi.json` 与运行中的应用一致
 - 集成测试（标记 `integration`，连不上 PG/Qdrant 时自动跳过）：建库建表幂等性、账号种子
 - CI：`.github/workflows/ci.yml` 执行 ruff、pytest、前端构建与 `contract:check`
@@ -543,6 +590,8 @@ cd frontend && npm run contract:check
 `contracts/openapi.json` 是提交到仓库的契约快照；`frontend/src/lib/api-schema.d.ts` 由 `openapi-typescript` 生成。修改后端响应模型后必须重新导出/生成，否则 `contract:check` 退出码 1。
 
 ## 安全说明
+
+安全问题请按 [SECURITY.md](SECURITY.md) 私密报告，不要公开贴出利用细节、密钥或真实论文。
 
 - 工具执行前经过能力策略：`readonly` 硬拦截写/执行；拒绝 `.env`、私钥、凭据文件；拒绝绝对路径与穿越；危险命令和 `git push` 在策略层直接 deny
 - 可选 pre-hook/post-hook：Hook 由运维配置，不来自模型；pre-hook 退出码 2 阻断并把 stderr 返回给 Agent；Hook 缺失或超时按失败处理（fail closed）
@@ -589,10 +638,12 @@ cd frontend && npm run contract:check
 - 部署历史记录保留在 `deployments`，重复部署由 `external_actions` 幂等键复用同一运行中的预览
 - MCP 支持 stdio（newline-delimited JSON-RPC）或 streamable HTTP；远程 SSE、OAuth、按参数级过滤尚未接入；MCP server 进程属于运维可信代码
 - 脱敏为正则启发式，可能漏掉自定义密钥格式；敏感凭据仍应只通过环境变量注入，不进入对话或工具参数
-- 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升，矛盾事实检测尚未自动化
-- 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序
+- 记忆的日摘要由 LLM 在小时级维护循环中生成；同一事实需在至少 2 天出现才晋升；相近偏好/纠错会替代旧值，夜间还会归档同作用域近重复（余弦 ≥0.96），不做 LLM 改写
+- 长期事实检索为“语义相关度 + 重要性”混合排序；Embedding 不可用时回退为重要性排序；关闭自动记忆后不再自动抽取或注入，手动管理与导出仍可用
+- 人工指令与记忆都有长度上限；`paths:` 只做 fnmatch/前缀匹配，不追踪符号链接或文件重命名；跨会话检索是关键词 + 可选向量近似，不做跨语言语义搜索
+- 高风险记忆默认进入待审核队列，正则风险分级可能漏判，最终仍需用户在复核队列确认；团队记忆 store 尚未实现（当前无 workspace/member 模型）
 - `contract:check` 需要本机 Python 与 Node 依赖；CI 已接入，黄金仓库回归需要本机 Docker/DB 手动执行
 
 ## License
 
-个人项目，供学习与演示使用。
+本项目采用 [Apache License 2.0](LICENSE)。版权与归属见 [NOTICE](NOTICE)。

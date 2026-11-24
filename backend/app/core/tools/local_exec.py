@@ -116,6 +116,7 @@ TOOL = ToolDefinition(
     category="execute",
     capabilities=["proc.exec"],
     timeout=310,
+    idempotent=False,
 )
 
 

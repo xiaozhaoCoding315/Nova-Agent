@@ -124,7 +124,7 @@ async def run_task(
                     task, "error", f"任务超时（{task.timeout_s:g}s）",
                 )
 
-        if run.error:
+        if run.error and not task.expect_error:
             return _result(run, "error", [], error=run.error)
 
         checks: list[dict] = []

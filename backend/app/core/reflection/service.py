@@ -14,6 +14,7 @@ import structlog
 
 from app.core.llm.json_call import llm_json
 from app.core.security.limits import ensure_token_budget
+from app.core.security.redaction import redact_text
 from app.db import execute, query
 
 logger = structlog.get_logger()
@@ -70,7 +71,7 @@ async def _store_lesson(
     user_id: int, repo_id: str | None, source_type: str, source_id: str,
     kind: str, content: str,
 ) -> bool:
-    content = (content or "").strip()[:LESSON_MAX_CHARS]
+    content = redact_text((content or "").strip())[:LESSON_MAX_CHARS]
     kind = kind if kind in ("practice", "mistake") else "practice"
     if len(content) < 8:
         return False

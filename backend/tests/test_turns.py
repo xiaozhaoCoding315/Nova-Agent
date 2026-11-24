@@ -375,11 +375,24 @@ async def test_run_chat_persists_partial_output_when_closed(monkeypatch):
         "R", (), {"specs": lambda self, **_kw: [], "get": lambda self, _n: None},
     )())
     monkeypatch.setattr(loop_mod, "retrieve", AsyncMock(return_value=[]))
-    monkeypatch.setattr(loop_mod.session_mod, "recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        loop_mod.session_mod, "build_history",
+        AsyncMock(return_value=loop_mod.session_mod.HistoryBundle([], 0, "", 0, 0)),
+    )
     add_message = AsyncMock(return_value=101)
     monkeypatch.setattr(loop_mod.session_mod, "add_message", add_message)
     monkeypatch.setattr(loop_mod.facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
     monkeypatch.setattr(loop_mod.facts_mod, "extract_facts_from_turn", AsyncMock())
+    monkeypatch.setattr(loop_mod.facts_mod, "build_index_rows", AsyncMock(return_value=[]))
+    from app.core.memory import instructions as instructions_mod
+
+    monkeypatch.setattr(
+        instructions_mod, "for_turn", AsyncMock(return_value=([], [])),
+    )
+    monkeypatch.setattr(
+        loop_mod.memory_policy_mod, "get_policy",
+        AsyncMock(return_value=loop_mod.memory_policy_mod.DEFAULT_POLICY),
+    )
     # Offline collaborators: the DB is not part of this unit test.
     monkeypatch.setattr(loop_mod, "trace_record", AsyncMock())
     monkeypatch.setattr(loop_mod, "ensure_token_budget", AsyncMock())

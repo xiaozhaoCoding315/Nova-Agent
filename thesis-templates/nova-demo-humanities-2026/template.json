@@ -1,0 +1,47 @@
+{
+  "id": "nova-demo-humanities-2026",
+  "name": "示例模板 A · 人文社科本科",
+  "description": "演示用模板，不对应任何真实学校；用于展示页边距、页码与结构要求。",
+  "source": "Nova 示例数据，非任何学校官方标准",
+  "version": "2026.1",
+  "degree": "undergraduate",
+  "is_sample": true,
+  "page": {
+    "size": "A4",
+    "width_cm": 21.0,
+    "height_cm": 29.7,
+    "tolerance_cm": 0.15
+  },
+  "margins": {
+    "top_cm": 2.5,
+    "bottom_cm": 2.5,
+    "left_cm": 3.0,
+    "right_cm": 2.5,
+    "tolerance_cm": 0.2
+  },
+  "headings": {
+    "max_level": 3,
+    "allow_skip": false
+  },
+  "page_number": {
+    "required": true,
+    "position": "footer"
+  },
+  "required_sections": [
+    { "key": "abstract", "label": "中文摘要", "patterns": ["摘要"] },
+    { "key": "references", "label": "参考文献", "patterns": ["参考文献", "References"] },
+    { "key": "acknowledgements", "label": "致谢", "patterns": ["致谢", "致谢辞"] }
+  ],
+  "references": {
+    "enabled": true,
+    "style": "GB/T 7714-2015",
+    "min_entries": 5,
+    "numbering_required": true,
+    "section_patterns": ["参考文献", "References"]
+  },
+  "disclosure": {
+    "title": "AI 工具使用声明",
+    "intro": "本人在本论文完成过程中使用 AI 工具的情况如下。工具仅用于辅助，不代替本人的研究与写作。",
+    "fields": ["工具名称与版本", "使用环节", "用途说明", "生成内容与修改情况"]
+  }
+}

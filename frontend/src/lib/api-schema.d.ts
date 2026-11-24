@@ -358,6 +358,26 @@ export interface paths {
         patch: operations["update_session_api_v1_chat_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/chat/sessions/{session_id}/compactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Compactions
+         * @description Auditable in-turn compaction records for one owned session.
+         */
+        get: operations["get_session_compactions_api_v1_chat_sessions__session_id__compactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/sessions/{session_id}/messages": {
         parameters: {
             query?: never;
@@ -548,6 +568,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspaces */
+        get: operations["get_workspaces_api_v1_documents_workspaces_get"];
+        put?: never;
+        /** Create Workspace */
+        post: operations["create_workspace_api_v1_documents_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get One Workspace */
+        get: operations["get_one_workspace_api_v1_documents_workspaces__workspace_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Workspace */
+        delete: operations["delete_workspace_api_v1_documents_workspaces__workspace_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Content */
+        get: operations["read_content_api_v1_documents_workspaces__workspace_id__content_get"];
+        /** Write Content */
+        put: operations["write_content_api_v1_documents_workspaces__workspace_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Workspace File
+         * @description Convert a file inside one workspace into DOCX/PDF.
+         *
+         *     The source must already be inside the workspace.  Outputs go to
+         *     ``exports/`` and a fidelity sidecar is written next to each artifact.
+         */
+        post: operations["convert_workspace_file_api_v1_documents_workspaces__workspace_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diagnostics */
+        get: operations["diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Export
+         * @description Download an export artifact.  Only files under ``exports/`` are served.
+         */
+        get: operations["download_export_api_v1_documents_workspaces__workspace_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Report
+         * @description Draft an ordinary report from requirements into a new Markdown file.
+         *
+         *     Thesis and resume workspaces are deliberately excluded: a thesis needs the
+         *     staged, author-confirmed flow (M3), and a resume may only reorganize facts.
+         */
+        post: operations["draft_report_api_v1_documents_workspaces__workspace_id__draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export */
+        post: operations["export_api_v1_documents_workspaces__workspace_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Files */
+        get: operations["list_files_api_v1_documents_workspaces__workspace_id__files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Versions */
+        get: operations["get_versions_api_v1_documents_workspaces__workspace_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/workspaces/{workspace_id}/versions/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore */
+        post: operations["restore_api_v1_documents_workspaces__workspace_id__versions__version_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downloads": {
         parameters: {
             query?: never;
@@ -653,6 +878,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compare Evidence Environments */
+        post: operations["compare_evidence_environments_api_v1_evidence_compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Evidence Packs */
+        get: operations["list_evidence_packs_api_v1_evidence_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/packs/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence Pack */
+        get: operations["get_evidence_pack_api_v1_evidence_packs__pack_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/packs/{pack_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Evidence Pack */
+        post: operations["verify_evidence_pack_api_v1_evidence_packs__pack_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/repos/{repo_id}/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build Evidence Pack */
+        post: operations["build_evidence_pack_api_v1_evidence_repos__repo_id__packs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/extensions": {
         parameters: {
             query?: never;
@@ -714,6 +1024,109 @@ export interface paths {
         };
         /** Download File */
         get: operations["download_file_api_v1_files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Github Connect */
+        post: operations["github_connect_api_v1_github_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Github Disconnect */
+        post: operations["github_disconnect_api_v1_github_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/repos/{repo_id}/prs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Pull Requests */
+        get: operations["github_pull_requests_api_v1_github_repos__repo_id__prs_get"];
+        put?: never;
+        /** Github Create Pull Request */
+        post: operations["github_create_pull_request_api_v1_github_repos__repo_id__prs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/repos/{repo_id}/prs/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Pull Request Status */
+        get: operations["github_pull_request_status_api_v1_github_repos__repo_id__prs__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/repos/{repo_id}/remote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Remote */
+        get: operations["github_remote_api_v1_github_repos__repo_id__remote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/github/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Status */
+        get: operations["github_status_api_v1_github_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -882,6 +1295,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete All Memory */
+        delete: operations["delete_all_memory_api_v1_memory_all_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory/daily/{day}": {
         parameters: {
             query?: never;
@@ -899,6 +1329,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memory/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Memory */
+        get: operations["export_memory_api_v1_memory_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Fact */
+        post: operations["create_fact_api_v1_memory_facts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memory/facts/{fact_id}": {
         parameters: {
             query?: never;
@@ -911,6 +1375,345 @@ export interface paths {
         post?: never;
         /** Delete Fact */
         delete: operations["delete_fact_api_v1_memory_facts__fact_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Fact */
+        patch: operations["update_fact_api_v1_memory_facts__fact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/memory/facts/{fact_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fact Sources */
+        get: operations["get_fact_sources_api_v1_memory_facts__fact_id__sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memory Review */
+        get: operations["list_memory_review_api_v1_memory_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/review/{review_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Memory Review */
+        post: operations["approve_memory_review_api_v1_memory_review__review_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/review/{review_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Memory Review */
+        post: operations["reject_memory_review_api_v1_memory_review__review_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Topics */
+        get: operations["get_memory_topics_api_v1_memory_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Remote Audit */
+        get: operations["remote_audit_api_v1_remote_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Command
+         * @description Verify and run one signed command from a bound device.
+         */
+        post: operations["run_command_api_v1_remote_commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Remote Config */
+        get: operations["remote_config_api_v1_remote_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_api_v1_remote_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/devices/{device_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Device */
+        post: operations["revoke_device_api_v1_remote_devices__device_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Instructions
+         * @description Pending phone instructions for the desktop to review.
+         */
+        get: operations["list_instructions_api_v1_remote_instructions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/instructions/{instruction_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Instruction
+         * @description Mark a reviewed instruction as sent into the chat or rejected.
+         *
+         *     The desktop sends the text through the normal chat path first; this endpoint
+         *     only records the outcome.  The phone never gets a second execution path.
+         */
+        post: operations["resolve_instruction_api_v1_remote_instructions__instruction_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_v1_remote_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Notifications */
+        post: operations["read_notifications_api_v1_remote_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/pair/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Pairing
+         * @description Public endpoint used by the phone; the one-time token is the proof.
+         */
+        post: operations["claim_pairing_api_v1_remote_pair_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Pairing */
+        post: operations["create_pairing_api_v1_remote_pairings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/pairings/{pair_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pairing */
+        get: operations["get_pairing_api_v1_remote_pairings__pair_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/pairings/{pair_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Pairing */
+        post: operations["confirm_pairing_api_v1_remote_pairings__pair_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/pairings/{pair_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Pairing */
+        post: operations["reject_pairing_api_v1_remote_pairings__pair_id__reject_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1491,6 +2294,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resume/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Profiles */
+        get: operations["list_profiles_api_v1_resume_profiles_get"];
+        put?: never;
+        /** Create Profile */
+        post: operations["create_profile_api_v1_resume_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["get_profile_api_v1_resume_profiles__profile_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/profiles/{profile_id}/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Facts */
+        get: operations["list_facts_api_v1_resume_profiles__profile_id__facts_get"];
+        put?: never;
+        /** Add Fact */
+        post: operations["add_fact_api_v1_resume_profiles__profile_id__facts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/profiles/{profile_id}/facts/{fact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Fact */
+        patch: operations["update_fact_api_v1_resume_profiles__profile_id__facts__fact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/resume/profiles/{profile_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions */
+        get: operations["list_versions_api_v1_resume_profiles__profile_id__versions_get"];
+        put?: never;
+        /** Create Version */
+        post: operations["create_version_api_v1_resume_profiles__profile_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resume Questions */
+        get: operations["resume_questions_api_v1_resume_questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_api_v1_resume_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/versions/{version_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Version
+         * @description Convert the rendered Markdown to DOCX/PDF.
+         *
+         *     Missing external tools return 409 with the tool diagnostics; the API never
+         *     invents a PDF or silently uploads the document to a remote converter.
+         */
+        post: operations["export_version_api_v1_resume_versions__version_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/resume/versions/{version_id}/markdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Version Markdown */
+        get: operations["download_version_markdown_api_v1_resume_versions__version_id__markdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instructions */
+        get: operations["list_instructions_api_v1_settings_instructions_get"];
+        put?: never;
+        /** Create Instruction */
+        post: operations["create_instruction_api_v1_settings_instructions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/instructions/{instruction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Instruction */
+        put: operations["update_instruction_api_v1_settings_instructions__instruction_id__put"];
+        post?: never;
+        /** Delete Instruction */
+        delete: operations["delete_instruction_api_v1_settings_instructions__instruction_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm": {
         parameters: {
             query?: never;
@@ -1590,6 +2591,24 @@ export interface paths {
         put?: never;
         /** Test Llm Settings */
         post: operations["test_llm_settings_api_v1_settings_llm_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Settings */
+        get: operations["get_memory_settings_api_v1_settings_memory_get"];
+        /** Update Memory Settings */
+        put: operations["update_memory_settings_api_v1_settings_memory_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1768,6 +2787,603 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/thesis/citations/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Thesis Citation Evidence */
+        patch: operations["update_thesis_citation_evidence_api_v1_thesis_citations_evidence__evidence_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/disclosures/{disclosure_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Thesis Disclosure */
+        delete: operations["delete_thesis_disclosure_api_v1_thesis_disclosures__disclosure_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Document */
+        get: operations["get_thesis_document_api_v1_thesis_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Thesis Issue */
+        patch: operations["update_thesis_issue_api_v1_thesis_issues__issue_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Thesis Fix */
+        post: operations["apply_thesis_fix_api_v1_thesis_issues__issue_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Thesis Fix */
+        post: operations["preview_thesis_fix_api_v1_thesis_issues__issue_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/issues/{issue_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Thesis Fix */
+        post: operations["undo_thesis_fix_api_v1_thesis_issues__issue_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Projects */
+        get: operations["get_thesis_projects_api_v1_thesis_projects_get"];
+        put?: never;
+        /** Create Thesis Project */
+        post: operations["create_thesis_project_api_v1_thesis_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Project */
+        get: operations["get_thesis_project_api_v1_thesis_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Thesis Project */
+        delete: operations["delete_thesis_project_api_v1_thesis_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Thesis Project */
+        patch: operations["update_thesis_project_api_v1_thesis_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Citations */
+        get: operations["get_thesis_citations_api_v1_thesis_projects__project_id__citations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Audit Thesis Citations */
+        post: operations["audit_thesis_citations_api_v1_thesis_projects__project_id__citations_audit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Citation Evidence */
+        get: operations["get_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/locate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Locate Thesis Citation Evidence */
+        post: operations["locate_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_locate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/citations/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Thesis Citation Metadata */
+        post: operations["verify_thesis_citation_metadata_api_v1_thesis_projects__project_id__citations_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/disclosures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Disclosures */
+        get: operations["get_thesis_disclosures_api_v1_thesis_projects__project_id__disclosures_get"];
+        put?: never;
+        /** Create Thesis Disclosure */
+        post: operations["create_thesis_disclosure_api_v1_thesis_projects__project_id__disclosures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Documents */
+        get: operations["get_thesis_documents_api_v1_thesis_projects__project_id__documents_get"];
+        put?: never;
+        /** Upload Thesis Document */
+        post: operations["upload_thesis_document_api_v1_thesis_projects__project_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Thesis Package */
+        post: operations["export_thesis_package_api_v1_thesis_projects__project_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/export-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Export Readiness */
+        get: operations["get_thesis_export_readiness_api_v1_thesis_projects__project_id__export_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/fixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Fixes */
+        get: operations["get_thesis_fixes_api_v1_thesis_projects__project_id__fixes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Issues */
+        get: operations["get_thesis_issues_api_v1_thesis_projects__project_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/manuscript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Thesis Manuscript
+         * @description Export the author's stage contents as Markdown, DOCX or PDF.
+         *
+         *     This is the 0-to-1 path: it does not need an imported DOCX.  Empty stages
+         *     are omitted; unconfirmed or stale stages require an explicit acknowledgement.
+         */
+        get: operations["export_thesis_manuscript_api_v1_thesis_projects__project_id__manuscript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/reference-pdfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Reference Pdfs */
+        get: operations["get_thesis_reference_pdfs_api_v1_thesis_projects__project_id__reference_pdfs_get"];
+        put?: never;
+        /** Upload Thesis Reference Pdf */
+        post: operations["upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Report */
+        get: operations["get_thesis_report_api_v1_thesis_projects__project_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/report/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Thesis Report */
+        get: operations["export_thesis_report_api_v1_thesis_projects__project_id__report_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Thesis Project */
+        post: operations["scan_thesis_project_api_v1_thesis_projects__project_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Stages */
+        get: operations["get_thesis_stages_api_v1_thesis_projects__project_id__stages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance Thesis Stage */
+        post: operations["advance_thesis_stage_api_v1_thesis_projects__project_id__stages_advance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Thesis Stage */
+        post: operations["confirm_thesis_stage_api_v1_thesis_projects__project_id__stages_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Thesis Stage Content */
+        post: operations["set_thesis_stage_content_api_v1_thesis_projects__project_id__stages_content_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Thesis Stage
+         * @description Draft the current stage note. The author must still save and confirm.
+         *
+         *     This is deliberately not an "export a thesis" endpoint: it produces one
+         *     stage's working text, keeps it out of the document until the author saves
+         *     it, and never marks the stage accepted.
+         */
+        post: operations["draft_thesis_stage_api_v1_thesis_projects__project_id__stages_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Thesis Stage Readiness */
+        post: operations["set_thesis_stage_readiness_api_v1_thesis_projects__project_id__stages_readiness_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/projects/{project_id}/stages/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return Thesis Stage */
+        post: operations["return_thesis_stage_api_v1_thesis_projects__project_id__stages_return_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/reference-pdfs/{pdf_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Thesis Reference Pdf */
+        delete: operations["delete_thesis_reference_pdf_api_v1_thesis_reference_pdfs__pdf_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/thesis/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thesis Templates */
+        get: operations["get_thesis_templates_api_v1_thesis_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1921,6 +3537,22 @@ export interface components {
         };
         /** Body_upload_repo_api_v1_repos_upload_post */
         Body_upload_repo_api_v1_repos_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post */
+        Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post */
+        Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post: {
             /**
              * File
              * Format: binary
@@ -2154,10 +3786,18 @@ export interface components {
             model?: string | null;
             /** Permission Mode */
             permission_mode?: ("readonly" | "ask" | "auto" | "full") | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[] | null;
             /** Session Id */
             session_id?: string | null;
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** ContractStatusOut */
         ContractStatusOut: {
@@ -2251,6 +3891,264 @@ export interface components {
             /** User Id */
             user_id: number;
         };
+        /** DocumentContentOut */
+        DocumentContentOut: {
+            /** Content */
+            content: string;
+            /** Last Known Sha */
+            last_known_sha?: string | null;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+        };
+        /** DocumentConvertIn */
+        DocumentConvertIn: {
+            /**
+             * Allow Lossy
+             * @default false
+             */
+            allow_lossy: boolean;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+            /**
+             * Profile
+             * @default report
+             * @enum {string}
+             */
+            profile: "report" | "thesis" | "resume";
+            /** Source Path */
+            source_path: string;
+            /**
+             * Target Format
+             * @default docx
+             * @enum {string}
+             */
+            target_format: "docx" | "pdf";
+        };
+        /** DocumentConvertOut */
+        DocumentConvertOut: {
+            /** Diagnostics */
+            diagnostics?: string[];
+            /** Fidelity */
+            fidelity?: {
+                [key: string]: unknown;
+            };
+            /** Fidelity Path */
+            fidelity_path?: string | null;
+            /** Output Path */
+            output_path?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** DocumentDiagnosticsOut */
+        DocumentDiagnosticsOut: {
+            /**
+             * Manuscripts
+             * @default 0
+             */
+            manuscripts: number;
+            /**
+             * Schema Version
+             * @default
+             */
+            schema_version: string;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            };
+            /** Unreadable */
+            unreadable?: string[];
+            /** Unsupported */
+            unsupported?: {
+                [key: string]: unknown;
+            };
+            /** Workspace */
+            workspace?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DocumentDraftIn */
+        DocumentDraftIn: {
+            /**
+             * Path
+             * @default manuscripts/report.md
+             */
+            path: string;
+            /** Requirements */
+            requirements: string;
+            /** Word Count */
+            word_count?: number | null;
+        };
+        /** DocumentDraftOut */
+        DocumentDraftOut: {
+            /** Content */
+            content: string;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** DocumentExportIn */
+        DocumentExportIn: {
+            /**
+             * Format
+             * @default docx
+             * @enum {string}
+             */
+            format: "docx" | "pdf";
+            /** Path */
+            path: string;
+        };
+        /** DocumentExportOut */
+        DocumentExportOut: {
+            /** Diagnostics */
+            diagnostics?: string[];
+            /** Fidelity */
+            fidelity?: {
+                [key: string]: unknown;
+            };
+            /** Filename */
+            filename?: string | null;
+            /** Format */
+            format: string;
+            /** Path */
+            path?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** DocumentFileListOut */
+        DocumentFileListOut: {
+            /** Files */
+            files?: components["schemas"]["DocumentFileOut"][];
+        };
+        /** DocumentFileOut */
+        DocumentFileOut: {
+            /** Path */
+            path: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /** DocumentRestoreIn */
+        DocumentRestoreIn: {
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Path */
+            path: string;
+        };
+        /** DocumentVersionListOut */
+        DocumentVersionListOut: {
+            /** Versions */
+            versions?: components["schemas"]["DocumentVersionOut"][];
+        };
+        /** DocumentVersionOut */
+        DocumentVersionOut: {
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Path */
+            path: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Version Id */
+            version_id: string;
+        };
+        /** DocumentWorkspaceIn */
+        DocumentWorkspaceIn: {
+            /**
+             * Kind
+             * @default report
+             * @enum {string}
+             */
+            kind: "report" | "thesis" | "resume";
+            /** Root */
+            root?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DocumentWorkspaceListOut */
+        DocumentWorkspaceListOut: {
+            /** Workspaces */
+            workspaces?: components["schemas"]["DocumentWorkspaceOut"][];
+        };
+        /** DocumentWorkspaceOut */
+        DocumentWorkspaceOut: {
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Root */
+            root?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DocumentWriteIn */
+        DocumentWriteIn: {
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Content */
+            content: string;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /** Path */
+            path: string;
+        };
+        /** DocumentWriteOut */
+        DocumentWriteOut: {
+            /**
+             * Created
+             * @default false
+             */
+            created: boolean;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            version?: components["schemas"]["DocumentVersionOut"] | null;
+        };
         /**
          * DownloadFileOut
          * @description DOWNLOADS_DIR 里的一个安装包；`url` 是可直接下载的相对路径。
@@ -2281,6 +4179,26 @@ export interface components {
              * @default
              */
             hint: string;
+        };
+        /** DraftPullRequestIn */
+        DraftPullRequestIn: {
+            /**
+             * Authorization
+             * @default
+             */
+            authorization: string;
+            /**
+             * Base
+             * @default
+             */
+            base: string;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Title */
+            title: string;
         };
         /** EditApproveOut */
         EditApproveOut: {
@@ -2376,6 +4294,35 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** EvidenceBuildIn */
+        EvidenceBuildIn: {
+            /** Artifact Paths */
+            artifact_paths?: string[];
+            /** Claims */
+            claims?: {
+                [key: string]: unknown;
+            }[];
+            /** Environment */
+            environment?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Task Id
+             * @default
+             */
+            task_id: string;
+        };
+        /** EvidenceCompareIn */
+        EvidenceCompareIn: {
+            /** Container */
+            container?: {
+                [key: string]: unknown;
+            };
+            /** Local */
+            local?: {
+                [key: string]: unknown;
+            };
+        };
         /** ExtensionServerOut */
         ExtensionServerOut: {
             /** Name */
@@ -2407,6 +4354,45 @@ export interface components {
             skills?: components["schemas"]["SkillInfoOut"][];
             /** Skills Enabled */
             skills_enabled: boolean;
+        };
+        /** FactIn */
+        FactIn: {
+            /** Category */
+            category: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /** Metrics */
+            metrics?: string[];
+            /**
+             * Status
+             * @default self_reported
+             */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** FactPatch */
+        FactPatch: {
+            /** Category */
+            category?: string | null;
+            /** Detail */
+            detail?: string | null;
+            /** Evidence */
+            evidence?: string | null;
+            /** Metrics */
+            metrics?: string[] | null;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** FileContentOut */
         FileContentOut: {
@@ -2510,6 +4496,11 @@ export interface components {
              * @default
              */
             diff: string;
+        };
+        /** GitHubConnectIn */
+        GitHubConnectIn: {
+            /** Token */
+            token: string;
         };
         /** GitRollbackOut */
         GitRollbackOut: {
@@ -2677,6 +4668,115 @@ export interface components {
              */
             signature: string;
         };
+        /** InstructionCreate */
+        InstructionCreate: {
+            /** Content */
+            content: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Level
+             * @default user
+             * @enum {string}
+             */
+            level: "org" | "user" | "project";
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Paths */
+            paths?: string[];
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             * @enum {string}
+             */
+            scope_type: "global" | "dev" | "thesis" | "repo";
+        };
+        /** InstructionOut */
+        InstructionOut: {
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "org" | "user" | "project";
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Paths */
+            paths?: string[];
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** InstructionResolveIn */
+        InstructionResolveIn: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "rejected";
+        };
+        /** InstructionUpdate */
+        InstructionUpdate: {
+            /** Content */
+            content?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Level */
+            level?: ("org" | "user" | "project") | null;
+            /** Name */
+            name?: string | null;
+            /** Paths */
+            paths?: string[] | null;
+            /** Priority */
+            priority?: number | null;
+            /** Scope Id */
+            scope_id?: string | null;
+            /** Scope Type */
+            scope_type?: ("global" | "dev" | "thesis" | "repo") | null;
+        };
         /** InviteCodeCreateRequest */
         InviteCodeCreateRequest: {
             /**
@@ -2763,6 +4863,34 @@ export interface components {
             step?: string | null;
             /** User Id */
             user_id?: number | null;
+        };
+        /** JobVersionIn */
+        JobVersionIn: {
+            /**
+             * Company
+             * @default
+             */
+            company: string;
+            /** Fact Ids */
+            fact_ids: string[];
+            /**
+             * Jd Text
+             * @default
+             */
+            jd_text: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Template
+             * @default classic
+             * @enum {string}
+             */
+            template: "classic" | "modern" | "compact";
+            /** Title */
+            title: string;
         };
         /** LlmCredentialOut */
         LlmCredentialOut: {
@@ -2919,6 +5047,11 @@ export interface components {
             allow_server_fallback: boolean;
             /** Base Url */
             base_url?: string | null;
+            /**
+             * Byok Enabled
+             * @default true
+             */
+            byok_enabled: boolean;
             /** Configured */
             configured: boolean;
             /** Context Window */
@@ -3087,13 +5220,96 @@ export interface components {
              * @default 0
              */
             message_count: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default dev
+             */
+            scope_type: string;
             /** Summary */
             summary: string;
             /** Updated At */
             updated_at?: string | null;
         };
+        /** MemoryFactCreate */
+        MemoryFactCreate: {
+            /**
+             * Category
+             * @default fact
+             * @enum {string}
+             */
+            category: "fact" | "preference" | "project" | "decision" | "correction";
+            /** Content */
+            content: string;
+            /**
+             * Importance
+             * @default 1
+             */
+            importance: number;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             * @enum {string}
+             */
+            scope_type: "global" | "dev" | "thesis" | "repo";
+            /**
+             * Topic
+             * @default
+             */
+            topic: string;
+            /**
+             * Ttl Days
+             * @default 90
+             */
+            ttl_days: number;
+        };
+        /** MemoryFactCreateOut */
+        MemoryFactCreateOut: {
+            /**
+             * Added
+             * @default true
+             */
+            added: boolean;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+        };
+        /** MemoryFactMessageOut */
+        MemoryFactMessageOut: {
+            /** Id */
+            id?: number | null;
+            /**
+             * Preview
+             * @default
+             */
+            preview: string;
+            /** Role */
+            role?: string | null;
+        };
         /** MemoryFactOut */
         MemoryFactOut: {
+            /**
+             * Category
+             * @default fact
+             * @enum {string}
+             */
+            category: "fact" | "preference" | "project" | "decision" | "correction";
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
             /** Content */
             content: string;
             /** Created At */
@@ -3107,13 +5323,97 @@ export interface components {
             importance: number;
             /** Last Used At */
             last_used_at?: string | null;
+            /** Merged Into Id */
+            merged_into_id?: number | null;
+            /**
+             * One Line
+             * @default
+             */
+            one_line: string;
             /** Promoted At */
             promoted_at?: string | null;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Source Message Id */
+            source_message_id?: number | null;
+            /** Source Session Id */
+            source_session_id?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "superseded" | "archived" | "pending";
+            /** Supersedes Id */
+            supersedes_id?: number | null;
+            /**
+             * Topic
+             * @default
+             */
+            topic: string;
             /**
              * Ttl Days
              * @default 90
              */
             ttl_days: number;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /** MemoryFactSourceOut */
+        MemoryFactSourceOut: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** MemoryFactSourcesOut */
+        MemoryFactSourcesOut: {
+            /** Content */
+            content: string;
+            /** Fact Id */
+            fact_id: number;
+            source_message?: components["schemas"]["MemoryFactMessageOut"] | null;
+            source_session?: components["schemas"]["MemoryFactSourceOut"] | null;
+            supersedes?: components["schemas"]["MemoryFactSupersedesOut"] | null;
+        };
+        /** MemoryFactSupersedesOut */
+        MemoryFactSupersedesOut: {
+            /** Content */
+            content: string;
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** MemoryFactUpdate */
+        MemoryFactUpdate: {
+            /** Category */
+            category?: ("fact" | "preference" | "project" | "decision" | "correction") | null;
+            /** Content */
+            content?: string | null;
+            /** Importance */
+            importance?: number | null;
+            /** Status */
+            status?: ("active" | "superseded" | "archived") | null;
+            /** Topic */
+            topic?: string | null;
+            /** Ttl Days */
+            ttl_days?: number | null;
         };
         /** MemoryOut */
         MemoryOut: {
@@ -3121,6 +5421,164 @@ export interface components {
             daily?: components["schemas"]["MemoryDailyOut"][];
             /** Facts */
             facts?: components["schemas"]["MemoryFactOut"][];
+        };
+        /** MemoryPurgeOut */
+        MemoryPurgeOut: {
+            /**
+             * Daily
+             * @default 0
+             */
+            daily: number;
+            /**
+             * Facts
+             * @default 0
+             */
+            facts: number;
+            /**
+             * Lessons
+             * @default 0
+             */
+            lessons: number;
+            /**
+             * Messages
+             * @default 0
+             */
+            messages: number;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+        };
+        /** MemoryReviewItemOut */
+        MemoryReviewItemOut: {
+            /**
+             * Category
+             * @default fact
+             */
+            category: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Fact Id */
+            fact_id?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "high_risk_fact" | "merge" | "conflict";
+            /**
+             * One Line
+             * @default
+             */
+            one_line: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /** Target Content */
+            target_content?: string | null;
+            /** Target Fact Id */
+            target_fact_id?: number | null;
+        };
+        /** MemorySettingsOut */
+        MemorySettingsOut: {
+            /**
+             * Auto Memory
+             * @default true
+             */
+            auto_memory: boolean;
+            /** Blocked Categories */
+            blocked_categories?: string[];
+            /** Blocked Keywords */
+            blocked_keywords?: string[];
+            /**
+             * Default Scope
+             * @default dev
+             * @enum {string}
+             */
+            default_scope: "global" | "dev";
+            /**
+             * Retention Days
+             * @default 90
+             */
+            retention_days: number;
+            /** Scope Overrides */
+            scope_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** MemorySettingsUpdate */
+        MemorySettingsUpdate: {
+            /** Auto Memory */
+            auto_memory?: boolean | null;
+            /** Blocked Categories */
+            blocked_categories?: ("fact" | "preference" | "project" | "decision" | "correction")[] | null;
+            /** Blocked Keywords */
+            blocked_keywords?: string[] | null;
+            /** Default Scope */
+            default_scope?: ("global" | "dev") | null;
+            /** Retention Days */
+            retention_days?: number | null;
+            /** Scope Overrides */
+            scope_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
+        };
+        /** MemoryTopicOut */
+        MemoryTopicOut: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Samples */
+            samples?: string[];
+            /**
+             * Scope Id
+             * @default
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @default global
+             */
+            scope_type: string;
+            /** Topic */
+            topic: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** MessageOut */
         MessageOut: {
@@ -3208,6 +5666,11 @@ export interface components {
             /** Mode */
             mode: string;
         };
+        /** NotificationsReadIn */
+        NotificationsReadIn: {
+            /** Ids */
+            ids?: string[];
+        };
         /** OkOut */
         OkOut: {
             /**
@@ -3215,6 +5678,39 @@ export interface components {
              * @default true
              */
             ok: boolean;
+        };
+        /** PairingClaimIn */
+        PairingClaimIn: {
+            /**
+             * Device Name
+             * @default 手机
+             */
+            device_name: string;
+            /** Encryption Public Key */
+            encryption_public_key?: {
+                [key: string]: unknown;
+            } | null;
+            /** Pair Id */
+            pair_id: string;
+            /** Public Key */
+            public_key: {
+                [key: string]: unknown;
+            };
+            /** Token */
+            token: string;
+        };
+        /** PairingConfirmIn */
+        PairingConfirmIn: {
+            /** Sas */
+            sas: string;
+        };
+        /** PairingCreateIn */
+        PairingCreateIn: {
+            /**
+             * Ttl Seconds
+             * @default 300
+             */
+            ttl_seconds: number;
         };
         /** PasswordChangeRequest */
         PasswordChangeRequest: {
@@ -3231,6 +5727,20 @@ export interface components {
             recovery_code: string;
             /** Username */
             username: string;
+        };
+        /** ProfileIn */
+        ProfileIn: {
+            /** Contact */
+            contact?: {
+                [key: string]: string;
+            };
+            /**
+             * Headline
+             * @default
+             */
+            headline: string;
+            /** Name */
+            name: string;
         };
         /** ProfileUpdateRequest */
         ProfileUpdateRequest: {
@@ -3434,8 +5944,16 @@ export interface components {
         /** SessionCreateRequest */
         SessionCreateRequest: {
             llm_overrides?: components["schemas"]["LlmOverrides"] | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
         };
         /** SessionOut */
         SessionOut: {
@@ -3461,8 +5979,16 @@ export interface components {
             permission_mode: string;
             /** Primary Repo Id */
             primary_repo_id?: string | null;
+            /**
+             * Product Mode
+             * @default dev
+             * @enum {string}
+             */
+            product_mode: "dev" | "thesis";
             /** Repo Ids */
             repo_ids?: string[];
+            /** Thesis Project Id */
+            thesis_project_id?: string | null;
             /** Title */
             title: string;
             /** Updated At */
@@ -3605,6 +6131,854 @@ export interface components {
             updated_at?: string | null;
             /** User Id */
             user_id: number;
+        };
+        /** ThesisApplyOut */
+        ThesisApplyOut: {
+            document: components["schemas"]["ThesisDocumentOut"];
+            fix: components["schemas"]["ThesisFixOut"];
+            issue: components["schemas"]["ThesisIssueOut"];
+            remaining_counts?: components["schemas"]["ThesisIssueCountsOut"];
+        };
+        /** ThesisCitationAuditOut */
+        ThesisCitationAuditOut: {
+            /** Citations */
+            citations?: components["schemas"]["ThesisCitationOut"][];
+            /**
+             * Document Id
+             * @default
+             */
+            document_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** In Text */
+            in_text?: {
+                [key: string]: unknown;
+            }[];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Reference Section Found
+             * @default false
+             */
+            reference_section_found: boolean;
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ThesisCitationEvidenceOut */
+        ThesisCitationEvidenceOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Method
+             * @default
+             */
+            method: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Pdf Filename
+             * @default
+             */
+            pdf_filename: string;
+            /** Pdf Id */
+            pdf_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /** Reference Index */
+            reference_index?: number | null;
+            /**
+             * Reference Raw
+             * @default
+             */
+            reference_raw: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /**
+             * Support
+             * @default needs_review
+             */
+            support: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisCitationEvidenceUpdate */
+        ThesisCitationEvidenceUpdate: {
+            /** Note */
+            note?: string | null;
+            /**
+             * Support
+             * @enum {string}
+             */
+            support: "needs_review" | "supported" | "partial" | "unsupported";
+        };
+        /** ThesisCitationOut */
+        ThesisCitationOut: {
+            /**
+             * Confidence
+             * @default medium
+             */
+            confidence: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Document Id */
+            document_id: string;
+            /**
+             * Doi
+             * @default
+             */
+            doi: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Metadata Fetched At */
+            metadata_fetched_at?: string | null;
+            /**
+             * Metadata Status
+             * @default
+             */
+            metadata_status: string;
+            /** Normalized */
+            normalized?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string;
+            /**
+             * Raw
+             * @default
+             */
+            raw: string;
+            /**
+             * Status
+             * @default unverified
+             */
+            status: string;
+        };
+        /** ThesisDisclosureCreate */
+        ThesisDisclosureCreate: {
+            /**
+             * Modified
+             * @default true
+             */
+            modified: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /**
+             * Tool
+             * @default
+             */
+            tool: string;
+            /**
+             * Tool Version
+             * @default
+             */
+            tool_version: string;
+        };
+        /** ThesisDisclosureOut */
+        ThesisDisclosureOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Modified
+             * @default true
+             */
+            modified: boolean;
+            /**
+             * Output
+             * @default
+             */
+            output: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /**
+             * Tool
+             * @default
+             */
+            tool: string;
+            /**
+             * Tool Version
+             * @default
+             */
+            tool_version: string;
+        };
+        /** ThesisDocumentDetailOut */
+        ThesisDocumentDetailOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Has Working Copy
+             * @default false
+             */
+            has_working_copy: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Mime
+             * @default application/vnd.openxmlformats-officedocument.wordprocessingml.document
+             */
+            mime: string;
+            /** Outline */
+            outline?: components["schemas"]["ThesisOutlineNode"][];
+            /** Parse Error */
+            parse_error?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @default parsed
+             */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** ThesisDocumentOut */
+        ThesisDocumentOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Has Working Copy
+             * @default false
+             */
+            has_working_copy: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Mime
+             * @default application/vnd.openxmlformats-officedocument.wordprocessingml.document
+             */
+            mime: string;
+            /** Parse Error */
+            parse_error?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @default parsed
+             */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /** ThesisEvidenceLocateOut */
+        ThesisEvidenceLocateOut: {
+            /**
+             * Document Id
+             * @default
+             */
+            document_id: string;
+            /** Evidence */
+            evidence?: components["schemas"]["ThesisCitationEvidenceOut"][];
+            /**
+             * Located At
+             * Format: date-time
+             */
+            located_at: string;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /** Pdfs */
+            pdfs?: components["schemas"]["ThesisReferencePdfOut"][];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Total References
+             * @default 0
+             */
+            total_references: number;
+        };
+        /** ThesisFixOut */
+        ThesisFixOut: {
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            };
+            /** Applied At */
+            applied_at?: string | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            };
+            /** Document Id */
+            document_id: string;
+            /**
+             * Fix Type
+             * @default
+             */
+            fix_type: string;
+            /** Id */
+            id: string;
+            /** Issue Id */
+            issue_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Rule Id
+             * @default
+             */
+            rule_id: string;
+            /** Undone At */
+            undone_at?: string | null;
+        };
+        /** ThesisFixPreviewOut */
+        ThesisFixPreviewOut: {
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            };
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            };
+            /** Fix Type */
+            fix_type: string;
+            /** Issue Id */
+            issue_id: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Verification */
+            verification?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ThesisIssueCountsOut */
+        ThesisIssueCountsOut: {
+            /**
+             * Blocker
+             * @default 0
+             */
+            blocker: number;
+            /**
+             * Info
+             * @default 0
+             */
+            info: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Warn
+             * @default 0
+             */
+            warn: number;
+        };
+        /** ThesisIssueOut */
+        ThesisIssueOut: {
+            /** Category */
+            category: string;
+            /**
+             * Confidence
+             * @default high
+             */
+            confidence: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Document Id */
+            document_id: string;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Fix Available
+             * @default false
+             */
+            fix_available: boolean;
+            /** Fix Type */
+            fix_type?: string | null;
+            /** Id */
+            id: string;
+            /** Location */
+            location?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string;
+            /** Rule Id */
+            rule_id: string;
+            /** Severity */
+            severity: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Status
+             * @default open
+             */
+            status: string;
+            /**
+             * Template Version
+             * @default
+             */
+            template_version: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisIssueUpdate */
+        ThesisIssueUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "ignored";
+        };
+        /** ThesisOutlineNode */
+        ThesisOutlineNode: {
+            /**
+             * Block Index
+             * @default 0
+             */
+            block_index: number;
+            /** Level */
+            level: number;
+            /**
+             * Style
+             * @default
+             */
+            style: string;
+            /** Text */
+            text: string;
+        };
+        /** ThesisProjectCreate */
+        ThesisProjectCreate: {
+            /**
+             * Degree
+             * @default undergraduate
+             * @enum {string}
+             */
+            degree: "undergraduate" | "master" | "doctor";
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ThesisProjectDetailOut */
+        ThesisProjectDetailOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /** Documents */
+            documents?: components["schemas"]["ThesisDocumentOut"][];
+            /** Id */
+            id: string;
+            /**
+             * Open Issue Count
+             * @default 0
+             */
+            open_issue_count: number;
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisProjectOut */
+        ThesisProjectOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /** Id */
+            id: string;
+            /**
+             * Open Issue Count
+             * @default 0
+             */
+            open_issue_count: number;
+            /**
+             * School
+             * @default
+             */
+            school: string;
+            /**
+             * Source Notes
+             * @default
+             */
+            source_notes: string;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /**
+             * Template Id
+             * @default generic-undergraduate-v1
+             */
+            template_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** ThesisProjectUpdate */
+        ThesisProjectUpdate: {
+            /** Degree */
+            degree?: ("undergraduate" | "master" | "doctor") | null;
+            /** School */
+            school?: string | null;
+            /** Source Notes */
+            source_notes?: string | null;
+            /** Source Repo Id */
+            source_repo_id?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ThesisReferencePdfOut */
+        ThesisReferencePdfOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Sha256
+             * @default
+             */
+            sha256: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+        };
+        /** ThesisReportOut */
+        ThesisReportOut: {
+            /** By Category */
+            by_category?: {
+                [key: string]: number;
+            };
+            counts?: components["schemas"]["ThesisIssueCountsOut"];
+            document?: components["schemas"]["ThesisDocumentOut"] | null;
+            /** Fixes */
+            fixes?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Issues */
+            issues?: components["schemas"]["ThesisIssueOut"][];
+            project: components["schemas"]["ThesisProjectOut"];
+            template: components["schemas"]["ThesisTemplateOut"];
+        };
+        /** ThesisScanOut */
+        ThesisScanOut: {
+            counts?: components["schemas"]["ThesisIssueCountsOut"];
+            /** Document Id */
+            document_id: string;
+            /** Issues */
+            issues?: components["schemas"]["ThesisIssueOut"][];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /** Template Id */
+            template_id: string;
+        };
+        /** ThesisStageAdvanceIn */
+        ThesisStageAdvanceIn: {
+            /** To Stage */
+            to_stage?: string | null;
+        };
+        /** ThesisStageConfirmIn */
+        ThesisStageConfirmIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** ThesisStageContentIn */
+        ThesisStageContentIn: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** ThesisStageDraftIn */
+        ThesisStageDraftIn: {
+            /**
+             * Requirements
+             * @default
+             */
+            requirements: string;
+            /** Word Count */
+            word_count?: number | null;
+        };
+        /** ThesisStageDraftOut */
+        ThesisStageDraftOut: {
+            /** Content */
+            content: string;
+            /** Label */
+            label: string;
+            /**
+             * Note
+             * @default AI 草稿，需本人核对后保存和确认
+             */
+            note: string;
+            /** Stage */
+            stage: string;
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** ThesisStageReadinessIn */
+        ThesisStageReadinessIn: {
+            /**
+             * Readiness
+             * @enum {string}
+             */
+            readiness: "not_started" | "gathering" | "needs_user" | "ready_for_review" | "accepted" | "needs_changes";
+        };
+        /** ThesisStageReturnIn */
+        ThesisStageReturnIn: {
+            /** To Stage */
+            to_stage: string;
+        };
+        /** ThesisStagesOut */
+        ThesisStagesOut: {
+            /**
+             * Current Content
+             * @default
+             */
+            current_content: string;
+            /** Events */
+            events?: {
+                [key: string]: unknown;
+            }[];
+            /** Project Id */
+            project_id: string;
+            /** State */
+            state?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ThesisTemplateOut */
+        ThesisTemplateOut: {
+            /**
+             * Degree
+             * @default undergraduate
+             */
+            degree: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /**
+             * Is Sample
+             * @default false
+             */
+            is_sample: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
         };
         /** ToolMetricOut */
         ToolMetricOut: {
@@ -3774,6 +7148,10 @@ export interface components {
             image: string;
             /** Notes */
             notes?: string[];
+            /** Report */
+            report?: {
+                [key: string]: unknown;
+            } | null;
             /** Stack */
             stack?: string | null;
             /**
@@ -3813,6 +7191,11 @@ export interface components {
             exit_code: number;
             /** Name */
             name: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /**
              * Required
              * @default true
@@ -4464,6 +7847,8 @@ export interface operations {
         parameters: {
             query?: {
                 repo_id?: string | null;
+                product_mode?: "dev" | "thesis";
+                thesis_project_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -4577,6 +7962,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_compactions_api_v1_chat_sessions__session_id__compactions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4938,6 +8354,458 @@ export interface operations {
             };
         };
     };
+    get_workspaces_api_v1_documents_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceListOut"];
+                };
+            };
+        };
+    };
+    create_workspace_api_v1_documents_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentWorkspaceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_workspace_api_v1_documents_workspaces__workspace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workspace_api_v1_documents_workspaces__workspace_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_content_api_v1_documents_workspaces__workspace_id__content_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentContentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_content_api_v1_documents_workspaces__workspace_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentWriteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWriteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_workspace_file_api_v1_documents_workspaces__workspace_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentConvertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentConvertOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diagnostics_api_v1_documents_workspaces__workspace_id__diagnostics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDiagnosticsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_documents_workspaces__workspace_id__download_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_report_api_v1_documents_workspaces__workspace_id__draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_v1_documents_workspaces__workspace_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentExportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_files_api_v1_documents_workspaces__workspace_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFileListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_versions_api_v1_documents_workspaces__workspace_id__versions_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_api_v1_documents_workspaces__workspace_id__versions__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentRestoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentWriteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_downloads_api_v1_downloads_get: {
         parameters: {
             query?: never;
@@ -5113,6 +8981,156 @@ export interface operations {
             };
         };
     };
+    compare_evidence_environments_api_v1_evidence_compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCompareIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evidence_packs_api_v1_evidence_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_evidence_pack_api_v1_evidence_packs__pack_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_evidence_pack_api_v1_evidence_packs__pack_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    build_evidence_pack_api_v1_evidence_repos__repo_id__packs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EvidenceBuildIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_extensions_api_v1_extensions_get: {
         parameters: {
             query?: never;
@@ -5256,6 +9274,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_connect_api_v1_github_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitHubConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_disconnect_api_v1_github_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    github_pull_requests_api_v1_github_repos__repo_id__prs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_create_pull_request_api_v1_github_repos__repo_id__prs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPullRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_pull_request_status_api_v1_github_repos__repo_id__prs__number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_remote_api_v1_github_repos__repo_id__remote_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_status_api_v1_github_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -5518,7 +9738,12 @@ export interface operations {
     };
     get_memory_api_v1_memory_get: {
         parameters: {
-            query?: never;
+            query?: {
+                scope_type?: string | null;
+                scope_id?: string | null;
+                status?: string | null;
+                include_inactive?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5534,11 +9759,57 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_all_memory_api_v1_memory_all_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+                scope_type?: string | null;
+                scope_id?: string;
+                include_messages?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryPurgeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     delete_daily_api_v1_memory_daily__day__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                scope_type?: string;
+                scope_id?: string;
+            };
             header?: never;
             path: {
                 day: string;
@@ -5554,6 +9825,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_memory_api_v1_memory_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+                scope_type?: string | null;
+                scope_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_fact_api_v1_memory_facts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryFactCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactCreateOut"];
                 };
             };
             /** @description Validation Error */
@@ -5585,6 +9922,631 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_fact_api_v1_memory_facts__fact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryFactUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fact_sources_api_v1_memory_facts__fact_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFactSourcesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_memory_review_api_v1_memory_review_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_memory_review_api_v1_memory_review__review_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_memory_review_api_v1_memory_review__review_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_topics_api_v1_memory_topics_get: {
+        parameters: {
+            query?: {
+                scope_type?: string | null;
+                scope_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryTopicOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remote_audit_api_v1_remote_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_command_api_v1_remote_commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remote_config_api_v1_remote_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_devices_api_v1_remote_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    revoke_device_api_v1_remote_devices__device_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instructions_api_v1_remote_instructions_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_instruction_api_v1_remote_instructions__instruction_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_remote_notifications_get: {
+        parameters: {
+            query?: {
+                unread_only?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_notifications_api_v1_remote_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationsReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_pairing_api_v1_remote_pair_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingClaimIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pairing_api_v1_remote_pairings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PairingCreateIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pairing_api_v1_remote_pairings__pair_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_pairing_api_v1_remote_pairings__pair_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_pairing_api_v1_remote_pairings__pair_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6714,6 +11676,514 @@ export interface operations {
             };
         };
     };
+    list_profiles_api_v1_resume_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_profile_api_v1_resume_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_profile_api_v1_resume_profiles__profile_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_facts_api_v1_resume_profiles__profile_id__facts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_fact_api_v1_resume_profiles__profile_id__facts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_fact_api_v1_resume_profiles__profile_id__facts__fact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+                fact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_resume_profiles__profile_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_version_api_v1_resume_profiles__profile_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobVersionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_questions_api_v1_resume_questions_get: {
+        parameters: {
+            query?: {
+                audience?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_api_v1_resume_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_version_api_v1_resume_versions__version_id__export_post: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_version_markdown_api_v1_resume_versions__version_id__markdown_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instructions_api_v1_settings_instructions_get: {
+        parameters: {
+            query?: {
+                level?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_instruction_api_v1_settings_instructions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_instruction_api_v1_settings_instructions__instruction_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstructionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_instruction_api_v1_settings_instructions__instruction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instruction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_llm_settings_api_v1_settings_llm_get: {
         parameters: {
             query?: never;
@@ -6944,6 +12414,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_settings_api_v1_settings_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsOut"];
+                };
+            };
+        };
+    };
+    update_memory_settings_api_v1_settings_memory_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemorySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsOut"];
                 };
             };
             /** @description Validation Error */
@@ -7274,6 +12797,1285 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_citation_evidence_api_v1_thesis_citations_evidence__evidence_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisCitationEvidenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationEvidenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_disclosure_api_v1_thesis_disclosures__disclosure_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                disclosure_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_document_api_v1_thesis_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_issue_api_v1_thesis_issues__issue_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisIssueUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisIssueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_thesis_fix_api_v1_thesis_issues__issue_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisApplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_thesis_fix_api_v1_thesis_issues__issue_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisFixPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_thesis_fix_api_v1_thesis_issues__issue_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisApplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_projects_api_v1_thesis_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"][];
+                };
+            };
+        };
+    };
+    create_thesis_project_api_v1_thesis_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_project_api_v1_thesis_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_project_api_v1_thesis_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thesis_project_api_v1_thesis_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_citations_api_v1_thesis_projects__project_id__citations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_thesis_citations_api_v1_thesis_projects__project_id__citations_audit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationEvidenceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    locate_thesis_citation_evidence_api_v1_thesis_projects__project_id__citations_locate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisEvidenceLocateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_thesis_citation_metadata_api_v1_thesis_projects__project_id__citations_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisCitationAuditOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_disclosures_api_v1_thesis_projects__project_id__disclosures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDisclosureOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_thesis_disclosure_api_v1_thesis_projects__project_id__disclosures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisDisclosureCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDisclosureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_documents_api_v1_thesis_projects__project_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_thesis_document_api_v1_thesis_projects__project_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisDocumentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_package_api_v1_thesis_projects__project_id__export_post: {
+        parameters: {
+            query?: {
+                allow_unconfirmed?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_export_readiness_api_v1_thesis_projects__project_id__export_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_fixes_api_v1_thesis_projects__project_id__fixes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisFixOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_issues_api_v1_thesis_projects__project_id__issues_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisIssueOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_manuscript_api_v1_thesis_projects__project_id__manuscript_get: {
+        parameters: {
+            query?: {
+                format?: string;
+                allow_unconfirmed?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_reference_pdfs_api_v1_thesis_projects__project_id__reference_pdfs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReferencePdfOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReferencePdfOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_report_api_v1_thesis_projects__project_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_thesis_report_api_v1_thesis_projects__project_id__report_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_thesis_project_api_v1_thesis_projects__project_id__scan_post: {
+        parameters: {
+            query?: {
+                template_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisScanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_stages_api_v1_thesis_projects__project_id__stages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_thesis_stage_api_v1_thesis_projects__project_id__stages_advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageAdvanceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_thesis_stage_api_v1_thesis_projects__project_id__stages_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_thesis_stage_content_api_v1_thesis_projects__project_id__stages_content_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageContentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_thesis_stage_api_v1_thesis_projects__project_id__stages_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStageDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_thesis_stage_readiness_api_v1_thesis_projects__project_id__stages_readiness_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageReadinessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    return_thesis_stage_api_v1_thesis_projects__project_id__stages_return_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisStageReturnIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisStagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thesis_reference_pdf_api_v1_thesis_reference_pdfs__pdf_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pdf_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thesis_templates_api_v1_thesis_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisTemplateOut"][];
                 };
             };
         };

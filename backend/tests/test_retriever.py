@@ -64,6 +64,22 @@ async def test_retrieve_returns_empty_when_all_legs_fail():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_honors_requested_top_k(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(settings, "embeddings_enabled", True)
+    dense = [_chunk(str(i), f"dense {i}", "dense") for i in range(8)]
+    keyword = [_chunk(str(i), f"keyword {i}", "keyword") for i in range(8)]
+
+    with patch("app.core.rag.retriever.dense_search", new=AsyncMock(return_value=dense)), \
+         patch("app.core.rag.retriever.keyword_search", new=AsyncMock(return_value=keyword)):
+        result = await retrieve("anything", top_k=8, repo_ids=["repo-1"])
+
+    assert len(result) == 8
+
+
+@pytest.mark.asyncio
 async def test_retrieve_fails_closed_without_authorized_repos():
     dense = AsyncMock(return_value=[_chunk("1", "leak", "dense")])
     keyword = AsyncMock(return_value=[_chunk("2", "leak", "keyword")])

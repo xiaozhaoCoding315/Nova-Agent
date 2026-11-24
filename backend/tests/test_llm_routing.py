@@ -4,6 +4,7 @@ import pytest
 from app.config import settings
 from app.core.llm import factory as factory_mod
 from app.core.llm.factory import OpenAICompatibleLLM, _server_llm, get_llm, route_model_for
+from app.core.llm.fallback import FallbackLLM
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +39,33 @@ def test_server_llm_without_override_keeps_fallback_chain():
         assert isinstance(llm, FallbackLLM)
     finally:
         monkey.undo()
+
+
+def test_agnes_can_be_the_shared_server_provider(monkeypatch):
+    from app.core.llm.factory import server_default_model
+
+    monkeypatch.setattr(settings, "llm_model_priority", "agnes,dashscope")
+    monkeypatch.setattr(settings, "dashscope_api_key", "")
+    monkeypatch.setattr(settings, "agnes_api_key", "sk-agnes")
+    monkeypatch.setattr(settings, "agnes_base_url", "https://api.agnes-ai.cn/v1")
+    monkeypatch.setattr(settings, "agnes_model", "agnes-3.0-flash")
+
+    llm = _server_llm()
+    # A single provider is still wrapped so vision detection and failover
+    # behave the same way for every server-key configuration.
+    assert isinstance(llm, FallbackLLM)
+    assert [getattr(p, "model", "") for p in llm.providers] == ["agnes-3.0-flash"]
+    assert server_default_model() == "agnes-3.0-flash"
+
+
+def test_agnes_model_override_uses_single_provider(monkeypatch):
+    monkeypatch.setattr(settings, "llm_model_priority", "agnes")
+    monkeypatch.setattr(settings, "agnes_api_key", "sk-agnes")
+    monkeypatch.setattr(settings, "agnes_base_url", "https://api.agnes-ai.cn/v1")
+
+    llm = _server_llm(model_override="agnes-3.0-pro")
+    assert isinstance(llm, OpenAICompatibleLLM)
+    assert llm.model == "agnes-3.0-pro"
 
 
 @pytest.mark.asyncio

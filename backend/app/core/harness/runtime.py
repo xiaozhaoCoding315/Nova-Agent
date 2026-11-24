@@ -12,11 +12,13 @@ async def execute_with_harness(
     func: Callable,
     *args,
     context: str = "operation",
-    timeout: int = None,
+    timeout: int | None = None,
     use_retry: bool = True,
     use_circuit: bool = True,
-    fallback: Callable = None,
+    fallback: Callable | None = None,
     propagate: tuple = (),
+    scope: str | None = None,
+    max_retries: int | None = None,
     **kwargs
 ) -> Any:
     """
@@ -29,26 +31,41 @@ async def execute_with_harness(
     ``propagate`` lists exception types that must surface to the caller with
     their original message (e.g. business validation errors) instead of being
     swallowed by the fallback.
+
+    ``timeout`` bounds the **whole** retry sequence, not each attempt: with
+    ``timeout=300`` and 3 retries the total wall clock stays under 300s.
+
+    ``scope`` separates breaker state per caller (a user id, a provider id).
+    Without it one user's outage would reject the same tool for everyone.
+
+    ``max_retries`` overrides ``RETRY.max_retries`` for this call.
     """
     breaker_name = context.replace(" ", "_")
 
-    async def _wrapped():
-        if use_circuit:
-            breaker = get_breaker(breaker_name)
-            return await breaker.call(
-                func, *args, ignore_exceptions=propagate, **kwargs
-            )
+    async def _attempt():
         return await func(*args, **kwargs)
 
     async def _with_retry():
         if use_retry:
-            return await retry_with_backoff(_wrapped, context=context)
-        return await _wrapped()
+            return await retry_with_backoff(
+                _attempt, context=context, max_retries=max_retries,
+            )
+        return await _attempt()
+
+    async def _with_circuit():
+        # The breaker sits *outside* the retry loop on purpose: one user-visible
+        # call is one outcome, so a call that used all its retries still counts
+        # as a single failure.  Half-open also holds one probe slot for the
+        # whole retry sequence instead of letting every attempt race in.
+        if use_circuit:
+            breaker = get_breaker(breaker_name, scope)
+            return await breaker.call(_with_retry, ignore_exceptions=propagate)
+        return await _with_retry()
 
     try:
         if timeout:
-            return await with_timeout(_with_retry(), timeout=timeout, context=context)
-        return await _with_retry()
+            return await with_timeout(_with_circuit(), timeout=timeout, context=context)
+        return await _with_circuit()
     except Exception as e:
         if propagate and isinstance(e, propagate):
             raise

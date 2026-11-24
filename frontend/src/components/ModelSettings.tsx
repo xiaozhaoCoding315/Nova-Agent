@@ -166,6 +166,59 @@ export function ModelSettings({
     )
   }
 
+  // 服务端统一模型：本界面不提供自定义 Key，切换模型要去桌面客户端。
+  if (settings.byok_enabled === false) {
+    return (
+      <div className="space-y-4">
+        <section className="rounded-xl border border-edge bg-panel p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accentSoft/50 text-accent">
+              <Server size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-base font-medium text-ink">本服务使用统一模型</p>
+                <Badge tone={settings.source === 'server' ? 'ok' : 'err'}>
+                  {settings.source === 'server' ? '共享' : '未配置'}
+                </Badge>
+              </div>
+              <p className="mt-1 break-all font-mono text-sm text-dim">
+                {settings.source === 'server'
+                  ? settings.server_model ?? '服务端默认模型'
+                  : '服务端尚未配置可用模型，请联系管理员'}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-dim/80">
+                对话直接使用部署者提供的模型，无需填写 API Key，也不消耗你的额度。
+                同一服务下的会话都使用这个模型，以保证行为一致。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-edge bg-panel p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised text-dim">
+              <KeyRound size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-medium text-ink">想换模型或用自己的 Key？</p>
+              <p className="mt-1 text-xs leading-relaxed text-dim">
+                下载桌面客户端并在「在本机运行」模式下使用，即可配置任意厂商、模型与上下文窗口；
+                配置只保存在你自己的电脑上。连接本服务器时仍使用服务端统一模型。
+              </p>
+              <a
+                href="/downloads"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised px-2.5 py-1.5 text-sm text-ink transition-colors hover:border-accent/40"
+              >
+                下载桌面客户端
+              </a>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   const sourceUser = settings.source === 'user'
 
   return (

@@ -1,0 +1,36 @@
+# Keep the app image build context small; the 2G ECS builds this on every
+# deploy and does not have room to upload the whole repository each time.
+.git
+.github
+.claude
+.superpowers
+.env
+.env.*
+!.env.docker.example
+
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.venv
+**/node_modules
+**/dist
+**/release
+**/build
+**/coverage
+**/*.log
+
+data
+backend/data
+backend/logs
+backend/tests
+backend/evals
+desktop
+samples
+thesis-samples
+docs
+*.md
+!README.md
+!LICENSE
+!NOTICE

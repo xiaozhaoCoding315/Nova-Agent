@@ -22,7 +22,13 @@ from app.core.indexing import symbols as symbols_mod
 from app.core.jobs import service as jobs_service
 from app.core.llm import factory as llm_factory_mod
 from app.core.llm import usage as usage_mod
+from app.core.memory import brain as brain_mod
+from app.core.memory import compaction as compaction_mod
+from app.core.memory import daily as daily_mod
+from app.core.memory import episodic as episodic_mod
 from app.core.memory import facts as facts_mod
+from app.core.memory import instructions as instructions_mod
+from app.core.memory import policy as policy_mod
 from app.core.memory import session as session_mod
 from app.core.rag import retriever as retriever_mod
 from app.core.security import audit as audit_mod
@@ -281,10 +287,47 @@ class InProcessHarness:
             session_mod, "recent_messages",
             AsyncMock(return_value=copy.deepcopy(self.history)),
         )
+        self._patch(
+            session_mod, "build_history",
+            AsyncMock(return_value=session_mod.HistoryBundle(
+                messages=copy.deepcopy(self.history),
+                omitted=0,
+                summary="",
+                upto_id=0,
+                summarized=0,
+            )),
+        )
         self._patch(session_mod, "add_message", AsyncMock(return_value=1))
         self._patch(session_mod, "count_messages_since", AsyncMock(return_value=0))
+        # No database in scripted evals; the plan overlay reads from it.
+        self._patch(
+            session_mod, "latest_plan",
+            AsyncMock(return_value=copy.deepcopy(self.task.prior_plan)),
+        )
         self._patch(facts_mod, "get_relevant_facts", AsyncMock(return_value=[]))
+        self._patch(facts_mod, "build_index_rows", AsyncMock(return_value=[]))
         self._patch(facts_mod, "extract_facts_from_turn", AsyncMock(return_value=0))
+        self._patch(daily_mod, "recent_daily", AsyncMock(return_value=[]))
+        self._patch(
+            episodic_mod, "recent_session_summaries", AsyncMock(return_value=[]),
+        )
+        self._patch(
+            instructions_mod, "for_turn", AsyncMock(return_value=([], [])),
+        )
+        self._patch(
+            policy_mod, "get_policy",
+            AsyncMock(return_value=policy_mod.DEFAULT_POLICY),
+        )
+        self._patch(
+            brain_mod, "build_repo_brain_block", AsyncMock(return_value=""),
+        )
+        self._patch(
+            compaction_mod, "latest_compaction", AsyncMock(return_value="")
+        )
+        self._patch(
+            compaction_mod, "summarize_for_compaction", AsyncMock(return_value="")
+        )
+        self._patch(compaction_mod, "record_compaction", AsyncMock(return_value=None))
         self._patch(loop_mod, "log_audit", fake_log_audit)
         self._patch(loop_mod, "trace_record", fake_trace_record)
         self._patch(loop_mod, "_record_usage", AsyncMock())

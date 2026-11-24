@@ -229,8 +229,13 @@ async def _insert_chunks(repo_id: str, file_id: int, chunks: list[dict]) -> list
 
 
 async def _embed_and_upload(
-    repo_id: str, user_id: int, pending: list[tuple[int, dict, str]]
+    repo_id: str, user_id: int, pending: list[tuple[int, dict, str]],
+    stats: dict | None = None,
 ) -> int:
+    if stats is not None:
+        stats["embed_limit"] = int(settings.index_embed_max_chunks)
+        stats["embed_candidates"] = len(pending)
+        stats["embed_truncated"] = 0
     if not pending or not settings.use_embeddings:
         return 0
     try:
@@ -244,6 +249,16 @@ async def _embed_and_upload(
     from app.db.qdrant import upsert_points
 
     cap = pending[: settings.index_embed_max_chunks]
+    if stats is not None:
+        stats["embed_truncated"] = max(0, len(pending) - len(cap))
+    if len(pending) > len(cap):
+        # Keyword search still covers these chunks, but semantic search does
+        # not.  Persist the shortfall so the UI can say "ready (partial)"
+        # instead of implying full semantic coverage.
+        logger.warning(
+            "index_embedding_truncated", repo_id=repo_id,
+            candidates=len(pending), limit=len(cap),
+        )
     uploaded = 0
     for i in range(0, len(cap), EMBED_BATCH):
         batch = cap[i:i + EMBED_BATCH]
@@ -456,7 +471,9 @@ async def index_repo(repo_id: str, ctx=None, force: bool = False) -> None:
         if ctx:
             await ctx.check_cancel()
             await ctx.update(progress=0.65, step="生成向量索引")
-        stats["embedded"] = await _embed_and_upload(repo_id, repo["user_id"], pending)
+        stats["embedded"] = await _embed_and_upload(
+            repo_id, repo["user_id"], pending, stats=stats,
+        )
         stats["dependencies"] = len(resolved_deps)
 
         totals = await query(

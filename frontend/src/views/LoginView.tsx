@@ -3,8 +3,12 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AuthPanel, type AuthMode } from '../components/AuthPanel'
-import { HeroComposer } from '../components/HeroComposer'
 import { IcpNotice } from '../components/IcpNotice'
+import { ModePreview } from '../landing/ModePreview'
+import {
+  CapabilityLedger, DeliveryWorkflows, ModeSplit, RemoteControl,
+  ThesisWorkflow, TrustSection,
+} from '../landing/sections'
 import { StatusDot } from '../components/common'
 import { api, ApiError } from '../lib/api'
 import { useFocusTrap } from '../lib/focus'
@@ -13,19 +17,24 @@ import { useAuth } from '../stores/auth'
 
 const PROOFS = [
   {
-    label: 'REFERENCE',
+    label: '引用核验',
     value: 'src/api/orders.py:41',
     text: '每一条「文件: 行号」引用都会核验；不存在的引用直接标红。',
   },
   {
-    label: 'EXECUTION',
+    label: '真实执行',
     value: 'exit 0 · 8 passed',
     text: '命令在沙箱或本机真实执行，输出与退出码都能回看。',
   },
   {
-    label: 'APPROVAL',
+    label: '人工批准',
     value: '+12 −3 · 待批准',
     text: '补丁先展示 diff，由你批准后才写入项目。',
+  },
+  {
+    label: '手机指令',
+    value: '待确认 · 1 条',
+    text: '手机发来的自然语言先进入队列，电脑确认后才作为普通消息执行。',
   },
 ]
 
@@ -133,7 +142,7 @@ function RunMode({
       <div className="flex items-center gap-2">
         <Icon size={14} className="text-accent" />
         <span className="font-mono text-2xs uppercase tracking-[0.16em] text-faint">
-          {kind === 'desktop' ? 'desktop client' : 'self-hosted'}
+          {kind === 'desktop' ? '桌面客户端' : '自托管服务器'}
         </span>
       </div>
       <h3 className="mt-3 text-lg font-semibold text-ink">{title}</h3>
@@ -168,6 +177,7 @@ export function LoginView() {
   const [healthFailed, setHealthFailed] = useState(false)
 
   useEffect(() => {
+    document.title = 'Nova Agent — 可验证的工程 Agent'
     void loadConfig()
   }, [loadConfig])
 
@@ -260,9 +270,10 @@ export function LoginView() {
         </a>
 
         <nav className="ml-6 hidden items-center gap-5 text-xs text-dim md:flex" aria-label="页面导航">
-          <a className="transition-colors hover:text-ink" href="#proof">证据</a>
-          <a className="transition-colors hover:text-ink" href="#ledger">账本</a>
-          <a className="transition-colors hover:text-ink" href="#run-modes">运行方式</a>
+          <a className="transition-colors hover:text-ink" href="#modes">两种模式</a>
+          <a className="transition-colors hover:text-ink" href="#capabilities">能力</a>
+          <a className="transition-colors hover:text-ink" href="#delivery">交付</a>
+          <a className="transition-colors hover:text-ink" href="#remote">手机遥控</a>
           <a className="transition-colors hover:text-ink" href="#download">下载</a>
         </nav>
 
@@ -281,6 +292,12 @@ export function LoginView() {
               游客试用
             </button>
           )}
+          <a
+            href="/guide"
+            className="rounded-md px-2 py-1.5 text-sm text-dim transition-colors hover:text-ink"
+          >
+            文档
+          </a>
           <button
             onClick={() => openAuth('login')}
             className="rounded-md border border-edge px-3 py-1.5 text-sm text-ink transition-colors duration-150 hover:border-accent/40"
@@ -296,20 +313,20 @@ export function LoginView() {
       <main className="relative z-10 mx-auto w-full max-w-6xl px-5 md:px-8">
         <section className="grid gap-10 pb-16 pt-10 md:pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-14">
           <div className="min-w-0">
-            <p className="flex items-center gap-2 font-mono text-2xs uppercase tracking-[0.18em] text-dim">
-              <span className="h-px w-6 bg-accent/60" aria-hidden="true" />
-              self-hosted engineering agent
+            <p className="font-mono text-2xs tracking-[0.08em] text-dim">
+              自托管 · BYOK · Apache-2.0
             </p>
 
             <h1 className="mt-5 text-3xl font-semibold leading-[1.2] tracking-tight text-ink sm:text-4xl sm:leading-[1.15] lg:text-5xl">
-              每个结论，
+              让每一个结论，
               <br />
-              都能回到<span className="text-accent">那一行代码</span>。
+              都能<span className="text-accent">有据可查</span>。
             </h1>
 
             <p className="mt-5 max-w-lg text-md leading-7 text-dim">
-              Nova Agent 在你的项目里读写文件、运行测试、核对引用。
-              它不做没有证据的断言，也不把未验证的补丁交给你。
+              Nova Agent 是可自托管的工程 Agent。读代码、跑测试、核对引用，
+              从选题推进论文阶段稿，也能整理文档、简历与证据包；
+              手机发指令，电脑做决定。
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -331,22 +348,34 @@ export function LoginView() {
               )}
             </div>
 
-            <p className="mt-4 font-mono text-2xs leading-5 text-faint">
-              Windows 安装包 · 本机运行或连接服务器 · 无遥测
+            <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs leading-5 text-faint">
+              <span>Windows 安装包 v{health?.version ?? '2.2.2'}</span>
+              <span aria-hidden="true">·</span>
+              <span>本机运行或连接服务器</span>
+              <span aria-hidden="true">·</span>
+              <span>手机遥控</span>
+              <span aria-hidden="true">·</span>
+              <span>无遥测</span>
+              <a
+                href="/guide"
+                className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+              >
+                使用文档
+              </a>
             </p>
             {guestError && (
               <p className="mt-3 text-sm text-err" role="alert">{guestError}</p>
             )}
           </div>
 
-          <HeroComposer onStart={() => openAuth('login')} />
+          <ModePreview onStart={() => openAuth('login')} />
         </section>
 
         <section id="proof" className="border-y border-edge/60" aria-label="证据链">
-          <div className="grid divide-y divide-edge/60 md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="grid divide-y divide-edge/60 md:grid-cols-4 md:divide-x md:divide-y-0">
             {PROOFS.map((proof) => (
               <div key={proof.label} className="py-6 md:px-6 md:first:pl-0 md:last:pr-0">
-                <p className="font-mono text-2xs uppercase tracking-[0.16em] text-faint">{proof.label}</p>
+                <p className="font-mono text-2xs tracking-[0.08em] text-faint">{proof.label}</p>
                 <p className="mt-2 font-mono text-sm text-ink">{proof.value}</p>
                 <p className="mt-1.5 text-xs leading-5 text-dim">{proof.text}</p>
               </div>
@@ -354,9 +383,15 @@ export function LoginView() {
           </div>
         </section>
 
+        <ModeSplit />
+
+        <DeliveryWorkflows />
+
+        <CapabilityLedger />
+
         <section id="ledger" className="grid gap-8 py-16 md:py-20 lg:grid-cols-[0.85fr_1.15fr] lg:items-start lg:gap-14">
           <div className="min-w-0">
-            <p className="font-mono text-2xs uppercase tracking-[0.18em] text-faint">one run</p>
+            <p className="font-mono text-2xs tracking-[0.08em] text-faint">一次回合</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink md:text-3xl">
               一次会话留下的，是一条可复查的账本。
             </h2>
@@ -380,10 +415,16 @@ export function LoginView() {
           <RunLedger />
         </section>
 
-        <section id="run-modes" className="py-16 md:py-20">
+        <ThesisWorkflow />
+
+        <RemoteControl />
+
+        <TrustSection />
+
+        <section id="run-modes" className="border-t border-edge/60 py-16 md:py-20">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="font-mono text-2xs uppercase tracking-[0.18em] text-faint">run modes</p>
+              <p className="font-mono text-2xs tracking-[0.08em] text-faint">部署方式</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink md:text-3xl">
                 把你的环境，变成工作台。
               </h2>
@@ -424,13 +465,22 @@ export function LoginView() {
         <section id="download" className="mb-16 rounded-xl border border-edge bg-panel/50 px-5 py-7 md:px-8 md:py-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
-              <p className="font-mono text-2xs uppercase tracking-[0.18em] text-faint">get started</p>
+              <p className="font-mono text-2xs tracking-[0.08em] text-faint">开始使用</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink md:text-2xl">
                 把 Nova 放到你自己的环境里。
               </h2>
               <p className="mt-1.5 text-sm leading-6 text-dim">
                 桌面客户端，或者一条 docker compose 命令。没有云端账号，没有数据托管。
               </p>
+              <code className="mt-3 inline-block max-w-full overflow-x-auto rounded-sm border border-edge bg-base/70 px-2.5 py-1.5 font-mono text-2xs text-dim">
+                cp .env.docker.example .env && docker compose up -d --build
+              </code>
+              <a
+                href="/guide"
+                className="mt-2 block text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+              >
+                阅读使用文档
+              </a>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
               <a href="/downloads" className={primaryAction}>
@@ -453,9 +503,10 @@ export function LoginView() {
             {healthLabel}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono">v{health?.version ?? '2.2.1'}</span>
+          <span className="font-mono">v{health?.version ?? '2.2.2'}</span>
           <span aria-hidden="true">·</span>
           <span>无遥测</span>
+          <a href="/guide" className="transition-colors hover:text-ink">使用文档</a>
           <span className="ml-auto hidden items-center gap-2 font-mono uppercase tracking-[0.16em] md:flex">
             <IcpNotice className="normal-case tracking-normal text-dim hover:text-ink" />
             Nova Agent / evidence-first

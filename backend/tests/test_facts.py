@@ -1,4 +1,5 @@
 """Long-term facts must be deduplicated per user, not globally."""
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,13 +25,47 @@ async def test_add_fact_dedup_and_insert_are_user_scoped(monkeypatch):
     assert await facts_mod.add_fact(7, "偏好 FastAPI") is True
 
     dedup_sql, dedup_params = query.await_args_list[0].args
-    assert "user_id = %s AND hash = %s" in dedup_sql
-    assert dedup_params == (7, facts_mod._content_hash("偏好 FastAPI"))
+    assert "user_id = %s AND scope_type = %s" in dedup_sql
+    assert dedup_params == (7, "global", "", facts_mod._content_hash("偏好 FastAPI"))
 
     insert_sql, insert_params = execute.await_args_list[0].args
-    assert "ON CONFLICT (user_id, hash)" in insert_sql
+    assert "ON CONFLICT (user_id, scope_type, scope_id, hash)" in insert_sql
     assert insert_params[0] == 7
     assert "INSERT INTO fact_days" in execute.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_add_fact_serializes_writers_in_same_scope(monkeypatch):
+    active = 0
+    max_active = 0
+
+    async def fake_locked(*args, **kwargs):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return True
+
+    monkeypatch.setattr(facts_mod, "_add_fact_locked", fake_locked)
+    results = await asyncio.gather(*[
+        facts_mod.add_fact(7, f"记忆内容 {index}", scope_type="dev")
+        for index in range(5)
+    ])
+
+    assert all(results)
+    assert max_active == 1
+
+
+def test_write_lock_is_shared_per_scope_only():
+    first = facts_mod._write_lock(1, "dev", "a")
+    same = facts_mod._write_lock(1, "dev", "a")
+    other_scope = facts_mod._write_lock(1, "dev", "b")
+    other_user = facts_mod._write_lock(2, "dev", "a")
+
+    assert first is same
+    assert first is not other_scope
+    assert first is not other_user
 
 
 @pytest.mark.asyncio
@@ -43,8 +78,10 @@ async def test_existing_fact_updates_only_its_owner(monkeypatch):
     assert await facts_mod.add_fact(9, "偏好 FastAPI") is False
 
     update_sql, update_params = execute.await_args_list[0].args
-    assert "WHERE user_id = %s AND hash = %s" in update_sql
-    assert update_params == (9, facts_mod._content_hash("偏好 FastAPI"))
+    assert "WHERE user_id = %s AND scope_type = %s" in update_sql
+    assert update_params == (
+        9, "global", "", facts_mod._content_hash("偏好 FastAPI"),
+    )
     assert "INSERT INTO fact_days" in execute.await_args_list[1].args[0]
 
 
@@ -68,6 +105,28 @@ async def test_relevant_facts_blend_semantics_and_importance(monkeypatch):
 
     assert facts == ["偏好 FastAPI", "使用 Java 后端"]
     assert "UPDATE facts SET last_used_at" in execute.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_relevant_facts_use_pgvector_candidates_when_available(monkeypatch):
+    rows = [
+        (1, "使用 Java", [0.0, 1.0], 1.0),
+        (2, "使用 FastAPI", [1.0, 0.0], 1.0),
+    ]
+    query = AsyncMock(return_value=rows)
+    monkeypatch.setattr(facts_mod, "query", query)
+    monkeypatch.setattr(facts_mod, "execute", AsyncMock())
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: QueryEmbedder())
+    rank = AsyncMock(return_value=[2, 1])
+    monkeypatch.setattr(facts_mod.vector_store, "rank_fact_ids", rank)
+
+    facts = await facts_mod.get_relevant_facts(1, "FastAPI 项目", limit=2)
+
+    assert facts == ["使用 FastAPI", "使用 Java"]
+    rank.assert_awaited_once()
+    sql, params = query.await_args.args
+    assert "id IN" in sql
+    assert params == (1, 2, 1)
 
 
 @pytest.mark.asyncio

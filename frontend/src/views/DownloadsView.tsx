@@ -22,7 +22,7 @@ const STEPS = [
   {
     no: '03',
     title: '填入服务器地址',
-    text: '连服务器时填写形如 http://<服务器IP>:8000 的地址，然后用在网页端注册的同一套账号登录。',
+    text: '连服务器时填写部署者给你的地址（启用 HTTPS 后是 https://<域名>，未启用时是 http://<服务器IP>:8000），然后用在网页端注册的同一套账号登录。',
   },
 ]
 
@@ -87,6 +87,7 @@ export function DownloadsView() {
   }
 
   useEffect(() => {
+    document.title = '下载桌面客户端 · Nova Agent'
     void load()
     api.status.health().then(setHealth).catch(() => setHealth(null))
   }, [])
@@ -129,13 +130,21 @@ export function DownloadsView() {
             Nova Agent
           </span>
         </a>
-        <a
-          href="/"
-          className="ml-auto flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-dim transition-colors hover:text-ink"
-        >
-          <ArrowLeft size={13} />
-          返回工作台
-        </a>
+        <div className="ml-auto flex items-center gap-1">
+          <a
+            href="/guide"
+            className="rounded-md px-2.5 py-1.5 text-sm text-dim transition-colors hover:text-ink"
+          >
+            使用文档
+          </a>
+          <a
+            href="/"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-dim transition-colors hover:text-ink"
+          >
+            <ArrowLeft size={13} />
+            返回工作台
+          </a>
+        </div>
       </header>
 
       <main className="relative z-10 mx-auto w-full max-w-4xl px-5 pb-20 md:px-8">

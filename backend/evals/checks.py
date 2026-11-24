@@ -217,3 +217,20 @@ def pytest_passes(*targets: str) -> Check:
         )
 
     return _named(f"pytest_passes{targets!r}", check)
+
+
+def llm_saw_plan_block() -> Check:
+    """The persisted plan reached the model as system context."""
+    def check(run: EvalRun) -> None:
+        for messages in run.llm_messages:
+            for message in messages:
+                content = message.get("content")
+                if (
+                    message.get("role") == "system"
+                    and isinstance(content, str)
+                    and "## 当前任务计划" in content
+                ):
+                    return
+        raise CheckFailure("system prompt 中没有跨轮计划块")
+
+    return _named("llm_saw_plan_block", check)

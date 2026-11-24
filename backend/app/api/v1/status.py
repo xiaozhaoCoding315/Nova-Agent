@@ -20,7 +20,7 @@ from app.models.schemas import HealthOut, MetricsOut, ModeFeaturesOut, ModeOut, 
 
 router = APIRouter()
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 _STARTED_AT = time.time()
 
 CHECK_TIMEOUT = 5
@@ -41,6 +41,24 @@ async def _check_qdrant() -> str:
         await asyncio.wait_for(count_points(), timeout=CHECK_TIMEOUT)
         return "ok"
     except Exception as exc:  # noqa: BLE001
+        return f"failed: {exc}"
+
+
+async def _check_schema() -> str:
+    """Compare the recorded migration version with the code's latest one."""
+    try:
+        from app.db import query
+        from app.db.init_db import LATEST_SCHEMA_VERSION
+
+        rows = await asyncio.wait_for(
+            query("SELECT COALESCE(max(version), 0) FROM schema_migrations"),
+            timeout=CHECK_TIMEOUT,
+        )
+        current = int(rows[0][0] or 0) if rows else 0
+        if current >= LATEST_SCHEMA_VERSION:
+            return "ok"
+        return f"pending: {current}/{LATEST_SCHEMA_VERSION}"
+    except Exception as exc:  # noqa: BLE001 - health reporting must not raise
         return f"failed: {exc}"
 
 
@@ -128,6 +146,7 @@ async def health():
         sandbox = await _check_sandbox()
         components = {
             "postgres": postgres,
+            "schema": await _check_schema(),
             "qdrant": "disabled: local mode",
             "llm": llm,
             "model": server_default_model() or settings.zhipu_model,
@@ -146,11 +165,16 @@ async def health():
 
     postgres, qdrant = await asyncio.gather(_check_postgres(), _check_qdrant())
     sandbox = await _check_sandbox()
+    from app.core.llm import health as llm_health
+
     components = {
         "postgres": postgres,
+        "schema": await _check_schema(),
         "qdrant": qdrant,
         "llm": _check_llm(),
         "model": server_default_model() or settings.zhipu_model,
+        # Counters only (failures, cooldown) — never keys or request content.
+        "llm_providers": llm_health.snapshot(),
         "embedding": _check_embedding(),
         "sandbox": sandbox,
         "git": "ok" if _git_available() else "missing",

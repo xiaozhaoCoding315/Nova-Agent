@@ -1,19 +1,40 @@
 import type {
   AdminQuotaPatch, AdminUser, AuthConfig, Brain, BuilderPlanResponse, BuilderProposalResponse,
-  ContractStatus, DebtReport, DebtSnapshot, Deployment, DownloadsListing, EditRecord, Extensions,
+  ContractStatus, DebtReport, DebtSnapshot, Deployment, DocumentContent, DocumentConvertResult,
+  DocumentDiagnostics, DocumentExportResult, DocumentFile, DocumentVersion, DocumentWorkspace,
+  DocumentWorkspaceInput,
+  DocumentWriteResult, DownloadsListing, EditRecord, EnvironmentComparison, EvidencePack,
+  EvidencePackSummary, EvidenceVerifyResult, Extensions,
   FileAttachment, FileList, FileNode, GitInfo, Health, Impact, InviteCode, Job, LocalExecStatus,
   LocalSetupInput, LocalSetupResult, LocalSetupStatus,
   LlmCredential, LlmCredentialInput, LlmOverrides, LlmProvider, LlmSettings, LlmSettingsInput,
-  LlmTestResult, Memory, Message, Metrics, ModeInfo, RegisterResult, Repo,
-  Review, SelfQuota, Session, Task, TaskListItem, TraceEvent, Turn, TurnSnapshot, Usage, User,
+  Instruction, InstructionInput, InstructionUpdate,
+  LlmTestResult, Memory, MemoryFact, MemoryFactInput, MemoryFactScopeType,
+  MemoryFactSources, MemoryFactUpdate, MemoryPurgeResult, MemoryReviewItem,
+  MemorySettings, MemorySettingsUpdate, MemoryTopic,
+  Message, Metrics, ModeInfo, RegisterResult, Repo,
+  GitHubConnectionStatus, GitHubPullRequest, GitHubPullRequestStatus, GitHubRemote,
+  RemoteAudit, RemoteCommandEnvelope, RemoteCommandResult, RemoteConfig, RemoteDevice,
+  RemoteInstruction, RemoteNotification, RemotePairing, Review, SelfQuota, Session, Task,
+  TaskListItem,
+  ThesisApplyResult, ThesisCitationAudit,
+  ThesisCitationEvidence, ThesisDisclosure, ThesisDisclosureInput, ThesisDocument,
+  ThesisDocumentDetail, ThesisEvidenceLocateResult, ThesisExportReadiness, ThesisFix,
+  ThesisFixPreview, ThesisIssue,
+  ThesisProject, ThesisProjectDetail, ThesisProjectInput, ThesisReferencePdf, ThesisReport,
+  ResumeFact, ResumeJobVersion, ResumeProfile, ResumeProfileDetail, ResumeQuestion,
+  ThesisScanResult, ThesisStageDraft, ThesisStages, ThesisTemplate, TraceEvent, Turn,
+  TurnSnapshot, Usage, User,
   VerifyResult,
 } from './types'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  data?: unknown
+  constructor(status: number, message: string, data?: unknown) {
     super(message)
     this.status = status
+    this.data = data
   }
 }
 
@@ -33,10 +54,10 @@ const FRIENDLY_HTTP: Record<number, string> = {
   504: '服务响应超时，请稍后重试',
 }
 
-export function friendlyHttpError(status: number, detail?: string): ApiError {
+export function friendlyHttpError(status: number, detail?: string, data?: unknown): ApiError {
   const text = detail?.trim()
-  if (text) return new ApiError(status, text)
-  return new ApiError(status, FRIENDLY_HTTP[status] ?? `请求失败（${status}），请稍后重试`)
+  if (text) return new ApiError(status, text, data)
+  return new ApiError(status, FRIENDLY_HTTP[status] ?? `请求失败（${status}），请稍后重试`, data)
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -48,13 +69,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     let detail: string | undefined
+    let data: unknown
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') detail = body.detail
+      else if (body?.detail && typeof body.detail === 'object') {
+        data = body.detail
+        if (typeof body.detail.message === 'string') detail = body.detail.message
+      }
     } catch {
       /* 非 JSON 错误体（如网关 HTML 页），用状态码兜底文案 */
     }
-    throw friendlyHttpError(res.status, detail)
+    throw friendlyHttpError(res.status, detail, data)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -66,6 +92,48 @@ function json(body: unknown): RequestInit {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
+}
+
+/** Fetch a file with the session cookie and hand it to the browser. */
+async function downloadFile(
+  path: string,
+  options: RequestInit = {},
+  fallbackName = 'download',
+): Promise<void> {
+  let res: globalThis.Response
+  try {
+    res = await fetch(`/api/v1${path}`, { credentials: 'include', ...options })
+  } catch {
+    throw new ApiError(0, '网络连接失败，请检查服务是否可用')
+  }
+  if (!res.ok) {
+    let detail: string | undefined
+    let data: unknown
+    try {
+      const body = await res.json()
+      data = body?.detail
+      if (typeof body?.detail === 'string') detail = body.detail
+      else if (typeof body?.detail?.message === 'string') detail = body.detail.message
+    } catch {
+      /* 非 JSON 错误体 */
+    }
+    throw friendlyHttpError(res.status, detail, data)
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  const plainMatch = /filename="?([^";]+)"?/i.exec(disposition)
+  const filename = utf8Match
+    ? decodeURIComponent(utf8Match[1])
+    : plainMatch?.[1] ?? fallbackName
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }
 
 export const api = {
@@ -126,9 +194,22 @@ export const api = {
   },
 
   sessions: {
-    list: (repoId?: string) =>
-      request<Session[]>(`/chat/sessions${repoId ? `?repo_id=${encodeURIComponent(repoId)}` : ''}`),
-    create: (repoIds: string[] = []) => request<Session>('/chat/sessions', json({ repo_ids: repoIds })),
+    list: (repoId?: string, scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string }) => {
+      const params = new URLSearchParams()
+      if (repoId) params.set('repo_id', repoId)
+      if (scope?.productMode) params.set('product_mode', scope.productMode)
+      if (scope?.thesisProjectId) params.set('thesis_project_id', scope.thesisProjectId)
+      const suffix = params.toString()
+      return request<Session[]>(`/chat/sessions${suffix ? `?${suffix}` : ''}`)
+    },
+    create: (
+      repoIds: string[] = [],
+      scope?: { productMode?: 'dev' | 'thesis'; thesisProjectId?: string },
+    ) => request<Session>('/chat/sessions', json({
+      repo_ids: repoIds,
+      product_mode: scope?.productMode ?? 'dev',
+      thesis_project_id: scope?.thesisProjectId ?? null,
+    })),
     messages: (id: string) => request<Message[]>(`/chat/sessions/${id}/messages`),
     rename: (id: string, title: string) =>
       request<Session>(`/chat/sessions/${id}`, { ...json({ title }), method: 'PATCH' }),
@@ -273,10 +354,91 @@ export const api = {
   },
 
   memory: {
-    get: () => request<Memory>('/memory'),
+    get: (
+      scope?: { type: string; id?: string },
+      options?: { includeInactive?: boolean; status?: string },
+    ) => {
+      const params = new URLSearchParams()
+      if (scope?.type) {
+        params.set('scope_type', scope.type)
+        params.set('scope_id', scope.id ?? '')
+      }
+      if (options?.includeInactive) params.set('include_inactive', 'true')
+      if (options?.status) params.set('status', options.status)
+      const query = params.toString()
+      return request<Memory>(`/memory${query ? `?${query}` : ''}`)
+    },
+    addFact: (body: MemoryFactInput) =>
+      request<{ ok: boolean; added: boolean }>('/memory/facts', json(body)),
+    updateFact: (id: number, body: MemoryFactUpdate) =>
+      request<MemoryFact>(`/memory/facts/${id}`, { method: 'PATCH', ...json(body) }),
+    getFactSources: (id: number) =>
+      request<MemoryFactSources>(`/memory/facts/${id}/sources`),
     removeFact: (id: number) => request<{ ok: boolean }>(`/memory/facts/${id}`, { method: 'DELETE' }),
-    removeDaily: (day: string) =>
-      request<{ ok: boolean }>(`/memory/daily/${encodeURIComponent(day)}`, { method: 'DELETE' }),
+    removeDaily: (day: string, scopeType: MemoryFactScopeType = 'dev', scopeId = '') => {
+      const params = new URLSearchParams({
+        scope_type: scopeType,
+        scope_id: scopeId,
+      })
+      return request<{ ok: boolean }>(
+        `/memory/daily/${encodeURIComponent(day)}?${params.toString()}`,
+        { method: 'DELETE' },
+      )
+    },
+    topics: (scope?: { type: string; id?: string }) => {
+      const params = new URLSearchParams()
+      if (scope?.type) {
+        params.set('scope_type', scope.type)
+        params.set('scope_id', scope.id ?? '')
+      }
+      const query = params.toString()
+      return request<MemoryTopic[]>(`/memory/topics${query ? `?${query}` : ''}`)
+    },
+    reviewQueue: (status = 'pending') =>
+      request<MemoryReviewItem[]>(`/memory/review?status=${encodeURIComponent(status)}`),
+    approveReview: (id: number) =>
+      request<MemoryReviewItem>(`/memory/review/${id}/approve`, { method: 'POST' }),
+    rejectReview: (id: number) =>
+      request<MemoryReviewItem>(`/memory/review/${id}/reject`, { method: 'POST' }),
+    settings: () => request<MemorySettings>('/settings/memory'),
+    updateSettings: (body: MemorySettingsUpdate) =>
+      request<MemorySettings>('/settings/memory', { ...json(body), method: 'PUT' }),
+    exportMemory: (format: 'json' | 'markdown' = 'markdown') =>
+      downloadFile(
+        `/memory/export?format=${format === 'json' ? 'json' : 'markdown'}`,
+        {},
+        `nova-memory.${format === 'json' ? 'json' : 'md'}`,
+      ),
+    purge: (options: {
+      includeMessages?: boolean
+      scopeType?: string
+      scopeId?: string
+    } = {}) => {
+      const params = new URLSearchParams({ confirm: 'true' })
+      if (options.scopeType) {
+        params.set('scope_type', options.scopeType)
+        params.set('scope_id', options.scopeId ?? '')
+      }
+      if (options.includeMessages === false) params.set('include_messages', 'false')
+      return request<MemoryPurgeResult>(`/memory/all?${params.toString()}`, {
+        method: 'DELETE',
+      })
+    },
+  },
+
+  instructions: {
+    list: (level?: string) =>
+      request<Instruction[]>(
+        `/settings/instructions${level ? `?level=${encodeURIComponent(level)}` : ''}`,
+      ),
+    create: (body: InstructionInput) =>
+      request<Instruction>('/settings/instructions', json(body)),
+    update: (id: number, body: InstructionUpdate) =>
+      request<Instruction>(`/settings/instructions/${id}`, {
+        ...json(body), method: 'PUT',
+      }),
+    remove: (id: number) =>
+      request<{ ok: boolean }>(`/settings/instructions/${id}`, { method: 'DELETE' }),
   },
 
   deploys: {
@@ -327,6 +489,286 @@ export const api = {
     diff: (id: string) => request<{ diff: string }>(`/repos/${id}/git/diff`),
     rollback: (id: string, commit: string) =>
       request<GitInfo & { reindex_started: boolean }>(`/repos/${id}/git/rollback`, json({ commit })),
+  },
+
+  thesis: {
+    templates: () => request<ThesisTemplate[]>('/thesis/templates'),
+    projects: () => request<ThesisProject[]>('/thesis/projects'),
+    project: (id: string) => request<ThesisProjectDetail>(`/thesis/projects/${id}`),
+    createProject: (input: ThesisProjectInput) =>
+      request<ThesisProject>('/thesis/projects', json(input)),
+    updateProject: (id: string, patch: Partial<ThesisProjectInput>) =>
+      request<ThesisProject>(`/thesis/projects/${id}`, { ...json(patch), method: 'PATCH' }),
+    removeProject: (id: string) =>
+      request<{ ok: boolean }>(`/thesis/projects/${id}`, { method: 'DELETE' }),
+    documents: (projectId: string) =>
+      request<ThesisDocument[]>(`/thesis/projects/${projectId}/documents`),
+    uploadDocument: (projectId: string, file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<ThesisDocument>(`/thesis/projects/${projectId}/documents`, {
+        method: 'POST',
+        body: form,
+      })
+    },
+    document: (documentId: string) =>
+      request<ThesisDocumentDetail>(`/thesis/documents/${documentId}`),
+    scan: (projectId: string, templateId?: string) => {
+      const suffix = templateId ? `?template_id=${encodeURIComponent(templateId)}` : ''
+      return request<ThesisScanResult>(`/thesis/projects/${projectId}/scan${suffix}`, {
+        method: 'POST',
+      })
+    },
+    issues: (projectId: string, status = 'open') =>
+      request<ThesisIssue[]>(
+        `/thesis/projects/${projectId}/issues?status=${encodeURIComponent(status)}`,
+      ),
+    updateIssue: (issueId: string, status: 'open' | 'ignored') =>
+      request<ThesisIssue>(`/thesis/issues/${issueId}`, {
+        ...json({ status }),
+        method: 'PATCH',
+      }),
+    previewFix: (issueId: string) =>
+      request<ThesisFixPreview>(`/thesis/issues/${issueId}/preview`, { method: 'POST' }),
+    applyFix: (issueId: string) =>
+      request<ThesisApplyResult>(`/thesis/issues/${issueId}/apply`, { method: 'POST' }),
+    undoFix: (issueId: string) =>
+      request<ThesisApplyResult>(`/thesis/issues/${issueId}/undo`, { method: 'POST' }),
+    fixes: (projectId: string) =>
+      request<ThesisFix[]>(`/thesis/projects/${projectId}/fixes`),
+    citations: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations`),
+    auditCitations: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations/audit`, {
+        method: 'POST',
+      }),
+    verifyMetadata: (projectId: string) =>
+      request<ThesisCitationAudit>(`/thesis/projects/${projectId}/citations/metadata`, {
+        method: 'POST',
+      }),
+    referencePdfs: (projectId: string) =>
+      request<ThesisReferencePdf[]>(`/thesis/projects/${projectId}/reference-pdfs`),
+    uploadReferencePdf: (projectId: string, file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<ThesisReferencePdf>(`/thesis/projects/${projectId}/reference-pdfs`, {
+        method: 'POST',
+        body: form,
+      })
+    },
+    deleteReferencePdf: (pdfId: string) =>
+      request<{ ok: boolean }>(`/thesis/reference-pdfs/${pdfId}`, { method: 'DELETE' }),
+    citationEvidence: (projectId: string) =>
+      request<ThesisCitationEvidence[]>(`/thesis/projects/${projectId}/citations/evidence`),
+    locateEvidence: (projectId: string) =>
+      request<ThesisEvidenceLocateResult>(`/thesis/projects/${projectId}/citations/locate`, {
+        method: 'POST',
+      }),
+    updateEvidence: (evidenceId: string, support: string, note?: string) =>
+      request<ThesisCitationEvidence>(`/thesis/citations/evidence/${evidenceId}`, {
+        ...json({ support, note }),
+        method: 'PATCH',
+      }),
+    disclosures: (projectId: string) =>
+      request<ThesisDisclosure[]>(`/thesis/projects/${projectId}/disclosures`),
+    createDisclosure: (projectId: string, input: ThesisDisclosureInput) =>
+      request<ThesisDisclosure>(`/thesis/projects/${projectId}/disclosures`, json(input)),
+    deleteDisclosure: (disclosureId: string) =>
+      request<{ ok: boolean }>(`/thesis/disclosures/${disclosureId}`, { method: 'DELETE' }),
+    stages: (projectId: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages`),
+    draftStage: (projectId: string, input: { requirements?: string; word_count?: number }) =>
+      request<ThesisStageDraft>(
+        `/thesis/projects/${projectId}/stages/draft`,
+        json(input),
+      ),
+    setStageContent: (projectId: string, content: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/content`, json({ content })),
+    setStageReadiness: (projectId: string, readiness: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/readiness`, json({ readiness })),
+    confirmStage: (projectId: string, note = '') =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/confirm`, json({ note })),
+    advanceStage: (projectId: string, toStage?: string) =>
+      request<ThesisStages>(
+        `/thesis/projects/${projectId}/stages/advance`,
+        json({ to_stage: toStage ?? null }),
+      ),
+    returnStage: (projectId: string, toStage: string) =>
+      request<ThesisStages>(`/thesis/projects/${projectId}/stages/return`, json({ to_stage: toStage })),
+    report: (projectId: string) =>
+      request<ThesisReport>(`/thesis/projects/${projectId}/report`),
+    exportReadiness: (projectId: string) =>
+      request<ThesisExportReadiness>(`/thesis/projects/${projectId}/export-readiness`),
+    exportReport: (projectId: string, format: 'html' | 'docx') =>
+      downloadFile(`/thesis/projects/${projectId}/report/export?format=${format}`),
+    exportManuscript: (
+      projectId: string,
+      format: 'md' | 'docx' | 'pdf',
+      allowUnconfirmed = false,
+    ) =>
+      downloadFile(
+        `/thesis/projects/${projectId}/manuscript?format=${format}`
+        + (allowUnconfirmed ? '&allow_unconfirmed=true' : ''),
+      ),
+    exportPackage: (projectId: string, allowUnconfirmed = false) =>
+      downloadFile(
+        `/thesis/projects/${projectId}/export${allowUnconfirmed ? '?allow_unconfirmed=true' : ''}`,
+        { method: 'POST' },
+      ),
+  },
+
+  github: {
+    status: () => request<GitHubConnectionStatus>('/github/status'),
+    connect: (token: string) =>
+      request<GitHubConnectionStatus>('/github/connect', json({ token })),
+    disconnect: () =>
+      request<GitHubConnectionStatus>('/github/disconnect', { method: 'POST' }),
+    remote: (repoId: string) =>
+      request<GitHubRemote>(`/github/repos/${repoId}/remote`),
+    pullRequests: (repoId: string) =>
+      request<{ pull_requests: GitHubPullRequest[] }>(`/github/repos/${repoId}/prs`),
+    createPullRequest: (repoId: string, input: {
+      title: string; body?: string; base?: string; authorization: string
+    }) => request<GitHubPullRequest>(`/github/repos/${repoId}/prs`, json(input)),
+    pullRequest: (repoId: string, number: number) =>
+      request<GitHubPullRequestStatus>(`/github/repos/${repoId}/prs/${number}`),
+  },
+
+  remote: {
+    config: () => request<RemoteConfig>('/remote/config'),
+    createPairing: (ttlSeconds?: number) =>
+      request<{
+        pairing: RemotePairing; token: string; link: string;
+        expires_at: string; ttl_seconds: number; note: string
+      }>('/remote/pairings', json(ttlSeconds ? { ttl_seconds: ttlSeconds } : {})),
+    pairing: (pairId: string) =>
+      request<{ pairing: RemotePairing; device: RemoteDevice | null }>(
+        `/remote/pairings/${pairId}`,
+      ),
+    claim: (input: {
+      pair_id: string; token: string; device_name: string;
+      public_key: Record<string, string>; encryption_public_key?: Record<string, string>
+    }) => request<{
+      pair_id: string; device_id: string; device_name: string; sas: string;
+      status: string; expires_at: string; permissions: string[]
+    }>('/remote/pair/claim', json(input)),
+    confirm: (pairId: string, sas: string) =>
+      request<{ ok: boolean; device: RemoteDevice }>(
+        `/remote/pairings/${pairId}/confirm`, json({ sas }),
+      ),
+    reject: (pairId: string) =>
+      request<{ ok: boolean; pair_id: string; status: string }>(
+        `/remote/pairings/${pairId}/reject`, { method: 'POST' },
+      ),
+    command: (envelope: RemoteCommandEnvelope) =>
+      request<RemoteCommandResult>('/remote/commands', json(envelope)),
+    devices: () => request<{ devices: RemoteDevice[] }>('/remote/devices'),
+    revoke: (deviceId: string) =>
+      request<{ ok: boolean; device: RemoteDevice }>(
+        `/remote/devices/${deviceId}/revoke`, { method: 'POST' },
+      ),
+    notifications: (unreadOnly = false) =>
+      request<{ notifications: RemoteNotification[]; unread: number }>(
+        `/remote/notifications${unreadOnly ? '?unread_only=true' : ''}`,
+      ),
+    readNotifications: (ids: string[] = []) =>
+      request<{ ok: boolean; changed: number }>(
+        '/remote/notifications/read', json({ ids }),
+      ),
+    instructions: (status = 'pending') =>
+      request<{ instructions: RemoteInstruction[] }>(
+        `/remote/instructions?status=${encodeURIComponent(status)}`,
+      ),
+    resolveInstruction: (instructionId: string, status: 'sent' | 'rejected') =>
+      request<{ ok: boolean; instruction: RemoteInstruction }>(
+        `/remote/instructions/${instructionId}/resolve`, json({ status }),
+      ),
+    audit: () => request<RemoteAudit>('/remote/audit'),
+  },
+
+  evidence: {
+    packs: () => request<{ packs: EvidencePackSummary[] }>('/evidence/packs'),
+    pack: (packId: string) => request<EvidencePack>(`/evidence/packs/${packId}`),
+    build: (repoId: string, input: {
+      claims?: Record<string, unknown>[]; artifact_paths?: string[];
+      environment?: Record<string, unknown> | null; task_id?: string
+    } = {}) => request<EvidencePack>(`/evidence/repos/${repoId}/packs`, json(input)),
+    verify: (packId: string) =>
+      request<EvidenceVerifyResult>(`/evidence/packs/${packId}/verify`, { method: 'POST' }),
+    compare: (local: Record<string, unknown>, container: Record<string, unknown>) =>
+      request<EnvironmentComparison>('/evidence/compare', json({ local, container })),
+  },
+
+  resume: {
+    questions: (audience: 'student' | 'tech') =>
+      request<{ audience: string; questions: ResumeQuestion[] }>(
+        `/resume/questions?audience=${audience}`,
+      ),
+    profiles: () => request<{ profiles: ResumeProfile[] }>('/resume/profiles'),
+    createProfile: (input: { name: string; headline?: string; contact?: Record<string, string> }) =>
+      request<ResumeProfile>('/resume/profiles', json(input)),
+    profile: (id: string) => request<ResumeProfileDetail>(`/resume/profiles/${id}`),
+    addFact: (profileId: string, input: {
+      category: string; title: string; detail?: string; status?: string;
+      evidence?: string; metrics?: string[]
+    }) => request<ResumeFact>(`/resume/profiles/${profileId}/facts`, json(input)),
+    updateFact: (profileId: string, factId: string, patch: Record<string, unknown>) =>
+      request<ResumeFact>(`/resume/profiles/${profileId}/facts/${factId}`, {
+        method: 'PATCH', ...json(patch),
+      }),
+    createVersion: (profileId: string, input: {
+      title: string; company?: string; jd_text?: string; fact_ids: string[];
+      template?: string; notes?: string
+    }) => request<ResumeJobVersion>(`/resume/profiles/${profileId}/versions`, json(input)),
+    version: (id: string) => request<ResumeJobVersion>(`/resume/versions/${id}`),
+    downloadMarkdown: (id: string) => downloadFile(`/resume/versions/${id}/markdown`),
+    exportVersion: (id: string, format: 'docx' | 'pdf') =>
+      downloadFile(`/resume/versions/${id}/export?format=${format}`, { method: 'POST' }),
+  },
+
+  documents: {
+    workspaces: () => request<{ workspaces: DocumentWorkspace[] }>('/documents/workspaces'),
+    createWorkspace: (input: DocumentWorkspaceInput) =>
+      request<DocumentWorkspace>('/documents/workspaces', json(input)),
+    workspace: (id: string) => request<DocumentWorkspace>(`/documents/workspaces/${id}`),
+    removeWorkspace: (id: string) =>
+      request<{ ok: boolean }>(`/documents/workspaces/${id}`, { method: 'DELETE' }),
+    files: (id: string) =>
+      request<{ files: DocumentFile[] }>(`/documents/workspaces/${id}/files`),
+    content: (id: string, path: string) =>
+      request<DocumentContent>(
+        `/documents/workspaces/${id}/content?path=${encodeURIComponent(path)}`,
+      ),
+    saveContent: (
+      id: string,
+      input: { path: string; content: string; base_sha?: string | null; force?: boolean },
+    ) => request<DocumentWriteResult>(`/documents/workspaces/${id}/content`, {
+      ...json(input),
+      method: 'PUT',
+    }),
+    versions: (id: string, path: string) =>
+      request<{ versions: DocumentVersion[] }>(
+        `/documents/workspaces/${id}/versions?path=${encodeURIComponent(path)}`,
+      ),
+    restore: (id: string, versionId: string, input: { path: string; base_sha?: string | null }) =>
+      request<DocumentWriteResult>(
+        `/documents/workspaces/${id}/versions/${versionId}/restore`,
+        json(input),
+      ),
+    export: (id: string, input: { path: string; format: 'docx' | 'pdf' }) =>
+      request<DocumentExportResult>(`/documents/workspaces/${id}/export`, json(input)),
+    convert: (id: string, input: {
+      source_path: string; target_format: 'docx' | 'pdf'; profile: 'report' | 'thesis' | 'resume';
+      overwrite?: boolean; allow_lossy?: boolean
+    }) => request<DocumentConvertResult>(`/documents/workspaces/${id}/convert`, json(input)),
+    downloadExport: (id: string, path: string) =>
+      downloadFile(`/documents/workspaces/${id}/download?path=${encodeURIComponent(path)}`),
+    diagnostics: (id: string) =>
+      request<DocumentDiagnostics>(`/documents/workspaces/${id}/diagnostics`),
+    draft: (id: string, input: { requirements: string; path?: string; word_count?: number }) =>
+      request<{ path: string; sha256: string; content: string; usage?: Record<string, unknown> }>(
+        `/documents/workspaces/${id}/draft`, json(input),
+      ),
   },
 
   trajectory: (sessionId: string) =>

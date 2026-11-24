@@ -25,7 +25,7 @@ git clone <你的仓库地址> nova-agent && cd nova-agent
 
 # 2. 准备配置
 cp .env.docker.example .env
-vim .env   # 必改 4 项：DASHSCOPE_API_KEY（或 DEEPSEEK_API_KEY）、SECRET_KEY、ADMIN_PASSWORD、DEMO_PASSWORD
+vim .env   # 必改 4 项：AGNES_API_KEY（或 DASHSCOPE_API_KEY / DEEPSEEK_API_KEY）、SECRET_KEY、ADMIN_PASSWORD、DEMO_PASSWORD
 
 # 3. 启动（首次会构建沙箱/验证镜像，需要 10~20 分钟；之后只 pull 不 build）
 docker compose up -d --build
@@ -43,6 +43,7 @@ curl http://127.0.0.1:8000/api/v1/status/health
 | `SECRET_KEY` | `openssl rand -hex 32` 生成；同时用于加密用户 API Key |
 | `ADMIN_PASSWORD` / `DEMO_PASSWORD` | 强密码；公开部署建议 `DEMO_ENABLED` 相关账号不用 demo |
 | `LLM_ALLOW_SERVER_FALLBACK` | 公开多用户部署设 `false`，强制每个用户填自己的 Key |
+| `LLM_BYOK_SURFACE` | `desktop`：网页端只用服务端模型（本仓库 `deploy/remote-deploy.py` 的默认值），自定义 Key 去桌面客户端；`any`：网页端也开放自带 Key |
 | `REGISTRATION_MODE` | `open` 自助注册 / `invite` 邀请码 / `closed` 仅管理员建号 |
 
 ### 邮箱验证码（可选）
@@ -62,6 +63,23 @@ curl http://127.0.0.1:8000/api/v1/status/health
 
 留空 `SMTP_HOST` 即为未启用邮件，注册页不会要求验证码，找回密码走恢复码。
 注意 `.env` 修改后要 `docker compose up -d app` 重建容器才生效。
+
+### 换共享模型（不改代码）
+
+聊天模型与服务端 Key 都可以只改 `.env`。仓库脚本提供一个 `env` 阶段，只更新指定
+的键、保留其余内容，且**不会把 Key 打印出来**（推荐用文件传 Key，避免进入
+命令行参数、进程列表和 Shell 历史）：
+
+```bash
+printf '%s' 'sk-你的Key' > ~/agnes.key && chmod 600 ~/agnes.key
+python deploy/remote-deploy.py env --llm-provider agnes --llm-key-file ~/agnes.key
+python deploy/remote-deploy.py env --llm-provider agnes --shared-key-registered
+```
+
+改完重建容器：`docker compose up -d --force-recreate app`（不需要重新构建镜像）。
+
+> **Embedding 仍走 DashScope**：即使聊天模型换成 Agnes，`DASHSCOPE_API_KEY` 也要保留。
+> 缺它时 `/api/v1/status/health` 的 `embedding` 会显示 `failed`，混合检索退化为纯关键词。
 
 ## 二、绑定域名 + HTTPS
 
@@ -85,11 +103,38 @@ curl http://127.0.0.1:8000/api/v1/status/health
 
 ### 3. 解析 + HTTPS
 
-备案通过后：
+备案通过后，先跑仓库自带的预检（只读，不改任何东西）：
 
 ```bash
-# 控制台「云解析 DNS」：两条 A 记录都指向本机
+bash deploy/enable-https.sh
+```
+
+它检查 DNS、ICP 拦截、80/443 占用、Caddyfile 与 compose 配置，以及 .env 里的
+`APP_BIND` / `TRUSTED_PROXIES` / `CORS_ORIGINS` / `COOKIE_SECURE` 是否配套。
+全部 `[ok]` 后再执行：
+
+```bash
+bash deploy/enable-https.sh --apply
+```
+
+`--apply` 会备份 `.env`、自动修好上述四项、重建 app 并启动 `https` profile；
+启动后最多等 360 秒做 HTTPS 健康检查（国内访问 Let's Encrypt 首次签发常见
+2–4 分钟，窗口太短会在证书刚下来时误判），失败会自动回滚 `.env` 并恢复直连，
+不会把站点留在「证书没签下来、8000 又已关闭」的状态。80 被博客占用时它会
+停下来提示，不会替你改别的项目的 compose。
+
+**同机多项目共存时注意容器名冲突**：Caddy 同时接入 `nova-agent_default` 与
+`blog_default` 两个网络，而博客项目的 compose 服务也叫 `app`（Docker 会为它加
+别名 `app`）。Caddyfile 里若写 `reverse_proxy app:8000`，DNS 可能解析到博客容器，
+表现为 HTTPS 502 `connection refused`。因此 Nova 这一段必须写容器全名
+`nova-agent-app-1:8000`，博客写 `blog-app-1:3000`。
+
+等价的手工步骤：
+
+```bash
+# 控制台「云解析 DNS」：三条 A 记录都指向本机
 #   @     → 60.205.0.224   （个人博客）
+#   www   → 60.205.0.224   （个人博客，Caddy 也给它签证书）
 #   nova  → 60.205.0.224   （Nova Agent）
 
 vim .env    # APP_BIND=127.0.0.1；填 TRUSTED_PROXIES（见下，填网段）；如需显示备案号填 ICP_BEIAN
@@ -125,8 +170,8 @@ Caddy 会自动申请并续期 Let's Encrypt 证书，之后访问 `https://zxyc
 `X-Forwarded-For` / `X-Forwarded-Proto`。不设这一项任何人都能伪造转发头绕过
 注册限流和「游客每网络一次」限制。
 
-设了 `APP_BIND=127.0.0.1` 之后，Caddy 通过 docker 内部网络访问 `app:8000`，到达
-app 的 peer 是 **Caddy 容器的 IP**——容器重建后会变（`172.18.0.2` → `172.18.0.3`），
+设了 `APP_BIND=127.0.0.1` 之后，Caddy 通过 docker 内部网络访问
+`nova-agent-app-1:8000`，到达 app 的 peer 是 **Caddy 容器的 IP**——容器重建后会变（`172.18.0.2` → `172.18.0.3`），
 **填单个 IP 迟早失效**。`TRUSTED_PROXIES` 支持 CIDR，直接填 compose 给项目分配的
 网段，一次填对就永久有效：
 
@@ -155,11 +200,15 @@ TRUSTED_PROXIES=172.18.0.0/16
 ### 4. 备案号展示（备案通过后必做）
 
 大陆网站备案通过后必须在页面底部展示备案号并链接到 `beian.miit.gov.cn`，否则
-可能被抽查要求整改。Nova 在登录页页脚和左栏底部各渲染一处，内容来自构建期变量：
+可能被抽查要求整改。Nova 在登录页页脚、`/downloads` 页脚和登录后左栏底部各渲染
+一处（同一个 `IcpNotice` 组件），内容来自构建期变量：
 
 ```bash
-# .env
-ICP_BEIAN=粤ICP备12345678号-1
+# 用部署脚本（只改这一个键，保留 .env 其余内容）
+python deploy/remote-deploy.py env --icp-beian 冀ICP备2026051171号
+
+# 或者手工改 .env 后重建
+# ICP_BEIAN=冀ICP备2026051171号
 docker compose build app && docker compose up -d --no-build app
 ```
 
@@ -194,8 +243,9 @@ Actions 会为 Windows / macOS / Linux 打包并上传到 Release，下载后进
 scp desktop/out/Nova-Agent-Setup-2.0.0.exe server:~/nova-agent/data/downloads/
 ```
 
-无需重启。用户从登录页点「下载桌面客户端」或直接访问 `http://<服务器>:8000/downloads` 下载；
-安装后首次启动填服务器地址（如 `http://<服务器IP>:8000`），登录即用。
+无需重启。用户从登录页点「下载桌面客户端」或直接访问 `/downloads` 下载；
+安装后首次启动填服务器地址（已启用 HTTPS 时填 `https://<域名>`，否则
+`http://<服务器IP>:8000`），登录即用。
 
 `/downloads` 是前端的 React 页面（`frontend/src/views/DownloadsView.tsx`），列表数据来自
 公开接口 `GET /api/v1/downloads`，实时读目录，所以放文件后刷新即可，不需要重建镜像。
@@ -204,11 +254,36 @@ scp desktop/out/Nova-Agent-Setup-2.0.0.exe server:~/nova-agent/data/downloads/
 
 ## 四、日常运维
 
+### 用已发布镜像升级（不在 ECS 上构建）
+
+CI 每次推送都会构建并发布四个镜像（`<repo>-app` / `-sandbox` / `-builder` / `-node`，
+标签为 commit sha，默认分支额外有 `latest`）。2G 内存的 ECS 上跑
+`docker compose up -d --build` 容易在 npm/pip 阶段被 OOM kill；镜像已发布时优先
+拉取而不是本机构建：
+
+```bash
+# .env（把 <owner>/<repo> 换成你的 GHCR 路径）
+NOVA_APP_IMAGE=ghcr.io/<owner>/<repo>-app:latest
+NOVA_SANDBOX_IMAGE=ghcr.io/<owner>/<repo>-sandbox:latest
+NOVA_BUILDER_IMAGE=ghcr.io/<owner>/<repo>-builder:latest
+NOVA_NODE_IMAGE=ghcr.io/<owner>/<repo>-node:latest
+
+docker compose pull
+docker compose up -d --no-build
+```
+
+四个变量都有本地默认值，不设置时仍是原来的本机构建行为。数据库迁移在 app 启动时
+自动执行（`AUTO_INIT_DB=true`）；`GET /api/v1/status/health` 的 `schema` 组件显示
+`ok` 才代表迁移已到最新版本。仓库根的 `.dockerignore` 会把 `data/`、`node_modules`、
+桌面端和测试排除出构建上下文，避免每次向 2G ECS 上传整个仓库。
+
 ```bash
 docker compose logs -f app        # 看日志
 docker compose ps                 # 服务状态
-# 升级版本
+# 升级版本（服务端有构建资源时）
 git pull && docker compose up -d --build
+# 小内存服务器：先拉 CI 镜像再启动（见上一节）
+git pull && docker compose pull && docker compose up -d --no-build
 # 备份（PostgreSQL + Qdrant snapshot/体积包 + repos 卷，保留 14 天）
 sudo BACKUP_DIR=/opt/nova-backups ./deploy/backup.sh
 # 恢复（会 drop 数据库并覆盖 repos/qdrant 卷，需输入 RESTORE 确认）

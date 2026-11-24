@@ -106,7 +106,7 @@ export function HeroComposer({ onStart }: { onStart: () => void }) {
           <span className="ml-auto flex min-w-0 items-center gap-0.5">
             <span className="flex h-8 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-dim">
               <Cpu size={13} className="shrink-0" />
-              <span className="truncate font-mono">glm-4.6</span>
+              <span className="truncate font-mono">qwen3.8-flash</span>
               <span className="shrink-0 text-faint">·</span>
               <span className="shrink-0">中</span>
             </span>

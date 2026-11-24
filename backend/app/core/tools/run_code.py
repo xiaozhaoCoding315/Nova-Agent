@@ -350,5 +350,6 @@ TOOL = ToolDefinition(
     parameters=tool_parameters(),
     func=run_code,
     category="execute",
+    idempotent=False,
     timeout=45,
 )

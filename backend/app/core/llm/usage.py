@@ -24,12 +24,14 @@ async def record_usage(
     try:
         await execute(
             "INSERT INTO usage_log "
-            "(user_id, session_id, model, prompt_tokens, completion_tokens, tool_calls, source) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "(user_id, session_id, model, provider, prompt_tokens, "
+            "completion_tokens, tool_calls, source) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 user_id,
                 session_id or None,
                 str(usage.get("model") or "unknown")[:64],
+                str(usage.get("provider") or "")[:32] or None,
                 int(usage.get("prompt_tokens") or 0),
                 int(usage.get("completion_tokens") or 0),
                 int(tool_calls or 0),

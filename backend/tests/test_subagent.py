@@ -173,6 +173,7 @@ async def test_subagent_partial_after_round_limit(monkeypatch):
     result, _ = await _run(monkeypatch, llm, registry, max_rounds=2)
 
     assert result["status"] == "partial"
+    assert result["partial"] is True
     assert result["rounds"] == 2
     assert "达到上限后的总结" in result["summary"]
 
@@ -276,3 +277,46 @@ async def test_subagent_redacts_secret_shaped_citation_paths(monkeypatch):
     assert "[REDACTED]" in done["citations"]["citations"][0]["path"]
     assert secret_path not in json.dumps(result["citations"])
     assert secret_path not in json.dumps(done["citations"])
+
+
+@pytest.mark.asyncio
+async def test_subagent_reports_what_it_completed(monkeypatch):
+    """A capped sub-agent must say how far it got, not just that it is partial."""
+    llm = FakeLLM([
+        [{"type": "tool_calls", "tool_calls": [
+            {"id": "t1", "name": "read_file", "arguments": json.dumps({"path": "src/auth.py"})},
+        ]}],
+        [{"type": "tool_calls", "tool_calls": [
+            {"id": "t2", "name": "grep", "arguments": json.dumps({"pattern": "login"})},
+        ]}],
+    ], final="## 结论\n只查到一半")
+    result, _ = await _run(monkeypatch, llm, FakeRegistry(), max_rounds=2)
+
+    steps = result["completed_steps"]
+    assert [step["action"] for step in steps] == ["read_file", "grep", "summary"]
+    assert steps[0]["ok"] is True
+    assert "src/auth.py" in steps[0]["detail"]
+    assert steps[-1]["action"] == "summary"
+
+
+@pytest.mark.asyncio
+async def test_completed_task_lists_its_steps(monkeypatch):
+    llm = FakeLLM([
+        [{"type": "tool_calls", "tool_calls": [
+            {"id": "t1", "name": "read_file", "arguments": json.dumps({"path": "a.py"})},
+        ]}],
+        [{"type": "content", "content": "## 结论\n做完了"}],
+    ])
+    result, _ = await _run(monkeypatch, llm, FakeRegistry())
+
+    assert result["status"] == "ok"
+    assert result["partial"] is False
+    assert [step["action"] for step in result["completed_steps"]] == ["read_file", "summary"]
+
+
+def test_failed_task_has_the_same_progress_keys():
+    from app.core.tools.subagents import _failed_task
+
+    failed = _failed_task("id", "标题", "boom")
+    assert failed["partial"] is False
+    assert failed["completed_steps"] == []

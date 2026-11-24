@@ -1,8 +1,9 @@
-import { ArrowLeft, Compass, FolderSearch, Terminal } from 'lucide-react'
+import { ArrowLeft, BookOpen, Compass, FolderSearch, Terminal } from 'lucide-react'
 
 /** 命中的最近似路径（只按前缀猜，不做全文检索）。 */
 const SUGGESTIONS = [
   { path: '/', label: '工作台' },
+  { path: '/guide', label: '使用文档' },
   { path: '/downloads', label: '下载桌面客户端' },
 ]
 
@@ -54,7 +55,13 @@ export function NotFoundView() {
               className="group flex items-center gap-3 rounded-lg border border-edge bg-panel px-3.5 py-3 transition-colors duration-150 hover:border-accent/50 hover:bg-raised"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base/60 text-dim group-hover:text-accent">
-                {item.path === '/' ? <Terminal size={13} /> : <FolderSearch size={13} />}
+                {item.path === '/' ? (
+                  <Terminal size={13} />
+                ) : item.path === '/guide' ? (
+                  <BookOpen size={13} />
+                ) : (
+                  <FolderSearch size={13} />
+                )}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm text-ink">{item.label}</span>

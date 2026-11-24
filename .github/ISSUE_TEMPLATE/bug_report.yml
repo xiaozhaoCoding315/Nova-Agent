@@ -1,0 +1,59 @@
+name: Bug report
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量提供可复现的最小信息；不要在 Issue 里上传真实学生论文、个人信息或未公开的学校文件。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 实际行为与预期行为分别是什么？
+      placeholder: 我打开一份 DOCX，点击「开始检查」后……
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 进入论文模式
+        2. 新建项目并导入……
+        3. 点击……
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 部署方式
+      description: 例如 desktop-v2.2.1、自托管 main、Docker 等
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      options:
+        - 论文模式 / DOCX 解析
+        - 论文模式 / 格式规则
+        - 论文模式 / 引用核验
+        - 论文模式 / 界面
+        - 开发模式
+        - 安装 / 部署
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 请先删除密钥、用户名、论文正文等敏感信息。
+      render: shell
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已移除真实学生论文、个人信息和未公开的学校文件
+          required: true

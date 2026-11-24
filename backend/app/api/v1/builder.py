@@ -41,7 +41,7 @@ def _reject_local_builder() -> None:
         raise HTTPException(status_code=400, detail=LOCAL_UNSUPPORTED)
 
 
-DESIGN_SYSTEM_PROMPT = """你是 Nova 的项目设计搭档。用户想做一个软件项目，你通过轻松的多轮对话帮他把想法打磨成可以直接生成的方案。
+DESIGN_SYSTEM_PROMPT = """你是 Nova 的项目设计对话。用户想做一个软件项目，你通过多轮对话把想法整理成可以直接生成的方案。
 
 规则：
 1. 每轮只问 1-2 个当下最关键的问题（目标用户、核心功能、数据实体、主要页面或接口、技术约束），不要一次抛一串问题
@@ -51,7 +51,7 @@ DESIGN_SYSTEM_PROMPT = """你是 Nova 的项目设计搭档。用户想做一个
 [方案定稿]
 （一段完整、可直接交给代码生成的需求：项目目标、功能清单、数据模型与主要字段、主要页面或 API、非功能要求）
 5. 输出定稿后不再提问；用户要求调整时修订后重新输出定稿
-6. 全程使用中文，口吻自然，像一个耐心的技术朋友"""
+6. 全程使用中文，直接、具体，不使用夸张或拟人化措辞"""
 
 
 async def _design_reply(messages: list[dict], user: dict, stack: str) -> tuple[str, dict | None]:
@@ -74,7 +74,9 @@ async def _design_reply(messages: list[dict], user: dict, stack: str) -> tuple[s
             elif event.get("type") == "content":
                 parts.append(event.get("content") or "")
             elif event.get("type") == "usage":
-                usage = event.get("usage")
+                value = event.get("usage")
+                if isinstance(value, dict):
+                    usage = value
     return "".join(parts), usage
 
 

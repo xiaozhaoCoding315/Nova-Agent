@@ -8,10 +8,25 @@ from app.core.llm.providers import (
 
 def test_catalog_ids_are_unique_and_longcat_is_gone():
     ids = [item.id for item in PROVIDERS]
-    assert len(PROVIDERS) == 16
+    assert len(PROVIDERS) == 17
     assert len(ids) == len(set(ids))
     assert "longcat" not in ids
     assert {"zhipu", "dashscope", "deepseek", "openai", "anthropic", "custom", "ollama"} <= set(ids)
+
+
+def test_agnes_preset_is_free_and_openai_compatible():
+    agnes = get_provider("agnes")
+    assert agnes is not None
+    assert agnes.kind == "openai"
+    assert agnes.base_url == "https://api.agnes-ai.cn/v1"
+    assert agnes.default_model == "agnes-3.0-flash"
+    assert "agnes-3.0-pro" in agnes.models
+    assert agnes.free_tier is True
+    assert agnes.supports_tools is True
+    assert agnes.base_url_locked is True
+    assert agnes.env_key == "AGNES_API_KEY"
+    assert agnes.context_window >= 131_072
+    assert "agnes" in {row["id"] for row in provider_list()}
 
 
 def test_only_custom_and_ollama_have_unlocked_base_urls():
@@ -139,3 +154,20 @@ def test_provider_public_exposes_vision_capability():
     payload = {item["id"]: item for item in provider_list()}
     assert payload["openai"]["supports_vision"] is True
     assert payload["deepseek"]["supports_vision"] is False
+
+
+def test_server_key_values_are_never_in_public_payloads():
+    """The shared Agnes key must stay in .env — catalog payloads carry no secret."""
+    from app.config import settings
+
+    settings.agnes_api_key = "sk-should-never-leak-0123456789"
+    try:
+        payload = provider_list()
+    finally:
+        settings.agnes_api_key = ""
+
+    text = repr(payload)
+    assert "sk-should-never-leak" not in text
+    agnes = next(row for row in payload if row["id"] == "agnes")
+    # Only the env var *name* is public; the value never is.
+    assert agnes["env_key"] == "AGNES_API_KEY"

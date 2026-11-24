@@ -20,9 +20,12 @@ zxycoder.cn, www.zxycoder.cn {
 }
 
 # ---- Nova Agent ----
+# 必须写容器全名，不能写 compose 服务名 app：Caddy 同时接入 nova-agent_default
+# 与 blog_default 两个网络，而博客项目的服务也叫 app（别名 app -> blog-app-1）。
+# 写 app:8000 时 DNS 可能解析到博客容器，表现为 502 connection refused。
 nova.zxycoder.cn {
 	encode zstd gzip
-	reverse_proxy app:8000 {
+	reverse_proxy nova-agent-app-1:8000 {
 		# Caddy 会自动用真实来源覆盖客户端伪造的 X-Forwarded-For，但 X-Real-IP
 		# 是原样透传的。后端目前先读 XFF 所以利用不了，可这依赖两处代码的顺序；
 		# 这里直接覆盖掉，让伪造值根本到不了应用层。

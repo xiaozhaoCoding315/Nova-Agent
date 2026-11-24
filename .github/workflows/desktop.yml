@@ -79,6 +79,14 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
+            -o -name '*.zip' -o -name '*.tar.gz' \) -print0 \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
@@ -90,4 +98,5 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/latest*.yml
             artifacts/**/*.blockmap
+            artifacts/SHA256SUMS.txt
           generate_release_notes: true

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     zhipu_api_key: str = ""
     zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     zhipu_model: str = "glm-4.7-flash"
+    agnes_api_key: str = ""
+    agnes_base_url: str = "https://api.agnes-ai.cn/v1"
+    agnes_model: str = "agnes-3.0-flash"
     deepseek_api_key: str = ""
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -37,6 +40,13 @@ class Settings(BaseSettings):
     llm_round_retries: int = 1     # 单轮模型调用失败且无产出时的自动重试次数
     # Deployment switch: false forces every user to bring their own key.
     llm_allow_server_fallback: bool = True
+    # Where per-user credentials (BYOK) may be edited.  "any" (default) keeps
+    # the existing behavior: every surface can save its own key.  "desktop"
+    # pins the web/server surface to the shared model and tells custom-model
+    # users to configure the desktop client instead.  Local installs and
+    # deployments without a server key always allow BYOK — otherwise nobody
+    # could talk to the instance at all.
+    llm_byok_surface: Literal["desktop", "any"] = "any"
     # Model routing by purpose, applies to the shared server key only (BYOK
     # users' own model choice is never overridden). plan = SPEC/plan/review/
     # build/task generation (strong model); utility = summaries/fact
@@ -48,8 +58,24 @@ class Settings(BaseSettings):
     @property
     def llm_configured(self) -> bool:
         return bool(
-            self.zhipu_api_key or self.deepseek_api_key
+            self.zhipu_api_key or self.agnes_api_key or self.deepseek_api_key
             or self.dashscope_api_key or self.anthropic_api_key
+        )
+
+    @property
+    def llm_byok_open(self) -> bool:
+        """Whether BYOK is available to everyone, not just the desktop client.
+
+        A deployment with a server key and ``LLM_BYOK_SURFACE=desktop`` keeps
+        its web surface on the shared model, so the shared key has to reach
+        every account — otherwise a registered user could neither use the
+        server model nor configure one of their own.
+        """
+        return (
+            self.llm_byok_surface == "any"
+            or self.is_local
+            or not self.llm_configured
+            or not self.llm_allow_server_fallback
         )
 
     # ---------- Embedding ----------
@@ -145,6 +171,25 @@ class Settings(BaseSettings):
     image_input_max_pixels: int = 40_000_000
     image_input_max_total_kb: int = 10_240
 
+    # ---------- Thesis mode ----------
+    # Server installs may expose DOCX parsing to every signed-in user.  Keep
+    # an explicit switch so an operator can turn the heavy document surface
+    # off without disabling the rest of the product.
+    thesis_server_enabled: bool = True
+    thesis_guest_enabled: bool = False
+    thesis_max_projects: int = 10
+    thesis_max_documents: int = 20
+    thesis_max_reference_pdfs: int = 20
+    # DOCX archive guards (decompressed size, entry count, ratio).  A normal
+    # thesis with images stays far below these limits.
+    thesis_max_uncompressed_mb: int = 200
+    thesis_max_zip_entries: int = 5000
+    thesis_max_zip_entry_mb: int = 100
+    thesis_max_zip_ratio: int = 200
+    # Snapshot original DOCX files around a thesis chat turn and restore them
+    # if a tool modified the thesis container.
+    thesis_protect_files: bool = True
+
     # ---------- Builder ----------
     # Boot generated projects in a throwaway container after approval
     # (health check, then immediate teardown) — "runs" beats "compiles".
@@ -226,6 +271,17 @@ class Settings(BaseSettings):
     auto_init_db: bool = False
     frontend_dist: str = ""        # explicit frontend build path (set in Docker)
     downloads_dir: str = "data/downloads"   # 桌面客户端安装包目录，挂载到 /downloads
+
+    # ---------- GitHub delivery ----------
+    github_api_url: str = "https://api.github.com"
+
+    # ---------- Remote workbench ----------
+    remote_enabled: bool = True
+    remote_pairing_ttl_seconds: int = 300
+    # 受控中继地址；留空表示手机与本地服务直连（同一 HTTPS 站点）。
+    # 无论哪种模式，本地都不新开公网监听端口。
+    remote_relay_url: str = ""
+    remote_public_url: str = ""    # 生成配对链接用的外部地址，留空取请求地址
 
     @property
     def postgres_dsn(self) -> str:

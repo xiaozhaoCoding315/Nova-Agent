@@ -1,9 +1,10 @@
 import clsx from 'clsx'
 import {
-  Activity, Check, ChevronDown, Command, Copy, Cpu, FolderTree, GitBranch, MonitorDown, PanelLeft,
-  PanelRight, Plus, ShieldCheck,
+  Activity, BookOpen, Briefcase, Check, ChevronDown, Command, Copy, Cpu, FileText,
+  FolderTree, GitBranch, MonitorDown, PanelLeft, PanelRight, Plus, ShieldCheck, Smartphone,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { ProductModeSwitch } from '../components/ProductModeSwitch'
 import { StatusDot } from '../components/common'
 import { TrajectoryDrawer } from '../components/TrajectoryDrawer'
 import { ModelPicker, useModelPicker } from '../composer/ModelPicker'
@@ -37,6 +38,11 @@ export function ChatHeader({
   onOpenPalette,
   onOpenSettings,
   onOpenWorkspace,
+  onOpenDocuments,
+  onOpenResume,
+  onOpenEvidence,
+  onOpenRemote,
+  remoteUnread,
   healthState,
   health,
   usage,
@@ -50,6 +56,11 @@ export function ChatHeader({
   onOpenPalette: () => void
   onOpenSettings: () => void
   onOpenWorkspace: (repoId?: string, path?: string) => void
+  onOpenDocuments: () => void
+  onOpenResume: () => void
+  onOpenEvidence: () => void
+  onOpenRemote: () => void
+  remoteUnread: number
   healthState: 'ok' | 'warn' | 'err'
   health: Health | null
   usage: Usage | null
@@ -156,7 +167,12 @@ export function ChatHeader({
         : '未配置模型'
   const modelSource = llmSettings?.source === 'user'
     ? '个人密钥'
-    : llmSettings?.source === 'server' ? '服务端密钥' : '未配置'
+    : llmSettings?.source === 'server'
+      ? llmSettings.byok_enabled === false ? '服务端统一模型' : '服务端密钥'
+      : '未配置'
+  const modelHint = llmSettings?.byok_enabled === false
+    ? '服务端统一模型，切换请使用桌面客户端'
+    : '仅本会话，点击切换'
   const sandbox = health?.components.sandbox as { available?: boolean } | undefined
 
   const gitBranch = gitInfo?.available && gitInfo.initialized
@@ -173,6 +189,49 @@ export function ChatHeader({
         aria-label="打开项目栏"
       >
         <PanelLeft size={15} />
+      </button>
+
+      <ProductModeSwitch compact />
+
+      <button
+        onClick={onOpenDocuments}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="文档工作区：Markdown 正文、版本与导出"
+      >
+        <FileText size={12} />
+        <span className="hidden sm:inline">文档</span>
+      </button>
+
+      <button
+        onClick={onOpenResume}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="简历工作台：事实库、岗位版本与导出"
+      >
+        <Briefcase size={12} />
+        <span className="hidden sm:inline">简历</span>
+      </button>
+
+      <button
+        onClick={onOpenEvidence}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="证据包：验证事实、工件哈希与环境对比"
+      >
+        <ShieldCheck size={12} />
+        <span className="hidden sm:inline">证据</span>
+      </button>
+
+      <button
+        onClick={onOpenRemote}
+        className="relative flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 font-mono text-2xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+        title="遥控：配对手机，查看进度与完成通知"
+      >
+        <Smartphone size={12} />
+        <span className="hidden sm:inline">遥控</span>
+        {remoteUnread > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 font-mono text-[9px] text-base">
+            {remoteUnread > 9 ? '9+' : remoteUnread}
+          </span>
+        )}
       </button>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -267,7 +326,7 @@ export function ChatHeader({
             setModelOpen((value) => !value)
           }}
           className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-edge px-2 text-xs text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
-          title={`模型：${modelLabel}（${modelSource}）· 仅本会话，点击切换`}
+          title={`模型：${modelLabel}（${modelSource}）· ${modelHint}`}
           aria-label={`模型：${modelLabel}，打开模型选择`}
           aria-haspopup="dialog"
           aria-expanded={modelOpen}
@@ -292,6 +351,16 @@ export function ChatHeader({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <a
+          href="/guide"
+          target="_blank"
+          rel="noreferrer"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-edge text-dim transition-colors duration-150 hover:border-accent/40 hover:text-ink"
+          title="使用文档（新标签页）"
+          aria-label="在新标签页打开使用文档"
+        >
+          <BookOpen size={13} />
+        </a>
         <button
           onClick={() => setTrajectoryOpen(true)}
           disabled={!sessionId}
@@ -381,7 +450,7 @@ export function ChatHeader({
         </button>
         <span
           className="flex items-center gap-1.5 px-1 text-xs text-dim"
-          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.2.1'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
+          title={`${HEALTH_LABEL[healthState]} · v${health?.version ?? '2.2.2'}${sandbox ? ` · 沙箱${sandbox.available ? '可用' : '不可用'}` : ''} · 今日 ${usage ? usage.today_tokens.toLocaleString() : '—'} tokens`}
         >
           <StatusDot state={healthState} />
           <span className="hidden xl:inline">{HEALTH_LABEL[healthState]}</span>

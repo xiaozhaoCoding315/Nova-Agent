@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import time
 import uuid
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -17,6 +18,7 @@ from app.core.jobs import service as jobs_service
 from app.core.jobs.service import enqueue_index
 from app.core.memory import session as session_mod
 from app.core.review.service import review_edit as review_edit_service
+from app.core.security.audit import AuditAction, log_audit
 from app.core.security.auth import get_current_user
 from app.core.security.limits import check_chat_quota, check_job_quota
 from app.core.storage.user_storage import get_file
@@ -24,7 +26,7 @@ from app.core.trace import list_events, record as trace_record
 from app.core.turns import events as turn_events
 from app.core.turns import service as turn_service
 from app.core.turns import store as turn_store
-from app.db import execute
+from app.db import execute, query
 from app.models.schemas import (
     ActiveTurnOut,
     ChatRequest,
@@ -118,17 +120,56 @@ def _session_payload(session: dict, message_count: int = 0) -> dict:
         "primary_repo_id": session.get("primary_repo_id"),
         "model": session.get("model"),
         "llm_overrides": session.get("llm_overrides") or {},
+        "product_mode": session.get("product_mode") or "dev",
+        "thesis_project_id": session.get("thesis_project_id"),
         "created_at": session.get("created_at"),
         "updated_at": session.get("updated_at"),
     }
 
 
+def _ensure_thesis_access(user: dict) -> None:
+    """Mirror the thesis route gate for chat-created thesis sessions."""
+    if not settings.thesis_server_enabled:
+        raise HTTPException(status_code=403, detail="论文模式在当前部署中已关闭")
+    if user.get("is_guest") and not settings.thesis_guest_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="访客账号不能使用论文模式，请注册正式账号",
+        )
+
+
+async def _thesis_project(user_id: int, project_id: str | None) -> dict | None:
+    """Return the owned thesis project, mapping malformed ids to 400/404."""
+    if not project_id:
+        return None
+    from app.core.thesis import service as thesis_service
+
+    try:
+        project = await thesis_service.get_project(user_id, project_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not project:
+        raise HTTPException(status_code=404, detail="论文项目不存在")
+    return project
+
+
 @router.get("/chat/sessions", response_model=list[SessionOut])
 async def list_sessions(
     repo_id: str | None = Query(default=None),
+    product_mode: Literal["dev", "thesis"] = Query(default="dev"),
+    thesis_project_id: str | None = Query(default=None),
     user: dict = Depends(get_current_user),
 ):
-    return await session_mod.list_sessions(user["id"], repo_id=repo_id)
+    if product_mode == "thesis":
+        _ensure_thesis_access(user)
+    return await session_mod.list_sessions(
+        user["id"],
+        repo_id=repo_id,
+        product_mode=product_mode,
+        thesis_project_id=thesis_project_id,
+    )
 
 
 @router.post("/chat/sessions", response_model=SessionOut)
@@ -137,12 +178,24 @@ async def create_session(
     user: dict = Depends(get_current_user),
 ):
     repo_ids = list(dict.fromkeys((body.repo_ids if body else []) or []))[:5]
+    overrides = _overrides_patch(body.llm_overrides if body else None)
+    product_mode = body.product_mode if body else "dev"
+    if product_mode == "thesis":
+        _ensure_thesis_access(user)
+    thesis_project = await _thesis_project(
+        user["id"], body.thesis_project_id if body and product_mode == "thesis" else None,
+    )
+    if product_mode == "thesis" and not thesis_project:
+        raise HTTPException(status_code=400, detail="论文会话必须绑定论文项目")
+    thesis_project_id = thesis_project["id"] if thesis_project else None
+    if thesis_project and not repo_ids and thesis_project.get("source_repo_id"):
+        repo_ids = [thesis_project["source_repo_id"]]
     for repo_id in repo_ids:
         if not await get_repo(repo_id, user["id"]):
             raise HTTPException(status_code=404, detail=f"仓库不存在或无权访问：{repo_id}")
-    overrides = _overrides_patch(body.llm_overrides if body else None)
     session = await session_mod.create_session(
         user["id"], repo_ids=repo_ids, llm_overrides=overrides,
+        product_mode=product_mode, thesis_project_id=thesis_project_id,
     )
     return _session_payload(session)
 
@@ -153,6 +206,31 @@ async def get_session_messages(session_id: str, user: dict = Depends(get_current
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
     return await session_mod.get_messages(session_id, user_id=user["id"])
+
+
+@router.get("/chat/sessions/{session_id}/compactions")
+async def get_session_compactions(
+    session_id: str, user: dict = Depends(get_current_user)
+):
+    """Auditable in-turn compaction records for one owned session."""
+    session = await session_mod.get_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    rows = await query(
+        "SELECT id, turn_id::text, summary, message_count, tokens_before, "
+        "tokens_after, created_at FROM compaction_records "
+        "WHERE session_id = %s ORDER BY id DESC LIMIT 50",
+        (session_id,),
+    )
+    return [
+        {
+            "id": r[0], "turn_id": r[1], "summary": r[2],
+            "message_count": int(r[3] or 0),
+            "tokens_before": int(r[4] or 0), "tokens_after": int(r[5] or 0),
+            "created_at": r[6],
+        }
+        for r in rows
+    ]
 
 
 @router.patch("/chat/sessions/{session_id}", response_model=SessionOut)
@@ -217,14 +295,31 @@ async def chat_message(
         session = await session_mod.get_session(body.session_id, user["id"])
         if not session:
             raise HTTPException(status_code=404, detail="会话不存在")
+        if (session.get("product_mode") or "dev") == "thesis":
+            _ensure_thesis_access(user)
         if incoming_overrides is not None:
             merged = await session_mod.update_llm_overrides(
                 session["id"], user["id"], incoming_overrides,
             )
             session["llm_overrides"] = merged or {}
     else:
+        if body.product_mode == "thesis":
+            _ensure_thesis_access(user)
+        thesis_project = await _thesis_project(
+            user["id"],
+            body.thesis_project_id if body.product_mode == "thesis" else None,
+        )
+        if body.product_mode == "thesis" and not thesis_project:
+            raise HTTPException(status_code=400, detail="论文会话必须绑定论文项目")
+        thesis_project_id = thesis_project["id"] if thesis_project else None
+        if thesis_project and not body.repo_ids and thesis_project.get("source_repo_id"):
+            body.repo_ids = [thesis_project["source_repo_id"]]
         session = await session_mod.create_session(
-            user["id"], model=body.model, llm_overrides=incoming_overrides,
+            user["id"],
+            model=body.model,
+            llm_overrides=incoming_overrides,
+            product_mode=body.product_mode,
+            thesis_project_id=thesis_project_id,
         )
 
     if body.model and body.model.strip() != (session.get("model") or ""):
@@ -233,11 +328,24 @@ async def chat_message(
         session["model"] = model
 
     if body.permission_mode and body.permission_mode != session.get("permission_mode"):
+        old_mode = session.get("permission_mode") or "ask"
         await execute(
             "UPDATE sessions SET permission_mode = %s WHERE id = %s",
             (body.permission_mode, session["id"]),
         )
         session["permission_mode"] = body.permission_mode
+        await log_audit(
+            AuditAction.CHAT_PERMISSION_CHANGE,
+            user_id=str(user["id"]),
+            details={
+                "session_id": session["id"],
+                "product_mode": session.get("product_mode") or "dev",
+                "thesis_project_id": session.get("thesis_project_id"),
+                "before": old_mode,
+                "after": body.permission_mode,
+            },
+            risk_level="warn",
+        )
 
     effective_repo_ids = (
         body.repo_ids if body.repo_ids is not None else (session.get("repo_ids") or [])
@@ -412,6 +520,9 @@ async def approve_tool(
     from app.core import approvals
     if not approvals.resolve(session_id, tool_call_id, user["id"], True):
         raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    from app.core.remote import approvals as remote_approvals
+
+    remote_approvals.record_local_decision(user["id"], tool_call_id, True)
     return {"ok": True, "approved": True}
 
 
@@ -427,6 +538,9 @@ async def reject_tool(
     from app.core import approvals
     if not approvals.resolve(session_id, tool_call_id, user["id"], False):
         raise HTTPException(status_code=409, detail="审批已过期或不存在")
+    from app.core.remote import approvals as remote_approvals
+
+    remote_approvals.record_local_decision(user["id"], tool_call_id, False)
     return {"ok": True, "approved": False}
 
 

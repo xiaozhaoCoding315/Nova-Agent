@@ -24,12 +24,16 @@ def register(
 def resolve(
     session_id: str, tool_call_id: str, user_id: int, approved: bool
 ) -> bool:
-    entry = _PENDING.get(_key(session_id, tool_call_id))
+    # Single-use: remove the entry before setting the result.  A second
+    # approve/reject (desktop racing the phone) must fail instead of reporting
+    # a decision that the waiting turn never actually received.
+    entry = _PENDING.pop(_key(session_id, tool_call_id), None)
     if not entry or entry[0] != int(user_id):
         return False
     future = entry[1]
-    if not future.done():
-        future.set_result(approved)
+    if future.done():
+        return False
+    future.set_result(approved)
     return True
 
 

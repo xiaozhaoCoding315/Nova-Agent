@@ -28,10 +28,13 @@ _PATTERNS = (
         REDACTED,
     ),
     (
+        # Match at line start or after a shell separator/space so secrets
+        # embedded in commands (``export KEY=...``) are redacted too.
         re.compile(
-            r"(?im)^(\s*[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Z0-9_]*\s*=\s*)(.+)$"
+            r"(?im)(^|[;&|\s])(\s*[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)"
+            r"[A-Z0-9_]*\s*=\s*)([^\s;&|]+)"
         ),
-        lambda match: match.group(1) + REDACTED,
+        lambda match: match.group(1) + match.group(2) + REDACTED,
     ),
 )
 

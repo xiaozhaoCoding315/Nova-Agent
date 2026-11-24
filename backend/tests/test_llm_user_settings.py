@@ -240,6 +240,55 @@ async def test_factory_prefers_user_config_and_uses_session_model(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_byok_closed_ignores_stored_credentials_and_session_overrides(monkeypatch):
+    """A server-managed deployment must not resurrect a saved personal key."""
+    monkeypatch.setattr(settings, "llm_byok_surface", "desktop")
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(settings, "llm_model_priority", "agnes")
+    monkeypatch.setattr(settings, "agnes_api_key", "sk-server")
+    monkeypatch.setattr(settings, "agnes_model", "agnes-3.0-flash")
+    get_config = AsyncMock(return_value={
+        "provider": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "api_key": "sk-user",
+        "key_hint": "••••user",
+    })
+    monkeypatch.setattr(factory, "get_user_config", get_config)
+
+    llm = await factory.get_llm(
+        7, model="deepseek-reasoner",
+        overrides={"provider": "deepseek", "model": "deepseek-reasoner"},
+    )
+
+    get_config.assert_not_awaited()
+    assert isinstance(llm, factory.FallbackLLM)
+    assert factory.server_default_model() == "agnes-3.0-flash"
+
+
+@pytest.mark.asyncio
+async def test_byok_closed_serves_registered_users_from_the_shared_key(monkeypatch):
+    monkeypatch.setattr(settings, "llm_byok_surface", "desktop")
+    monkeypatch.setattr(settings, "nova_mode", "server")
+    monkeypatch.setattr(settings, "llm_allow_server_fallback", True)
+    monkeypatch.setattr(settings, "llm_server_fallback_registered", False)
+    # 必须钉住「服务端有 Key」。`llm_byok_open` 在没配任何服务端 Key 时也会返回
+    # True（否则部署起来没人能用模型），此时 _fallback_allowed_for 会转去查账号
+    # 等级。CI 环境没有任何 Key，本地开发机通常有，不钉住这条测试就会两处结论
+    # 不同——本机绿、CI 红。
+    monkeypatch.setattr(settings, "dashscope_api_key", "sk-server")
+    for key in ("zhipu_api_key", "agnes_api_key", "deepseek_api_key", "anthropic_api_key"):
+        monkeypatch.setattr(settings, key, "")
+
+    async def _never(_sql, _params):  # pragma: no cover - must not be reached
+        raise AssertionError("BYOK 关闭时不应再查账号等级")
+
+    monkeypatch.setattr("app.db.query", _never)
+
+    assert await factory._fallback_allowed_for(7) is True
+
+
+@pytest.mark.asyncio
 async def test_server_fallback_can_be_disabled_for_deployments(monkeypatch):
     monkeypatch.setattr(factory, "get_user_config", AsyncMock(return_value=None))
     monkeypatch.setattr(settings, "llm_allow_server_fallback", False)

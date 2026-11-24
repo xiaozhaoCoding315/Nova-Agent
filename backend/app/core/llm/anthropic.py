@@ -148,6 +148,7 @@ class AnthropicLLM(LLMProvider):
         self.caching = settings.anthropic_prompt_caching if caching is None else caching
         self.context_window: int | None = settings.anthropic_context_window
         self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
+        self.provider_id = "anthropic"
 
     def _payload(self, messages: list[dict], tools: list[dict]) -> dict:
         system, converted = _to_anthropic(messages)
@@ -193,7 +194,10 @@ class AnthropicLLM(LLMProvider):
 
     async def astream_with_tools(self, messages: list[dict], tools: list[dict], **kwargs):
         payload = self._payload(messages, tools)
-        usage: dict = {"model": self.model, "prompt_tokens": 0, "completion_tokens": 0}
+        usage: dict = {
+            "model": self.model, "prompt_tokens": 0, "completion_tokens": 0,
+            "provider": self.provider_id,
+        }
         tool_blocks: dict[int, dict] = {}
         thinking_blocks: dict[int, dict] = {}
         finish_reason = "stop"

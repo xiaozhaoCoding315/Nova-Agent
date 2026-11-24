@@ -45,11 +45,15 @@ def _format_messages(rows: list[tuple]) -> str:
 
 
 async def maybe_summarize(
-    session_id: str, user_id: int, ctx=None
+    session_id: str, user_id: int, ctx=None, force: bool = False,
+    raise_on_error: bool = False,
 ) -> int:
     """Compress new messages when the batch is large enough.
 
-    Returns the number of messages folded into the summary (0 when skipped).
+    ``force`` is used when the prompt is about to exceed its token budget:
+    waiting for the normal batch threshold would mean truncating messages that
+    were never summarized.  Returns the number of messages folded into the
+    summary (0 when skipped).
     """
     rows = await session_mod.summary_state(session_id, user_id)
     if not rows:
@@ -59,7 +63,10 @@ async def maybe_summarize(
     pending = await session_mod.messages_after(
         session_id, int(upto_id or 0), user_id=user_id
     )
-    if len(pending) < SUMMARY_BATCH:
+    if force:
+        if len(pending) <= KEEP_RECENT:
+            return 0
+    elif len(pending) < SUMMARY_BATCH:
         return 0
     if ctx:
         await ctx.check_cancel()
@@ -90,12 +97,20 @@ async def maybe_summarize(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("session_summary_failed", session=session_id, error=str(exc))
+        if raise_on_error:
+            raise
         return 0
 
     summary = _truncate(str(data.get("summary") or data.get("text") or ""))
     if not summary:
         return 0
     await session_mod.set_summary(session_id, summary, int(to_summarize[-1]["id"]))
+    try:
+        from app.core.memory import vector_store
+
+        await vector_store.index_session(user_id, session_id, summary)
+    except Exception as exc:  # noqa: BLE001 — vectors are optional
+        logger.debug("session_summary_index_failed", error=str(exc))
     logger.info(
         "session_summary_written", session=session_id, messages=len(to_summarize)
     )

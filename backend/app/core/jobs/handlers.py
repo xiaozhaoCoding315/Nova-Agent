@@ -84,8 +84,46 @@ async def _session_summary(ctx: JobContext) -> dict:
     user_id = int(ctx.payload["user_id"])
     await ctx.check_cancel()
     await ctx.update(progress=0.1, step="压缩会话记忆")
-    added = await maybe_summarize(session_id, user_id, ctx=ctx)
+    # Raise on model failure so the runner's retry policy applies instead of
+    # recording a successful no-op.
+    added = await maybe_summarize(
+        session_id, user_id, ctx=ctx, raise_on_error=True,
+    )
     return {"session_id": session_id, "summarized": added}
+
+
+async def _facts_extract(ctx: JobContext) -> dict:
+    from app.core.memory.facts import extract_facts_from_turn
+    from app.core.memory.session import get_message, get_session
+
+    session_id = str(ctx.payload["session_id"])
+    user_id = int(ctx.payload["user_id"])
+    user_message_id = int(ctx.payload["user_message_id"])
+    assistant_message_id = int(ctx.payload["assistant_message_id"])
+    await ctx.check_cancel()
+    await ctx.update(progress=0.1, step="提取长期记忆")
+    # The payload is server-created, but never trust it to cross ownership.
+    if not await get_session(session_id, user_id):
+        raise JobFailed("会话不存在或无权访问")
+    user_message = await get_message(user_message_id, session_id)
+    assistant_message = await get_message(assistant_message_id, session_id)
+    if not user_message or not assistant_message:
+        raise JobFailed("待提取的消息不存在")
+    added = await extract_facts_from_turn(
+        user_id,
+        user_message["content"],
+        assistant_message["content"],
+        scope_type=str(ctx.payload.get("scope_type") or "dev"),
+        scope_id=str(ctx.payload.get("scope_id") or ""),
+        source_session_id=session_id,
+        source_message_id=assistant_message_id,
+        raise_on_error=True,
+    )
+    return {
+        "session_id": session_id,
+        "assistant_message_id": assistant_message_id,
+        "facts_added": added,
+    }
 
 
 async def _verify(ctx: JobContext) -> dict:
@@ -179,6 +217,8 @@ def register_all(runner) -> None:
         runner.register("builder_files", _builder_files, concurrency=1)
     if not runner.has("session_summary"):
         runner.register("session_summary", _session_summary, concurrency=2)
+    if not runner.has("facts_extract"):
+        runner.register("facts_extract", _facts_extract, concurrency=2)
     if not runner.has("builder_smoke"):
         runner.register("builder_smoke", _builder_smoke, concurrency=1)
     if not runner.has("verify"):

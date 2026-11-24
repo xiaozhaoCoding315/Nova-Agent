@@ -1,0 +1,9 @@
+{
+  "recall_at_8": 1.0,
+  "scope_leak": 0,
+  "stale_rate": 0.0,
+  "duplicate_rate": 0.0057,
+  "compaction_retention": 1.0,
+  "memory_token_share": 0.006,
+  "cases": 5
+}

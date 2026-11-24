@@ -14,7 +14,14 @@ import structlog
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core.agent.context_governor import compact_messages
+from app.core.agent.context_governor import (
+    SpillCollector,
+    blend_scale,
+    calibration_scale,
+    compact_messages,
+    needs_compaction,
+    rewrite_blob_tokens,
+)
 from app.core.agent.context_meter import (
     estimate_message_content,
     estimate_messages,
@@ -32,6 +39,12 @@ from app.core.agent.report import build_turn_report
 from app.core.agent.rules import load_repo_rules
 from app.core.agent.tool_output import build_preview, serialize_tool_result
 from app.core.harness.config import TIMEOUTS
+from app.core.harness.retry import (
+    http_status,
+    is_retryable_error,
+    retry_delay_for,
+    sleep_before_retry,
+)
 from app.core.llm.factory import (
     LLMNotConfiguredError,
     get_llm,
@@ -39,9 +52,16 @@ from app.core.llm.factory import (
 )
 from app.core.llm.usage import record_usage
 from app.core.local_bridge import is_online as local_agent_online
+from app.core.memory import blobs as blobs_mod
+from app.core.memory import compaction as compaction_mod
+from app.core.memory import daily as daily_mod
+from app.core.memory import episodic as episodic_mod
 from app.core.memory import facts as facts_mod
+from app.core.memory import policy as memory_policy_mod
+from app.core.memory import scope as memory_scope
 from app.core.memory import session as session_mod
 from app.core.memory.context import build_system_prompt
+from app.core.product_modes import FILE_MUTATING_TOOLS as _FILE_MUTATING_TOOLS
 from app.core.rag.retriever import retrieve
 from app.core.security.audit import AuditAction, log_audit
 from app.core.security.limits import ensure_token_budget
@@ -50,6 +70,29 @@ from app.core.trace import record as trace_record
 from app.core.tools import ToolContext, get_registry
 
 logger = structlog.get_logger()
+
+# Keep strong references so best-effort memory work is not garbage-collected
+# mid-flight, and surface its failures instead of losing them silently.
+_MEMORY_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_memory_task(coro, *, label: str) -> None:
+    task = asyncio.create_task(coro)
+    _MEMORY_TASKS.add(task)
+
+    def _done(finished: asyncio.Task) -> None:
+        _MEMORY_TASKS.discard(finished)
+        if finished.cancelled():
+            return
+        try:
+            finished.result()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "background_memory_task_failed", task=label, error=str(exc)
+            )
+
+    task.add_done_callback(_done)
+
 
 def _sse(event: str, **data) -> dict:
     return {"event": event, "data": data}
@@ -114,7 +157,9 @@ async def run_chat(
     edits: list[dict] = []
     subagent_runs: list[dict] = []
     content_parts: list[str] = []
-    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "model": ""}
+    usage_total = {
+        "prompt_tokens": 0, "completion_tokens": 0, "model": "", "provider": "",
+    }
     plan_state: dict | None = None
     rounds = 0
     sandbox_runs_ok = 0
@@ -163,15 +208,97 @@ async def run_chat(
     )
 
     # 2) context assembly
+    context_window = (
+        session_overrides.get("context_window")
+        or resolve_context_window(user["id"])
+    )
     fact_list: list[str] = []
+    fact_rows: list[tuple[int, str, str]] = []
+    memory_index_rows: list[dict] = []
+    daily_rows: list[dict] = []
+    episodic_rows: list[dict] = []
+    instruction_rows: list[dict] = []
+    path_instruction_rows: list[dict] = []
+    fact_scopes = memory_scope.readable_scopes(session, repo_ids)
     try:
-        fact_list = await facts_mod.get_relevant_facts(user["id"], user_message)
+        from app.core.memory import instructions as instructions_mod
+
+        instruction_rows, path_instruction_rows = await instructions_mod.for_turn(
+            user["id"], fact_scopes,
+        )
+    except Exception as exc:  # noqa: BLE001 — instructions are an overlay
+        logger.warning("instructions_load_failed", error=str(exc))
+    memory_policy = memory_policy_mod.DEFAULT_POLICY
+    try:
+        memory_policy = await memory_policy_mod.get_policy(user["id"])
+    except Exception as exc:  # noqa: BLE001
+        # Settings are a policy overlay, not a hard dependency: fall back to
+        # the permissive default so a settings read failure keeps memory on.
+        logger.warning("memory_policy_load_failed", error=str(exc))
+    try:
+        turn_scope = memory_scope.extraction_scope(session, repo_ids)
+        # The master switch and per-repo/thesis overrides stop automatic
+        # injection; explicit memory tools still work when the model asks.
+        memory_on = memory_policy.auto_memory and (
+            turn_scope is None
+            or memory_policy_mod.scope_allowed(memory_policy, turn_scope)
+        )
+        if memory_on:
+            fact_rows = await facts_mod.get_relevant_facts(
+                user["id"], user_message, scopes=fact_scopes, with_ids=True,
+            )
+            fact_rows = [
+                row for row in fact_rows
+                if memory_policy_mod.allows_fact(
+                    memory_policy, row[1], row[2],
+                )
+            ]
+            fact_list = [row[1] for row in fact_rows]
+            memory_index_rows = await facts_mod.build_index_rows(
+                user["id"], fact_scopes,
+                exclude_ids=[row[0] for row in fact_rows],
+                policy=memory_policy,
+            )
+            if daily_mod.is_retrospective(user_message):
+                daily_rows = await daily_mod.recent_daily(
+                    user["id"], fact_scopes,
+                )
+                daily_rows = [
+                    row for row in daily_rows
+                    if memory_policy_mod.allows_fact(
+                        memory_policy, row.get("summary") or "", "",
+                    )
+                ]
+                episodic_rows = await episodic_mod.recent_session_summaries(
+                    user["id"], fact_scopes,
+                )
+                episodic_rows = [
+                    row for row in episodic_rows
+                    if memory_policy_mod.allows_fact(
+                        memory_policy, row.get("snippet") or "", "",
+                    )
+                ]
     except Exception as exc:  # noqa: BLE001
         logger.warning("facts_load_failed", error=str(exc))
-    history = await session_mod.recent_messages(
-        session["id"], after_id=int(session.get("summary_upto_id") or 0),
-        user_id=user["id"], before_id=user_message_id,
+    history_budget = max(
+        session_mod.HISTORY_MIN_BUDGET, int(context_window * 0.5)
     )
+    history_bundle = await session_mod.build_history(
+        session["id"], user["id"], budget_tokens=history_budget,
+        before_id=user_message_id,
+    )
+    history = history_bundle.messages
+    if history_bundle.summary or history_bundle.upto_id:
+        # The summary may have just been extended to make room for history.
+        session["summary"] = history_bundle.summary
+        session["summary_upto_id"] = history_bundle.upto_id
+    # A plan is cross-turn state: the history rebuild only replays message
+    # text, so without this a continued turn cannot see the plan it built.
+    try:
+        prior_plan = await session_mod.latest_plan(session["id"], user["id"])
+    except Exception as exc:  # noqa: BLE001 — plan is an overlay
+        logger.debug("latest_plan_load_failed", error=str(exc))
+        prior_plan = None
     repo_meta: list[dict] = []
     for rid in repo_ids or []:
         try:
@@ -191,7 +318,69 @@ async def run_chat(
         repos=repo_meta, rules=repo_rules,
         summary=session.get("summary") or "",
         sections=prompt_sections,
+        instructions=instruction_rows,
     )
+    plan_block = session_mod.format_plan_block(prior_plan)
+    if plan_block:
+        system_content += plan_block
+        prompt_sections["plan"] = plan_block
+    brain_block = ""
+    if (session.get("product_mode") or "dev") != "thesis" and repo_ids:
+        try:
+            from app.core.memory.brain import build_repo_brain_block
+            brain_block = await build_repo_brain_block(user["id"], repo_ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("repo_brain_load_failed", error=str(exc))
+    if brain_block:
+        system_content += brain_block
+        prompt_sections["brain"] = brain_block
+    index_block = facts_mod.format_index_block(memory_index_rows)
+    if index_block:
+        system_content += index_block
+        prompt_sections["memory_index"] = index_block
+    daily_block = daily_mod.format_daily_block(daily_rows)
+    if daily_block:
+        system_content += daily_block
+        prompt_sections["daily"] = daily_block
+    episodic_block = episodic_mod.format_session_block(episodic_rows)
+    if episodic_block:
+        system_content += episodic_block
+        prompt_sections["episodes"] = episodic_block
+    if not (session.get("summary") or "").strip():
+        # A long previous turn may have been compacted before the rolling
+        # session summary caught up.  Re-inject its persisted summary so the
+        # next turn does not start blind.
+        try:
+            prior_compaction = await compaction_mod.latest_compaction(
+                session["id"], user["id"],
+            )
+            if prior_compaction:
+                block = "\n\n## 上一轮上下文压缩摘要\n" + prior_compaction
+                system_content += block
+                prompt_sections["compaction"] = block
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("prior_compaction_inject_failed", error=str(exc))
+    thesis_project_id = session.get("thesis_project_id")
+    thesis_degraded: str | None = None
+    if thesis_project_id:
+        try:
+            from app.core.thesis.chat_context import build_thesis_context_result
+            thesis_result = await build_thesis_context_result(
+                user["id"], thesis_project_id
+            )
+            if thesis_result.text:
+                system_content += f"\n\n{thesis_result.text}"
+                prompt_sections["thesis"] = thesis_result.text
+            if thesis_result.degraded:
+                thesis_degraded = thesis_result.degraded
+                logger.warning(
+                    "thesis_context_degraded",
+                    project_id=thesis_project_id,
+                    reason=thesis_result.degraded,
+                )
+        except Exception as exc:  # noqa: BLE001 - context must not break the turn
+            thesis_degraded = "论文上下文注入失败，本轮未带上项目/文献信息。"
+            logger.warning("thesis_context_inject_failed", error=str(exc))
     vision_attachments = [
         item for item in (attachments or []) if is_vision_image(item)
     ]
@@ -258,14 +447,14 @@ async def run_chat(
     )
 
     # 上下文计量：分段估算本次提示的构成，供前端展示「用了多少、用在哪里」。
-    context_window = (
-        session_overrides.get("context_window")
-        or resolve_context_window(user["id"])
-    )
     section_labels = {
         "identity": "系统提示", "summary": "会话摘要", "repos": "仓库说明",
         "rules": "项目规则", "retrieval": "代码检索", "facts": "长期记忆",
         "skills": "技能注入", "lessons": "经验教训", "attachments": "附件",
+        "thesis": "论文上下文", "compaction": "压缩摘要",
+        "daily": "近期日摘要", "memory_index": "记忆索引",
+        "brain": "项目大脑", "instructions": "人工指令",
+        "episodes": "近期会话摘要",
     }
     section_tokens = {
         section_labels.get(key, key): estimate_tokens(text)
@@ -286,13 +475,58 @@ async def run_chat(
         "total": context_total,
         "estimate": True,
     }
+    if history_bundle.summarized:
+        context_info["history_summarized"] = history_bundle.summarized
+    if history_bundle.omitted:
+        context_info["history_omitted"] = history_bundle.omitted
     yield _sse("context", **context_info)
+
+    if history_bundle.omitted:
+        detail = f"另有 {history_bundle.omitted} 条较早消息未载入"
+        if history_bundle.summary:
+            detail += "（更早内容已压缩为摘要）"
+        yield _sse(
+            "notice", kind="history_compacted",
+            message=f"会话历史较长，本轮保留最近 {len(history)} 条消息；{detail}。",
+        )
+    elif history_bundle.summarized:
+        yield _sse(
+            "notice", kind="history_compacted",
+            message=(
+                f"较早的 {history_bundle.summarized} 条消息已压缩为摘要，"
+                "最近对话保持原文。"
+            ),
+        )
 
     if image_warnings:
         yield _sse(
             "notice", kind="image_skipped",
             message=f"{len(image_warnings)} 张图片读取失败，已忽略，本轮按其余内容继续。",
         )
+    if thesis_degraded:
+        yield _sse(
+            "notice", kind="thesis_context_degraded",
+            message=thesis_degraded,
+        )
+    if fact_list or memory_index_rows:
+        parts = []
+        if fact_list:
+            parts.append(f"召回 {len(fact_list)} 条")
+        if memory_index_rows:
+            parts.append(f"索引 {len(memory_index_rows)} 条")
+        yield _sse(
+            "notice", kind="memory_recalled",
+            count=len(fact_list), indexed=len(memory_index_rows),
+            message="长期记忆：" + "，".join(parts) + "（可在设置页查看或纠错）",
+        )
+
+    protected_roots: tuple[str, ...] = ()
+    if thesis_project_id:
+        try:
+            from app.core.storage.user_storage import thesis_container
+            protected_roots = (str(thesis_container(user["id"], thesis_project_id)),)
+        except Exception as exc:  # noqa: BLE001 - path guard must not break the turn
+            logger.warning("thesis_protected_root_failed", error=str(exc))
 
     ctx = ToolContext(
         user=user,
@@ -304,11 +538,30 @@ async def run_chat(
         turn_id=turn_id,
         model=session.get("model"),
         llm_overrides=session_overrides,
+        product_mode=session.get("product_mode") or "dev",
+        thesis_project_id=thesis_project_id,
+        protected_roots=protected_roots,
     )
+
+    # Defence in depth behind the policy path check: snapshot DOCX/PDF
+    # artifacts before the first mutating call and restore them if a tool
+    # reached them through an obfuscated path.
+    thesis_file_guard = None
+    if thesis_project_id and settings.thesis_protect_files:
+        try:
+            from app.core.thesis.file_guard import ThesisFileGuard
+            from app.core.thesis.service import list_artifact_paths
+
+            thesis_file_guard = ThesisFileGuard(
+                await list_artifact_paths(user["id"], thesis_project_id)
+            )
+        except Exception as exc:  # noqa: BLE001 - the guard must not break the turn
+            logger.warning("thesis_file_guard_init_failed", error=str(exc))
     local_available = False if settings.is_local else await local_agent_online(user["id"])
     specs = registry.specs(
         permission_mode=ctx.permission_mode,
         local_available=local_available,
+        product_mode=ctx.product_mode,
     )
     holder: dict = {"message_id": 0, "evidence": None, "report": None}
 
@@ -385,15 +638,43 @@ async def run_chat(
             user_id=str(user["id"]),
             details={
                 "session_id": session["id"],
+                "product_mode": session.get("product_mode") or "dev",
+                "thesis_project_id": session.get("thesis_project_id"),
                 "tools": tools_used,
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 "rounds": rounds,
             },
         )
-        if final_text:
-            asyncio.create_task(
-                facts_mod.extract_facts_from_turn(user["id"], user_message, final_text)
-            )
+        # Facts are extracted into the turn's own product scope.  Dev and
+        # thesis conversations never share an automatically learned bucket.
+        extract_scope = memory_scope.extraction_scope(session, repo_ids)
+        extraction_allowed = (
+            extract_scope is not None
+            and memory_policy_mod.scope_allowed(memory_policy, extract_scope)
+        )
+        if final_text and extraction_allowed:
+            queued: str | None = None
+            if user_message_id:
+                try:
+                    from app.core.jobs.service import enqueue_facts_extract
+
+                    queued = await enqueue_facts_extract(
+                        session["id"], user["id"], user_message_id, message_id,
+                        extract_scope.type, extract_scope.id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("facts_extract_enqueue_failed", error=str(exc))
+            if not queued:
+                _spawn_memory_task(
+                    facts_mod.extract_facts_from_turn(
+                        user["id"], user_message, final_text,
+                        scope_type=extract_scope.type, scope_id=extract_scope.id,
+                        source_session_id=session["id"],
+                        source_message_id=message_id,
+                    ),
+                    label="facts_extract",
+                )
+            holder["memory_queued"] = True
         try:
             from app.core.jobs.service import enqueue_session_summary, is_running
             from app.core.memory.summary import SUMMARY_BATCH
@@ -414,14 +695,26 @@ async def run_chat(
         "系统提示：你已连续调用多轮工具。请从中断处继续完成任务；"
         "若任务已完成，请直接给出最终答复与总结，不要再调用工具。"
     )
+    # 第二次之后的压缩只剩截断，每 8 轮重做一次摘要补上被丢掉的内容。
+    SUMMARY_REFRESH_ROUNDS = 8
     image_retry_available = bool(vision_images)
     vision_notice_sent = False
+    compaction_summary = ""
+    compaction_attempted = False
+    # 已落库的那一份摘要；重做摘要后与新值不同，会再记一条。
+    recorded_summary = ""
+    compaction_summary_anchor = ""
+    last_summary_round = 0
+    # 估算器的校准系数：每轮用真实 prompt_tokens 修正，长任务里 base64/大 JSON
+    # 会让字符估算偏差 2-3 倍，不校准就会要么超窗、要么过早压缩。
+    estimate_scale = 1.0
     try:
         # 3) tool-calling rounds — 长任务模式：段触顶注入继续指令而不是终止，
         #    瞬时失败自动重试（对齐主流 Agent 的 driver 续跑模式）
         rounds = 0
         continuations_left = max(int(settings.max_continuations), 0)
         turn_deadline = time.monotonic() + max(int(settings.turn_timeout), 60)
+        path_instructions_seen: set[int] = set()
         for round_no in itertools.count(1):
             if time.monotonic() > turn_deadline:
                 errors.append("任务时长达到上限（自动暂停）")
@@ -447,11 +740,16 @@ async def run_chat(
 
             llm_failed: str | None = None
             llm_error_detail = ""
+            last_llm_exc: Exception | None = None
+            llm_fatal = False
+            # 本轮实际发送的估算值，供校准使用（失败路径也可能留空）。
+            prompt_estimate = 0
             max_retries = max(int(settings.llm_round_retries), 0)
             retries_used = 0
             while True:
                 llm_failed = None
                 llm_error_detail = ""
+                last_llm_exc = None
                 try:
                     llm = await get_llm(
                         user["id"], model=session.get("model"),
@@ -479,21 +777,94 @@ async def run_chat(
                     # Respect the user's configured window (BYOK), not just the
                     # server default used for the UI estimate.
                     round_window = resolve_context_window(user["id"], llm)
-                    compaction = compact_messages(messages, round_window)
+                    # 长任务里只摘要一次不够：第二次之后的压缩只剩字符截断，
+                    # 被砍掉的内容没有替代物。每 SUMMARY_REFRESH_ROUNDS 轮重做一次。
+                    summary_due = (
+                        not compaction_attempted
+                        or round_no - last_summary_round >= SUMMARY_REFRESH_ROUNDS
+                    )
+                    if summary_due and needs_compaction(
+                        messages, round_window, scale=estimate_scale
+                    ):
+                        # Summarize before the governor mutates old content:
+                        # otherwise the decisions in those messages are gone.
+                        compaction_attempted = True
+                        last_summary_round = round_no
+                        try:
+                            compaction_summary = (
+                                await compaction_mod.summarize_for_compaction(
+                                    user["id"], session["id"],
+                                    messages[1:], turn_id=turn_id,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "compaction_summary_failed", error=str(exc)
+                            )
+                    # 被砍掉的中间段先落库再改写占位符：模型需要细节时能用
+                    # context_read 取回，而不是永久丢失。
+                    spill = SpillCollector()
+                    compaction = compact_messages(
+                        messages, round_window, scale=estimate_scale, spill=spill,
+                    )
+                    if spill:
+                        blob_ids = await blobs_mod.save_blobs(
+                            session["id"], spill.originals, turn_id=turn_id,
+                        )
+                        if blob_ids:
+                            rewrite_blob_tokens(messages, blob_ids)
+                            context_info["context_blobs"] = (
+                                int(context_info.get("context_blobs") or 0)
+                                + len(blob_ids)
+                            )
                     if compaction.applied:
                         compactions = int(context_info.get("compactions") or 0) + 1
                         context_info["compactions"] = compactions
                         context_info["last_compaction_saved"] = compaction.saved
                         context_info["messages_total"] = compaction.after
+                        # 新摘要替换旧的：system prompt 里只保留最新一份，
+                        # 否则每轮重做的摘要会一直堆在头部把上下文吃回去。
+                        if compaction_summary and compaction_summary != recorded_summary:
+                            recorded_summary = compaction_summary
+                            record_id = await compaction_mod.record_compaction(
+                                session["id"], compaction_summary,
+                                turn_id=turn_id,
+                                message_count=compaction.compacted,
+                                tokens_before=compaction.before,
+                                tokens_after=compaction.after,
+                            )
+                            if record_id is not None:
+                                context_info["compaction_id"] = record_id
+                                system_base = messages[0]["content"]
+                                if compaction_summary_anchor:
+                                    anchor_at = system_base.rfind(
+                                        compaction_summary_anchor
+                                    )
+                                    # 找不到就原样保留（例如 system prompt 已被
+                                    # 别的逻辑重写），不要按 -1 切掉末尾字符。
+                                    if anchor_at >= 0:
+                                        system_base = system_base[:anchor_at]
+                                compaction_summary_anchor = (
+                                    "\n\n## 本轮较早内容压缩摘要\n" + compaction_summary
+                                )
+                                messages[0]["content"] = system_base + compaction_summary_anchor
                         await trace_record(session["id"], turn_id, "context_compacted", {
                             "before": compaction.before, "after": compaction.after,
                             "saved": compaction.saved, "messages": compaction.compacted,
+                            "summarized": bool(compaction_summary),
                         })
                         if compactions == 1:
+                            detail = (
+                                "较早内容已压缩为摘要"
+                                if compaction_summary
+                                else "已自动压缩较早的工具输出"
+                            )
                             yield _sse(
                                 "notice", kind="context_compacted",
-                                message="对话上下文较长，已自动压缩较早的工具输出以继续任务。",
+                                message=f"对话上下文较长，{detail}以继续任务。",
                             )
+                    # 本轮实际发送的估算值，供下面用真实 usage 校准。
+                    prompt_estimate = estimate_messages(messages)
                     async with asyncio.timeout(settings.llm_timeout):
                         async for event in llm.astream_with_tools(messages, specs):
                             etype = event.get("type")
@@ -508,8 +879,9 @@ async def run_chat(
                             elif etype == "usage":
                                 usage = event["usage"]
                     break
-                except TimeoutError:
+                except TimeoutError as exc:
                     llm_failed = "timeout"
+                    last_llm_exc = exc
                 except LLMNotConfiguredError as exc:
                     # Configuration is deterministic: retrying the same call
                     # and the continuation path would only repeat the error.
@@ -539,16 +911,38 @@ async def run_chat(
                         )
                         continue
                     llm_failed = "error"
+                    last_llm_exc = exc
                     llm_error_detail = redact_text(str(exc))[:500]
-                if round_text or tool_calls or retries_used >= max_retries:
+                if round_text or tool_calls:
                     break
-                yield _sse(
-                    "notice", kind="retry",
-                    message=(
-                        "模型连接抖动，自动重试"
-                        f"（{retries_used + 2}/{max_retries + 1}）…"
-                    ),
+                delay = (
+                    None if last_llm_exc is None
+                    else retry_delay_for(last_llm_exc, retries_used, max_retries)
                 )
+                if delay is None:
+                    # Deterministic failure (bad key, quota exhausted, context
+                    # too long) or retries used up: re-sending cannot help.
+                    # A continuation prompt would only spend another call to
+                    # fail the same way, so surface the error instead.
+                    llm_fatal = last_llm_exc is not None and not is_retryable_error(
+                        last_llm_exc
+                    )
+                    break
+                if delay > 0:
+                    await trace_record(session["id"], turn_id, "llm_retry", {
+                        "attempt": retries_used + 1,
+                        "delay": round(delay, 2),
+                        "status": http_status(last_llm_exc) if last_llm_exc else None,
+                    })
+                    yield _sse(
+                        "notice", kind="retry",
+                        message=(
+                            "模型连接抖动，将在 "
+                            f"{delay:.0f} 秒后自动重试"
+                            f"（{retries_used + 2}/{max_retries + 1}）…"
+                        ),
+                    )
+                    await sleep_before_retry(delay)
                 retries_used += 1
 
             if llm_failed:
@@ -560,7 +954,7 @@ async def run_chat(
                                message=llm_error_detail)
                     break
                 had_output = bool(round_text or tool_calls)
-                if continuations_left > 0:
+                if continuations_left > 0 and not llm_fatal:
                     # 中断续跑：已流出的部分作为 assistant 消息入库，让模型接着写
                     continuations_left -= 1
                     if had_output:
@@ -585,9 +979,22 @@ async def run_chat(
                 break
 
             if usage:
+                # 用真实 prompt_tokens 修正估算器：下一次压缩判定才不会被
+                # base64 / 大 JSON / 压缩日志的字符比例骗过去。
+                if usage.get("prompt_tokens"):
+                    observed = calibration_scale(
+                        prompt_estimate, int(usage["prompt_tokens"]),
+                    )
+                    estimate_scale = blend_scale(estimate_scale, observed)
+                    context_info["estimate_scale"] = round(estimate_scale, 3)
                 usage_total["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
                 usage_total["completion_tokens"] += int(usage.get("completion_tokens") or 0)
                 usage_total["model"] = usage.get("model") or usage_total["model"]
+                # Keep the last answering vendor: a turn that degraded to the
+                # backup provider must be visible in usage_log.
+                usage_total["provider"] = (
+                    usage.get("provider") or usage_total.get("provider") or ""
+                )
 
             text = "".join(round_text)
             await trace_record(session["id"], turn_id, "llm_round", {
@@ -637,6 +1044,11 @@ async def run_chat(
                 getter = getattr(registry, "get", None)
                 tool = getter(name) if callable(getter) else None
                 return bool(getattr(tool, "streaming", False))
+
+            def _tool_category(name: str) -> str | None:
+                getter = getattr(registry, "get", None)
+                tool = getter(name) if callable(getter) else None
+                return getattr(tool, "category", None)
 
             async def _execute_one(item: tuple[dict, str, dict]) -> dict:
                 _, tool_name, tool_args = item
@@ -707,6 +1119,15 @@ async def run_chat(
                         except BaseException:  # noqa: BLE001
                             pass
 
+            if thesis_file_guard is not None and any(
+                name in _FILE_MUTATING_TOOLS for _, name, _ in parsed
+            ):
+                try:
+                    await thesis_file_guard.snapshot()
+                except Exception as exc:  # noqa: BLE001 - guard must not break the turn
+                    logger.warning("thesis_file_guard_snapshot_failed", error=str(exc))
+                    thesis_file_guard = None
+
             if (
                 len(parsed) > 1
                 and all(_parallel_safe(name) for _, name, _ in parsed)
@@ -737,6 +1158,21 @@ async def run_chat(
                     future = approvals.register(
                         session["id"], tool_id, user["id"]
                     )
+                    try:
+                        from app.core.remote.approvals import register as register_remote_approval
+
+                        register_remote_approval(
+                            user_id=user["id"],
+                            session_id=session["id"],
+                            task_id=turn_id,
+                            tool_call_id=tool_id,
+                            tool_name=name,
+                            args=approval.get("args") or {},
+                            reason=approval.get("reason") or "",
+                        )
+                    except Exception:
+                        # Remote approval is optional; the local prompt still works.
+                        pass
                     await trace_record(session["id"], turn_id, "tool_approval", {
                         "id": tool_id, "name": name,
                         "reason": approval.get("reason"),
@@ -777,6 +1213,18 @@ async def run_chat(
                     await trace_record(session["id"], turn_id, "tool_approval_result", {
                         "id": tool_id, "approved": bool(approved),
                     })
+
+                if thesis_file_guard is not None and name in _FILE_MUTATING_TOOLS:
+                    restored = await thesis_file_guard.verify_and_restore()
+                    if restored:
+                        errors.append("论文原始文件被工具修改，已自动还原")
+                        yield _sse(
+                            "notice", kind="thesis_file_restored",
+                            message=(
+                                f"{len(restored)} 个论文文件被工具改动，已自动还原为"
+                                "原始版本。请改用论文面板的修复功能。"
+                            ),
+                        )
 
                 tools_used.append(name)
                 if name == "run_code" and result["ok"] and (result.get("output") or {}).get("exit_code") == 0:
@@ -853,9 +1301,25 @@ async def run_chat(
                         steps=output.get("steps", []),
                         explanation=output.get("explanation", ""),
                     )
+                tool_content = serialize_tool_result(
+                    name, result, category=_tool_category(name),
+                )
+                if path_instruction_rows:
+                    try:
+                        from app.core.memory import instructions as instructions_mod
+
+                        note = instructions_mod.match_path_block(
+                            path_instruction_rows,
+                            instructions_mod.paths_from_tool_args(args),
+                            path_instructions_seen,
+                        )
+                        if note:
+                            tool_content += note
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("path_instruction_failed", error=str(exc))
                 messages.append({
                     "role": "tool", "tool_call_id": tc.get("id", ""),
-                    "name": name, "content": serialize_tool_result(name, result),
+                    "name": name, "content": tool_content,
                 })
 
             # 段触顶：注入继续指令接着跑（主流 driver 续跑模式）
@@ -894,6 +1358,9 @@ async def run_chat(
             else:
                 asyncio.create_task(_persist_turn())
         raise
+    finally:
+        if thesis_file_guard is not None:
+            await thesis_file_guard.cleanup()
 
     # 4) persistence on the normal path (message_id is needed for the done event)
     if "".join(content_parts).strip() or tools_used:
@@ -901,6 +1368,11 @@ async def run_chat(
             holder["message_id"] = await _persist_turn()
         except Exception as exc:  # noqa: BLE001
             logger.error("chat_persist_failed", error=str(exc))
+    if holder.get("memory_queued"):
+        yield _sse(
+            "notice", kind="memory_learning",
+            message="本轮对话已进入记忆抽取队列（可在设置页关闭自动记忆）。",
+        )
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     await trace_record(session["id"], turn_id, "done", {

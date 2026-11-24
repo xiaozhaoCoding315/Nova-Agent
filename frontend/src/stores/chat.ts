@@ -35,6 +35,10 @@ type ChatState = {
   overridesSaving: boolean
   selectedRepoIds: string[]
   historyRepoId: string | null
+  /** 会话历史所属产品面；论文模式的对话不会出现在开发模式列表里。 */
+  productMode: 'dev' | 'thesis'
+  thesisProjectId: string | null
+  setScope: (productMode: 'dev' | 'thesis', thesisProjectId: string | null) => void
   attachments: FileAttachment[]
   uploading: boolean
   refs: RetrievalHit[]
@@ -60,7 +64,12 @@ type ChatState = {
   newSession: () => void
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
-  send: (content: string, repoIds: string[]) => Promise<void>
+  /** Returns true once the server accepted the turn (a turn id arrived). */
+  send: (
+    content: string,
+    repoIds: string[],
+    onAccepted?: () => void,
+  ) => Promise<boolean>
   attachTurn: (turnId: string) => Promise<void>
   resolveApproval: (toolCallId: string, approved: boolean) => Promise<void>
   stop: () => void
@@ -72,6 +81,8 @@ let abortController: AbortController | null = null
 /** 递增的流所有权；被替换的流在 finally/catch 中不得再写状态。 */
 let streamOwner = 0
 let selectionEpoch = 0
+/** 产品面/项目作用域的代际；切 scope 后到达的旧响应一律丢弃。 */
+let scopeEpoch = 0
 
 function nextSelectionRevision(): number {
   selectionEpoch += 1
@@ -183,6 +194,15 @@ const IDLE_STREAM = {
   evidence: null as Evidence | null,
   report: null as DeliveryReport | null,
   streamUsage: null as StreamUsage | null,
+}
+
+/** Notices worth keeping after the stream closes: turn outcome and memory state. */
+const PERSISTENT_NOTICE_KINDS = new Set([
+  'incomplete', 'interrupted', 'memory_recalled', 'memory_learning',
+])
+
+function keepNotice(notice: { kind: string; message: string } | null) {
+  return notice && PERSISTENT_NOTICE_KINDS.has(notice.kind) ? notice : null
 }
 
 function isTerminalStatus(status: TurnStatus | null | undefined): boolean {
@@ -443,6 +463,8 @@ export const useChat = create<ChatState>((set, get) => ({
   overridesSaving: false,
   selectedRepoIds: [],
   historyRepoId: null,
+  productMode: 'dev',
+  thesisProjectId: null,
   attachments: [],
   uploading: false,
   refs: [],
@@ -566,9 +588,56 @@ export const useChat = create<ChatState>((set, get) => ({
     }
   },
 
+  setScope: (productMode, thesisProjectId) => {
+    const state = get()
+    // `null` 表示“沿用当前论文项目”：AppShell 只在模式切换时调用，不能把
+    // 面板刚设好的项目作用域清掉。
+    const nextProject = productMode === 'thesis'
+      ? (thesisProjectId ?? state.thesisProjectId)
+      : null
+    if (state.productMode === productMode && state.thesisProjectId === nextProject) {
+      return
+    }
+    scopeEpoch += 1
+    nextSelectionRevision()
+    detachStream()
+    set({
+      ...IDLE_STREAM,
+      productMode,
+      thesisProjectId: nextProject,
+      sessions: [],
+      sessionId: null,
+      messages: [],
+      permissionMode: 'ask',
+      model: null,
+      provider: null,
+      reasoningEffort: '',
+      reasoningCleared: false,
+      contextWindow: null,
+      temperature: null,
+      overridesSaving: false,
+      selectedRepoIds: [],
+      historyRepoId: null,
+      attachments: [],
+      turnId: null,
+      turnStatus: null,
+      backgroundTurns: {},
+      contextMeter: null,
+      turnNotice: null,
+      error: null,
+    })
+  },
+
   loadSessions: async () => {
+    const { productMode, thesisProjectId, historyRepoId } = get()
+    const scope = scopeEpoch
     try {
-      set({ sessions: await api.sessions.list(get().historyRepoId ?? undefined) })
+      const sessions = await api.sessions.list(historyRepoId ?? undefined, {
+        productMode,
+        thesisProjectId: thesisProjectId ?? undefined,
+      })
+      if (scope !== scopeEpoch) return
+      set({ sessions })
     } catch {
       /* session list failures are non-fatal */
     }
@@ -648,7 +717,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...IDLE_STREAM,
         turnId: null,
         turnStatus: null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
         error: err instanceof ApiError ? err.message : '加载会话失败',
       }))
     }
@@ -708,7 +777,7 @@ export const useChat = create<ChatState>((set, get) => ({
           ...IDLE_STREAM,
           turnId: null,
           turnStatus: null,
-          turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+          turnNotice: keepNotice(s.turnNotice),
           error: message,
         }))
       } else {
@@ -757,13 +826,15 @@ export const useChat = create<ChatState>((set, get) => ({
       ...IDLE_STREAM,
       turnId: null,
       turnStatus: turnId ? 'canceled' : null,
-      turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+      turnNotice: keepNotice(s.turnNotice),
       backgroundTurns: withoutBackground(s.backgroundTurns, sessionId),
     }))
     void get().loadSessions()
   },
 
   reset: () => {
+    scopeEpoch += 1
+    nextSelectionRevision()
     detachStream()
     set({
       ...IDLE_STREAM,
@@ -771,18 +842,19 @@ export const useChat = create<ChatState>((set, get) => ({
       permissionMode: 'ask', model: null, provider: null,
       reasoningEffort: '', reasoningCleared: false, contextWindow: null, temperature: null,
       overridesSaving: false, selectedRepoIds: [], historyRepoId: null,
+      productMode: 'dev' as const, thesisProjectId: null,
       attachments: [], uploading: false, refs: [],
       turnId: null, turnStatus: null, backgroundTurns: {},
       contextMeter: null, turnNotice: null, error: null,
     })
   },
 
-  send: async (content, repoIds) => {
-    if (get().streaming || get().uploading || !content.trim()) return
+  send: async (content, repoIds, onAccepted) => {
+    if (get().streaming || get().uploading || !content.trim()) return false
     const currentSession = get().sessionId
     if (currentSession && get().backgroundTurns[currentSession]) {
       set({ error: '本会话仍有任务在后台执行，请先重新连接或停止。' })
-      return
+      return false
     }
     const pendingAttachments = get().attachments
 
@@ -809,6 +881,12 @@ export const useChat = create<ChatState>((set, get) => ({
     }))
 
     const { owner, controller } = beginStream()
+    let accepted = false
+    const markAccepted = () => {
+      if (accepted) return
+      accepted = true
+      onAccepted?.()
+    }
 
     // 发送前按当前厂商能力兜底清洗，避免过期持久化参数发给不支持的厂商。
     const providerSpec = activeProviderSpec(get().provider)
@@ -841,15 +919,22 @@ export const useChat = create<ChatState>((set, get) => ({
           model: get().model ?? undefined,
           llm_overrides: overrides,
           file_ids: pendingAttachments.map((item) => item.id),
+          product_mode: get().productMode,
+          thesis_project_id: get().thesisProjectId ?? undefined,
         },
         (event, data) => {
-          if (ownsStream(owner)) applyStreamEvent(set, event, data, sentinelPersisted)
+          if (!ownsStream(owner)) return
+          if (event === 'turn' && data.turn_id) markAccepted()
+          applyStreamEvent(set, event, data, sentinelPersisted)
         },
         controller.signal,
         (info) => {
           if (!ownsStream(owner)) return
           attachedTurnId = info.turnId
-          if (info.turnId) set({ turnId: info.turnId })
+          if (info.turnId) {
+            markAccepted()
+            set({ turnId: info.turnId })
+          }
         },
       )
     } catch (err) {
@@ -859,7 +944,7 @@ export const useChat = create<ChatState>((set, get) => ({
     } finally {
       if (!ownsStream(owner)) {
         void get().loadSessions()
-        return
+        return accepted
       }
       const state = get()
       const message = finishedAssistantMessage(state)
@@ -870,7 +955,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...IDLE_STREAM,
         turnId: null,
         turnStatus: null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
       }))
       if (abortController === controller) {
         abortController = null
@@ -878,7 +963,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       if (turnId && sessionId) {
         const fresh = await fetchTurn(turnId)
-        if (!ownsStream(owner)) return
+        if (!ownsStream(owner)) return accepted
         if (fresh && !isTerminalStatus(fresh.status)) {
           set((s) => ({
             backgroundTurns: { ...s.backgroundTurns, [sessionId]: turnId },
@@ -897,6 +982,7 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       void get().loadSessions()
     }
+    return accepted
   },
 
   attachTurn: async (turnId) => {
@@ -943,7 +1029,7 @@ export const useChat = create<ChatState>((set, get) => ({
         ...(messagesLoaded ? IDLE_STREAM : { streaming: false }),
         turnId: null,
         turnStatus: fresh?.status ?? null,
-        turnNotice: s.turnNotice?.kind === 'incomplete' ? s.turnNotice : null,
+        turnNotice: keepNotice(s.turnNotice),
       }))
       if (fresh && !isTerminalStatus(fresh.status)) {
         if (sessionId) {

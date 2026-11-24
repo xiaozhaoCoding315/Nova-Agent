@@ -15,7 +15,7 @@ from app.core.logging_setup import setup_logging
 
 logger = structlog.get_logger()
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 _CLEANUP_INTERVAL_S = 3600
 
 
@@ -152,6 +152,14 @@ async def lifespan(_: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
+    # Shared provider clients outlive individual turns; close the pools so a
+    # restart does not leak sockets.
+    from app.core.llm.client_cache import close_clients
+
+    try:
+        await close_clients()
+    except Exception:
+        logger.exception("llm_client_close_failed")
     logger.info("nova_agent_shutting_down")
 
 

@@ -1,11 +1,10 @@
-import httpx
 import structlog
-from openai import AsyncOpenAI
 
 from app.config import settings
 from app.core.agent.image_input import strip_image_blocks
 from app.core.llm.anthropic import AnthropicLLM
 from app.core.llm.base import LLMProvider
+from app.core.llm.client_cache import get_client
 from app.core.llm.fallback import FallbackLLM
 from app.core.llm.providers import get_provider
 from app.core.llm.user_settings import get_user_config
@@ -21,6 +20,17 @@ class LLMNotConfiguredError(RuntimeError):
     """No usable model configuration — retrying the same call cannot help."""
 
 
+def _provider_id_for_base_url(base_url: str) -> str:
+    """Which catalog provider a URL belongs to (used for attribution only)."""
+    from app.core.llm.providers import PROVIDERS, effective_base_url
+
+    target = (base_url or "").strip().rstrip("/")
+    for spec in PROVIDERS:
+        if effective_base_url(spec) == target:
+            return spec.id
+    return ""
+
+
 class OpenAICompatibleLLM(LLMProvider):
     supports_tools = True
 
@@ -34,13 +44,16 @@ class OpenAICompatibleLLM(LLMProvider):
         max_tokens: int | None = None,
         context_window: int | None = None,
         supports_vision: bool = False,
+        provider_id: str = "",
     ):
-        self.client = AsyncOpenAI(
-            api_key=api_key or "ollama",
-            base_url=base_url,
-            http_client=httpx.AsyncClient(follow_redirects=False),
-        )
+        # Shared per (loop, endpoint, key): a 16-round turn used to build 16
+        # connection pools and close none of them.
+        self.client = get_client(api_key, base_url)
         self.model = model
+        # Attribution for usage_log and provider health.  Without it a turn
+        # that silently degraded to the backup vendor looks identical to one
+        # answered by the primary.
+        self.provider_id = provider_id or _provider_id_for_base_url(base_url)
         self.reasoning_effort = (reasoning_effort or "").strip().lower() or None
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -148,6 +161,7 @@ class OpenAICompatibleLLM(LLMProvider):
                     "prompt_tokens": chunk_usage.prompt_tokens,
                     "completion_tokens": chunk_usage.completion_tokens,
                     "model": self.model,
+                    "provider": self.provider_id,
                 }
             if not chunk.choices:
                 continue
@@ -182,6 +196,8 @@ def server_default_model() -> str | None:
         name = name.lower()
         if name == "zhipu" and settings.zhipu_api_key:
             return settings.zhipu_model
+        if name == "agnes" and settings.agnes_api_key:
+            return settings.agnes_model
         if name == "deepseek" and settings.deepseek_api_key:
             return "deepseek-chat"
         if name == "dashscope" and settings.dashscope_api_key:
@@ -204,27 +220,39 @@ def _server_llm(model_override: str | None = None) -> LLMProvider:
         if name == "zhipu" and settings.zhipu_api_key:
             if model_override:
                 return OpenAICompatibleLLM(
-                    settings.zhipu_api_key, settings.zhipu_base_url, model_override)
+                    settings.zhipu_api_key, settings.zhipu_base_url, model_override,
+                    provider_id="zhipu")
             providers.append(OpenAICompatibleLLM(
-                settings.zhipu_api_key, settings.zhipu_base_url, settings.zhipu_model))
+                settings.zhipu_api_key, settings.zhipu_base_url, settings.zhipu_model,
+                provider_id="zhipu"))
+        elif name == "agnes" and settings.agnes_api_key:
+            if model_override:
+                return OpenAICompatibleLLM(
+                    settings.agnes_api_key, settings.agnes_base_url, model_override,
+                    provider_id="agnes")
+            providers.append(OpenAICompatibleLLM(
+                settings.agnes_api_key, settings.agnes_base_url, settings.agnes_model,
+                provider_id="agnes"))
         elif name == "deepseek" and settings.deepseek_api_key:
             if model_override:
                 return OpenAICompatibleLLM(
                     settings.deepseek_api_key,
-                    "https://api.deepseek.com/v1", model_override)
+                    "https://api.deepseek.com/v1", model_override,
+                    provider_id="deepseek")
             providers.append(OpenAICompatibleLLM(
                 settings.deepseek_api_key,
                 "https://api.deepseek.com/v1",
-                "deepseek-chat"))
+                "deepseek-chat", provider_id="deepseek"))
         elif name == "dashscope" and settings.dashscope_api_key:
             if model_override:
                 return OpenAICompatibleLLM(
                     settings.dashscope_api_key,
-                    settings.dashscope_base_url, model_override)
+                    settings.dashscope_base_url, model_override,
+                    provider_id="dashscope")
             providers.append(OpenAICompatibleLLM(
                 settings.dashscope_api_key,
                 settings.dashscope_base_url,
-                settings.dashscope_model))
+                settings.dashscope_model, provider_id="dashscope"))
         elif name == "anthropic" and settings.anthropic_api_key:
             providers.append(AnthropicLLM(
                 settings.anthropic_api_key,
@@ -266,6 +294,10 @@ async def _fallback_allowed_for(user_id: int | None) -> bool:
         return True
     if not settings.llm_allow_server_fallback:
         return False
+    # BYOK 关闭时服务端就是唯一通道，注册用户也必须能用共享 Key，
+    # 否则账号既没有个人 Key 也用不了模型（见 settings.llm_byok_open）。
+    if not settings.llm_byok_open:
+        return True
     try:
         from app.db import query
         rows = await query(
@@ -294,7 +326,13 @@ async def get_llm(
     overrides = overrides or {}
     requested_provider = (overrides.get("provider") or "").strip().lower() or None
 
-    if user_id is not None:
+    # BYOK 关闭的部署只用服务端共享模型：历史会话里的厂商/模型覆盖与
+    # 早先保存的个人 Key 都不再生效，避免同一个工作台出现两套模型行为。
+    if not settings.llm_byok_open:
+        overrides = {}
+        requested_provider = None
+
+    if user_id is not None and settings.llm_byok_open:
         config = await get_user_config(user_id, requested_provider)
         if requested_provider and not config:
             raise LLMNotConfiguredError("请先在设置里配置该厂商的 API Key")
@@ -331,6 +369,7 @@ async def get_llm(
                     reasoning_effort=effort, temperature=temperature,
                     max_tokens=max_tokens, context_window=int(context),
                     supports_vision=bool(spec and spec.supports_vision),
+                    provider_id=config["provider"],
                 )
             llm.context_window = int(context)
             return llm
