@@ -19,7 +19,7 @@
     "dist": "electron-builder --win nsis --mac dmg --linux AppImage"
   },
   "devDependencies": {
-    "electron": "40.10.2",
+    "electron": "45.4.1",
     "electron-builder": "^25.1.8"
   },
   "build": {
