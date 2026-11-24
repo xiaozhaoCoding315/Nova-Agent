@@ -3512,18 +3512,12 @@ export interface components {
         };
         /** Body_replace_repo_files_api_v1_repos__repo_id__files_put */
         Body_replace_repo_files_api_v1_repos__repo_id__files_put: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_file_api_v1_files_post */
         Body_upload_file_api_v1_files_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Purpose
@@ -3537,26 +3531,17 @@ export interface components {
         };
         /** Body_upload_repo_api_v1_repos_upload_post */
         Body_upload_repo_api_v1_repos_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post */
         Body_upload_thesis_document_api_v1_thesis_projects__project_id__documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post */
         Body_upload_thesis_reference_pdf_api_v1_thesis_projects__project_id__reference_pdfs_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** BrainGlossaryOut */
@@ -7108,6 +7093,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
